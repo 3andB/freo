@@ -77,6 +77,7 @@ def render_liquidsoap(station, password):
     values = {
         '__CONTROL_SOCKET__': json.dumps(f'/run/freo/playout/{slug}/control.sock'),
         '__PLAYLIST__': json.dumps(f'/var/lib/freo/playlists/{slug}.m3u'),
+        '__EVENT_FILE__': json.dumps(f'/run/freo/playout/{slug}/events.log'),
         '__FREQUENCY__': str(frequency),
         '__TITLE__': json.dumps(f'{station.name} Engine Test'),
         '__MOUNT__': json.dumps('/' + slug),

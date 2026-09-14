@@ -11,3 +11,7 @@ Tags and CLI overrides are trimmed, stripped of controls, and length-limited. Ti
 Liquidsoap watches the station playlist and uses a generated tone when no playable request is available. An already queued track can survive a playlist update, so CLI enable/disable refreshes the playlist and restarts only that station if its desired state is running. This briefly interrupts that station but leaves `freo-test`, other station processes, Icecast, and web service untouched. No play-history row is written; enqueueing is not proof of actual playback. Future scheduling can replace playlist selection with a controlled request source. The diagnostic fixture remains separate from database-managed stations.
 
 For a complete backup, retain PostgreSQL, `/etc/freo`, and `/var/lib/freo/media`. Playlists can be regenerated from accepted records. Troubleshoot with `flask media verify <uuid>`, `flask media audit --station <slug>`, `journalctl -u freo-playout@<slug>`, local Icecast status, and the public stream. Do not put runtime media or playlists in Git.
+
+## Phase 5 selection
+
+Tracks may be assigned to multiple station-local categories without copying files. The worker only requests accepted, enabled, regular files from the station that owns them. A file missing at selection is skipped; a request that vanishes before a confirmed start is recorded as failed. The root-run media CLI remains the mutation boundary. See [rotations.md](rotations.md) and [automation.md](automation.md).

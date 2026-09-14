@@ -12,6 +12,8 @@ from .routes.stations import stations_blueprint
 from .cli import station_cli
 from .media_cli import media_cli
 from .routes.media import media_blueprint
+from .routes.automation import automation_blueprint
+from .automation_cli import automation_cli
 
 
 def create_app(config_name=None):
@@ -39,4 +41,6 @@ def create_app(config_name=None):
     app.register_blueprint(station_cli, cli_group=None)
     app.register_blueprint(media_cli, cli_group=None)
     app.register_blueprint(media_blueprint)
+    app.register_blueprint(automation_blueprint)
+    app.register_blueprint(automation_cli, cli_group=None)
     return app

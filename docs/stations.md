@@ -19,3 +19,7 @@ Future hierarchy, not yet implemented: Station → Stream/Mount; Media Library (
 ## Station media
 
 Each track belongs to exactly one station. `/var/lib/freo/media/<slug>/originals` contains UUID-named approved files; other stations cannot select them through normal library operations. See [media-library.md](media-library.md) for ingest, verification, and playback.
+
+## Automation state
+
+A station's desired playout state (`running`/`stopped`) is distinct from automation enabled/disabled. One manually selected active rotation drives the station when automation is enabled. Each station retains its own durable cursor and decision history; service restarts do not make another station share its runtime. See [rotations.md](rotations.md).

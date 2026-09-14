@@ -31,6 +31,11 @@ chmod 0711 /var/lib/freo
 if ! id freo-playout >/dev/null 2>&1; then
   useradd --system --user-group --home-dir /var/lib/freo/playout --shell /usr/sbin/nologin freo-playout
 fi
+if ! id freo-automation >/dev/null 2>&1; then
+  useradd --system --user-group --groups freo,freo-playout --home-dir /var/lib/freo --shell /usr/sbin/nologin freo-automation
+else
+  usermod -a -G freo,freo-playout freo-automation
+fi
 install -d -o freo-playout -g freo-playout -m 0750 /var/lib/freo/playout
 install -d -o root -g freo-playout -m 0750 /var/lib/freo/media /var/lib/freo/playlists
 install -d -o freo -g freo -m 0750 /var/lib/freo/state
@@ -114,7 +119,7 @@ install -m 0644 "$unit_src" "$unit_dst"
 systemctl daemon-reload
 systemctl enable --now freo.service
 systemctl restart freo.service
-for service in icecast2 freo-playout freo-playout@; do
+for service in icecast2 freo-playout freo-playout@ freo-automation; do
   unit_src="$source_dir/deploy/systemd/$service.service"
   unit_dst="/etc/systemd/system/$service.service"
   if [[ -f $unit_dst ]] && ! cmp -s "$unit_src" "$unit_dst"; then
@@ -124,6 +129,7 @@ for service in icecast2 freo-playout freo-playout@; do
 done
 systemctl daemon-reload
 systemctl enable --now icecast2.service freo-playout.service
+systemctl enable --now freo-automation.service
 systemctl reload icecast2.service
 install -m 0644 "$source_dir/deploy/nginx/stream-location.conf" /etc/nginx/snippets/freo-stream.conf
 install -d -o root -g root -m 0755 /etc/nginx/snippets/freo-stations

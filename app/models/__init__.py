@@ -68,3 +68,96 @@ class Track(db.Model):
     created_at = db.Column(db.DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
     updated_at = db.Column(db.DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
     station = db.relationship('Station', backref=db.backref('tracks', lazy='dynamic'))
+
+
+track_categories = db.Table(
+    'track_categories',
+    db.Column('track_id', db.Integer, db.ForeignKey('tracks.id', ondelete='CASCADE'), primary_key=True),
+    db.Column('category_id', db.Integer, db.ForeignKey('media_categories.id', ondelete='CASCADE'), primary_key=True),
+)
+
+
+class MediaCategory(db.Model):
+    __tablename__ = 'media_categories'
+    __table_args__ = (db.UniqueConstraint('station_id', 'slug', name='uq_category_station_slug'),)
+    id = db.Column(db.Integer, primary_key=True)
+    station_id = db.Column(db.Integer, db.ForeignKey('stations.id', ondelete='CASCADE'), nullable=False, index=True)
+    name = db.Column(db.String(120), nullable=False)
+    slug = db.Column(db.String(64), nullable=False)
+    description = db.Column(db.String(500), nullable=False, default='')
+    enabled = db.Column(db.Boolean, nullable=False, default=True)
+    created_at = db.Column(db.DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+    updated_at = db.Column(db.DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    station = db.relationship('Station', backref='categories')
+    tracks = db.relationship('Track', secondary=track_categories, backref='categories')
+
+
+class Rotation(db.Model):
+    __tablename__ = 'rotations'
+    __table_args__ = (db.UniqueConstraint('station_id', 'slug', name='uq_rotation_station_slug'),)
+    id = db.Column(db.Integer, primary_key=True)
+    station_id = db.Column(db.Integer, db.ForeignKey('stations.id', ondelete='CASCADE'), nullable=False, index=True)
+    name = db.Column(db.String(120), nullable=False)
+    slug = db.Column(db.String(64), nullable=False)
+    description = db.Column(db.String(500), nullable=False, default='')
+    enabled = db.Column(db.Boolean, nullable=False, default=True)
+    created_at = db.Column(db.DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+    updated_at = db.Column(db.DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    station = db.relationship('Station', backref='rotations')
+    slots = db.relationship('RotationSlot', back_populates='rotation', order_by='RotationSlot.position', cascade='all, delete-orphan')
+
+
+class RotationSlot(db.Model):
+    __tablename__ = 'rotation_slots'
+    __table_args__ = (db.UniqueConstraint('rotation_id', 'position', name='uq_rotation_slot_position'),)
+    id = db.Column(db.Integer, primary_key=True)
+    rotation_id = db.Column(db.Integer, db.ForeignKey('rotations.id', ondelete='CASCADE'), nullable=False, index=True)
+    category_id = db.Column(db.Integer, db.ForeignKey('media_categories.id', ondelete='RESTRICT'), nullable=False)
+    position = db.Column(db.Integer, nullable=False)
+    enabled = db.Column(db.Boolean, nullable=False, default=True)
+    rotation = db.relationship('Rotation', back_populates='slots')
+    category = db.relationship('MediaCategory')
+
+
+class AutomationState(db.Model):
+    __tablename__ = 'automation_states'
+    station_id = db.Column(db.Integer, db.ForeignKey('stations.id', ondelete='CASCADE'), primary_key=True)
+    active_rotation_id = db.Column(db.Integer, db.ForeignKey('rotations.id', ondelete='SET NULL'))
+    enabled = db.Column(db.Boolean, nullable=False, default=False)
+    next_slot_index = db.Column(db.Integer, nullable=False, default=0)
+    track_separation_seconds = db.Column(db.Integer, nullable=False, default=0)
+    artist_separation_seconds = db.Column(db.Integer, nullable=False, default=0)
+    worker_heartbeat_at = db.Column(db.DateTime(timezone=True))
+    observed_queue_depth = db.Column(db.Integer)
+    updated_at = db.Column(db.DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    station = db.relationship('Station', backref=db.backref('automation', uselist=False))
+    active_rotation = db.relationship('Rotation')
+
+
+class SelectionDecision(db.Model):
+    __tablename__ = 'selection_decisions'
+    __table_args__ = (db.CheckConstraint("status IN ('selected','queued','started','failed')", name='ck_decision_status'),)
+    id = db.Column(db.Integer, primary_key=True)
+    station_id = db.Column(db.Integer, db.ForeignKey('stations.id', ondelete='CASCADE'), nullable=False, index=True)
+    rotation_id = db.Column(db.Integer, db.ForeignKey('rotations.id', ondelete='SET NULL'))
+    slot_id = db.Column(db.Integer, db.ForeignKey('rotation_slots.id', ondelete='SET NULL'))
+    category_id = db.Column(db.Integer, db.ForeignKey('media_categories.id', ondelete='SET NULL'))
+    track_id = db.Column(db.Integer, db.ForeignKey('tracks.id', ondelete='SET NULL'))
+    selected_at = db.Column(db.DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+    started_at = db.Column(db.DateTime(timezone=True))
+    status = db.Column(db.String(12), nullable=False, default='selected')
+    candidate_count = db.Column(db.Integer, nullable=False, default=0)
+    relaxation = db.Column(db.String(24), nullable=False, default='none')
+    reason = db.Column(db.String(120), nullable=False, default='')
+    liquidsoap_request_id = db.Column(db.Integer)
+    socket_identity = db.Column(db.String(64))
+    station = db.relationship('Station')
+    track = db.relationship('Track')
+    category = db.relationship('MediaCategory')
+    slot = db.relationship('RotationSlot')
+
+
+class AutomationHeartbeat(db.Model):
+    __tablename__ = 'automation_heartbeat'
+    id = db.Column(db.Integer, primary_key=True)
+    seen_at = db.Column(db.DateTime(timezone=True), nullable=False)

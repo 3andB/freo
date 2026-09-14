@@ -2,13 +2,21 @@
 settings.server.telnet := false
 settings.server.socket := true
 settings.server.socket.path := __CONTROL_SOCKET__
-settings.server.socket.permissions := 0o600
+settings.server.socket.permissions := 0o660
 settings.log.stdout := true
+settings.log.level := 2
 
 tone = sine(amplitude=0.08, __FREQUENCY__.)
 tone = metadata.map(fun (_) -> [("title", __TITLE__)], tone)
-library = playlist(mode="normal", reload_mode="watch", __PLAYLIST__)
-radio = fallback(track_sensitive=false, [library, tone])
+queue = request.queue(id="freo_queue", prefetch=1)
+def record_track(metadata)
+  decision = list.assoc(default="", "freo_decision", metadata)
+  if decision != "" then
+    file.write(append=true, perms=0o640, __EVENT_FILE__, data=decision ^ " " ^ string.float(time()) ^ "\n")
+  end
+end
+queue = source.on_track(queue, record_track)
+radio = fallback(track_sensitive=false, [queue, tone])
 output.icecast(
   %mp3(bitrate=64),
   host="127.0.0.1",

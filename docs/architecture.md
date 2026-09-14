@@ -42,3 +42,7 @@ There is one Icecast backend and one Liquidsoap process/config/socket per manage
 ## Phase 4 media library
 
 Tracks belong to one station. The root-run CLI copies a regular, non-symlink source into private staging, hashes and probes it, then atomically moves an opaque UUID-named file into `/var/lib/freo/media/<slug>/originals`. PostgreSQL stores validated metadata and a per-station unique SHA-256 checksum. Artist and album are text fields for now; separate tables and categories are deferred. Approved, enabled tracks alone enter a root-written station playlist under `/var/lib/freo/playlists`. Liquidsoap reads it and falls back to a generated tone. The web process reads safe metadata but cannot upload, alter playlists, or serve raw media. Backups need PostgreSQL, `/etc/freo`, and `/var/lib/freo/media`.
+
+## Phase 5 automation
+
+The `freo-automation` worker is a separate non-root process and the only Freo component with group access to managed Liquidsoap control sockets. The web account has no socket access. PostgreSQL stores category membership, explicit rotation slots, active rotation, cursor, decisions, and confirmed starts. The worker selects an approved station track and sends its controlled request to that station's Liquidsoap queue. Liquidsoap handles decoding and fallback; it does not choose tracks. See [rotations.md](rotations.md) and [automation.md](automation.md). Phase 6 may choose the active rotation from clocks and schedules without replacing the selector.

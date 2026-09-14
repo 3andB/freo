@@ -21,3 +21,7 @@ Future multi-station operation should start with one Liquidsoap process/config p
 ## Media playback
 
 Managed stations load only the root-rendered approved playlist for their own slug. The Phase 4 source uses Liquidsoap playlist watch mode and falls back to a generated tone if no playable request is available. Disabling or enabling a track through the CLI refreshes the playlist and restarts only the affected station, so a queued copy cannot continue after disable. The `freo-test` diagnostic source remains independent. No arbitrary Liquidsoap commands or filesystem paths are accepted over HTTP.
+
+## Phase 5 request source
+
+Managed stations now use Liquidsoap `request.queue` with a two-request lookahead supplied by Freo's non-root automation worker. The `freo-test` diagnostic script remains independent. A private per-station `on_track` event file confirms actual starts. The managed control socket is mode 0660 for the restricted worker/playout group; the web account is not a member. See [automation.md](automation.md).

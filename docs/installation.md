@@ -31,3 +31,7 @@ Provisioning deploys the station/stream migration, `freo-playout@.service`, its 
 ## Phase 4 media
 
 Provisioning installs Ubuntu `ffmpeg` (including `/usr/bin/ffprobe`) and creates root-owned, `freo-playout`-readable `/var/lib/freo/media` and `/var/lib/freo/playlists` (mode 0750). It applies the additive Track migration. It does not install demo audio or create library rows. The administrator ingests files through the [media CLI](media-library.md). The complete backup set now includes PostgreSQL, `/etc/freo`, and `/var/lib/freo/media`; playlists can be regenerated from accepted DB records.
+
+## Phase 5 automation
+
+Provisioning creates the non-login `freo-automation` account, grants it only the `freo` environment-read and `freo-playout` socket/media-read groups, deploys `freo-automation.service`, and applies additive category/rotation/history migrations. The web `freo` user is not in the playout group. No demo categories, rotation, or automated mode are created on a normal install. After defining and activating a rotation through the root-run CLI, enable automation explicitly. Check `sudo ./scripts/validate-install.sh`, `/health/automation`, and the [automation guide](automation.md). Existing station configs must be rerendered to switch to `request.queue`; this is a station-only maintenance event and should be validated before restarting its instance.
