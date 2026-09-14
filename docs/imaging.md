@@ -10,4 +10,6 @@ Disable excludes future selection; current or queued audio may finish. Decommiss
 
 Root-run recovery CLI: `flask imaging list --station freo-demo`, `flask imaging ingest --station freo-demo --file /trusted/id.mp3 --type station_id --name 'Top of Hour ID'`, `flask imaging enable --station freo-demo ID-TOH`, and `flask imaging-group assign --station freo-demo --asset ID-TOH --group ids`. CLI ingestion also defaults disabled. The web UI and CLI call the same imaging service. Back up PostgreSQL and `/var/lib/freo/media` together. No imaging files belong in Git.
 
+Enabled accepted imaging assets can be queued from the authenticated [Live Assist cart wall](live-assist.md). They enter the existing approved Liquidsoap queue through the automation worker. A manual confirmed start affects later imaging recurrence; a queued cart alone does not.
+
 Each browser mutation requires an authenticated global admin and CSRF token and records a safe audit event. Group, asset, and clock target lookups are station-scoped. The local commit does not perform a fresh-VM installation test; that remains the public installability gate.

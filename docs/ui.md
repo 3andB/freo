@@ -19,3 +19,5 @@ The player has no chat, requests, votes, artwork, audience numbers, track progre
 Programming editors use server-rendered forms and the shared CLI service functions; see [programming UI](programming-ui.md).
 
 The authenticated **Imaging** section adds one-file upload, cart codes, type and group management, verification, enable/disable, and safe decommission. Clock editors distinguish CART and IMAGING_GROUP slots from music. The dashboard, confirmed history, and public player label imaging without inventing an artist or album. See [imaging](imaging.md).
+
+The station **Live Assist** page is an operator surface for the observed Now/Next/Recent state, automation hold/resume, a bounded music search, and an imaging cart wall. Queue End and Skip are explicit controls with CSRF and server-side authorization. The page labels unavailable observation and possible fallback instead of presenting stale queue data as current. See [Live Assist](live-assist.md).

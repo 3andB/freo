@@ -236,6 +236,7 @@ class AutomationState(db.Model):
     station_id = db.Column(db.Integer, db.ForeignKey('stations.id', ondelete='CASCADE'), primary_key=True)
     active_rotation_id = db.Column(db.Integer, db.ForeignKey('rotations.id', ondelete='SET NULL'))
     enabled = db.Column(db.Boolean, nullable=False, default=False)
+    hold = db.Column(db.Boolean, nullable=False, default=False)
     next_slot_index = db.Column(db.Integer, nullable=False, default=0)
     track_separation_seconds = db.Column(db.Integer, nullable=False, default=0)
     artist_separation_seconds = db.Column(db.Integer, nullable=False, default=0)
@@ -329,7 +330,7 @@ class RotationCursor(db.Model):
 class SelectionDecision(db.Model):
     __tablename__ = 'selection_decisions'
     __table_args__ = (
-        db.CheckConstraint("status IN ('selected','queued','started','failed')", name='ck_decision_status'),
+        db.CheckConstraint("status IN ('selected','submitting','queued','started','failed')", name='ck_decision_status'),
         db.CheckConstraint('track_id IS NULL OR imaging_asset_id IS NULL', name='ck_decision_one_playable'),
     )
     id = db.Column(db.Integer, primary_key=True)
@@ -341,6 +342,8 @@ class SelectionDecision(db.Model):
     imaging_asset_id = db.Column(db.Integer, db.ForeignKey('imaging_assets.id', ondelete='SET NULL'))
     imaging_group_id = db.Column(db.Integer, db.ForeignKey('imaging_groups.id', ondelete='SET NULL'))
     selection_method = db.Column(db.String(24), nullable=False, default='music')
+    admin_user_id = db.Column(db.Integer, db.ForeignKey('admin_users.id', ondelete='SET NULL'))
+    idempotency_key = db.Column(db.String(36), unique=True)
     selected_at = db.Column(db.DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
     started_at = db.Column(db.DateTime(timezone=True))
     status = db.Column(db.String(12), nullable=False, default='selected')
@@ -362,6 +365,36 @@ class SelectionDecision(db.Model):
     clock = db.relationship('Clock')
     clock_slot = db.relationship('ClockSlot')
     schedule_assignment = db.relationship('ScheduleAssignment')
+    operator = db.relationship('AdminUser')
+
+
+class LiveControlCommand(db.Model):
+    """Worker-mediated skip only; never a generic socket command table."""
+    __tablename__ = 'live_control_commands'
+    __table_args__ = (db.CheckConstraint("status IN ('pending','sent','failed')", name='ck_live_control_status'),)
+    id = db.Column(db.Integer, primary_key=True)
+    station_id = db.Column(db.Integer, db.ForeignKey('stations.id', ondelete='CASCADE'), nullable=False, index=True)
+    admin_user_id = db.Column(db.Integer, db.ForeignKey('admin_users.id', ondelete='SET NULL'))
+    idempotency_key = db.Column(db.String(36), nullable=False, unique=True)
+    expected_decision_id = db.Column(db.Integer, db.ForeignKey('selection_decisions.id', ondelete='SET NULL'))
+    status = db.Column(db.String(12), nullable=False, default='pending')
+    created_at = db.Column(db.DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+    processed_at = db.Column(db.DateTime(timezone=True))
+    error_code = db.Column(db.String(40))
+    station = db.relationship('Station')
+    operator = db.relationship('AdminUser')
+    expected_decision = db.relationship('SelectionDecision')
+
+
+class LiveQueueSnapshot(db.Model):
+    """Worker-observed socket state, stripped of paths and raw metadata."""
+    __tablename__ = 'live_queue_snapshots'
+    station_id = db.Column(db.Integer, db.ForeignKey('stations.id', ondelete='CASCADE'), primary_key=True)
+    current_decision_id = db.Column(db.Integer)
+    queued_decision_ids = db.Column(db.JSON, nullable=False, default=list)
+    unknown_count = db.Column(db.Integer, nullable=False, default=0)
+    observed_at = db.Column(db.DateTime(timezone=True), nullable=False)
+    error_code = db.Column(db.String(40))
 
 
 class AutomationHeartbeat(db.Model):

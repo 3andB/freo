@@ -8,9 +8,9 @@ import math
 
 from app import create_app
 from app.extensions import db
-from app.models import AutomationHeartbeat, AutomationState, SelectionDecision, Station
+from app.models import AutomationHeartbeat, AutomationState, LiveControlCommand, LiveQueueSnapshot, SelectionDecision, Station
 from app.services.automation import playback_started, select_next
-from app.services.playout_queue import push_decision, queue_depth, queued_ids, active_ids, socket_identity
+from app.services.playout_queue import push_decision, queue_depth, queued_ids, queued_order, active_ids, socket_identity, request_decision_id, skip_current
 from app.services.schedule import resolve, usable_clock
 
 logger = logging.getLogger('freo.automation')
@@ -122,9 +122,86 @@ def reconcile_requests(slug):
     return changed
 
 
+def process_manual(station, reader):
+    slug = station.slug
+    reader.collect(slug)
+    reconcile_requests(slug)
+    identity = socket_identity(slug)
+    live = queued_ids(slug) | active_ids(slug)
+    # Recover a push completed just before worker failure using Liquidsoap's
+    # decision annotation. Metadata is parsed here and never returned to web.
+    unresolved = SelectionDecision.query.filter_by(station_id=station.id, status='submitting').all()
+    observed = {request_decision_id(slug, rid): rid for rid in live} if unresolved else {}
+    for row in unresolved:
+        if row.id in observed:
+            row.liquidsoap_request_id = observed[row.id]
+            row.socket_identity = identity
+            row.status = 'queued'
+        else:
+            row.status = 'selected'
+    db.session.commit()
+    pending = SelectionDecision.query.filter_by(station_id=station.id, status='selected').filter(
+        SelectionDecision.admin_user_id.isnot(None)).order_by(SelectionDecision.id).all()
+    for row in pending:
+        if queue_depth(slug) >= 20:
+            break
+        row.status = 'submitting'
+        db.session.commit()
+        try:
+            request_id = push_decision(row)
+            if row.status != 'started':
+                row.status = 'queued'
+            row.liquidsoap_request_id = request_id
+            row.socket_identity = identity
+            db.session.commit()
+        except (OSError, RuntimeError, ValueError):
+            row.status = 'failed'
+            row.reason = 'manual_queue_failed'
+            db.session.commit()
+            logger.exception('Manual queue failed station=%s decision=%s', slug, row.id)
+    commands = LiveControlCommand.query.filter_by(station_id=station.id, status='pending').order_by(LiveControlCommand.id).all()
+    for command in commands:
+        current = command.expected_decision
+        try:
+            if not current or current.socket_identity != identity or current.liquidsoap_request_id not in active_ids(slug):
+                command.status, command.error_code = 'failed', 'current_changed'
+            else:
+                skip_current(slug)
+                command.status = 'sent'
+            command.processed_at = datetime.now(timezone.utc)
+            db.session.commit()
+        except (OSError, RuntimeError, ValueError):
+            db.session.rollback()
+            logger.exception('Skip failed station=%s command=%s', slug, command.id)
+            break
+
+
+def observe_queue(station, error_code=None):
+    snapshot = db.session.get(LiveQueueSnapshot, station.id)
+    if snapshot is None:
+        snapshot = LiveQueueSnapshot(station_id=station.id, observed_at=datetime.now(timezone.utc), queued_decision_ids=[])
+        db.session.add(snapshot)
+    snapshot.observed_at = datetime.now(timezone.utc)
+    snapshot.error_code = error_code
+    if error_code:
+        snapshot.current_decision_id = None
+        snapshot.queued_decision_ids = []
+        snapshot.unknown_count = 0
+    else:
+        identity = socket_identity(station.slug)
+        active, ordered = active_ids(station.slug), queued_order(station.slug)
+        rows = SelectionDecision.query.filter_by(station_id=station.id, socket_identity=identity).filter(
+            SelectionDecision.liquidsoap_request_id.in_(list(active) + ordered)).all() if active or ordered else []
+        by_request = {row.liquidsoap_request_id: row.id for row in rows}
+        snapshot.current_decision_id = next((by_request[rid] for rid in active if rid in by_request), None)
+        snapshot.queued_decision_ids = [by_request[rid] for rid in ordered if rid in by_request]
+        snapshot.unknown_count = len([rid for rid in ordered if rid not in by_request])
+    db.session.commit()
+
+
 def tick(reader, target_depth=2):
     heartbeat()
-    states = AutomationState.query.filter_by(enabled=True).all()
+    states = AutomationState.query.all()
     for state in states:
         slug = state.station.slug
         if not state.station.enabled or state.station.desired_state != 'running':
@@ -132,10 +209,18 @@ def tick(reader, target_depth=2):
         if time.monotonic() < reader.unavailable_until.get(slug, 0):
             continue
         try:
+            process_manual(state.station, reader)
+            if not state.enabled or state.hold:
+                state.worker_heartbeat_at = datetime.now(timezone.utc)
+                state.observed_queue_depth = queue_depth(slug)
+                db.session.commit()
+                observe_queue(state.station)
+                continue
             programming = resolve(state.station)
             has_clock = bool(programming.clock or usable_clock(state.default_clock, state.station_id))
             has_rotation = bool(state.active_rotation and state.active_rotation.enabled and any(slot.enabled for slot in state.active_rotation.slots))
             if not has_clock and not has_rotation:
+                observe_queue(state.station)
                 continue
             depth_limit = target_depth
             if programming.next_transition:
@@ -146,10 +231,12 @@ def tick(reader, target_depth=2):
             state.worker_heartbeat_at = datetime.now(timezone.utc)
             state.observed_queue_depth = queue_depth(slug)
             db.session.commit()
+            observe_queue(state.station)
         except OSError as error:
             db.session.rollback()
             reader.unavailable_until[slug] = time.monotonic() + 5
             logger.warning('Playout temporarily unavailable for station=%s: %s', slug, type(error).__name__)
+            observe_queue(state.station, 'playout_unavailable')
         except Exception:
             db.session.rollback()
             logger.exception('Automation tick failed for station=%s', slug)

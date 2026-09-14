@@ -52,6 +52,11 @@ def can_manage_programming(user, station):
     return bool(user and user.active and station is not None)
 
 
+def can_control_playout(user, station):
+    """Distinct permission boundary for real-time operator actions."""
+    return bool(user and user.active and station is not None)
+
+
 def programming_mutation_required(view):
     @admin_required
     @wraps(view)

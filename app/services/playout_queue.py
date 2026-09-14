@@ -25,7 +25,7 @@ def _command(slug, command):
     media_root = re.escape(str(LocalMediaStorage().root))
     music_pattern = rf'freo_queue\.push annotate:freo_decision=[1-9][0-9]*:{media_root}/{re.escape(slug)}/originals/[0-9a-f]{{32}}\.mp3'
     imaging_pattern = rf'freo_queue\.push annotate:freo_decision=[1-9][0-9]*,title="[A-Za-z0-9 ._-]{{1,120}}",artist="[A-Za-z0-9 ._-]{{1,120}}":{media_root}/{re.escape(slug)}/imaging/[0-9a-f]{{32}}\.mp3'
-    if command not in ('freo_queue.queue', 'request.on_air') and not (re.fullmatch(music_pattern, command) or re.fullmatch(imaging_pattern, command)):
+    if command not in ('freo_queue.queue', 'request.on_air', 'freo_queue.skip') and not re.fullmatch(r'request.metadata [0-9]+', command) and not (re.fullmatch(music_pattern, command) or re.fullmatch(imaging_pattern, command)):
         raise ValueError('Liquidsoap command is not allowlisted')
     path = SOCKET_ROOT / slug / 'control.sock'
     with socket.socket(socket.AF_UNIX) as connection:
@@ -49,13 +49,29 @@ def queue_depth(slug):
 
 
 def queued_ids(slug):
+    return set(queued_order(slug))
+
+
+def queued_order(slug):
     body = _command(slug, 'freo_queue.queue')
     if not body:
-        return set()
+        return []
     ids = body.split()
     if not all(REQUEST_ID.fullmatch(value) for value in ids):
         raise RuntimeError('Invalid Liquidsoap queue state')
-    return {int(value) for value in ids}
+    return [int(value) for value in ids]
+
+
+def request_decision_id(slug, request_id):
+    if not isinstance(request_id, int) or request_id < 0:
+        raise ValueError('Invalid request ID')
+    body = _command(slug, f'request.metadata {request_id}')
+    match = re.search(r'(?m)^freo_decision="([1-9][0-9]*)"$', body)
+    return int(match.group(1)) if match else None
+
+
+def skip_current(slug):
+    return _command(slug, 'freo_queue.skip')
 
 
 def active_ids(slug):

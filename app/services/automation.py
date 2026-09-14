@@ -355,7 +355,7 @@ def _exists(storage, slug, key):
 
 def playback_started(decision_id, slug, now=None):
     decision = SelectionDecision.query.filter_by(id=decision_id).first()
-    if decision is None or decision.station.slug != slug or decision.status not in ('selected', 'queued', 'failed'):
+    if decision is None or decision.station.slug != slug or decision.status not in ('selected', 'submitting', 'queued', 'failed'):
         return False
     decision.status = 'started'
     decision.started_at = now or datetime.now(timezone.utc)
