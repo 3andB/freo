@@ -37,7 +37,7 @@ def category_for(slug, category_slug):
     return category
 
 
-def assign_track(slug, track_uuid, category_slug, assigned=True):
+def assign_track(slug, track_uuid, category_slug, assigned=True, *, commit=True):
     category = category_for(slug, category_slug)
     track = Track.query.filter_by(station_id=category.station_id, uuid=track_uuid).first()
     if track is None:
@@ -46,7 +46,8 @@ def assign_track(slug, track_uuid, category_slug, assigned=True):
         category.tracks.append(track)
     elif not assigned and track in category.tracks:
         category.tracks.remove(track)
-    db.session.commit()
+    if commit:
+        db.session.commit()
     return track
 
 

@@ -26,3 +26,6 @@ A station's desired playout state (`running`/`stopped`) is distinct from automat
 # Station timezone
 
 Each station has a canonical IANA timezone used only to evaluate and present weekly programming. Absolute events remain UTC. Existing stations receive `UTC` during the additive Phase 6 migration; operators should set their intended zone explicitly with `flask schedule timezone --station <slug> <IANA-zone>`. See [scheduling](scheduling.md).
+# Phase 7 media administration
+
+An active global admin can upload and manage media only within the station selected in the URL. Every track and category reference is re-queried under that station. The admin cannot start, stop, or reconfigure the station through the browser. Media files remain private; only Icecast stream mounts are public.

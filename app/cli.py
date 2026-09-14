@@ -48,6 +48,9 @@ def create_command(slug, name, description):
     admin()
     try:
         station = create_station(name, slug, description)
+        from app.services.media import _prepare_dirs
+        from app.services.media_storage import LocalMediaStorage
+        _prepare_dirs(LocalMediaStorage(), station.slug)
         render(station)
     except Exception as error:
         raise click.ClickException(str(error)) from error
@@ -65,7 +68,11 @@ def show_command(slug):
 def render_command(slug):
     admin()
     try:
-        render(known(slug))
+        station = known(slug)
+        from app.services.media import _prepare_dirs
+        from app.services.media_storage import LocalMediaStorage
+        _prepare_dirs(LocalMediaStorage(), station.slug)
+        render(station)
     except Exception as error:
         raise click.ClickException(str(error)) from error
     click.echo('Station config validated and installed')

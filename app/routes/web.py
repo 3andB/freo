@@ -2,7 +2,6 @@
 import hmac
 import secrets
 import time
-from functools import wraps
 
 from flask import Blueprint, abort, redirect, render_template, request, session, url_for, jsonify
 from werkzeug.security import check_password_hash
@@ -11,6 +10,7 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from app.extensions import db
 from app.models import AdminUser, Station
+from app.services.admin_auth import admin_required, csrf_token
 from app.services.stations import get_station
 from app.services.admin_view import context as admin_context, section_data, iso, format_station_time, latest_rows, worker_health
 from app.routes.stations import observed_status
@@ -22,18 +22,10 @@ web_blueprint = Blueprint('web', __name__)
 
 @web_blueprint.app_context_processor
 def admin_template_helpers():
-    return {'format_station_time': format_station_time}
+    return {'format_station_time': format_station_time, 'csrf_token': csrf_token}
 
 
-def login_required(view):
-    @wraps(view)
-    def guarded(*args, **kwargs):
-        user = db.session.get(AdminUser, session.get('admin_user_id')) if session.get('admin_user_id') else None
-        if user is None or not user.active:
-            session.clear()
-            return redirect(url_for('web.login'))
-        return view(*args, **kwargs)
-    return guarded
+login_required = admin_required
 
 
 def station_or_404(slug, require_enabled=True):
@@ -127,6 +119,8 @@ def admin_section(section):
         abort(404)
     stations = admin_stations()
     station = selected_station(stations)
+    if section == 'media' and station:
+        return redirect(url_for('admin_media.library', slug=station.slug))
     data = admin_context(station, with_status=section == 'system') if station else None
     extra = section_data(station, section) if station else {}
     return render_template('admin/section.html', stations=stations, selected=station,

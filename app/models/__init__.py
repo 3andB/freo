@@ -12,6 +12,39 @@ class AdminUser(db.Model):
     created_at = db.Column(db.DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
 
 
+class AuditEvent(db.Model):
+    __tablename__ = 'audit_events'
+    id = db.Column(db.Integer, primary_key=True)
+    admin_user_id = db.Column(db.Integer, db.ForeignKey('admin_users.id', ondelete='SET NULL'), index=True)
+    station_id = db.Column(db.Integer, db.ForeignKey('stations.id', ondelete='SET NULL'), index=True)
+    action = db.Column(db.String(48), nullable=False)
+    target_type = db.Column(db.String(32), nullable=False)
+    target_id = db.Column(db.String(64))
+    summary = db.Column(db.String(240), nullable=False, default='')
+    created_at = db.Column(db.DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc), index=True)
+    admin_user = db.relationship('AdminUser')
+    station = db.relationship('Station')
+
+
+class MediaIngestJob(db.Model):
+    __tablename__ = 'media_ingest_jobs'
+    __table_args__ = (db.CheckConstraint("status IN ('pending','processing','accepted','duplicate','rejected','error')", name='ck_media_ingest_job_status'),)
+    id = db.Column(db.String(36), primary_key=True)
+    kind = db.Column(db.String(12), nullable=False, default='ingest')
+    station_id = db.Column(db.Integer, db.ForeignKey('stations.id', ondelete='RESTRICT'), nullable=False, index=True)
+    admin_user_id = db.Column(db.Integer, db.ForeignKey('admin_users.id', ondelete='SET NULL'))
+    original_filename = db.Column(db.String(255), nullable=False)
+    status = db.Column(db.String(16), nullable=False, default='pending', index=True)
+    track_id = db.Column(db.Integer, db.ForeignKey('tracks.id', ondelete='SET NULL'))
+    error_code = db.Column(db.String(48))
+    created_at = db.Column(db.DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+    started_at = db.Column(db.DateTime(timezone=True))
+    finished_at = db.Column(db.DateTime(timezone=True))
+    station = db.relationship('Station')
+    admin_user = db.relationship('AdminUser')
+    track = db.relationship('Track')
+
+
 class Station(db.Model):
     __tablename__ = 'stations'
     __table_args__ = (db.CheckConstraint("desired_state IN ('stopped','running')", name='ck_stations_desired_state'),)
@@ -75,6 +108,7 @@ class Track(db.Model):
     checksum_sha256 = db.Column(db.String(64), nullable=False)
     enabled = db.Column(db.Boolean, nullable=False, default=True)
     ingest_status = db.Column(db.String(12), nullable=False, default='accepted')
+    decommissioned_at = db.Column(db.DateTime(timezone=True))
     created_at = db.Column(db.DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
     updated_at = db.Column(db.DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
     station = db.relationship('Station', backref=db.backref('tracks', lazy='dynamic'))

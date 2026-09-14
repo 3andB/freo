@@ -1,4 +1,4 @@
-"""Root-run station media ingestion and approved playlist generation."""
+"""Trusted station media ingestion and approved playlist generation."""
 import hashlib
 import os
 from pathlib import Path
@@ -18,7 +18,16 @@ PLAYLIST_ROOT = Path('/var/lib/freo/playlists')
 
 def require_admin():
     if os.geteuid() != 0:
-        raise PermissionError('Media ingestion and changes require the root-run admin CLI')
+        raise PermissionError('This media operation requires the root-run admin CLI')
+
+
+def require_ingest_identity():
+    """The web user never receives approved-media write access."""
+    if os.geteuid() == 0:
+        return
+    import pwd
+    if pwd.getpwuid(os.geteuid()).pw_name != 'freo-ingest':
+        raise PermissionError('Media ingestion requires the dedicated ingest worker')
 
 
 def normalize(value, limit, fallback=''):
@@ -39,29 +48,39 @@ def station_for_media(slug):
 
 def _prepare_dirs(storage, slug):
     import grp
+    import pwd
     gid = grp.getgrnam('freo-playout').gr_gid
+    try:
+        owner = pwd.getpwnam('freo-ingest').pw_uid
+    except KeyError:
+        owner = 0
     root = storage.root
     if root.is_symlink():
         raise ValueError('Symlink media root is forbidden')
     root.mkdir(parents=True, exist_ok=True)
-    os.chown(root, 0, gid)
-    os.chmod(root, 0o750)
+    if os.geteuid() == 0:
+        os.chown(root, 0, gid)
+        os.chmod(root, 0o751)
     station_dir = storage.station_dir(slug)
     if station_dir.is_symlink():
         raise ValueError('Symlink station media directory is forbidden')
     originals = station_dir / 'originals'
     staging = station_dir / 'staging'
-    for path, group, mode in ((station_dir, gid, 0o750), (originals, gid, 0o750), (staging, 0, 0o700)):
+    for path, group, mode in ((station_dir, gid, 0o2750), (originals, gid, 0o2750), (staging, gid, 0o2700)):
         path.mkdir(exist_ok=True)
         if path.is_symlink():
             raise ValueError('Symlink storage directory is forbidden')
-        os.chown(path, 0, group)
-        os.chmod(path, mode)
+        if os.geteuid() == 0:
+            os.chown(path, owner, group)
+            os.chmod(path, mode)
+        elif path.stat().st_uid != os.geteuid():
+            raise PermissionError('Ingest directory is not owned by the ingest worker')
     return originals, staging
 
 
-def ingest(slug, source, title=None, artist=None, album=None, storage=None):
-    require_admin()
+def ingest(slug, source, title=None, artist=None, album=None, storage=None, *,
+           original_filename=None, enabled=True, update_playlist=True):
+    require_ingest_identity()
     station = station_for_media(slug)
     storage = storage or LocalMediaStorage()
     originals, staging = _prepare_dirs(storage, slug)
@@ -93,14 +112,18 @@ def ingest(slug, source, title=None, artist=None, album=None, storage=None):
             return existing, True
         details = probe(temp)
         tags = details['tags']
-        original_name = normalize(source.name, 255, 'unnamed')
-        display_title = normalize(title if title is not None else tags.get('title'), 200, normalize(source.stem, 200, 'Untitled'))
+        original_name = normalize(original_filename or source.name, 255, 'unnamed')
+        display_title = normalize(title if title is not None else tags.get('title'), 200, normalize(Path(original_name).stem, 200, 'Untitled'))
         display_artist = normalize(artist if artist is not None else tags.get('artist'), 200, 'Unknown Artist')
         display_album = normalize(album if album is not None else tags.get('album'), 200, '')
         track_uuid = uuidlib.uuid4()
         key = track_uuid.hex + details['extension']
         final = storage.approved_path(slug, key)
-        os.chown(temp, 0, __import__('grp').getgrnam('freo-playout').gr_gid)
+        playout_gid = __import__('grp').getgrnam('freo-playout').gr_gid
+        if os.geteuid() == 0:
+            os.chown(temp, 0, playout_gid)
+        elif temp.stat().st_gid != playout_gid:
+            raise PermissionError('Staged media does not have the playout-read group')
         os.chmod(temp, 0o640)
         os.replace(temp, final)
         track = Track(
@@ -109,12 +132,13 @@ def ingest(slug, source, title=None, artist=None, album=None, storage=None):
             storage_key=key, media_type=details['media_type'], duration_ms=details['duration_ms'],
             bitrate_kbps=details['bitrate_kbps'], sample_rate_hz=details['sample_rate_hz'],
             channels=details['channels'], file_size_bytes=total, checksum_sha256=digest,
-            enabled=True, ingest_status='accepted',
+            enabled=enabled, ingest_status='accepted',
         )
         db.session.add(track)
         db.session.commit()
         committed = True
-        refresh_playlist(slug, storage)
+        if update_playlist:
+            refresh_playlist(slug, storage)
         return track, False
     except Exception:
         db.session.rollback()
@@ -177,8 +201,14 @@ def verify(track, storage=None):
 
 def set_enabled(track, enabled):
     require_admin()
-    if track.ingest_status != 'accepted':
-        raise ValueError('Only accepted tracks can be enabled')
-    track.enabled = bool(enabled)
+    set_enabled_db(track, enabled)
     db.session.commit()
     refresh_playlist(track.station.slug)
+
+
+def set_enabled_db(track, enabled):
+    if track.ingest_status != 'accepted':
+        raise ValueError('Only accepted tracks can be enabled')
+    if enabled and track.decommissioned_at:
+        raise ValueError('Decommissioned tracks cannot be enabled')
+    track.enabled = bool(enabled)

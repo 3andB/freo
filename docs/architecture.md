@@ -41,7 +41,7 @@ There is one Icecast backend and one Liquidsoap process/config/socket per manage
 
 ## Phase 4 media library
 
-Tracks belong to one station. The root-run CLI copies a regular, non-symlink source into private staging, hashes and probes it, then atomically moves an opaque UUID-named file into `/var/lib/freo/media/<slug>/originals`. PostgreSQL stores validated metadata and a per-station unique SHA-256 checksum. Artist and album are text fields for now; separate tables and categories are deferred. Approved, enabled tracks alone enter a root-written station playlist under `/var/lib/freo/playlists`. Liquidsoap reads it and falls back to a generated tone. The web process reads safe metadata but cannot upload, alter playlists, or serve raw media. Backups need PostgreSQL, `/etc/freo`, and `/var/lib/freo/media`.
+Tracks belong to one station. The root-run CLI copies a regular, non-symlink source into private staging, hashes and probes it, then atomically moves an opaque UUID-named file into `/var/lib/freo/media/<slug>/originals`. PostgreSQL stores validated metadata and a per-station unique SHA-256 checksum. Artist and album are text fields for now. Phase 7 adds authenticated web upload through a separate non-root ingest worker using that same trusted service. The web process cannot write approved media or serve raw media. Backups need PostgreSQL, `/etc/freo`, and `/var/lib/freo/media`.
 
 ## Phase 5 automation
 
@@ -49,3 +49,7 @@ The `freo-automation` worker is a separate non-root process and the only Freo co
 # Phase 6 programming layer
 
 Station-local weekly assignments resolve a reusable clock from a UTC instant. The clock's ordered `CATEGORY` or `ROTATION` slots feed the established Phase 5 selector, which still enforces track/artist separation and queues approved media. PostgreSQL holds the assignment, clock occurrence, separate clock cursor, selection decision, and actual-start attribution. The non-root automation worker owns runtime selection; Flask exposes read-only programming metadata. See [clocks](clocks.md) and [scheduling](scheduling.md).
+
+## Phase 7 authenticated media boundary
+
+The Flask `freo` identity can write only a private upload staging directory. A generated job ID connects staged bytes to a database job. A separate `freo-ingest` process, with approved-media write permissions but no Liquidsoap control socket, calls the same `ingest()` service as the trusted CLI. It performs checksum, ffprobe, duplicate detection, and atomic storage. Web uploads are accepted disabled; a verify-and-enable job checks the stored file before making it selectable. Forms require an active global admin session and a per-session CSRF token, re-check station ownership, and write sanitized audit records. No browser operation accepts a server path, executes shell commands, or physically deletes media. See [media-library.md](media-library.md).
