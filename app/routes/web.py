@@ -4,7 +4,7 @@ import secrets
 import time
 from functools import wraps
 
-from flask import Blueprint, abort, redirect, render_template, request, session, url_for
+from flask import Blueprint, abort, redirect, render_template, request, session, url_for, jsonify
 from werkzeug.security import check_password_hash
 from werkzeug.security import generate_password_hash
 from sqlalchemy.exc import SQLAlchemyError
@@ -12,8 +12,17 @@ from sqlalchemy.exc import SQLAlchemyError
 from app.extensions import db
 from app.models import AdminUser, Station
 from app.services.stations import get_station
+from app.services.admin_view import context as admin_context, section_data, iso, format_station_time, latest_rows, worker_health
+from app.routes.stations import observed_status
+from app.services.clocks import current as current_programming
+from app.models import Clock, ClockState
 
 web_blueprint = Blueprint('web', __name__)
+
+
+@web_blueprint.app_context_processor
+def admin_template_helpers():
+    return {'format_station_time': format_station_time}
 
 
 def login_required(view):
@@ -27,12 +36,12 @@ def login_required(view):
     return guarded
 
 
-def station_or_404(slug):
+def station_or_404(slug, require_enabled=True):
     try:
         station = get_station(slug)
     except ValueError:
         station = None
-    if station is None or not station.enabled:
+    if station is None or (require_enabled and not station.enabled):
         abort(404)
     return station
 
@@ -60,7 +69,106 @@ def player(slug):
 @web_blueprint.get('/dashboard/<slug>')
 @login_required
 def dashboard(slug):
-    return render_template('dashboard.html', station=station_or_404(slug))
+    return redirect(url_for('web.admin_station', slug=slug), code=302)
+
+
+def admin_stations():
+    return Station.query.order_by(Station.name, Station.id).all()
+
+
+def selected_station(stations):
+    slug = request.args.get('station', '')
+    if slug:
+        try:
+            station = get_station(slug)
+        except ValueError:
+            station = None
+        if station is None:
+            abort(404)
+        return station
+    return next((station for station in stations if station.desired_state == 'running' and station.enabled), stations[0] if stations else None)
+
+
+@web_blueprint.get('/admin')
+@login_required
+def admin_home():
+    stations = admin_stations()
+    station = selected_station(stations)
+    data = admin_context(station) if station else None
+    return render_template('admin/overview.html', stations=stations, selected=station, data=data,
+                           page='overview', detail=False)
+
+
+@web_blueprint.get('/admin/stations')
+@login_required
+def admin_station_list():
+    stations = admin_stations()
+    observations = {station.slug: observed_status(station) for station in stations}
+    return render_template('admin/stations.html', stations=stations, observations=observations,
+                           selected=None, page='stations')
+
+
+@web_blueprint.get('/admin/stations/<slug>')
+@login_required
+def admin_station(slug):
+    station = station_or_404(slug, require_enabled=False)
+    data = admin_context(station)
+    return render_template('admin/overview.html', stations=admin_stations(), selected=station,
+                           data=data, page='stations', detail=True)
+
+
+_SECTIONS = {'media', 'categories', 'rotations', 'clocks', 'schedule', 'history', 'system'}
+
+
+@web_blueprint.get('/admin/<section>')
+@login_required
+def admin_section(section):
+    if section not in _SECTIONS:
+        abort(404)
+    stations = admin_stations()
+    station = selected_station(stations)
+    data = admin_context(station, with_status=section == 'system') if station else None
+    extra = section_data(station, section) if station else {}
+    return render_template('admin/section.html', stations=stations, selected=station,
+                           data=data, extra=extra, page=section, section=section)
+
+
+@web_blueprint.get('/admin/api/stations/<slug>/snapshot')
+@login_required
+def admin_snapshot(slug):
+    station = station_or_404(slug, require_enabled=False)
+    programming = current_programming(station.slug)
+    clock_state = db.session.get(ClockState, station.id)
+    clock = Clock.query.filter_by(station_id=station.id, slug=programming['clock']).first() if programming['clock'] else None
+    slots = [slot for slot in clock.slots if slot.enabled] if clock else []
+    next_slot = (slots[clock_state.next_slot_index % len(slots)] if slots and clock_state and
+                 clock_state.occurrence_key == programming['occurrence'] else None)
+    state = station.automation
+    worker = worker_health(station)
+    return jsonify(station=station.slug, observed=observed_status(station),
+                   automation_enabled=bool(state and state.enabled),
+                   queue_depth=state.observed_queue_depth if state else None,
+                   worker=worker['station'], worker_last_seen=iso(worker['last_seen']),
+                   clock=clock.name if clock else None,
+                   next_slot=(f'{next_slot.position} · {next_slot.slot_type.title()} → '
+                              f'{next_slot.rotation.name if next_slot.rotation else next_slot.category.name}'
+                              if next_slot else None),
+                   local_time=programming['local_time'],
+                   timezone=station.timezone, next_transition=programming['next_transition'],
+                   next_slot_index=clock_state.next_slot_index if clock_state and clock_state.occurrence_key == programming['occurrence'] else None)
+
+
+@web_blueprint.get('/admin/api/stations/<slug>/now')
+@login_required
+def admin_now(slug):
+    station = station_or_404(slug, require_enabled=False)
+    rows = latest_rows(station, 1)
+    row = rows[0] if rows else None
+    return jsonify(now_playing=({'title': row.track.title if row.track else None,
+                                 'artist': row.track.artist if row.track else None,
+                                 'started_at': iso(row.started_at),
+                                 'category': row.category.name if row.category else None}
+                                if row else None))
 
 
 @web_blueprint.route('/admin/login', methods=['GET', 'POST'])
@@ -91,7 +199,7 @@ def login():
     session.clear()
     session['admin_user_id'] = user.id
     session.permanent = True
-    return redirect(url_for('web.stations'))
+    return redirect(url_for('web.admin_home'))
 
 
 @web_blueprint.post('/admin/logout')
@@ -111,6 +219,8 @@ def provide_logout_token():
 
 @web_blueprint.after_app_request
 def page_security_headers(response):
+    if request.path.startswith('/admin') or request.path.startswith('/dashboard/'):
+        response.headers['Cache-Control'] = 'private, no-store'
     if response.mimetype == 'text/html':
         response.headers['Content-Security-Policy'] = (
             "default-src 'self'; img-src 'self' data:; style-src 'self'; "
@@ -118,8 +228,6 @@ def page_security_headers(response):
             "base-uri 'self'; frame-ancestors 'none'")
         response.headers['X-Content-Type-Options'] = 'nosniff'
         response.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
-        if request.path.startswith('/admin/') or request.path.startswith('/dashboard/'):
-            response.headers['Cache-Control'] = 'private, no-store'
     return response
 
 

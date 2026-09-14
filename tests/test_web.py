@@ -1,9 +1,13 @@
+from datetime import datetime, time, timezone
+
 import pytest
 from werkzeug.security import generate_password_hash
 
 from app import create_app
 from app.extensions import db
-from app.models import AdminUser, Station, StreamMount
+from app.models import (AdminUser, AutomationState, Clock, ClockSlot, MediaCategory,
+                        Rotation, RotationSlot, ScheduleAssignment, SelectionDecision,
+                        Station, StreamMount, Track)
 
 
 @pytest.fixture
@@ -13,10 +17,35 @@ def app(monkeypatch):
     application = create_app('testing')
     with application.app_context():
         db.create_all()
-        station = Station(name='Test Station', slug='test-station', description='Test stream')
+        station = Station(name='Test Station', slug='test-station', description='Test stream', desired_state='running')
         station.stream = StreamMount()
         db.session.add(station)
+        second = Station(name='Second Station', slug='second-station', description='Separate station', desired_state='stopped')
+        second.stream = StreamMount()
+        db.session.add(second)
         db.session.add(AdminUser(email='admin@example.test', password_hash=generate_password_hash('test-password-long-enough')))
+        db.session.commit()
+        category = MediaCategory(station_id=station.id, name='Power', slug='power', enabled=True)
+        track = Track(station_id=station.id, uuid='00000000-0000-4000-8000-000000000001',
+                      title='Verified Test Track', artist='Test Artist', album='Test Album',
+                      original_filename='safe.mp3', storage_key='internal.mp3', media_type='mp3',
+                      duration_ms=20000, sample_rate_hz=44100, channels=2, file_size_bytes=1000,
+                      checksum_sha256='a' * 64, enabled=True, ingest_status='accepted')
+        track.categories.append(category)
+        rotation = Rotation(station_id=station.id, name='Main Rotation', slug='main', enabled=True)
+        rotation.slots.append(RotationSlot(position=1, category=category, enabled=True))
+        clock = Clock(station_id=station.id, name='Music Clock', slug='music', enabled=True)
+        clock.slots.append(ClockSlot(position=1, slot_type='CATEGORY', category=category, enabled=True))
+        db.session.add_all([category, track, rotation, clock])
+        db.session.flush()
+        db.session.add(AutomationState(station_id=station.id, enabled=True, active_rotation_id=rotation.id,
+                                       observed_queue_depth=2))
+        db.session.add(ScheduleAssignment(station_id=station.id, weekday=0, start_time=time(0, 0),
+                                          clock_id=clock.id, enabled=True))
+        db.session.add(SelectionDecision(station_id=station.id, track_id=track.id, category_id=category.id,
+                                         rotation_id=rotation.id, clock_id=clock.id, clock_slot_id=clock.slots[0].id,
+                                         status='started', started_at=datetime.now(timezone.utc),
+                                         selected_at=datetime.now(timezone.utc)))
         db.session.commit()
     yield application
 
@@ -34,6 +63,9 @@ def test_public_pages_and_no_mutations(app):
 def test_dashboard_requires_login_and_password_not_leaked(app):
     client = app.test_client()
     assert client.get('/dashboard/test-station').status_code == 302
+    for path in ('/admin', '/admin/stations', '/admin/media', '/admin/history',
+                 '/admin/api/stations/test-station/snapshot', '/admin/api/stations/test-station/now'):
+        assert client.get(path).headers['Location'].endswith('/admin/login')
     login_page = client.get('/admin/login')
     with client.session_transaction() as state:
         token = state['login_csrf']
@@ -44,12 +76,43 @@ def test_dashboard_requires_login_and_password_not_leaked(app):
         token = state['login_csrf']
     good = client.post('/admin/login', data={'email':'admin@example.test','password':'test-password-long-enough','csrf':token})
     assert good.status_code == 302
-    page = client.get('/dashboard/test-station')
+    assert good.headers['Location'].endswith('/admin')
+    page = client.get('/admin')
     assert page.status_code == 200
-    assert 'READ-ONLY OPERATIONS' in page.get_data(as_text=True)
+    body = page.get_data(as_text=True)
+    assert 'OPERATIONAL OVERVIEW' in body
+    assert 'Verified Test Track' in body
+    assert 'Test Artist' in body
+    assert 'Music Clock' in body
+    assert 'Power' in body
+    assert 'Accepted tracks' in body
     assert 'test-password-long-enough' not in page.get_data(as_text=True)
     assert page.headers['Cache-Control'] == 'private, no-store'
     assert "frame-ancestors 'none'" in page.headers['Content-Security-Policy']
+    assert client.get('/dashboard/test-station').headers['Location'].endswith('/admin/stations/test-station')
+    assert client.get('/admin/stations/test-station').status_code == 200
+    assert 'Second Station' in client.get('/admin/stations').get_data(as_text=True)
+    for section in ('media', 'categories', 'rotations', 'clocks', 'schedule', 'history', 'system'):
+        response = client.get(f'/admin/{section}?station=test-station')
+        assert response.status_code == 200, section
+    assert 'Verified Test Track' in client.get('/admin/media?station=test-station').get_data(as_text=True)
+    assert 'Main Rotation' in client.get('/admin/rotations?station=test-station').get_data(as_text=True)
+    assert 'Monday' in client.get('/admin/schedule?station=test-station').get_data(as_text=True)
+    assert 'Verified Test Track' in client.get('/admin/history?station=test-station').get_data(as_text=True)
+    assert 'Verified Test Track' not in client.get('/admin/history?station=second-station').get_data(as_text=True)
+    assert 'No track start has been confirmed' in client.get('/admin?station=second-station').get_data(as_text=True)
+    assert client.get('/admin?station=missing').status_code == 404
+    assert client.get('/admin/unsupported').status_code == 404
+    assert client.post('/admin/media').status_code == 405
+    assert client.get('/admin/api/stations/test-station/now').json['now_playing']['title'] == 'Verified Test Track'
+    snapshot = client.get('/admin/api/stations/test-station/snapshot').json
+    assert snapshot['queue_depth'] == 2
+    assert client.get('/admin/api/stations/test-station/snapshot').headers['Cache-Control'] == 'private, no-store'
+    assert 'storage_key' not in str(snapshot)
+    assert 'password_hash' not in str(snapshot)
+    assert 'internal.mp3' not in client.get('/admin/media?station=test-station').get_data(as_text=True)
+    assert 'internal.mp3' not in client.get('/admin/stations/test-station').get_data(as_text=True)
+    assert client.get('/admin/api/stations/second-station/now').json['now_playing'] is None
 
 
 def test_login_csrf_and_client_lockout(app):

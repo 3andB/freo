@@ -1,0 +1,41 @@
+{% extends 'base.html' %}
+{% block body_class %}dashboard-page admin-page{% endblock %}
+{% block header %}
+<header class="admin-topbar">
+  <a class="wordmark" href="{{ url_for('web.admin_home') }}">freo<span>.world</span></a>
+  <span class="admin-topbar-label">Station operations <span class="readonly-pill">READ ONLY</span></span>
+  <div class="admin-topbar-end"><a href="{{ url_for('web.homepage') }}">Public site</a>
+    <form action="{{ url_for('web.logout') }}" method="post"><input type="hidden" name="csrf" value="{{ session.get('logout_csrf', '') }}"><button type="submit">Sign out</button></form>
+  </div>
+</header>
+{% endblock %}
+{% block scripts %}<script defer src="{{ url_for('static', filename='admin.js') }}"></script>{% endblock %}
+{% block content %}
+<div class="admin-layout">
+  <aside class="admin-sidebar" aria-label="Admin navigation">
+    <div class="admin-identity"><span class="admin-identity-mark">F</span><div><b>Freo control</b><small>Observed station state</small></div></div>
+    {% set suffix = '?station=' ~ selected.slug if selected else '' %}
+    <nav class="admin-nav" aria-label="Operations">
+      <a href="{{ url_for('web.admin_home') }}{{ suffix }}" {% if page == 'overview' %}aria-current="page"{% endif %}>Overview</a>
+      <a href="{{ url_for('web.admin_station_list') }}" {% if page == 'stations' %}aria-current="page"{% endif %}>Stations</a>
+      <span class="admin-nav-label">PROGRAMMING</span>
+      <a href="{{ url_for('web.admin_section', section='media') }}{{ suffix }}" {% if page == 'media' %}aria-current="page"{% endif %}>Media</a>
+      <a href="{{ url_for('web.admin_section', section='categories') }}{{ suffix }}" {% if page == 'categories' %}aria-current="page"{% endif %}>Categories</a>
+      <a href="{{ url_for('web.admin_section', section='rotations') }}{{ suffix }}" {% if page == 'rotations' %}aria-current="page"{% endif %}>Rotations</a>
+      <a href="{{ url_for('web.admin_section', section='clocks') }}{{ suffix }}" {% if page == 'clocks' %}aria-current="page"{% endif %}>Clocks</a>
+      <a href="{{ url_for('web.admin_section', section='schedule') }}{{ suffix }}" {% if page == 'schedule' %}aria-current="page"{% endif %}>Schedule</a>
+      <span class="admin-nav-label">OBSERVATION</span>
+      <a href="{{ url_for('web.admin_section', section='history') }}{{ suffix }}" {% if page == 'history' %}aria-current="page"{% endif %}>History</a>
+      <a href="{{ url_for('web.admin_section', section='system') }}{{ suffix }}" {% if page == 'system' %}aria-current="page"{% endif %}>System</a>
+    </nav>
+    <div class="admin-sidebar-foot">Station changes remain CLI-only.<br><a href="https://github.com/lee-3andB/freo/tree/main/docs">Documentation ↗</a></div>
+  </aside>
+  <div class="admin-main">
+    <div class="admin-toolbar">
+      <div><span class="eyebrow">FREO / {{ page|upper }}</span><span class="toolbar-caption">{{ stations|length }} managed station{{ '' if stations|length == 1 else 's' }}</span></div>
+      {% if stations %}<form method="get" action="{{ url_for('web.admin_home') if detail is defined and detail else request.path }}" class="station-picker"><label for="station-select">Station</label><select id="station-select" name="station">{% for station in stations %}<option value="{{ station.slug }}" {% if selected and station.id == selected.id %}selected{% endif %}>{{ station.name }} · {{ station.slug }}</option>{% endfor %}</select><button type="submit">View</button></form>{% endif %}
+    </div>
+    <div class="admin-content">{% block admin_content %}{% endblock %}</div>
+  </div>
+</div>
+{% endblock %}
