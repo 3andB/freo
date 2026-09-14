@@ -24,4 +24,9 @@ uploads/
 *.local
 *.bak
 *.backup
+*.previous
+icecast.xml
+freo-test.liq
+engine.json
+radio-runtime/
 .DS_Store

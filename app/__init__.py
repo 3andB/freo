@@ -7,6 +7,7 @@ from flask import Flask
 from .config import DevelopmentConfig, ProductionConfig, TestingConfig
 from .extensions import db, migrate
 from .routes.health import health_blueprint
+from .routes.radio_health import radio_health_blueprint
 
 
 def create_app(config_name=None):
@@ -28,4 +29,5 @@ def create_app(config_name=None):
     db.init_app(app)
     migrate.init_app(app, db)
     app.register_blueprint(health_blueprint)
+    app.register_blueprint(radio_health_blueprint)
     return app

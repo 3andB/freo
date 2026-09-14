@@ -1,0 +1,20 @@
+# Generated Freo test station. No external or copyrighted audio is used.
+settings.server.telnet := false
+settings.server.socket := true
+settings.server.socket.path := "/run/freo/liquidsoap/control.sock"
+settings.server.socket.permissions := 0o600
+settings.log.stdout := true
+
+radio = sine(amplitude=0.08, 440.)
+radio = metadata.map(fun (_) -> [("title", "Freo Engine Test"), ("artist", "Freo Test")], radio)
+output.icecast(
+  %mp3(bitrate=64),
+  host="127.0.0.1",
+  port=8001,
+  mount="/freo-test",
+  user="source",
+  password="__SOURCE_PASSWORD__",
+  name="Freo Test",
+  description="Generated engine test audio",
+  radio
+)

@@ -10,4 +10,5 @@ if [[ ! -f "$source_dir/wsgi.py" ]]; then
   echo 'Run the installer from a complete Freo checkout.' >&2
   exit 1
 fi
+echo 'Installing Freo web foundation and Phase 2 test radio engine.'
 exec "$source_dir/scripts/provision.sh" "$source_dir"

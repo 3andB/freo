@@ -1,0 +1,19 @@
+[Unit]
+Description=Freo Icecast streaming backend
+After=network.target
+
+[Service]
+Type=simple
+User=icecast2
+Group=icecast
+ExecStart=/usr/bin/icecast2 -c /etc/freo/radio/icecast.xml
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+UMask=0027
+
+[Install]
+WantedBy=multi-user.target

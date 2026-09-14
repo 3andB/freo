@@ -1,0 +1,36 @@
+<icecast>
+  <location>Freo engine test</location>
+  <admin>operator@localhost</admin>
+  <limits>
+    <clients>100</clients>
+    <sources>4</sources>
+    <queue-size>524288</queue-size>
+    <client-timeout>30</client-timeout>
+    <header-timeout>15</header-timeout>
+    <source-timeout>10</source-timeout>
+  </limits>
+  <authentication>
+    <source-password>__SOURCE_PASSWORD__</source-password>
+    <relay-password>__RELAY_PASSWORD__</relay-password>
+    <admin-user>admin</admin-user>
+    <admin-password>__ADMIN_PASSWORD__</admin-password>
+  </authentication>
+  <hostname>localhost</hostname>
+  <listen-socket>
+    <port>8001</port>
+    <bind-address>127.0.0.1</bind-address>
+  </listen-socket>
+  <fileserve>0</fileserve>
+  <paths>
+    <basedir>/usr/share/icecast2</basedir>
+    <logdir>/var/log/icecast2</logdir>
+    <webroot>/usr/share/icecast2/web</webroot>
+    <adminroot>/usr/share/icecast2/admin</adminroot>
+  </paths>
+  <logging>
+    <accesslog>-</accesslog>
+    <errorlog>-</errorlog>
+    <loglevel>2</loglevel>
+  </logging>
+  <security><chroot>0</chroot></security>
+</icecast>

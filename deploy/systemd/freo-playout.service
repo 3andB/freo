@@ -1,0 +1,24 @@
+[Unit]
+Description=Freo test playout (Liquidsoap)
+After=network.target icecast2.service
+Requires=icecast2.service
+
+[Service]
+Type=simple
+User=freo-playout
+Group=freo-playout
+WorkingDirectory=/var/lib/freo/playout
+ExecStart=/usr/bin/liquidsoap /etc/freo/radio/freo-test.liq
+Restart=on-failure
+RestartSec=5
+RuntimeDirectory=freo/liquidsoap
+RuntimeDirectoryMode=0711
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/run/freo/liquidsoap /var/lib/freo/playout
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

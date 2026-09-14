@@ -12,3 +12,7 @@ This test must run on a separate, disposable, fresh Ubuntu 24.04 VM before Freo 
 8. Practice rollback of application code and the backed-up systemd/Nginx configuration. Database rollback requires an operator backup; uninstall must never delete data automatically.
 
 The current production server is not a substitute for this clean-install test. Record a signed-off result in a future release checklist before marking installation supported.
+
+## Phase 2 additions
+
+On the fresh VM, also confirm `liquidsoap` and `icecast2` install and record their versions; `freo-playout` and `icecast2` exist as non-login, non-root identities; `/etc/freo/secrets/engine.json` is restricted; rendered configs and control socket are private; Icecast listens only on localhost; and Liquidsoap connects to the test mount. Verify `/health/icecast`, `/health/playout`, and `/health/stream`. Read bounded bytes from the public test stream and confirm `audio/mpeg` and nonzero payload, rather than relying on HTTP status alone. After reboot and installer rerun, confirm the stream recovers, credentials did not rotate, and no runtime config or secret entered Git.

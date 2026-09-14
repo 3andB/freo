@@ -13,8 +13,12 @@ Internet -> Nginx -> Freo Web/API -> PostgreSQL
               +------------------------- controlled listener mounts
 ```
 
-Nginx uses `www-data`; the web app and future scheduler/control worker use `freo`; future Liquidsoap uses `freo-playout`; future Icecast uses its package-managed `icecast2` account; PostgreSQL uses `postgres`. Only 80/443 are public by default. Gunicorn, PostgreSQL, Liquidsoap control, and Icecast source/admin backends stay private. Listener mounts will be published through controlled Nginx routes, with long-lived stream proxy behavior tested before release. The current server's `www` host remains equivalent to the apex host.
+Nginx uses `www-data`; the web app and future scheduler/control worker use `freo`; Liquidsoap uses `freo-playout`; Icecast uses its package-managed `icecast2` account; PostgreSQL uses `postgres`. Only 80/443 are public by default. Gunicorn, PostgreSQL, Liquidsoap control, and Icecast source/admin backends stay private. The test listener mount is published through an exact Nginx route; future mounts will need equally narrow routing. The current server's `www` host remains equivalent to the apex host.
 
 systemd owns service lifecycles. Future station configuration belongs in PostgreSQL and validated templates, rendered atomically into restricted paths. Routine playout decisions should use a private worker/control interface rather than restarting processes. Web requests must never run arbitrary sudo or shell commands, accept arbitrary Liquidsoap code, write unrestricted system configuration, or restart arbitrary units. Any privileged helper needs allowlisted operations, narrow authorization, and audit logging; `freo` must not receive broad sudo access.
 
-Phase 2 may add `deploy/liquidsoap/` and `deploy/icecast/`, `/var/lib/freo/media`, `/var/lib/freo/playout`, `/run/freo`, and `/etc/freo` when they have concrete uses. Neither component is installed or simulated in Phase 1.
+Phase 2 added `deploy/liquidsoap/`, `deploy/icecast/`, `/var/lib/freo/playout`, `/run/freo`, and `/etc/freo`. Media storage will be added when a library exists.
+
+## Phase 2 engine
+
+The test engine now implements the planned Liquidsoap -> Icecast -> Nginx listener path. See [radio-engine.md](radio-engine.md) for actual versions, config paths, service units, ownership, ports, and health checks. Icecast and Liquidsoap are independent of Flask readiness: `/ready` still measures core web/database readiness, while `/health/icecast`, `/health/playout`, and `/health/stream` observe real local radio components. No application route executes shell commands or controls systemd.

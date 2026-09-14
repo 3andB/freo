@@ -17,22 +17,32 @@ if [[ ! -d "$source_dir/app" ]]; then
   exit 1
 fi
 export DEBIAN_FRONTEND=noninteractive
-printf 'Installing Phase 1 system packages...\n'
+printf 'Installing required Freo system packages without upgrading existing packages...\n'
 apt-get update
-apt-get install -y python3 python3-venv python3-pip git nginx postgresql postgresql-contrib openssl certbot python3-certbot-nginx
+apt-get install --no-upgrade -y python3 python3-venv python3-pip git nginx postgresql postgresql-contrib openssl certbot python3-certbot-nginx liquidsoap icecast2
+dpkg-query -W -f='Installed ${Package} ${Version}\n' liquidsoap icecast2
 systemctl enable --now postgresql nginx
 if ! id freo >/dev/null 2>&1; then
   useradd --system --user-group --home-dir /var/lib/freo --shell /usr/sbin/nologin freo
 fi
 install -d -o root -g root -m 0755 "$install_dir"
 install -d -o freo -g freo -m 0750 /var/lib/freo
+chmod 0711 /var/lib/freo
+if ! id freo-playout >/dev/null 2>&1; then
+  useradd --system --user-group --home-dir /var/lib/freo/playout --shell /usr/sbin/nologin freo-playout
+fi
+install -d -o freo-playout -g freo-playout -m 0750 /var/lib/freo/playout
+install -d -o freo -g freo -m 0750 /var/lib/freo/state
+install -d -o icecast2 -g icecast -m 0750 /var/log/icecast2
 # Only named release files are deployed; .env, media, .git and runtime files stay untouched.
 if [[ $source_dir != "$install_dir" ]]; then
   cp -R "$source_dir/app" "$install_dir/"
 fi
 chown -R root:root "$install_dir/app"
-install -m 0644 "$source_dir/wsgi.py" "$install_dir/wsgi.py"
-install -m 0644 "$source_dir/requirements.txt" "$install_dir/requirements.txt"
+if [[ $source_dir != "$install_dir" ]]; then
+  install -m 0644 "$source_dir/wsgi.py" "$install_dir/wsgi.py"
+  install -m 0644 "$source_dir/requirements.txt" "$install_dir/requirements.txt"
+fi
 if [[ ! -x "$install_dir/venv/bin/python" ]]; then
   python3 -m venv "$install_dir/venv"
 fi
@@ -81,6 +91,13 @@ fi
 if [[ -d "$install_dir/migrations" ]]; then
   chown -R root:root "$install_dir/migrations"
 fi
+install -d -o root -g root -m 0755 "$install_dir/deploy/icecast" "$install_dir/deploy/liquidsoap" "$install_dir/deploy/systemd" "$install_dir/scripts"
+if [[ $source_dir != "$install_dir" ]]; then
+  install -m 0644 "$source_dir/deploy/icecast/icecast.xml.template" "$install_dir/deploy/icecast/icecast.xml.template"
+  install -m 0644 "$source_dir/deploy/liquidsoap/freo-test.liq.template" "$install_dir/deploy/liquidsoap/freo-test.liq.template"
+  install -m 0755 "$source_dir/scripts/render-radio-config.py" "$install_dir/scripts/render-radio-config.py"
+fi
+python3 "$install_dir/scripts/render-radio-config.py"
 if [[ -f "$install_dir/migrations/env.py" ]]; then
   (cd "$install_dir" && runuser -u freo -- env FREO_ENV_FILE="$install_dir/.env" "$install_dir/venv/bin/flask" --app wsgi:app db upgrade)
 fi
@@ -93,6 +110,18 @@ install -m 0644 "$unit_src" "$unit_dst"
 systemctl daemon-reload
 systemctl enable --now freo.service
 systemctl restart freo.service
+for service in icecast2 freo-playout; do
+  unit_src="$source_dir/deploy/systemd/$service.service"
+  unit_dst="/etc/systemd/system/$service.service"
+  if [[ -f $unit_dst ]] && ! cmp -s "$unit_src" "$unit_dst"; then
+    cp -a "$unit_dst" "$unit_dst.backup.$(date +%Y%m%d%H%M%S)"
+  fi
+  install -m 0644 "$unit_src" "$unit_dst"
+done
+systemctl daemon-reload
+systemctl enable --now icecast2.service freo-playout.service
+systemctl restart icecast2.service freo-playout.service
+install -m 0644 "$source_dir/deploy/nginx/stream-location.conf" /etc/nginx/snippets/freo-stream.conf
 site=/etc/nginx/sites-available/freo
 if [[ ! -e $site ]]; then
   host=${FREO_DOMAIN:-$(hostname -I | awk '{print $1}')}
@@ -114,4 +143,14 @@ if [[ ${FREO_ENABLE_HTTPS:-0} == 1 ]]; then
   fi
   certbot --nginx --non-interactive --agree-tos --redirect -m "$FREO_CERTBOT_EMAIL" -d "$FREO_DOMAIN"
 fi
+for attempt in {1..30}; do
+  if [[ -S /run/freo/liquidsoap/control.sock ]] && curl --fail --silent --max-time 2 http://127.0.0.1:8000/health/stream >/dev/null; then
+    break
+  fi
+  if (( attempt == 30 )); then
+    echo 'Radio engine did not become ready within 60 seconds.' >&2
+    exit 1
+  fi
+  sleep 2
+done
 "$source_dir/scripts/validate-install.sh"

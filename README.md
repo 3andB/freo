@@ -1,11 +1,11 @@
 # Freo
 
-Freo is an early-stage public open-source internet radio automation and station management project. Phase 1 provides a Flask/PostgreSQL web foundation, health checks, and a native Ubuntu deployment framework. It does **not** yet automate playout, nor install or integrate Liquidsoap or Icecast.
+Freo is an early-stage public internet radio automation and station management project. Phase 2 now runs a **generated test stream** through Liquidsoap, Icecast, and Nginx at [https://freo.world/stream/freo-test](https://freo.world/stream/freo-test). It does not yet provide scheduling, library management, station administration, or production programming.
 
-The supported installation target is Ubuntu 24.04 LTS with Python 3.12, Gunicorn, PostgreSQL, Nginx, and systemd. See [installation](docs/installation.md), [architecture](docs/architecture.md), and the mandatory [clean-install acceptance test](docs/clean-install-test.md). The separate fresh-VM acceptance test has not yet been performed, so third-party installation is not yet claimed as verified.
+The stack is Python 3.12, Flask, Gunicorn, PostgreSQL, Nginx, systemd, Liquidsoap, and Icecast on Ubuntu 24.04. Freo Web/API runs as `freo`; test playout runs as `freo-playout`; Icecast runs as its package-managed account. Only Nginx is public by default. See [radio engine](docs/radio-engine.md), [architecture](docs/architecture.md), [installation](docs/installation.md), and the [fresh-VM acceptance test](docs/clean-install-test.md).
 
-For local development, create a venv, install `requirements-dev.txt`, copy `.env.example` to `.env`, supply your own secret and database URL, and run `flask --app wsgi:app run`. Run `flask --app wsgi:app db upgrade` for migrations and `pytest` for tests. A domain and root access are not required for local development. See the installation guide for details.
+The installer has been updated for the fuller stack, but it has **not** been verified on a separate fresh Ubuntu VM. Public one-command installation is therefore not yet claimed as supported. The production server validates the service configuration and stream only.
 
-Production uses Nginx on 80/443, private Gunicorn on 127.0.0.1:8000, and PostgreSQL locally. The web service runs as the restricted `freo` account. Credentials stay in an untracked, restricted `.env`. Future radio services will use separate identities and private control interfaces.
+For development, create a Python 3.12 venv, install `requirements-dev.txt`, copy `.env.example` to `.env` and replace placeholders, then run `flask --app wsgi:app run`, `flask --app wsgi:app db upgrade`, and `pytest`. Root, a domain, and the radio services are not required for unit tests.
 
-Roadmap: finish fresh-VM verification and release licensing; add station/media models and authentication; add a separate scheduler/control worker; then integrate Liquidsoap and Icecast. No license has been selected yet. An explicit license decision is required before broadly promoting Freo as reusable open-source software.
+Roadmap: fresh-VM acceptance and licensing; station and mount management; a separate scheduling/control worker; library and automation features. No license has been selected. The owner must choose one before broadly promoting reuse as open-source software.
