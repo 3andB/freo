@@ -30,3 +30,6 @@ freo-test.liq
 engine.json
 radio-runtime/
 .DS_Store
+
+*.m3u
+*.m3u8

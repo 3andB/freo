@@ -3,6 +3,13 @@ set -euo pipefail
 
 install_dir=${FREO_INSTALL_DIR:-/opt/freo}
 test -x "$install_dir/venv/bin/python"
+test -x /usr/bin/ffprobe
+test -d /var/lib/freo/media
+test -d /var/lib/freo/playlists
+if [[ $(stat -c %a /var/lib/freo/media) != 750 || $(stat -c %a /var/lib/freo/playlists) != 750 ]]; then
+  echo 'Media or playlist root permissions are too broad.' >&2
+  exit 1
+fi
 test -f "$install_dir/.env"
 test -f /etc/systemd/system/freo-playout@.service
 test -x "$install_dir/scripts/validate-station-instance.py"

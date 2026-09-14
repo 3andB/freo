@@ -76,6 +76,7 @@ def render_liquidsoap(station, password):
     frequency = 300 + zlib.crc32(slug.encode()) % 300
     values = {
         '__CONTROL_SOCKET__': json.dumps(f'/run/freo/playout/{slug}/control.sock'),
+        '__PLAYLIST__': json.dumps(f'/var/lib/freo/playlists/{slug}.m3u'),
         '__FREQUENCY__': str(frequency),
         '__TITLE__': json.dumps(f'{station.name} Engine Test'),
         '__MOUNT__': json.dumps('/' + slug),
@@ -96,6 +97,8 @@ def render(station):
         raise ValueError('Station and stream must be enabled to render')
     if station.stream.format != 'mp3' or station.stream.bitrate != 64:
         raise ValueError('Only 64 kbps MP3 is supported in Phase 3')
+    from app.services.media import refresh_playlist
+    refresh_playlist(slug)
     password = credential(slug)
     liquidsoap = render_liquidsoap(station, password)
     snippet = (SOURCE / 'deploy/nginx/station-location.conf.template').read_text().replace('__SLUG__', slug)

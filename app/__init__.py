@@ -10,6 +10,8 @@ from .routes.health import health_blueprint
 from .routes.radio_health import radio_health_blueprint
 from .routes.stations import stations_blueprint
 from .cli import station_cli
+from .media_cli import media_cli
+from .routes.media import media_blueprint
 
 
 def create_app(config_name=None):
@@ -35,4 +37,6 @@ def create_app(config_name=None):
     app.register_blueprint(radio_health_blueprint)
     app.register_blueprint(stations_blueprint)
     app.register_blueprint(station_cli, cli_group=None)
+    app.register_blueprint(media_cli, cli_group=None)
+    app.register_blueprint(media_blueprint)
     return app

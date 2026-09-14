@@ -17,3 +17,7 @@ Future multi-station operation should start with one Liquidsoap process/config p
 ## Managed stations added in Phase 3
 
 `freo-test` remains the fixed engine diagnostic. Database-managed stations use the independent `freo-playout@<slug>.service` unit, mount-specific source credentials, and exact Nginx listener snippets. Icecast remains a single private backend. See [stations.md](stations.md) for lifecycle and isolation details.
+
+## Media playback
+
+Managed stations load only the root-rendered approved playlist for their own slug. The Phase 4 source uses Liquidsoap playlist watch mode and falls back to a generated tone if no playable request is available. Disabling or enabling a track through the CLI refreshes the playlist and restarts only the affected station, so a queued copy cannot continue after disable. The `freo-test` diagnostic source remains independent. No arbitrary Liquidsoap commands or filesystem paths are accepted over HTTP.

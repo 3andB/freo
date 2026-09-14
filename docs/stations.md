@@ -15,3 +15,7 @@ A station's public URL is `https://<domain>/stream/<slug>` when HTTPS is configu
 Two managed processes were started on this server. Restarting `freo-demo` left `freo-demo-2` and `freo-test` delivering audio; the first returned. Stopping the second removed only its mount, and starting it restored audio. The second was stopped again to limit resource use. A Liquidsoap process used about 145-150 MiB RSS in the observed snapshots; with the diagnostic fixture, one managed station meant two Liquidsoap processes (~300 MiB RSS), and two managed stations meant three (~445 MiB RSS). CPU rose sharply during the roughly 15-20 second Liquidsoap initialization; no sustained-load benchmark was run.
 
 Future hierarchy, not yet implemented: Station → Stream/Mount; Media Library (Tracks, Artists, Albums, Categories); Clocks; Rotations; Schedule; Carts; Live Assist; Automation; History/Logs. Phase 4 can begin with the media-library foundation. Clean-server installation has not been validated on a separate fresh VM, and full reboot behavior remains untested here; enabled instances represent desired-running stations at boot.
+
+## Station media
+
+Each track belongs to exactly one station. `/var/lib/freo/media/<slug>/originals` contains UUID-named approved files; other stations cannot select them through normal library operations. See [media-library.md](media-library.md) for ingest, verification, and playback.

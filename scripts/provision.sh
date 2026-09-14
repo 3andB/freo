@@ -19,8 +19,8 @@ fi
 export DEBIAN_FRONTEND=noninteractive
 printf 'Installing required Freo system packages without upgrading existing packages...\n'
 apt-get update
-apt-get install --no-upgrade -y python3 python3-venv python3-pip git nginx postgresql postgresql-contrib openssl certbot python3-certbot-nginx liquidsoap icecast2
-dpkg-query -W -f='Installed ${Package} ${Version}\n' liquidsoap icecast2
+apt-get install --no-upgrade -y python3 python3-venv python3-pip git nginx postgresql postgresql-contrib openssl certbot python3-certbot-nginx liquidsoap icecast2 ffmpeg
+dpkg-query -W -f='Installed ${Package} ${Version}\n' liquidsoap icecast2 ffmpeg
 systemctl enable --now postgresql nginx
 if ! id freo >/dev/null 2>&1; then
   useradd --system --user-group --home-dir /var/lib/freo --shell /usr/sbin/nologin freo
@@ -32,6 +32,7 @@ if ! id freo-playout >/dev/null 2>&1; then
   useradd --system --user-group --home-dir /var/lib/freo/playout --shell /usr/sbin/nologin freo-playout
 fi
 install -d -o freo-playout -g freo-playout -m 0750 /var/lib/freo/playout
+install -d -o root -g freo-playout -m 0750 /var/lib/freo/media /var/lib/freo/playlists
 install -d -o freo -g freo -m 0750 /var/lib/freo/state
 install -d -o icecast2 -g icecast -m 0750 /var/log/icecast2
 # Only named release files are deployed; .env, media, .git and runtime files stay untouched.

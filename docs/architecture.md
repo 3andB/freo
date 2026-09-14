@@ -17,7 +17,7 @@ Nginx uses `www-data`; the web app and future scheduler/control worker use `freo
 
 systemd owns service lifecycles. Future station configuration belongs in PostgreSQL and validated templates, rendered atomically into restricted paths. Routine playout decisions should use a private worker/control interface rather than restarting processes. Web requests must never run arbitrary sudo or shell commands, accept arbitrary Liquidsoap code, write unrestricted system configuration, or restart arbitrary units. Any privileged helper needs allowlisted operations, narrow authorization, and audit logging; `freo` must not receive broad sudo access.
 
-Phase 2 added `deploy/liquidsoap/`, `deploy/icecast/`, `/var/lib/freo/playout`, `/run/freo`, and `/etc/freo`. Media storage will be added when a library exists.
+Phase 2 added `deploy/liquidsoap/`, `deploy/icecast/`, `/var/lib/freo/playout`, `/run/freo`, and `/etc/freo`. Media storage is now present under `/var/lib/freo/media`.
 
 ## Phase 2 engine
 
@@ -38,3 +38,7 @@ Internet -> Nginx -> Freo Web/API -> PostgreSQL
 ```
 
 There is one Icecast backend and one Liquidsoap process/config/socket per managed station. The web app can operate when playout is down. See [stations.md](stations.md) for domain, lifecycle, boot state, security, and future hierarchy. The existing `freo-test` remains a non-database diagnostic fixture.
+
+## Phase 4 media library
+
+Tracks belong to one station. The root-run CLI copies a regular, non-symlink source into private staging, hashes and probes it, then atomically moves an opaque UUID-named file into `/var/lib/freo/media/<slug>/originals`. PostgreSQL stores validated metadata and a per-station unique SHA-256 checksum. Artist and album are text fields for now; separate tables and categories are deferred. Approved, enabled tracks alone enter a root-written station playlist under `/var/lib/freo/playlists`. Liquidsoap reads it and falls back to a generated tone. The web process reads safe metadata but cannot upload, alter playlists, or serve raw media. Backups need PostgreSQL, `/etc/freo`, and `/var/lib/freo/media`.

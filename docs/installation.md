@@ -16,7 +16,7 @@ On an existing deployment with an `.env` but no `SECRET_KEY`, add a cryptographi
 
 Use Python 3.12 and a local PostgreSQL database, or SQLite for route-only tests. Run `python3 -m venv .venv`, `.venv/bin/pip install -r requirements-dev.txt`, copy `.env.example` to `.env`, and replace every active placeholder. Set `FLASK_ENV=development`; run `.venv/bin/flask --app wsgi:app db upgrade`, `.venv/bin/flask --app wsgi:app run`, and `.venv/bin/pytest`. Do not use a production database in tests. SQLite test success does not validate PostgreSQL behavior.
 
-The migration directory is initialized but has no revision or schema yet. `flask db heads` and `flask db current` are empty until the first model migration. Creating the first revision must be reviewed before applying it to production data.
+The migration directory includes station and media revisions. Check `flask db current` against `flask db heads` after setup.
 
 ## Phase 2 radio packages
 
@@ -27,3 +27,7 @@ For radio validation, run `sudo ./scripts/validate-install.sh`. Confirm the dire
 ## Phase 3 station runtime
 
 Provisioning deploys the station/stream migration, `freo-playout@.service`, its instance validator, a controlled Liquidsoap template, and an Nginx exact-route include directory. It does **not** create demo stations on a normal public install. After installation, an administrator may use the root-run [station CLI](stations.md) to create and start a station. Only started instances are enabled for boot; stopped stations remain in PostgreSQL without a running playout process. Existing customized Nginx sites need `include /etc/nginx/snippets/freo-stations/*.conf;` inside the intended public server block. The default generated site includes it.
+
+## Phase 4 media
+
+Provisioning installs Ubuntu `ffmpeg` (including `/usr/bin/ffprobe`) and creates root-owned, `freo-playout`-readable `/var/lib/freo/media` and `/var/lib/freo/playlists` (mode 0750). It applies the additive Track migration. It does not install demo audio or create library rows. The administrator ingests files through the [media CLI](media-library.md). The complete backup set now includes PostgreSQL, `/etc/freo`, and `/var/lib/freo/media`; playlists can be regenerated from accepted DB records.

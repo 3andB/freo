@@ -5,8 +5,10 @@ settings.server.socket.path := __CONTROL_SOCKET__
 settings.server.socket.permissions := 0o600
 settings.log.stdout := true
 
-radio = sine(amplitude=0.08, __FREQUENCY__.)
-radio = metadata.map(fun (_) -> [("title", __TITLE__)], radio)
+tone = sine(amplitude=0.08, __FREQUENCY__.)
+tone = metadata.map(fun (_) -> [("title", __TITLE__)], tone)
+library = playlist(mode="normal", reload_mode="watch", __PLAYLIST__)
+radio = fallback(track_sensitive=false, [library, tone])
 output.icecast(
   %mp3(bitrate=64),
   host="127.0.0.1",
