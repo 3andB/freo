@@ -36,6 +36,10 @@ class MediaIngestJob(db.Model):
     original_filename = db.Column(db.String(255), nullable=False)
     status = db.Column(db.String(16), nullable=False, default='pending', index=True)
     track_id = db.Column(db.Integer, db.ForeignKey('tracks.id', ondelete='SET NULL'))
+    imaging_asset_id = db.Column(db.Integer, db.ForeignKey('imaging_assets.id', ondelete='SET NULL'))
+    imaging_type = db.Column(db.String(20))
+    imaging_name = db.Column(db.String(200))
+    cart_code = db.Column(db.String(32))
     error_code = db.Column(db.String(48))
     created_at = db.Column(db.DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
     started_at = db.Column(db.DateTime(timezone=True))
@@ -43,6 +47,7 @@ class MediaIngestJob(db.Model):
     station = db.relationship('Station')
     admin_user = db.relationship('AdminUser')
     track = db.relationship('Track')
+    imaging_asset = db.relationship('ImagingAsset')
 
 
 class Station(db.Model):
@@ -119,6 +124,69 @@ track_categories = db.Table(
     db.Column('track_id', db.Integer, db.ForeignKey('tracks.id', ondelete='CASCADE'), primary_key=True),
     db.Column('category_id', db.Integer, db.ForeignKey('media_categories.id', ondelete='CASCADE'), primary_key=True),
 )
+
+
+imaging_group_assets = db.Table(
+    'imaging_group_assets',
+    db.Column('asset_id', db.Integer, db.ForeignKey('imaging_assets.id', ondelete='CASCADE'), primary_key=True),
+    db.Column('group_id', db.Integer, db.ForeignKey('imaging_groups.id', ondelete='CASCADE'), primary_key=True),
+)
+
+
+IMAGING_TYPES = ('CART', 'STATION_ID', 'SWEEPER', 'LINER', 'PROMO', 'JINGLE', 'GENERIC')
+
+
+class ImagingAsset(db.Model):
+    __tablename__ = 'imaging_assets'
+    __table_args__ = (
+        db.UniqueConstraint('station_id', 'checksum_sha256', name='uq_imaging_station_checksum'),
+        db.UniqueConstraint('station_id', 'cart_code', name='uq_imaging_station_cart_code'),
+        db.CheckConstraint("asset_type IN ('CART','STATION_ID','SWEEPER','LINER','PROMO','JINGLE','GENERIC')", name='ck_imaging_asset_type'),
+        db.CheckConstraint("ingest_status IN ('accepted','rejected')", name='ck_imaging_ingest_status'),
+        db.CheckConstraint('duration_ms > 0 AND file_size_bytes > 0', name='ck_imaging_positive_size'),
+    )
+    id = db.Column(db.Integer, primary_key=True)
+    uuid = db.Column(db.String(36), nullable=False, unique=True, index=True)
+    station_id = db.Column(db.Integer, db.ForeignKey('stations.id', ondelete='RESTRICT'), nullable=False, index=True)
+    name = db.Column(db.String(200), nullable=False)
+    cart_code = db.Column(db.String(32))
+    asset_type = db.Column(db.String(20), nullable=False)
+    description = db.Column(db.String(500), nullable=False, default='')
+    original_filename = db.Column(db.String(255), nullable=False)
+    storage_key = db.Column(db.String(50), nullable=False)
+    media_type = db.Column(db.String(12), nullable=False)
+    duration_ms = db.Column(db.Integer, nullable=False)
+    bitrate_kbps = db.Column(db.Integer)
+    sample_rate_hz = db.Column(db.Integer, nullable=False)
+    channels = db.Column(db.Integer, nullable=False)
+    file_size_bytes = db.Column(db.BigInteger, nullable=False)
+    checksum_sha256 = db.Column(db.String(64), nullable=False)
+    enabled = db.Column(db.Boolean, nullable=False, default=False)
+    ingest_status = db.Column(db.String(12), nullable=False, default='accepted')
+    decommissioned_at = db.Column(db.DateTime(timezone=True))
+    created_at = db.Column(db.DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+    updated_at = db.Column(db.DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    station = db.relationship('Station', backref='imaging_assets')
+    groups = db.relationship('ImagingGroup', secondary=imaging_group_assets, back_populates='assets')
+
+
+class ImagingGroup(db.Model):
+    __tablename__ = 'imaging_groups'
+    __table_args__ = (
+        db.UniqueConstraint('station_id', 'slug', name='uq_imaging_group_station_slug'),
+        db.CheckConstraint('minimum_separation_seconds BETWEEN 0 AND 86400', name='ck_imaging_group_separation'),
+    )
+    id = db.Column(db.Integer, primary_key=True)
+    station_id = db.Column(db.Integer, db.ForeignKey('stations.id', ondelete='CASCADE'), nullable=False, index=True)
+    name = db.Column(db.String(120), nullable=False)
+    slug = db.Column(db.String(64), nullable=False)
+    description = db.Column(db.String(500), nullable=False, default='')
+    enabled = db.Column(db.Boolean, nullable=False, default=True)
+    minimum_separation_seconds = db.Column(db.Integer, nullable=False, default=0)
+    created_at = db.Column(db.DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+    updated_at = db.Column(db.DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    station = db.relationship('Station', backref='imaging_groups')
+    assets = db.relationship('ImagingAsset', secondary=imaging_group_assets, back_populates='groups')
 
 
 class MediaCategory(db.Model):
@@ -200,20 +268,26 @@ class ClockSlot(db.Model):
     __table_args__ = (
         db.UniqueConstraint('clock_id', 'position', name='uq_clock_slot_position'),
         db.CheckConstraint('position > 0', name='ck_clock_slot_position'),
-        db.CheckConstraint("(slot_type = 'ROTATION' AND rotation_id IS NOT NULL AND category_id IS NULL) OR "
-                           "(slot_type = 'CATEGORY' AND category_id IS NOT NULL AND rotation_id IS NULL)", name='ck_clock_slot_target'),
+        db.CheckConstraint("(slot_type = 'ROTATION' AND rotation_id IS NOT NULL AND category_id IS NULL AND imaging_asset_id IS NULL AND imaging_group_id IS NULL) OR "
+                           "(slot_type = 'CATEGORY' AND category_id IS NOT NULL AND rotation_id IS NULL AND imaging_asset_id IS NULL AND imaging_group_id IS NULL) OR "
+                           "(slot_type = 'CART' AND imaging_asset_id IS NOT NULL AND rotation_id IS NULL AND category_id IS NULL AND imaging_group_id IS NULL) OR "
+                           "(slot_type = 'IMAGING_GROUP' AND imaging_group_id IS NOT NULL AND rotation_id IS NULL AND category_id IS NULL AND imaging_asset_id IS NULL)", name='ck_clock_slot_target'),
     )
     id = db.Column(db.Integer, primary_key=True)
     clock_id = db.Column(db.Integer, db.ForeignKey('clocks.id', ondelete='CASCADE'), nullable=False, index=True)
     position = db.Column(db.Integer, nullable=False)
-    slot_type = db.Column(db.String(12), nullable=False)
+    slot_type = db.Column(db.String(20), nullable=False)
     rotation_id = db.Column(db.Integer, db.ForeignKey('rotations.id', ondelete='RESTRICT'))
     category_id = db.Column(db.Integer, db.ForeignKey('media_categories.id', ondelete='RESTRICT'))
+    imaging_asset_id = db.Column(db.Integer, db.ForeignKey('imaging_assets.id', ondelete='RESTRICT'))
+    imaging_group_id = db.Column(db.Integer, db.ForeignKey('imaging_groups.id', ondelete='RESTRICT'))
     enabled = db.Column(db.Boolean, nullable=False, default=True)
     label = db.Column(db.String(120))
     clock = db.relationship('Clock', back_populates='slots')
     rotation = db.relationship('Rotation')
     category = db.relationship('MediaCategory')
+    imaging_asset = db.relationship('ImagingAsset')
+    imaging_group = db.relationship('ImagingGroup')
 
 
 class ScheduleAssignment(db.Model):
@@ -254,13 +328,19 @@ class RotationCursor(db.Model):
 
 class SelectionDecision(db.Model):
     __tablename__ = 'selection_decisions'
-    __table_args__ = (db.CheckConstraint("status IN ('selected','queued','started','failed')", name='ck_decision_status'),)
+    __table_args__ = (
+        db.CheckConstraint("status IN ('selected','queued','started','failed')", name='ck_decision_status'),
+        db.CheckConstraint('track_id IS NULL OR imaging_asset_id IS NULL', name='ck_decision_one_playable'),
+    )
     id = db.Column(db.Integer, primary_key=True)
     station_id = db.Column(db.Integer, db.ForeignKey('stations.id', ondelete='CASCADE'), nullable=False, index=True)
     rotation_id = db.Column(db.Integer, db.ForeignKey('rotations.id', ondelete='SET NULL'))
     slot_id = db.Column(db.Integer, db.ForeignKey('rotation_slots.id', ondelete='SET NULL'))
     category_id = db.Column(db.Integer, db.ForeignKey('media_categories.id', ondelete='SET NULL'))
     track_id = db.Column(db.Integer, db.ForeignKey('tracks.id', ondelete='SET NULL'))
+    imaging_asset_id = db.Column(db.Integer, db.ForeignKey('imaging_assets.id', ondelete='SET NULL'))
+    imaging_group_id = db.Column(db.Integer, db.ForeignKey('imaging_groups.id', ondelete='SET NULL'))
+    selection_method = db.Column(db.String(24), nullable=False, default='music')
     selected_at = db.Column(db.DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
     started_at = db.Column(db.DateTime(timezone=True))
     status = db.Column(db.String(12), nullable=False, default='selected')
@@ -275,6 +355,8 @@ class SelectionDecision(db.Model):
     schedule_occurrence = db.Column(db.String(120))
     station = db.relationship('Station')
     track = db.relationship('Track')
+    imaging_asset = db.relationship('ImagingAsset')
+    imaging_group = db.relationship('ImagingGroup')
     category = db.relationship('MediaCategory')
     slot = db.relationship('RotationSlot')
     clock = db.relationship('Clock')

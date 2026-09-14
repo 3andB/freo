@@ -18,10 +18,16 @@ class LocalMediaStorage:
         return self.root / slug
 
     def approved_path(self, slug, key):
+        return self._media_path(slug, key, 'originals')
+
+    def imaging_path(self, slug, key):
+        return self._media_path(slug, key, 'imaging')
+
+    def _media_path(self, slug, key, directory):
         if not isinstance(key, str) or not KEY_PATTERN.fullmatch(key):
             raise ValueError('Invalid internal media key')
         station = self.station_dir(slug)
-        parent = station / 'originals'
+        parent = station / directory
         root = self.root.resolve()
         if self.root.is_symlink() or station.is_symlink() or parent.is_symlink():
             raise ValueError('Symlink media directory is forbidden')
@@ -33,10 +39,16 @@ class LocalMediaStorage:
         return path
 
     def regular_file(self, slug, key):
-        path = self.approved_path(slug, key)
+        return self._regular_file(slug, key, 'originals')
+
+    def imaging_file(self, slug, key):
+        return self._regular_file(slug, key, 'imaging')
+
+    def _regular_file(self, slug, key, directory):
+        path = self._media_path(slug, key, directory)
         info = path.lstat()
         if not stat.S_ISREG(info.st_mode):
             raise ValueError('Media is not a regular file')
-        if not path.resolve().is_relative_to((self.station_dir(slug) / 'originals').resolve()):
+        if not path.resolve().is_relative_to((self.station_dir(slug) / directory).resolve()):
             raise ValueError('Media path escapes station')
         return path

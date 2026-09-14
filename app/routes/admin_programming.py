@@ -4,7 +4,7 @@ from zoneinfo import ZoneInfo
 from flask import Blueprint, abort, flash, redirect, render_template, request, url_for
 
 from app.extensions import db
-from app.models import Clock, MediaCategory, Rotation, ScheduleAssignment, Track
+from app.models import Clock, MediaCategory, Rotation, ScheduleAssignment, Track, ImagingAsset, ImagingGroup
 from app.routes.web import admin_stations, station_or_404
 from app.services.admin_auth import admin_required, current_admin, programming_mutation_required
 from app.services.admin_media import audit
@@ -125,6 +125,8 @@ def detail(slug, section, resource):
     else:
         extra['categories'] = MediaCategory.query.filter_by(station_id=station.id).order_by(MediaCategory.name).all()
         extra['rotations'] = Rotation.query.filter_by(station_id=station.id).order_by(Rotation.name).all()
+        extra['imaging_assets'] = ImagingAsset.query.filter_by(station_id=station.id, enabled=True, ingest_status='accepted').order_by(ImagingAsset.name).all()
+        extra['imaging_groups'] = ImagingGroup.query.filter_by(station_id=station.id, enabled=True).order_by(ImagingGroup.name).all()
         try:
             extra['validation'] = ('Valid: %d enabled slots' % len(validate_rotation(item) if section == 'rotations' else validate_clock(item)))
         except ValueError as error:
@@ -198,8 +200,8 @@ def slot_action(slug, section, resource, operation):
                 slot = add_slot(slug, resource, request.form.get('category', ''))
             else:
                 slot_type = request.form.get('slot_type', '')
-                if slot_type not in ('CATEGORY', 'ROTATION'):
-                    raise ValueError('Supported slot types: CATEGORY, ROTATION')
+                if slot_type not in ('CATEGORY', 'ROTATION', 'CART', 'IMAGING_GROUP'):
+                    raise ValueError('Unsupported clock slot type')
                 slot = add_clock_slot(slug, resource, slot_type, request.form.get('target', ''))
             return resource, f'Slot {slot.position} added to {resource}'
         position = positive(request.form.get('position'))

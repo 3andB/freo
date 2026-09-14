@@ -57,7 +57,7 @@ def create(station, name, slug):
 @clock_group.command('add-slot')
 @click.option('--station', required=True)
 @click.option('--clock', required=True)
-@click.option('--type', 'slot_type', type=click.Choice(['rotation', 'category']), required=True)
+@click.option('--type', 'slot_type', type=click.Choice(['rotation', 'category', 'cart', 'imaging_group']), required=True)
 @click.option('--target', required=True)
 def add(station, clock, slot_type, target):
     require_root()
@@ -72,7 +72,7 @@ def show(station, slug):
     clock = clock_for(station, slug)
     click.echo(f'{clock.slug}\t{clock.name}')
     for slot in clock.slots:
-        target = slot.rotation.slug if slot.rotation else slot.category.slug if slot.category else 'missing'
+        target = slot.rotation.slug if slot.rotation else slot.category.slug if slot.category else slot.imaging_asset.cart_code or slot.imaging_asset.uuid if slot.imaging_asset else slot.imaging_group.slug if slot.imaging_group else 'missing'
         click.echo(f'{slot.position}\t{slot.slot_type}\t{target}\t{"enabled" if slot.enabled else "disabled"}')
 
 

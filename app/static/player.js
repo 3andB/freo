@@ -22,13 +22,13 @@
     if (!rows.length) { const item = document.createElement('li'); item.textContent = 'No confirmed starts yet.'; list.append(item); return; }
     for (const row of rows.slice(0, 6)) {
       const item = document.createElement('li');
-      item.textContent = `${row.title || 'Track unavailable'} — ${row.artist || 'Unknown artist'}`;
+      item.textContent = row.kind === 'imaging' ? `${row.imaging_type.replaceAll('_', ' ')} · ${row.title || 'Imaging unavailable'}` : `${row.title || 'Track unavailable'} — ${row.artist || 'Unknown artist'}`;
       const time = document.createElement('span'); time.textContent = clock(row.started_at);
       item.append(time); list.append(item);
     }
     const latest = rows[0];
     setText('playing-heading', latest.title || 'Track unavailable');
-    setText('playing-artist', latest.artist || 'Unknown artist');
+    setText('playing-artist', latest.kind === 'imaging' ? latest.imaging_type.replaceAll('_', ' ') : latest.artist || 'Unknown artist');
     setText('playing-detail', `Confirmed start: ${clock(latest.started_at)}. This may not be the track currently playing.`);
   }
   async function refresh() {

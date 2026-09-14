@@ -86,9 +86,10 @@ def refill_station(slug, reader, target_depth=2):
             db.session.commit()
             depth += 1
             added += 1
-            logger.info('Queued station=%s rotation=%s slot=%s category=%s track=%s relaxation=%s candidates=%s',
+            logger.info('Queued station=%s rotation=%s slot=%s category=%s track=%s imaging=%s method=%s relaxation=%s candidates=%s',
                         slug, decision.rotation_id, decision.slot_id, decision.category_id,
-                        decision.track_id, decision.relaxation, decision.candidate_count)
+                        decision.track_id, decision.imaging_asset_id, decision.selection_method,
+                        decision.relaxation, decision.candidate_count)
         except Exception:
             decision.status = 'failed'
             decision.reason = 'queue_failed'

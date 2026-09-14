@@ -10,6 +10,7 @@ from app.models import MediaIngestJob
 from app.services.admin_media import JOB_ID, audit, staged_path, upload_root
 from app.services.media import ingest, set_enabled_db, verify
 from app.services.media_probe import MediaValidationError
+from app.services.imaging import ingest_imaging, verify_imaging, set_asset_enabled
 
 logger = logging.getLogger('freo.ingest')
 
@@ -43,11 +44,20 @@ def process_one():
     job.status = 'processing'
     job.started_at = datetime.now(timezone.utc)
     db.session.commit()
-    path = staged_path(job.id) if job.kind == 'ingest' else None
+    path = staged_path(job.id) if job.kind in ('ingest', 'imaging') else None
     try:
-        if job.kind not in ('ingest', 'verify', 'enable'):
+        if job.kind not in ('ingest', 'verify', 'enable', 'imaging', 'img_verify', 'img_enable'):
             raise MediaValidationError('Unsupported media operation')
-        if job.kind in ('verify', 'enable'):
+        if job.kind in ('img_verify', 'img_enable'):
+            verify_imaging(job.imaging_asset)
+            if job.kind == 'img_enable':
+                set_asset_enabled(job.imaging_asset, True)
+            job.status = 'accepted'
+            audit('imaging_enabled' if job.kind == 'img_enable' else 'imaging_verified',
+                  user_id=job.admin_user_id, station_id=job.station_id,
+                  target_type='imaging_asset', target_id=job.imaging_asset.uuid,
+                  summary='Imaging verified and enabled' if job.kind == 'img_enable' else 'Imaging integrity verified')
+        elif job.kind in ('verify', 'enable'):
             verify(job.track)
             if job.kind == 'enable':
                 set_enabled_db(job.track, True)
@@ -55,6 +65,15 @@ def process_one():
             audit('media_enabled' if job.kind == 'enable' else 'media_verified',
                   user_id=job.admin_user_id, station_id=job.station_id,
                   target_id=job.track.uuid, summary='File verified and enabled' if job.kind == 'enable' else 'File checksum and audio probe verified')
+        elif job.kind == 'imaging':
+            asset, duplicate = ingest_imaging(job.station.slug, path, job.imaging_type,
+                name=job.imaging_name, cart_code=job.cart_code,
+                original_filename=job.original_filename, enabled=False)
+            job.status = 'duplicate' if duplicate else 'accepted'
+            job.imaging_asset_id = asset.id
+            audit('imaging_ingest_accepted', user_id=job.admin_user_id, station_id=job.station_id,
+                  target_type='imaging_asset', target_id=asset.uuid,
+                  summary='Existing imaging reused' if duplicate else 'Imaging validated and accepted disabled')
         else:
             track, duplicate = ingest(job.station.slug, path,
                                       original_filename=job.original_filename,
@@ -71,14 +90,14 @@ def process_one():
             'Stored checksum mismatch': 'checksum_mismatch',
             'Stored audio type changed': 'media_changed',
         }.get(str(error), 'invalid_audio')
-        audit('media_ingest_rejected', user_id=job.admin_user_id, station_id=job.station_id,
+        audit('imaging_ingest_rejected' if job.kind.startswith('img') or job.kind == 'imaging' else 'media_ingest_rejected', user_id=job.admin_user_id, station_id=job.station_id,
               target_type='ingest_job', target_id=job.id, summary=str(error)[:120])
     except Exception:
         db.session.rollback()
         job = db.session.get(MediaIngestJob, job.id)
         job.status = 'error'
         job.error_code = 'processing_failed'
-        audit('media_ingest_rejected', user_id=job.admin_user_id, station_id=job.station_id,
+        audit('imaging_ingest_rejected' if job.kind.startswith('img') or job.kind == 'imaging' else 'media_ingest_rejected', user_id=job.admin_user_id, station_id=job.station_id,
               target_type='ingest_job', target_id=job.id, summary='Processing failed')
         logger.exception('Media ingest failed for job=%s station=%s', job.id, job.station_id)
     finally:

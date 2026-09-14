@@ -147,7 +147,7 @@ def admin_snapshot(slug):
                    worker=worker['station'], worker_last_seen=iso(worker['last_seen']),
                    clock=clock.name if clock else None,
                    next_slot=(f'{next_slot.position} · {next_slot.slot_type.title()} → '
-                              f'{next_slot.rotation.name if next_slot.rotation else next_slot.category.name}'
+                              f'{next_slot.rotation.name if next_slot.rotation else next_slot.category.name if next_slot.category else next_slot.imaging_asset.name if next_slot.imaging_asset else next_slot.imaging_group.name if next_slot.imaging_group else "Unavailable"}'
                               if next_slot else None),
                    local_time=programming['local_time'],
                    timezone=station.timezone, next_transition=programming['next_transition'],
@@ -160,8 +160,10 @@ def admin_now(slug):
     station = station_or_404(slug, require_enabled=False)
     rows = latest_rows(station, 1)
     row = rows[0] if rows else None
-    return jsonify(now_playing=({'title': row.track.title if row.track else None,
+    return jsonify(now_playing=({'title': row.track.title if row.track else row.imaging_asset.name if row.imaging_asset else None,
                                  'artist': row.track.artist if row.track else None,
+                                 'kind': 'imaging' if row.imaging_asset else 'music',
+                                 'imaging_type': row.imaging_asset.asset_type if row.imaging_asset else None,
                                  'started_at': iso(row.started_at),
                                  'category': row.category.name if row.category else None}
                                 if row else None))

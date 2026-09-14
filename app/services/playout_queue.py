@@ -2,6 +2,7 @@
 from pathlib import Path
 import re
 import socket
+import unicodedata
 
 from app.services.media_storage import LocalMediaStorage
 from app.services.stations import validate_slug
@@ -10,13 +11,21 @@ SOCKET_ROOT = Path('/run/freo/playout')
 REQUEST_ID = re.compile(r'^\d+$')
 
 
+def _metadata(value, fallback):
+    """Reduce untrusted labels to an ASCII subset safe in Liquidsoap's annotate URI."""
+    ascii_value = unicodedata.normalize('NFKD', value or '').encode('ascii', 'ignore').decode('ascii')
+    cleaned = re.sub(r'[^A-Za-z0-9 ._-]', ' ', ascii_value)
+    return ' '.join(cleaned.split())[:120] or fallback
+
+
 def _command(slug, command):
     validate_slug(slug)
     if '\n' in command or '\r' in command or len(command) > 1024:
         raise ValueError('Invalid Liquidsoap command')
     media_root = re.escape(str(LocalMediaStorage().root))
-    push_pattern = rf'freo_queue\.push annotate:freo_decision=[1-9][0-9]*:{media_root}/{re.escape(slug)}/originals/[0-9a-f]{{32}}\.mp3'
-    if command not in ('freo_queue.queue', 'request.on_air') and not re.fullmatch(push_pattern, command):
+    music_pattern = rf'freo_queue\.push annotate:freo_decision=[1-9][0-9]*:{media_root}/{re.escape(slug)}/originals/[0-9a-f]{{32}}\.mp3'
+    imaging_pattern = rf'freo_queue\.push annotate:freo_decision=[1-9][0-9]*,title="[A-Za-z0-9 ._-]{{1,120}}",artist="[A-Za-z0-9 ._-]{{1,120}}":{media_root}/{re.escape(slug)}/imaging/[0-9a-f]{{32}}\.mp3'
+    if command not in ('freo_queue.queue', 'request.on_air') and not (re.fullmatch(music_pattern, command) or re.fullmatch(imaging_pattern, command)):
         raise ValueError('Liquidsoap command is not allowlisted')
     path = SOCKET_ROOT / slug / 'control.sock'
     with socket.socket(socket.AF_UNIX) as connection:
@@ -66,16 +75,29 @@ def socket_identity(slug):
 
 
 def push_decision(decision, storage=None):
-    """Build the URI solely from a committed, approved station Track record."""
+    """Build the URI solely from a committed, approved station playable."""
     track = decision.track
+    imaging = decision.imaging_asset
     slug = decision.station.slug
-    if track is None or track.station_id != decision.station_id or not track.enabled or track.ingest_status != 'accepted':
-        raise ValueError('Decision track is not approved for this station')
+    if (track is None) == (imaging is None):
+        raise ValueError('Decision must target exactly one playable')
     if not isinstance(decision.id, int) or decision.id <= 0:
         raise ValueError('Decision must be committed before queueing')
     storage = storage or LocalMediaStorage()
-    path = storage.regular_file(slug, track.storage_key)
-    command = f'freo_queue.push annotate:freo_decision={decision.id}:{path}'
+    if track:
+        if track.station_id != decision.station_id or not track.enabled or track.ingest_status != 'accepted':
+            raise ValueError('Decision track is not approved for this station')
+        path = storage.regular_file(slug, track.storage_key)
+    else:
+        if imaging.station_id != decision.station_id or not imaging.enabled or imaging.ingest_status != 'accepted' or imaging.decommissioned_at:
+            raise ValueError('Decision imaging is not approved for this station')
+        path = storage.imaging_file(slug, imaging.storage_key)
+    if imaging:
+        title = _metadata(imaging.name, imaging.asset_type.replace('_', ' ').title())
+        artist = _metadata(decision.station.name, slug)
+        command = f'freo_queue.push annotate:freo_decision={decision.id},title="{title}",artist="{artist}":{path}'
+    else:
+        command = f'freo_queue.push annotate:freo_decision={decision.id}:{path}'
     response = _command(slug, command)
     if not REQUEST_ID.fullmatch(response):
         raise RuntimeError('Liquidsoap did not accept the request')

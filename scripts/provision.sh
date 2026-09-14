@@ -47,13 +47,14 @@ chmod 0751 /var/lib/freo/media
 install -d -o freo -g freo-ingest -m 2770 /var/lib/freo/uploads
 for station_dir in /var/lib/freo/media/*; do
   [[ -d $station_dir && ! -L $station_dir ]] || continue
-  if [[ -L $station_dir/originals || -L $station_dir/staging ]]; then
+  if [[ -L $station_dir/originals || -L $station_dir/staging || -L $station_dir/imaging ]]; then
     echo 'Refusing symlinked media directory during ingest provisioning.' >&2
     exit 1
   fi
-  install -d -o freo-ingest -g freo-playout -m 2750 "$station_dir" "$station_dir/originals"
+  install -d -o freo-ingest -g freo-playout -m 2750 "$station_dir" "$station_dir/originals" "$station_dir/imaging"
   install -d -o freo-ingest -g freo-playout -m 2700 "$station_dir/staging"
   find "$station_dir/originals" -maxdepth 1 -type f -name '*.mp3' -exec chown freo-ingest:freo-playout {} +
+  find "$station_dir/imaging" -maxdepth 1 -type f -name '*.mp3' -exec chown freo-ingest:freo-playout {} +
 done
 install -d -o freo -g freo -m 0750 /var/lib/freo/state
 install -d -o icecast2 -g icecast -m 0750 /var/log/icecast2

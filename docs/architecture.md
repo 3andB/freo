@@ -53,3 +53,7 @@ Station-local weekly assignments resolve a reusable clock from a UTC instant. Th
 ## Phase 7 authenticated media boundary
 
 The Flask `freo` identity can write only a private upload staging directory. A generated job ID connects staged bytes to a database job. A separate `freo-ingest` process, with approved-media write permissions but no Liquidsoap control socket, calls the same `ingest()` service as the trusted CLI. It performs checksum, ffprobe, duplicate detection, and atomic storage. Web uploads are accepted disabled; a verify-and-enable job checks the stored file before making it selectable. Forms require an active global admin session and a per-session CSRF token, re-check station ownership, and write sanitized audit records. No browser operation accepts a server path, executes shell commands, or physically deletes media. See [media-library.md](media-library.md).
+
+## Phase 9 imaging layer
+
+`ImagingAsset` and `ImagingGroup` are distinct from music tracks and categories. They share controlled staging, ffprobe, checksum, and private station storage conventions. `ClockSlot` targets exactly one category, rotation, cart, or imaging group. `SelectionDecision` records either a music track or imaging asset; Liquidsoap's existing queue and event log confirm actual starts. Group recurrence uses imaging starts and pending holds, never artist separation. The web account still cannot write approved files or control Liquidsoap. See [imaging](imaging.md).

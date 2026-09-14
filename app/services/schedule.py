@@ -54,7 +54,10 @@ def usable_clock(clock, station_id):
     return bool(slots) and all(
         (slot.slot_type == 'CATEGORY' and slot.category and slot.category.enabled and slot.category.station_id == station_id)
         or (slot.slot_type == 'ROTATION' and slot.rotation and slot.rotation.enabled and slot.rotation.station_id == station_id
-            and any(part.enabled for part in slot.rotation.slots)) for slot in slots)
+            and any(part.enabled for part in slot.rotation.slots))
+        or (slot.slot_type == 'CART' and slot.imaging_asset and slot.imaging_asset.station_id == station_id)
+        or (slot.slot_type == 'IMAGING_GROUP' and slot.imaging_group and slot.imaging_group.station_id == station_id)
+        for slot in slots)
 
 
 def _wall_to_utc(local_naive, zone):

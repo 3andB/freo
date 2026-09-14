@@ -69,7 +69,7 @@ def status(slug):
         return jsonify(status='not_found'), 404
     state = station.automation
     latest = SelectionDecision.query.filter(SelectionDecision.station_id == station.id,
-        SelectionDecision.track_id.isnot(None)).order_by(SelectionDecision.id.desc()).first()
+        (SelectionDecision.track_id.isnot(None) | SelectionDecision.imaging_asset_id.isnot(None))).order_by(SelectionDecision.id.desc()).first()
     last_started = SelectionDecision.query.filter_by(station_id=station.id, status='started').order_by(SelectionDecision.started_at.desc()).first()
     programming = current(slug)
     cursor = db.session.get(ClockState, station.id)
@@ -89,8 +89,13 @@ def history(slug):
     if station is None:
         return jsonify(status='not_found'), 404
     rows = SelectionDecision.query.filter_by(station_id=station.id, status='started').order_by(SelectionDecision.started_at.desc()).limit(100).all()
-    return jsonify(history=[{'started_at': iso(row.started_at), 'track': row.track.uuid if row.track else None,
-                             'title': row.track.title if row.track else None,
+    return jsonify(history=[{'started_at': iso(row.started_at), 'kind': 'imaging' if row.imaging_asset else 'music',
+                             'imaging_type': row.imaging_asset.asset_type if row.imaging_asset else None,
+                             'imaging_asset': row.imaging_asset.uuid if row.imaging_asset else None,
+                             'imaging_group': row.imaging_group.slug if row.imaging_group else None,
+                             'cart_code': row.imaging_asset.cart_code if row.imaging_asset else None,
+                             'track': row.track.uuid if row.track else None,
+                             'title': row.track.title if row.track else row.imaging_asset.name if row.imaging_asset else None,
                              'artist': row.track.artist if row.track else None,
                              'album': row.track.album if row.track else None,
                              'category': row.category.slug if row.category else None,

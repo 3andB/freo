@@ -49,8 +49,22 @@ def add_clock_slot(slug, clock_slug, slot_type, target):
         if not category.enabled:
             raise ValueError('Category is disabled')
         target_fields = {'category_id': category.id}
+    elif kind == 'CART':
+        from app.services.imaging import asset_for, eligible_asset
+        from app.services.media_storage import LocalMediaStorage
+        asset = asset_for(slug, target)
+        if not eligible_asset(asset, clock.station_id, LocalMediaStorage()):
+            raise ValueError('Cart is unavailable')
+        target_fields = {'imaging_asset_id': asset.id}
+    elif kind == 'IMAGING_GROUP':
+        from app.services.imaging import group_for, choose_group
+        group = group_for(slug, target)
+        asset, _, _ = choose_group(group, clock.station_id)
+        if not asset:
+            raise ValueError('Imaging group has no eligible assets')
+        target_fields = {'imaging_group_id': group.id}
     else:
-        raise ValueError('Supported clock slot types: ROTATION, CATEGORY')
+        raise ValueError('Supported clock slot types: ROTATION, CATEGORY, CART, IMAGING_GROUP')
     position = max((slot.position for slot in clock.slots), default=0) + 1
     slot = ClockSlot(clock_id=clock.id, position=position, slot_type=kind, **target_fields)
     db.session.add(slot)
@@ -120,11 +134,22 @@ def validate_clock(clock):
     if not slots:
         raise ValueError('Clock has no enabled slots')
     for slot in slots:
-        target = slot.rotation if slot.slot_type == 'ROTATION' else slot.category if slot.slot_type == 'CATEGORY' else None
+        target = {'ROTATION': slot.rotation, 'CATEGORY': slot.category,
+                  'CART': slot.imaging_asset, 'IMAGING_GROUP': slot.imaging_group}.get(slot.slot_type)
         if target is None or target.station_id != clock.station_id or not target.enabled:
             raise ValueError(f'Clock slot {slot.position} has an unavailable or cross-station target')
         if slot.slot_type == 'ROTATION':
             validate_rotation(target)
+        elif slot.slot_type == 'CART':
+            from app.services.imaging import eligible_asset
+            from app.services.media_storage import LocalMediaStorage
+            if not eligible_asset(target, clock.station_id, LocalMediaStorage()):
+                raise ValueError(f'Clock slot {slot.position} has an unavailable cart')
+        elif slot.slot_type == 'IMAGING_GROUP':
+            from app.services.imaging import choose_group
+            asset, _, _ = choose_group(target, clock.station_id)
+            if not asset:
+                raise ValueError(f'Clock slot {slot.position} has an empty imaging group')
     return slots
 
 
@@ -198,6 +223,23 @@ def preview_clock(slug, clock_slug, count=10, storage=None, at=None):
     for _ in range(count):
         slot = slots[clock_index % len(slots)]
         clock_index += 1
+        if slot.slot_type in ('CART', 'IMAGING_GROUP'):
+            from app.services.imaging import choose_group, eligible_asset
+            if slot.slot_type == 'CART':
+                asset = slot.imaging_asset if eligible_asset(slot.imaging_asset, station.id, storage) else None
+                relaxation, candidates = 'none', int(asset is not None)
+            else:
+                asset, relaxation, candidates = choose_group(slot.imaging_group, station.id, storage, now, history)
+            output.append({'clock_slot': slot.position, 'type': slot.slot_type,
+                           'imaging_asset': asset.uuid if asset else None,
+                           'imaging_group': slot.imaging_group.slug if slot.imaging_group else None,
+                           'cart_code': asset.cart_code if asset else None,
+                           'name': asset.name if asset else None, 'relaxation': relaxation,
+                           'candidate_count': candidates})
+            if asset:
+                history.insert(0, SimpleNamespace(imaging_asset_id=asset.id, status='selected',
+                    selected_at=now, started_at=None))
+            continue
         if slot.slot_type == 'ROTATION':
             rotation = slot.rotation
             rotation_slots = [part for part in rotation.slots if part.enabled]

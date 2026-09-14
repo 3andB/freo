@@ -188,7 +188,7 @@ def _choose(tracks, history, now, track_seconds, artist_seconds):
     last_track = {}
     last_artist = {}
     for item in history:
-        if item.track is None:
+        if getattr(item, 'track', None) is None:
             continue
         occurred = item.started_at if item.status == 'started' else item.selected_at
         if occurred is None:
@@ -215,7 +215,7 @@ def _choose(tracks, history, now, track_seconds, artist_seconds):
 
 
 def select_next(slug, storage=None, now=None):
-    """Lock one station cursor, select at most one track, and commit its audit row."""
+    """Lock one station cursor, select one playable object, and commit its decision."""
     station = require_station(slug)
     state = AutomationState.query.filter_by(station_id=station.id).with_for_update().first()
     if state is None or not state.enabled:
@@ -251,6 +251,10 @@ def select_next(slug, storage=None, now=None):
                 decision = _select_category(station, clock_slot.category, state, storage, now, context)
             elif clock_slot.slot_type == 'ROTATION' and clock_slot.rotation and clock_slot.rotation.station_id == station.id:
                 decision = _select_rotation(station, clock_slot.rotation, state, storage, now, context)
+            elif clock_slot.slot_type == 'CART':
+                decision = _select_imaging(station, clock_slot.imaging_asset, None, storage, now, context)
+            elif clock_slot.slot_type == 'IMAGING_GROUP':
+                decision = _select_imaging(station, None, clock_slot.imaging_group, storage, now, context)
             else:
                 decision = None
                 db.session.add(SelectionDecision(station_id=station.id, selected_at=now, status='failed',
@@ -271,6 +275,29 @@ def _recent(station, state, now):
     recent_since = now - timedelta(seconds=max(state.track_separation_seconds, state.artist_separation_seconds, 3600))
     return SelectionDecision.query.filter(SelectionDecision.station_id == station.id,
         SelectionDecision.selected_at >= recent_since).order_by(SelectionDecision.id.desc()).limit(500).all()
+
+
+def _select_imaging(station, asset, group, storage, now, context):
+    from app.services.imaging import choose_group, eligible_asset
+    if group is not None:
+        asset, relaxation, count = choose_group(group, station.id, storage, now)
+        reason = 'empty_or_disabled_imaging_group' if asset is None else None
+        method = 'imaging_group'
+    else:
+        available = eligible_asset(asset, station.id, storage)
+        reason = 'unavailable_cart' if not available else None
+        relaxation, count, method = 'none', int(available), 'cart'
+    base = dict(station_id=station.id, selected_at=now,
+                imaging_asset_id=asset.id if asset else None,
+                imaging_group_id=group.id if group else None,
+                selection_method=method, **context)
+    if reason:
+        db.session.add(SelectionDecision(status='failed', reason=reason, **base))
+        return None
+    decision = SelectionDecision(status='selected', candidate_count=count,
+                                 relaxation=relaxation, **base)
+    db.session.add(decision)
+    return decision
 
 
 def _select_category(station, category, state, storage, now, context, rotation=None, rotation_slot=None):

@@ -37,7 +37,14 @@ def audit(action, *, user_id=None, station_id=None, target_type='track', target_
     return event
 
 
-def stage_upload(station, user, file):
+def stage_upload(station, user, file, *, kind='ingest', imaging_type=None, imaging_name=None, cart_code=None):
+    if kind not in ('ingest', 'imaging'):
+        raise MediaValidationError('Unsupported upload kind')
+    if kind == 'imaging':
+        from app.services.imaging import clean_type, clean_code
+        imaging_type = clean_type(imaging_type)
+        cart_code = clean_code(cart_code)
+        imaging_name = normalize(imaging_name, 200) if imaging_name else None
     original = normalize(file.filename, 255)
     if original in ('', '.', '..') or any(ch in original for ch in ('/', '\\')):
         raise MediaValidationError('Choose a file with a valid filename')
@@ -60,9 +67,10 @@ def stage_upload(station, user, file):
         if total == 0:
             raise MediaValidationError('Choose a nonempty audio file')
         job = MediaIngestJob(id=job_id, station_id=station.id, admin_user_id=user.id,
-                             original_filename=original, status='pending')
+                             original_filename=original, status='pending', kind=kind,
+                             imaging_type=imaging_type, imaging_name=imaging_name, cart_code=cart_code)
         db.session.add(job)
-        audit('media_upload_started', user_id=user.id, station_id=station.id,
+        audit('imaging_upload_started' if kind == 'imaging' else 'media_upload_started', user_id=user.id, station_id=station.id,
               target_type='ingest_job', target_id=job_id, summary='Upload staged for validation')
         db.session.commit()
         return job

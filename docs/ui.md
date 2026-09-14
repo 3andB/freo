@@ -17,3 +17,5 @@ The password is prompted twice without echo and stored as a Werkzeug scrypt hash
 The player has no chat, requests, votes, artwork, audience numbers, track progress, EQ, visualizer, or guaranteed upcoming-track panel. Those were design concepts and are intentionally absent. The dashboard does not simulate listener statistics, uptime, sponsor delivery, or backups. Fallback audio is labelled as not directly observed. The public site does not claim a supported one-command install until the separate Ubuntu 24.04 clean-VM acceptance test has passed, and Freo has no selected software license yet.
 
 Programming editors use server-rendered forms and the shared CLI service functions; see [programming UI](programming-ui.md).
+
+The authenticated **Imaging** section adds one-file upload, cart codes, type and group management, verification, enable/disable, and safe decommission. Clock editors distinguish CART and IMAGING_GROUP slots from music. The dashboard, confirmed history, and public player label imaging without inventing an artist or album. See [imaging](imaging.md).

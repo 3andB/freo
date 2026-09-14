@@ -20,6 +20,7 @@
       <a href="{{ url_for('web.admin_station_list') }}" {% if page == 'stations' %}aria-current="page"{% endif %}>Stations</a>
       <span class="admin-nav-label">PROGRAMMING</span>
       <a href="{{ url_for('web.admin_section', section='media') }}{{ suffix }}" {% if page == 'media' %}aria-current="page"{% endif %}>Media</a>
+      {% if selected %}<a href="{{ url_for('admin_imaging.library', slug=selected.slug) }}" {% if page == 'imaging' %}aria-current="page"{% endif %}>Imaging</a>{% endif %}
       <a href="{{ url_for('admin_programming.list_page', slug=selected.slug, section='categories') if selected else url_for('web.admin_section', section='categories') }}" {% if page == 'categories' %}aria-current="page"{% endif %}>Categories</a>
       <a href="{{ url_for('admin_programming.list_page', slug=selected.slug, section='rotations') if selected else url_for('web.admin_section', section='rotations') }}" {% if page == 'rotations' %}aria-current="page"{% endif %}>Rotations</a>
       <a href="{{ url_for('admin_programming.list_page', slug=selected.slug, section='clocks') if selected else url_for('web.admin_section', section='clocks') }}" {% if page == 'clocks' %}aria-current="page"{% endif %}>Clocks</a>

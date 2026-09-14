@@ -80,7 +80,10 @@ def set_slot_enabled(slug, kind, resource_slug, position, enabled):
     if not enabled and len([s for s in item.slots if s.enabled]) <= 1 and slot.enabled:
         raise ValueError('Disable the parent before disabling its final slot')
     slot.enabled = bool(enabled)
-    if enabled and (not (slot.category if kind == 'rotation' or slot.slot_type == 'CATEGORY' else slot.rotation).enabled):
+    target = slot.category if kind == 'rotation' or slot.slot_type == 'CATEGORY' else (
+        slot.rotation if slot.slot_type == 'ROTATION' else
+        slot.imaging_asset if slot.slot_type == 'CART' else slot.imaging_group)
+    if enabled and (target is None or not target.enabled):
         db.session.rollback()
         raise ValueError('Slot target is disabled')
     db.session.commit()

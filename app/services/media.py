@@ -65,8 +65,10 @@ def _prepare_dirs(storage, slug):
     if station_dir.is_symlink():
         raise ValueError('Symlink station media directory is forbidden')
     originals = station_dir / 'originals'
+    imaging = station_dir / 'imaging'
     staging = station_dir / 'staging'
-    for path, group, mode in ((station_dir, gid, 0o2750), (originals, gid, 0o2750), (staging, gid, 0o2700)):
+    for path, group, mode in ((station_dir, gid, 0o2750), (originals, gid, 0o2750),
+                              (imaging, gid, 0o2750), (staging, gid, 0o2700)):
         path.mkdir(exist_ok=True)
         if path.is_symlink():
             raise ValueError('Symlink storage directory is forbidden')
