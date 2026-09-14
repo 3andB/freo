@@ -1,0 +1,14 @@
+# Fresh Ubuntu 24.04 acceptance test
+
+This test must run on a separate, disposable, fresh Ubuntu 24.04 VM before Freo claims third-party installation support. Record OS image, commit, package versions, results, and defects. Do not use the production Freo database.
+
+1. Create the VM, install Git if required, clone the public Freo repository, enter the checkout, and run `sudo ./scripts/install.sh`.
+2. Confirm the installer finishes; `/opt/freo/venv` exists; Python dependencies import; PostgreSQL is active; the `freo` role/database exist; and `flask db current` and `flask db heads` agree (both empty until the first revision).
+3. Confirm `freo.service` is active and its Gunicorn master/workers run as non-root `freo`. Confirm Nginx is the web entry point and Gunicorn binds only localhost. Confirm PostgreSQL does not listen publicly.
+4. Confirm `/health` and `/ready` succeed locally and through Nginx. Validate an IP-only HTTP install first.
+5. On a separate domain pointing to the VM, test domain HTTP installation, then optional Certbot HTTPS. Confirm TLS and HTTP redirect. Ensure the application is reachable on the domain.
+6. Reboot and confirm PostgreSQL, Nginx, and Freo return automatically. Rerun the installer and verify no database reset, secret rotation, or `.env` overwrite; confirm services and endpoints still work.
+7. Check secret files are not world-readable; no generated secrets, private keys, media, logs, or database dumps appear in tracked files. Check the `freo` account has no broad sudo rights.
+8. Practice rollback of application code and the backed-up systemd/Nginx configuration. Database rollback requires an operator backup; uninstall must never delete data automatically.
+
+The current production server is not a substitute for this clean-install test. Record a signed-off result in a future release checklist before marking installation supported.
