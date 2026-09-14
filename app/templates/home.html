@@ -1,0 +1,25 @@
+{% extends 'base.html' %}
+{% block title %}Freo — open internet radio automation{% endblock %}
+{% block content %}
+<section class="home-hero"><div class="shell hero-grid">
+  <div><p class="eyebrow">EARLY-STAGE · SELF-HOSTED RADIO SOFTWARE</p><h1>Put your station on the air.</h1>
+    <p class="hero-lede">Choose what plays. Freo manages the radio plumbing with Liquidsoap, Icecast, PostgreSQL and systemd.</p>
+    <div class="actions"><a class="button" href="{{ url_for('web.stations') }}">Listen to Freo</a><a class="button secondary" href="https://github.com/lee-3andB/freo">Read the source</a></div>
+    <p class="hero-note">A working automation foundation under active development.</p></div>
+  <div class="hero-window" aria-label="Freo programming model"><p class="window-label">FREO · PROGRAMMING FLOW</p>
+    <ol><li><span>01</span><b>Station and library</b><small>Approved, station-scoped audio</small></li>
+      <li><span>02</span><b>Categories and rotations</b><small>Explainable track selection</small></li>
+      <li><span>03</span><b>Clocks and weekly schedule</b><small>Station-local programming</small></li>
+      <li><span>04</span><b>Liquidsoap → Icecast</b><small>Isolated playout and public stream</small></li></ol>
+  </div>
+</div></section>
+<section class="section shell" id="capabilities"><div class="section-head"><p class="eyebrow">BUILT TODAY</p><h2>Programming with a reason behind every track.</h2><p>Freo selects approved music; Liquidsoap plays it. Confirmed starts are recorded with their category, rotation and clock context.</p></div>
+  <div class="feature-grid"><article class="feature"><h3>Independent stations</h3><p>Each managed station has its own Liquidsoap process, stream and media library.</p></article><article class="feature"><h3>Safe media ingestion</h3><p>CLI ingestion probes audio, stores it under controlled paths and rejects unsafe files.</p></article><article class="feature"><h3>Music automation</h3><p>Ordered category rotations apply track and artist separation with recorded rule relaxation.</p></article><article class="feature"><h3>Time-aware programming</h3><p>Reusable music clocks and weekly assignments resolve in each station’s IANA timezone.</p></article><article class="feature"><h3>Continuity</h3><p>A generated fallback keeps an isolated station on air when approved audio is unavailable.</p></article><article class="feature"><h3>Observed history</h3><p>Playback starts are confirmed by Liquidsoap, rather than inferred from queue selection.</p></article></div>
+</section>
+<section class="section soft"><div class="shell"><div class="section-head"><p class="eyebrow">LISTEN</p><h2>Hear the engine for yourself.</h2><p>The diagnostic stream tests the radio path. Managed stations demonstrate database-backed programming.</p></div><div class="station-grid">
+  <article class="station-card"><p class="eyebrow">ENGINE DIAGNOSTIC</p><h3>Freo Test</h3><p>Generated audio verifies Liquidsoap → Icecast → Nginx.</p><a class="text-link" href="/stream/freo-test">Open diagnostic stream ↗</a></article>
+  {% for station in stations %}<article class="station-card"><p class="eyebrow">MANAGED STATION</p><h3>{{ station.name }}</h3><p>{{ station.description or 'Station-scoped programming and playout.' }}</p><a class="text-link" href="{{ url_for('web.player', slug=station.slug) }}">Open player →</a></article>{% endfor %}
+  </div></div></section>
+<section class="section shell" id="install"><div class="section-head"><p class="eyebrow">INSTALLATION STATUS</p><h2>Inspect the installer. Test before relying on it.</h2><p>Freo targets Ubuntu 24.04. The provisioning path exists, but it has not yet passed the separate fresh-VM acceptance test. It should not be treated as a verified one-command public install.</p></div><div class="callout"><code>git clone https://github.com/lee-3andB/freo.git<br>cd freo<br>sudo ./scripts/install.sh</code><p>Review the script and installation documentation first. Administration currently uses the server CLI; browser controls for station changes are not available.</p><a class="text-link" href="https://github.com/lee-3andB/freo/blob/main/docs/installation.md">Installation guide ↗</a></div></section>
+<section class="section soft"><div class="shell"><div class="section-head"><p class="eyebrow">WHAT'S NEXT</p><h2>More of the station, one honest step at a time.</h2><p>Carts, live assist, audience features and authenticated web administration remain future work. Freo does not yet offer hard-timed events, traffic scheduling or production-ready station operations.</p></div><p class="muted">No license has been selected yet. The owner must choose one before broadly promoting reuse as open-source software.</p></div></section>
+{% endblock %}

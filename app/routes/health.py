@@ -7,11 +7,6 @@ from app.extensions import db
 health_blueprint = Blueprint("health", __name__)
 
 
-@health_blueprint.get("/")
-def home():
-    return "FreoWorld is alive."
-
-
 @health_blueprint.get("/health")
 def health():
     return jsonify(status="ok")

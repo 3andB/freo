@@ -16,6 +16,8 @@ from .routes.automation import automation_blueprint
 from .automation_cli import automation_cli
 from .schedule_cli import schedule_cli
 from .routes.schedule import schedule_blueprint
+from .routes.web import web_blueprint
+from .admin_cli import admin_cli
 
 
 def create_app(config_name=None):
@@ -47,4 +49,8 @@ def create_app(config_name=None):
     app.register_blueprint(automation_cli, cli_group=None)
     app.register_blueprint(schedule_cli, cli_group=None)
     app.register_blueprint(schedule_blueprint)
+    app.register_blueprint(web_blueprint)
+    app.register_blueprint(admin_cli, cli_group=None)
+    app.config.update(SESSION_COOKIE_HTTPONLY=True, SESSION_COOKIE_SAMESITE='Lax',
+                      SESSION_COOKIE_SECURE=name == 'production', PERMANENT_SESSION_LIFETIME=3600)
     return app

@@ -90,6 +90,9 @@ def history(slug):
         return jsonify(status='not_found'), 404
     rows = SelectionDecision.query.filter_by(station_id=station.id, status='started').order_by(SelectionDecision.started_at.desc()).limit(100).all()
     return jsonify(history=[{'started_at': iso(row.started_at), 'track': row.track.uuid if row.track else None,
+                             'title': row.track.title if row.track else None,
+                             'artist': row.track.artist if row.track else None,
+                             'album': row.track.album if row.track else None,
                              'category': row.category.slug if row.category else None,
                              'rotation': row.rotation_id, 'slot': row.slot.position if row.slot else None,
                              'clock': row.clock.slug if row.clock else None,

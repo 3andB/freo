@@ -38,3 +38,7 @@ Provisioning creates the non-login `freo-automation` account, grants it only the
 # Phase 6 database and programming
 
 Provisioning applies additive clock/schedule migrations with `flask db upgrade`. Python 3.12's `zoneinfo` and Ubuntu's `tzdata` package supply IANA zones; no new Python package or system service is required. A fresh installation has no demo clocks or schedule. Set each station timezone, create clocks, and assign weekly times through the root-run CLI after creating categories and rotations. Existing stations migrate to explicit `UTC` until an operator changes them. Public clean-VM support remains unverified.
+
+## Read-only web overview
+
+The UI migration adds an `admin_users` table; the installer applies it with the other additive migrations. No default account or password is installed. After installation, create or rotate an account privately with `sudo /opt/freo/venv/bin/flask --app wsgi:app admin set-password --email operator@example.com` from `/opt/freo`. The command prompts twice without echoing the password. Do not put passwords in shell arguments, `.env.example`, or Git. The `/dashboard/<station-slug>` page requires this login and is read-only. Browser-based station control, programming edits, and uploads are not available. See [UI guide](ui.md).

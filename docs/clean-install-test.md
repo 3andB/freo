@@ -13,6 +13,8 @@ This test must run on a separate, disposable, fresh Ubuntu 24.04 VM before Freo 
 
 The current production server is not a substitute for this clean-install test. Record a signed-off result in a future release checklist before marking installation supported.
 
+For the read-only web UI, verify `/`, `/stations`, and `/player/<station-slug>` render without demo data or invented listener metrics. Confirm the player begins audio only after a user gesture, handles an unavailable stream, and shows confirmed history with an accurate observation label. Confirm `/dashboard/<station-slug>` redirects to login before an account exists. Create an administrator with `flask --app wsgi:app admin set-password --email operator@example.com` using the hidden prompt; confirm successful sign-in, failed-password handling, CSRF rejection, logout, and that the dashboard remains read-only. Rerun the installer and confirm it neither creates nor resets an admin account. Verify no account password or hash is committed to Git.
+
 ## Phase 2 additions
 
 On the fresh VM, also confirm `liquidsoap` and `icecast2` install and record their versions; `freo-playout` and `icecast2` exist as non-login, non-root identities; `/etc/freo/secrets/engine.json` is restricted; rendered configs and control socket are private; Icecast listens only on localhost; and Liquidsoap connects to the test mount. Verify `/health/icecast`, `/health/playout`, and `/health/stream`. Read bounded bytes from the public test stream and confirm `audio/mpeg` and nonzero payload, rather than relying on HTTP status alone. After reboot and installer rerun, confirm the stream recovers, credentials did not rotate, and no runtime config or secret entered Git.
