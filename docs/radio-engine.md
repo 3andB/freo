@@ -25,3 +25,6 @@ Managed stations load only the root-rendered approved playlist for their own slu
 ## Phase 5 request source
 
 Managed stations now use Liquidsoap `request.queue` with a two-request lookahead supplied by Freo's non-root automation worker. The `freo-test` diagnostic script remains independent. A private per-station `on_track` event file confirms actual starts. The managed control socket is mode 0660 for the restricted worker/playout group; the web account is not a member. See [automation.md](automation.md).
+# Time-aware programming
+
+The Phase 6 scheduler chooses a station clock from recurring local weekly assignments. Its slots ask Freo's existing selector for approved tracks, and the worker pushes requests through the private station socket. Liquidsoap remains the audio engine and does not interpret schedules or restart at hour boundaries. See [scheduling](scheduling.md).

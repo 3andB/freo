@@ -23,3 +23,6 @@ Each track belongs to exactly one station. `/var/lib/freo/media/<slug>/originals
 ## Automation state
 
 A station's desired playout state (`running`/`stopped`) is distinct from automation enabled/disabled. One manually selected active rotation drives the station when automation is enabled. Each station retains its own durable cursor and decision history; service restarts do not make another station share its runtime. See [rotations.md](rotations.md).
+# Station timezone
+
+Each station has a canonical IANA timezone used only to evaluate and present weekly programming. Absolute events remain UTC. Existing stations receive `UTC` during the additive Phase 6 migration; operators should set their intended zone explicitly with `flask schedule timezone --station <slug> <IANA-zone>`. See [scheduling](scheduling.md).

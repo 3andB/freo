@@ -14,6 +14,8 @@ from .media_cli import media_cli
 from .routes.media import media_blueprint
 from .routes.automation import automation_blueprint
 from .automation_cli import automation_cli
+from .schedule_cli import schedule_cli
+from .routes.schedule import schedule_blueprint
 
 
 def create_app(config_name=None):
@@ -43,4 +45,6 @@ def create_app(config_name=None):
     app.register_blueprint(media_blueprint)
     app.register_blueprint(automation_blueprint)
     app.register_blueprint(automation_cli, cli_group=None)
+    app.register_blueprint(schedule_cli, cli_group=None)
+    app.register_blueprint(schedule_blueprint)
     return app

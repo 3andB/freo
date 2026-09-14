@@ -4,12 +4,12 @@ set -euo pipefail
 source_dir=${1:?source directory required}
 install_dir=${FREO_INSTALL_DIR:-/opt/freo}
 if [[ $install_dir != /opt/freo ]]; then
-  echo 'Phase 1 supports FREO_INSTALL_DIR=/opt/freo only.' >&2
+  echo 'Freo currently supports FREO_INSTALL_DIR=/opt/freo only.' >&2
   exit 1
 fi
 . /etc/os-release
 if [[ ${ID:-} != ubuntu || ${VERSION_ID:-} != 24.04 ]]; then
-  echo 'Freo Phase 1 installer supports Ubuntu 24.04 only.' >&2
+  echo 'Freo installer supports Ubuntu 24.04 only.' >&2
   exit 1
 fi
 if [[ ! -d "$source_dir/app" ]]; then
@@ -19,7 +19,7 @@ fi
 export DEBIAN_FRONTEND=noninteractive
 printf 'Installing required Freo system packages without upgrading existing packages...\n'
 apt-get update
-apt-get install --no-upgrade -y python3 python3-venv python3-pip git nginx postgresql postgresql-contrib openssl certbot python3-certbot-nginx liquidsoap icecast2 ffmpeg
+apt-get install --no-upgrade -y python3 python3-venv python3-pip tzdata git nginx postgresql postgresql-contrib openssl certbot python3-certbot-nginx liquidsoap icecast2 ffmpeg
 dpkg-query -W -f='Installed ${Package} ${Version}\n' liquidsoap icecast2 ffmpeg
 systemctl enable --now postgresql nginx
 if ! id freo >/dev/null 2>&1; then
@@ -95,6 +95,7 @@ if [[ $source_dir != "$install_dir" && -d "$source_dir/migrations" && -f "$sourc
   cp -R "$source_dir/migrations" "$install_dir/"
 fi
 if [[ -d "$install_dir/migrations" ]]; then
+  # Phase 6 clock/schedule upgrades are additive; demo programming is never seeded.
   chown -R root:root "$install_dir/migrations"
 fi
 install -d -o root -g root -m 0755 "$install_dir/deploy/icecast" "$install_dir/deploy/liquidsoap" "$install_dir/deploy/nginx" "$install_dir/deploy/systemd" "$install_dir/scripts"

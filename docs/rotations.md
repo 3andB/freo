@@ -19,3 +19,6 @@ venv/bin/flask --app wsgi:app automation enable --station freo-demo --track-sepa
 ```
 
 Preview simulates selections without advancing the cursor or writing history. `rotation show`, `rotation list`, `rotation enable-slot`, `rotation disable-slot`, `category list`, `category enable`, `category disable`, `category unassign`, `automation status`, and `automation explain` support routine administration. No category or rotation mutation is available through the public API. Public read-only category, rotation, automation status, and started-history endpoints live under `/api/stations/<slug>/`.
+# Clocks above rotations
+
+A Phase 6 clock may reference a rotation in an ordered programming slot. That slot advances the rotation's category cursor and uses the existing separation rules. The clock cursor is distinct, so clocks can also alternate direct category requests with rotation requests. See [clocks](clocks.md).

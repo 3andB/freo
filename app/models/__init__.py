@@ -12,6 +12,7 @@ class Station(db.Model):
     description = db.Column(db.String(500), nullable=False, default='')
     enabled = db.Column(db.Boolean, nullable=False, default=True)
     desired_state = db.Column(db.String(12), nullable=False, default='stopped')
+    timezone = db.Column(db.String(64), nullable=False, default='UTC')
     created_at = db.Column(db.DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
     updated_at = db.Column(db.DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
     stream = db.relationship('StreamMount', back_populates='station', uselist=False, cascade='all, delete-orphan')
@@ -129,9 +130,83 @@ class AutomationState(db.Model):
     artist_separation_seconds = db.Column(db.Integer, nullable=False, default=0)
     worker_heartbeat_at = db.Column(db.DateTime(timezone=True))
     observed_queue_depth = db.Column(db.Integer)
+    default_clock_id = db.Column(db.Integer, db.ForeignKey('clocks.id', ondelete='SET NULL'))
     updated_at = db.Column(db.DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
     station = db.relationship('Station', backref=db.backref('automation', uselist=False))
     active_rotation = db.relationship('Rotation')
+    default_clock = db.relationship('Clock', foreign_keys=[default_clock_id])
+
+
+class Clock(db.Model):
+    __tablename__ = 'clocks'
+    __table_args__ = (db.UniqueConstraint('station_id', 'slug', name='uq_clock_station_slug'),)
+    id = db.Column(db.Integer, primary_key=True)
+    station_id = db.Column(db.Integer, db.ForeignKey('stations.id', ondelete='CASCADE'), nullable=False, index=True)
+    name = db.Column(db.String(120), nullable=False)
+    slug = db.Column(db.String(64), nullable=False)
+    description = db.Column(db.String(500), nullable=False, default='')
+    enabled = db.Column(db.Boolean, nullable=False, default=True)
+    created_at = db.Column(db.DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+    updated_at = db.Column(db.DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    station = db.relationship('Station', backref='clocks')
+    slots = db.relationship('ClockSlot', back_populates='clock', order_by='ClockSlot.position', cascade='all, delete-orphan')
+
+
+class ClockSlot(db.Model):
+    __tablename__ = 'clock_slots'
+    __table_args__ = (
+        db.UniqueConstraint('clock_id', 'position', name='uq_clock_slot_position'),
+        db.CheckConstraint('position > 0', name='ck_clock_slot_position'),
+        db.CheckConstraint("(slot_type = 'ROTATION' AND rotation_id IS NOT NULL AND category_id IS NULL) OR "
+                           "(slot_type = 'CATEGORY' AND category_id IS NOT NULL AND rotation_id IS NULL)", name='ck_clock_slot_target'),
+    )
+    id = db.Column(db.Integer, primary_key=True)
+    clock_id = db.Column(db.Integer, db.ForeignKey('clocks.id', ondelete='CASCADE'), nullable=False, index=True)
+    position = db.Column(db.Integer, nullable=False)
+    slot_type = db.Column(db.String(12), nullable=False)
+    rotation_id = db.Column(db.Integer, db.ForeignKey('rotations.id', ondelete='RESTRICT'))
+    category_id = db.Column(db.Integer, db.ForeignKey('media_categories.id', ondelete='RESTRICT'))
+    enabled = db.Column(db.Boolean, nullable=False, default=True)
+    label = db.Column(db.String(120))
+    clock = db.relationship('Clock', back_populates='slots')
+    rotation = db.relationship('Rotation')
+    category = db.relationship('MediaCategory')
+
+
+class ScheduleAssignment(db.Model):
+    __tablename__ = 'schedule_assignments'
+    __table_args__ = (
+        db.UniqueConstraint('station_id', 'weekday', 'start_time', name='uq_schedule_station_day_time'),
+        db.CheckConstraint('weekday BETWEEN 0 AND 6', name='ck_schedule_weekday'),
+    )
+    id = db.Column(db.Integer, primary_key=True)
+    station_id = db.Column(db.Integer, db.ForeignKey('stations.id', ondelete='CASCADE'), nullable=False, index=True)
+    weekday = db.Column(db.Integer, nullable=False)
+    start_time = db.Column(db.Time, nullable=False)
+    clock_id = db.Column(db.Integer, db.ForeignKey('clocks.id', ondelete='RESTRICT'), nullable=False)
+    enabled = db.Column(db.Boolean, nullable=False, default=True)
+    created_at = db.Column(db.DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+    updated_at = db.Column(db.DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    station = db.relationship('Station', backref='schedule_assignments')
+    clock = db.relationship('Clock')
+
+
+class ClockState(db.Model):
+    __tablename__ = 'clock_states'
+    station_id = db.Column(db.Integer, db.ForeignKey('stations.id', ondelete='CASCADE'), primary_key=True)
+    clock_id = db.Column(db.Integer, db.ForeignKey('clocks.id', ondelete='SET NULL'))
+    occurrence_key = db.Column(db.String(120))
+    next_slot_index = db.Column(db.Integer, nullable=False, default=0)
+    updated_at = db.Column(db.DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+
+
+class RotationCursor(db.Model):
+    __tablename__ = 'rotation_cursors'
+    __table_args__ = (db.UniqueConstraint('station_id', 'rotation_id', name='uq_rotation_cursor_station_rotation'),)
+    id = db.Column(db.Integer, primary_key=True)
+    station_id = db.Column(db.Integer, db.ForeignKey('stations.id', ondelete='CASCADE'), nullable=False)
+    rotation_id = db.Column(db.Integer, db.ForeignKey('rotations.id', ondelete='CASCADE'), nullable=False)
+    next_slot_index = db.Column(db.Integer, nullable=False, default=0)
 
 
 class SelectionDecision(db.Model):
@@ -151,10 +226,17 @@ class SelectionDecision(db.Model):
     reason = db.Column(db.String(120), nullable=False, default='')
     liquidsoap_request_id = db.Column(db.Integer)
     socket_identity = db.Column(db.String(64))
+    clock_id = db.Column(db.Integer, db.ForeignKey('clocks.id', ondelete='SET NULL'))
+    clock_slot_id = db.Column(db.Integer, db.ForeignKey('clock_slots.id', ondelete='SET NULL'))
+    schedule_assignment_id = db.Column(db.Integer, db.ForeignKey('schedule_assignments.id', ondelete='SET NULL'))
+    schedule_occurrence = db.Column(db.String(120))
     station = db.relationship('Station')
     track = db.relationship('Track')
     category = db.relationship('MediaCategory')
     slot = db.relationship('RotationSlot')
+    clock = db.relationship('Clock')
+    clock_slot = db.relationship('ClockSlot')
+    schedule_assignment = db.relationship('ScheduleAssignment')
 
 
 class AutomationHeartbeat(db.Model):

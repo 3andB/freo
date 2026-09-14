@@ -11,6 +11,7 @@ from app.extensions import db
 from app.models import AutomationHeartbeat, AutomationState, SelectionDecision, Station
 from app.services.automation import playback_started, select_next
 from app.services.playout_queue import push_decision, queue_depth, queued_ids, active_ids, socket_identity
+from app.services.schedule import resolve, usable_clock
 
 logger = logging.getLogger('freo.automation')
 EVENT_ROOT = Path('/run/freo/playout')
@@ -125,13 +126,22 @@ def tick(reader, target_depth=2):
     states = AutomationState.query.filter_by(enabled=True).all()
     for state in states:
         slug = state.station.slug
-        if (not state.station.enabled or state.station.desired_state != 'running' or not state.active_rotation
-                or not state.active_rotation.enabled or not any(slot.enabled for slot in state.active_rotation.slots)):
+        if not state.station.enabled or state.station.desired_state != 'running':
             continue
         if time.monotonic() < reader.unavailable_until.get(slug, 0):
             continue
         try:
-            refill_station(slug, reader, target_depth)
+            programming = resolve(state.station)
+            has_clock = bool(programming.clock or usable_clock(state.default_clock, state.station_id))
+            has_rotation = bool(state.active_rotation and state.active_rotation.enabled and any(slot.enabled for slot in state.active_rotation.slots))
+            if not has_clock and not has_rotation:
+                continue
+            depth_limit = target_depth
+            if programming.next_transition:
+                remaining = (programming.next_transition - datetime.now(timezone.utc)).total_seconds()
+                if 0 < remaining <= 20:
+                    depth_limit = 0
+            refill_station(slug, reader, depth_limit)
             state.worker_heartbeat_at = datetime.now(timezone.utc)
             state.observed_queue_depth = queue_depth(slug)
             db.session.commit()

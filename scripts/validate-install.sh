@@ -3,6 +3,7 @@ set -euo pipefail
 
 install_dir=${FREO_INSTALL_DIR:-/opt/freo}
 test -x "$install_dir/venv/bin/python"
+"$install_dir/venv/bin/python" -c 'from zoneinfo import ZoneInfo; ZoneInfo("UTC"); ZoneInfo("America/Denver"); import app.services.schedule, app.services.clocks' >/dev/null
 test -x /usr/bin/ffprobe
 test -d /var/lib/freo/media
 test -d /var/lib/freo/playlists
@@ -68,4 +69,4 @@ if [[ $(systemctl show freo-automation.service -p User --value) != freo-automati
   echo 'Automation worker is not configured for freo-automation.' >&2
   exit 1
 fi
-printf 'Freo validation passed: web, database, radio services, private listeners, health, and MP3 bytes.\n'
+printf 'Freo validation passed: web, database, scheduling imports, radio services, private listeners, health, and MP3 bytes.\n'

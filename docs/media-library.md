@@ -15,3 +15,6 @@ For a complete backup, retain PostgreSQL, `/etc/freo`, and `/var/lib/freo/media`
 ## Phase 5 selection
 
 Tracks may be assigned to multiple station-local categories without copying files. The worker only requests accepted, enabled, regular files from the station that owns them. A file missing at selection is skipped; a request that vanishes before a confirmed start is recorded as failed. The root-run media CLI remains the mutation boundary. See [rotations.md](rotations.md) and [automation.md](automation.md).
+# Scheduled use of approved media
+
+Phase 6 clocks and weekly schedules only choose programming rules. All actual track choices continue through the same station-scoped approved-media selector and storage-path validation. Scheduling never grants raw filesystem playback.

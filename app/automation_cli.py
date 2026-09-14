@@ -276,7 +276,12 @@ def automation_queue(station):
 def automation_explain(station, last):
     item = require_station(station)
     for decision in SelectionDecision.query.filter_by(station_id=item.id).order_by(SelectionDecision.id.desc()).limit(last):
-        click.echo(f'{decision.id}\t{decision.status}\t{decision.category.slug if decision.category else "-"}\t{decision.track.uuid if decision.track else "-"}\t{decision.relaxation}\t{decision.reason}')
+        click.echo(f'{decision.id}\t{decision.status}\tclock={decision.clock.slug if decision.clock else "-"}'
+                   f'\tclock_slot={decision.clock_slot.position if decision.clock_slot else "-"}'
+                   f'\tassignment={decision.schedule_assignment_id or "-"}'
+                   f'\tcategory={decision.category.slug if decision.category else "-"}'
+                   f'\ttrack={decision.track.uuid if decision.track else "-"}'
+                   f'\trelaxation={decision.relaxation}\t{decision.reason}')
 
 
 @automation_cli.cli.group('history')

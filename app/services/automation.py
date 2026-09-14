@@ -2,7 +2,7 @@
 from datetime import datetime, timedelta, timezone
 
 from app.extensions import db
-from app.models import (AutomationState, MediaCategory, Rotation, RotationSlot,
+from app.models import (AutomationState, ClockState, MediaCategory, Rotation, RotationCursor, RotationSlot,
                         SelectionDecision, Track)
 from app.services.media_storage import LocalMediaStorage
 from app.services.stations import get_station, validate_slug
@@ -109,8 +109,13 @@ def activate(slug, rotation_slug):
 def set_automation(slug, enabled, track_seconds=None, artist_seconds=None):
     station = require_station(slug)
     state = state_for(station)
-    if enabled and (not state.active_rotation or not state.active_rotation.enabled or not any(slot.enabled and slot.category.enabled for slot in state.active_rotation.slots)):
-        raise ValueError('Activate a valid rotation first')
+    if enabled:
+        from app.services.schedule import resolve, usable_clock
+        has_rotation = bool(state.active_rotation and state.active_rotation.enabled
+                            and any(slot.enabled and slot.category.enabled for slot in state.active_rotation.slots))
+        has_clock = bool(usable_clock(state.default_clock, station.id) or resolve(station).clock)
+        if not has_rotation and not has_clock:
+            raise ValueError('Activate a valid rotation or configure a clock first')
     for value in (track_seconds, artist_seconds):
         if value is not None and (value < 0 or value > 86400):
             raise ValueError('Separation must be between 0 and 86400 seconds')
@@ -162,40 +167,103 @@ def select_next(slug, storage=None, now=None):
     """Lock one station cursor, select at most one track, and commit its audit row."""
     station = require_station(slug)
     state = AutomationState.query.filter_by(station_id=station.id).with_for_update().first()
-    if state is None or not state.enabled or not state.active_rotation or not state.active_rotation.enabled:
+    if state is None or not state.enabled:
         raise ValueError('Automation is not enabled')
-    slots = [slot for slot in state.active_rotation.slots if slot.enabled]
-    if not slots:
-        raise ValueError('Active rotation has no enabled slots')
     now = now or datetime.now(timezone.utc)
     storage = storage or LocalMediaStorage()
+    from app.services.schedule import resolve, usable_clock
+    programming = resolve(station, now)
+    clock = programming.clock or (state.default_clock if usable_clock(state.default_clock, station.id) else None)
+    if clock:
+        clock_state = ClockState.query.filter_by(station_id=station.id).with_for_update().first()
+        if clock_state is None:
+            clock_state = ClockState(station_id=station.id)
+            db.session.add(clock_state)
+            db.session.flush()
+        occurrence = programming.occurrence_key if programming.clock else f'default:{clock.id}'
+        if clock_state.clock_id != clock.id or clock_state.occurrence_key != occurrence:
+            clock_state.clock_id = clock.id
+            clock_state.occurrence_key = occurrence
+            clock_state.next_slot_index = 0
+        clock_slots = [slot for slot in clock.slots if slot.enabled]
+        if not clock_slots:
+            raise ValueError('Active clock has no enabled slots')
+        start_clock_index = clock_state.next_slot_index % len(clock_slots)
+        for offset in range(len(clock_slots)):
+            index = (start_clock_index + offset) % len(clock_slots)
+            clock_slot = clock_slots[index]
+            clock_state.next_slot_index = (index + 1) % len(clock_slots)
+            context = {'clock_id': clock.id, 'clock_slot_id': clock_slot.id,
+                       'schedule_assignment_id': programming.assignment.id if programming.clock else None,
+                       'schedule_occurrence': occurrence}
+            if clock_slot.slot_type == 'CATEGORY' and clock_slot.category and clock_slot.category.station_id == station.id:
+                decision = _select_category(station, clock_slot.category, state, storage, now, context)
+            elif clock_slot.slot_type == 'ROTATION' and clock_slot.rotation and clock_slot.rotation.station_id == station.id:
+                decision = _select_rotation(station, clock_slot.rotation, state, storage, now, context)
+            else:
+                decision = None
+                db.session.add(SelectionDecision(station_id=station.id, selected_at=now, status='failed',
+                                                 reason='invalid_clock_slot', **context))
+            if decision:
+                db.session.commit()
+                return decision
+        db.session.commit()
+        return None
+    if not state.active_rotation or not state.active_rotation.enabled:
+        raise ValueError('No active clock or rotation')
+    decision = _select_rotation(station, state.active_rotation, state, storage, now, {})
+    db.session.commit()
+    return decision
+
+
+def _recent(station, state, now):
     recent_since = now - timedelta(seconds=max(state.track_separation_seconds, state.artist_separation_seconds, 3600))
-    history = SelectionDecision.query.filter(SelectionDecision.station_id == station.id,
+    return SelectionDecision.query.filter(SelectionDecision.station_id == station.id,
         SelectionDecision.selected_at >= recent_since).order_by(SelectionDecision.id.desc()).limit(500).all()
-    start_index = state.next_slot_index % len(slots)
+
+
+def _select_category(station, category, state, storage, now, context, rotation=None, rotation_slot=None):
+    if not category.enabled or category.station_id != station.id:
+        reason, tracks = 'disabled_category', []
+    else:
+        tracks = [track for track in category.tracks if track.station_id == station.id and track.enabled and track.ingest_status == 'accepted']
+        tracks = [track for track in tracks if _exists(storage, station.slug, track.storage_key)]
+        reason = 'empty_category' if not tracks else ''
+    base = dict(station_id=station.id, rotation_id=rotation.id if rotation else None,
+                slot_id=rotation_slot.id if rotation_slot else None, category_id=category.id,
+                selected_at=now, **context)
+    if not tracks:
+        db.session.add(SelectionDecision(status='failed', reason=reason, **base))
+        return None
+    track, relaxation, count = _choose(tracks, _recent(station, state, now), now,
+                                       state.track_separation_seconds, state.artist_separation_seconds)
+    decision = SelectionDecision(track_id=track.id, status='selected', candidate_count=count,
+                                 relaxation=relaxation, **base)
+    db.session.add(decision)
+    return decision
+
+
+def _select_rotation(station, rotation, state, storage, now, context):
+    if not rotation.enabled or rotation.station_id != station.id:
+        return None
+    slots = [slot for slot in rotation.slots if slot.enabled]
+    if not slots:
+        return None
+    cursor = state
+    if state.active_rotation_id != rotation.id:
+        cursor = RotationCursor.query.filter_by(station_id=station.id, rotation_id=rotation.id).with_for_update().first()
+        if cursor is None:
+            cursor = RotationCursor(station_id=station.id, rotation_id=rotation.id, next_slot_index=0)
+            db.session.add(cursor)
+            db.session.flush()
+    start_index = cursor.next_slot_index % len(slots)
     for offset in range(len(slots)):
         slot_index = (start_index + offset) % len(slots)
         slot = slots[slot_index]
-        state.next_slot_index = (slot_index + 1) % len(slots)
-        if slot.category.station_id != station.id or not slot.category.enabled:
-            reason = 'disabled_category'
-            tracks = []
-        else:
-            tracks = [track for track in slot.category.tracks if track.station_id == station.id and track.enabled and track.ingest_status == 'accepted']
-            tracks = [track for track in tracks if _exists(storage, slug, track.storage_key)]
-            reason = 'empty_category' if not tracks else ''
-        if not tracks:
-            db.session.add(SelectionDecision(station_id=station.id, rotation_id=state.active_rotation_id,
-                slot_id=slot.id, category_id=slot.category_id, status='failed', reason=reason, selected_at=now))
-            continue
-        track, relaxation, count = _choose(tracks, history, now, state.track_separation_seconds, state.artist_separation_seconds)
-        decision = SelectionDecision(station_id=station.id, rotation_id=state.active_rotation_id,
-            slot_id=slot.id, category_id=slot.category_id, track_id=track.id,
-            status='selected', candidate_count=count, relaxation=relaxation, selected_at=now)
-        db.session.add(decision)
-        db.session.commit()
-        return decision
-    db.session.commit()
+        cursor.next_slot_index = (slot_index + 1) % len(slots)
+        decision = _select_category(station, slot.category, state, storage, now, context, rotation, slot)
+        if decision:
+            return decision
     return None
 
 

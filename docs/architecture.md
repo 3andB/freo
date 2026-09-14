@@ -46,3 +46,6 @@ Tracks belong to one station. The root-run CLI copies a regular, non-symlink sou
 ## Phase 5 automation
 
 The `freo-automation` worker is a separate non-root process and the only Freo component with group access to managed Liquidsoap control sockets. The web account has no socket access. PostgreSQL stores category membership, explicit rotation slots, active rotation, cursor, decisions, and confirmed starts. The worker selects an approved station track and sends its controlled request to that station's Liquidsoap queue. Liquidsoap handles decoding and fallback; it does not choose tracks. See [rotations.md](rotations.md) and [automation.md](automation.md). Phase 6 may choose the active rotation from clocks and schedules without replacing the selector.
+# Phase 6 programming layer
+
+Station-local weekly assignments resolve a reusable clock from a UTC instant. The clock's ordered `CATEGORY` or `ROTATION` slots feed the established Phase 5 selector, which still enforces track/artist separation and queues approved media. PostgreSQL holds the assignment, clock occurrence, separate clock cursor, selection decision, and actual-start attribution. The non-root automation worker owns runtime selection; Flask exposes read-only programming metadata. See [clocks](clocks.md) and [scheduling](scheduling.md).
