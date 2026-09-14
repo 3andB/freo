@@ -78,11 +78,61 @@ def add_slot(slug, rotation_slug, category_slug):
     category = category_for(slug, category_slug)
     if category.station_id != rotation.station_id:
         raise ValueError('Cross-station slot')
+    if not category.enabled:
+        raise ValueError('Category is disabled')
     position = max((slot.position for slot in rotation.slots), default=0) + 1
     slot = RotationSlot(rotation_id=rotation.id, category_id=category.id, position=position)
     db.session.add(slot)
     db.session.commit()
     return slot
+
+
+def move_rotation_slot(slug, rotation_slug, from_position, to_position):
+    rotation = rotation_for(slug, rotation_slug)
+    slots = list(rotation.slots)
+    if min(from_position, to_position) < 1 or max(from_position, to_position) > len(slots):
+        raise ValueError('Position is outside this rotation')
+    moving = slots.pop(from_position - 1)
+    slots.insert(to_position - 1, moving)
+    temporary_base = max(slot.position for slot in slots) + len(slots) + 1
+    for index, slot in enumerate(slots):
+        slot.position = temporary_base + index
+    db.session.flush()
+    for index, slot in enumerate(slots):
+        slot.position = index + 1
+    db.session.commit()
+    db.session.expire(rotation, ['slots'])
+    return rotation
+
+
+def remove_rotation_slot(slug, rotation_slug, position):
+    rotation = rotation_for(slug, rotation_slug)
+    slots = list(rotation.slots)
+    if not 1 <= position <= len(slots):
+        raise ValueError('Slot not found')
+    if len([slot for slot in slots if slot.enabled]) <= 1 and slots[position - 1].enabled:
+        raise ValueError('Disable the rotation before removing its final enabled slot')
+    db.session.delete(slots.pop(position - 1))
+    db.session.flush()
+    base = len(slots) * 2 + 2
+    for index, slot in enumerate(slots):
+        slot.position = base + index
+    db.session.flush()
+    for index, slot in enumerate(slots):
+        slot.position = index + 1
+    db.session.commit()
+    db.session.expire(rotation, ['slots'])
+
+
+def validate_rotation(rotation):
+    if not rotation.enabled:
+        raise ValueError('Rotation is disabled')
+    slots = [slot for slot in rotation.slots if slot.enabled]
+    if not slots:
+        raise ValueError('Rotation has no enabled slots')
+    if any(slot.category is None or slot.category.station_id != rotation.station_id or not slot.category.enabled for slot in slots):
+        raise ValueError('Rotation has an unavailable or cross-station category')
+    return slots
 
 
 def state_for(station):
@@ -288,21 +338,24 @@ def playback_started(decision_id, slug, now=None):
     return True
 
 
-def preview(slug, count=10, storage=None, now=None):
+def preview(slug, count=10, storage=None, now=None, rotation_slug=None):
     """Simulate cursor and recent selections entirely in memory."""
     from types import SimpleNamespace
     station = require_station(slug)
     state = station.automation
-    if state is None or state.active_rotation is None:
+    if state is None:
+        raise ValueError('No automation state')
+    rotation = rotation_for(slug, rotation_slug) if rotation_slug else state.active_rotation
+    if rotation is None:
         raise ValueError('No active rotation')
-    slots = [slot for slot in state.active_rotation.slots if slot.enabled]
+    slots = [slot for slot in rotation.slots if slot.enabled]
     if not slots:
         raise ValueError('No enabled rotation slots')
     storage = storage or LocalMediaStorage()
     now = now or datetime.now(timezone.utc)
     history = SelectionDecision.query.filter_by(station_id=station.id).order_by(SelectionDecision.id.desc()).limit(500).all()
     output = []
-    cursor = state.next_slot_index
+    cursor = state.next_slot_index if state.active_rotation_id == rotation.id else 0
     for index in range(count):
         slot = slots[cursor % len(slots)]
         cursor += 1

@@ -45,3 +45,26 @@ def media_mutation_required(view):
         require_csrf()
         return view(*args, **kwargs)
     return guarded
+
+
+def can_manage_programming(user, station):
+    """Phase 8 global-admin permission boundary; station roles can extend here."""
+    return bool(user and user.active and station is not None)
+
+
+def programming_mutation_required(view):
+    @admin_required
+    @wraps(view)
+    def guarded(*args, **kwargs):
+        require_csrf()
+        from app.services.stations import get_station
+        try:
+            station = get_station(kwargs.get('slug'))
+        except ValueError:
+            station = None
+        if station is None:
+            abort(404)
+        if not can_manage_programming(current_admin(), station):
+            abort(403)
+        return view(*args, **kwargs)
+    return guarded

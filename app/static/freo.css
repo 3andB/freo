@@ -90,3 +90,19 @@
 .media-actions{display:flex;gap:10px;flex-wrap:wrap}.media-actions form{display:block}.decommission{border-color:#7c4d4d}.decommission button{background:#ae5a56;border-color:#ae5a56;color:#fff}
 .upload-progress{display:grid;gap:7px;color:#bad0e7}.upload-progress[hidden]{display:none}.upload-progress progress{width:100%;accent-color:#80bcff}
 @media(max-width:680px){.media-title{align-items:start;flex-direction:column}.media-filters{display:grid;grid-template-columns:1fr 1fr}.media-filters label:first-child{grid-column:1/-1}.category-checks{grid-template-columns:1fr}.form-card{padding:16px}.media-pagination{flex-wrap:wrap}}
+/* Phase 8 programming editors */
+.programming-editor{display:grid;gap:16px}
+.form-card select,.form-card textarea,.schedule-summary select,.schedule-summary input{width:100%;min-width:0;padding:9px 11px;color:#e8f2fc;background:#172537;border:1px solid #3a516b;border-radius:5px;font:inherit}
+.form-card textarea{min-height:92px;resize:vertical}
+.schedule-summary details{min-width:0}.schedule-summary summary,.slot-list summary{cursor:pointer;color:#a8d2ff;font-size:12px}
+.schedule-summary details form{display:grid;gap:9px;margin:12px 0;padding:10px;background:#102031;border-radius:5px}
+.schedule-summary details label{display:grid;gap:4px;color:#b6c7d8;font-size:12px}
+.schedule-summary details button,.slot-list button,.card-heading form button{padding:7px 10px;border:1px solid #6b91b8;border-radius:4px;color:#e3effb;background:#223c58;cursor:pointer}
+.slot-list li{flex-wrap:wrap}.slot-list small{margin-left:0}.slot-list .inline-actions{display:inline-flex;gap:4px}.slot-list button:disabled{opacity:.4;cursor:default}
+.preview-list{padding:0 20px 18px;list-style:none}.preview-list li{display:flex;gap:20px;padding:9px 0;border-top:1px solid #2b3b4f}.preview-list time{font:12px ui-monospace,monospace;color:#a8c6e4}
+.admin-card form button:focus-visible,.admin-card summary:focus-visible{outline:2px solid #a7d2ff;outline-offset:2px}
+@media(max-width:720px){.slot-list li{align-items:flex-start;gap:8px}.slot-list li b{flex-basis:calc(100% - 40px)}.week-row{grid-template-columns:1fr}.admin-columns{grid-template-columns:1fr}}
+.schedule-summary .week-row{grid-template-columns:minmax(0,1fr) auto;align-items:start}
+.schedule-summary .week-row>div{min-width:0}.schedule-summary .week-row b{overflow-wrap:anywhere}
+.schedule-summary .week-row details[open]{min-width:min(260px,50vw)}
+@media(max-width:720px){.schedule-summary .week-row{grid-template-columns:1fr}.schedule-summary .week-row details[open]{min-width:0}}

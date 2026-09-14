@@ -16,3 +16,5 @@ flask --app wsgi clock default --station freo-demo morning
 ```
 
 `clock preview` simulates choices in memory and does not advance durable cursors or history. Public `GET /api/stations/<slug>/clocks` and `/clocks/<clock-slug>` expose safe read-only programming metadata. There are no anonymous mutation routes. A future phase can add carts, IDs, sweepers, and breaks as explicitly implemented slot types; these are not supported now.
+
+Browser programming controls are documented in [programming UI](programming-ui.md). The root CLI remains available for recovery.

@@ -14,3 +14,5 @@ Phase 6 adds a weekly schedule resolver and ordered clock slots above this selec
 # Phase 7 media changes
 
 Web uploads are accepted disabled and do not enter the selector. After category assignment and a successful worker verification, enablement changes the PostgreSQL eligibility state without restarting Liquidsoap, Icecast, or the automation worker. Disabling excludes future selections; already queued requests retain their media file and may finish. Decommissioning retains files and history for the same reason.
+
+Browser programming controls are documented in [programming UI](programming-ui.md). The root CLI remains available for recovery.

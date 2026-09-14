@@ -99,8 +99,8 @@ def test_dashboard_requires_login_and_password_not_leaked(app):
         response = client.get(f'/admin/{section}?station=test-station', follow_redirects=True)
         assert response.status_code == 200, section
     assert 'Verified Test Track' in client.get('/admin/media?station=test-station', follow_redirects=True).get_data(as_text=True)
-    assert 'Main Rotation' in client.get('/admin/rotations?station=test-station').get_data(as_text=True)
-    assert 'Monday' in client.get('/admin/schedule?station=test-station').get_data(as_text=True)
+    assert 'Main Rotation' in client.get('/admin/rotations?station=test-station', follow_redirects=True).get_data(as_text=True)
+    assert 'Monday' in client.get('/admin/schedule?station=test-station', follow_redirects=True).get_data(as_text=True)
     assert 'Verified Test Track' in client.get('/admin/history?station=test-station').get_data(as_text=True)
     assert 'Verified Test Track' not in client.get('/admin/history?station=second-station').get_data(as_text=True)
     assert 'No track start has been confirmed' in client.get('/admin?station=second-station').get_data(as_text=True)
@@ -241,3 +241,145 @@ def test_web_upload_reuses_ingest_pipeline_and_review_policy(app, tmp_path, monk
     assert client.post(detail + '/enable', data={'csrf':'test-admin-csrf-token'}).status_code == 409
     app.config['MAX_CONTENT_LENGTH'] = 1000
     assert client.post(upload, data={'csrf':'test-admin-csrf-token', 'file':(BytesIO(payload),'too-large.mp3')}).status_code == 413
+
+
+def test_programming_pages_and_mutation_boundary(app):
+    anon = app.test_client()
+    base = '/admin/stations/test-station'
+    assert anon.get(base + '/rotations').status_code == 302
+    assert anon.post(base + '/categories/create', data={'name': 'Gold', 'slug': 'gold'}).status_code == 302
+    client = admin_client(app)
+    for section in ('categories', 'rotations', 'clocks', 'schedule'):
+        assert client.get(base + '/' + section).status_code == 200
+    assert client.get(base + '/categories/power').status_code == 200
+    assert client.get(base + '/rotations/main').status_code == 200
+    assert client.get(base + '/clocks/music').status_code == 200
+    assert client.post(base + '/categories/create', data={'name':'Gold','slug':'gold'}).status_code == 400
+    assert client.get(base + '/categories/create').status_code in (404, 405)
+    token = 'test-admin-csrf-token'
+    assert client.post(base + '/categories/create', data={'csrf':token,'name':'Gold','slug':'gold'}).status_code == 303
+    assert client.post(base + '/rotations/create', data={'csrf':token,'name':'Second','slug':'second'}).status_code == 303
+    assert client.post(base + '/rotations/second/slots/add', data={'csrf':token,'category':'gold'}).status_code == 303
+    assert client.post(base + '/rotations/second/slots/add', data={'csrf':token,'category':'power'}).status_code == 303
+    assert client.post(base + '/rotations/second/slots/move', data={'csrf':token,'position':'1','to':'2'}).status_code == 303
+    assert client.post(base + '/clocks/create', data={'csrf':token,'name':'Second','slug':'second'}).status_code == 303
+    assert client.post(base + '/clocks/second/slots/add', data={'csrf':token,'slot_type':'CATEGORY','target':'gold'}).status_code == 303
+    assert client.post(base + '/clocks/second/slots/add', data={'csrf':token,'slot_type':'ROTATION','target':'second'}).status_code == 303
+    assert client.post(base + '/clocks/second/slots/move', data={'csrf':token,'position':'1','to':'2'}).status_code == 303
+    assert client.post(base + '/schedule/create', data={'csrf':token,'weekday':'2','time':'09:00','clock':'second'}).status_code == 303
+    assert client.post(base + '/schedule/create', data={'csrf':token,'weekday':'2','time':'09:00','clock':'second'}, follow_redirects=True).status_code == 200
+    with app.app_context():
+        assert ScheduleAssignment.query.filter_by(weekday=2, start_time=time(9,0)).count() == 1
+        assert Rotation.query.filter_by(slug='second').one().slots[0].category.slug == 'power'
+        assert Clock.query.filter_by(slug='second').one().slots[0].slot_type == 'ROTATION'
+        assert AuditEvent.query.filter_by(action='rotation_slot_reordered').count() == 1
+    assert client.post(base + '/clocks/second/slots/add', data={'csrf':token,'slot_type':'CART','target':'gold'}, follow_redirects=True).status_code == 200
+    with app.app_context():
+        assert len(Clock.query.filter_by(slug='second').one().slots) == 2
+    assert client.post('/admin/stations/second-station/clocks/second/slots/add', data={'csrf':token,'slot_type':'CATEGORY','target':'power'}, follow_redirects=True).status_code == 404
+    assert client.get('/admin/stations/second-station/clocks/second').status_code == 404
+    assert client.post(base + '/schedule/timezone', data={'csrf':token,'timezone':'../../etc','confirm':'UTC'}, follow_redirects=True).status_code == 200
+    with app.app_context():
+        assert Station.query.filter_by(slug='test-station').one().timezone == 'UTC'
+
+
+def test_programming_membership_schedule_edit_and_idor(app):
+    client = admin_client(app)
+    base = '/admin/stations/test-station'
+    token = 'test-admin-csrf-token'
+    track_id = '00000000-0000-4000-8000-000000000001'
+    assert client.post(base + '/categories/power/remove', data={'csrf':token,'track_uuid':track_id}).status_code == 303
+    with app.app_context():
+        assert not Track.query.filter_by(uuid=track_id).one().categories
+    assert client.post(base + '/categories/power/assign', data={'csrf':token,'track_uuid':track_id}).status_code == 303
+    with app.app_context():
+        assert len(Track.query.filter_by(uuid=track_id).one().categories) == 1
+        other = Station.query.filter_by(slug='second-station').one()
+        foreign_track = Track(station_id=other.id, uuid='00000000-0000-4000-8000-000000000002',
+            title='Foreign', artist='Other', album='', original_filename='foreign.mp3', storage_key='foreign.mp3',
+            media_type='mp3', duration_ms=1000, sample_rate_hz=44100, channels=1, file_size_bytes=1,
+            checksum_sha256='b'*64, enabled=True, ingest_status='accepted')
+        db.session.add(foreign_track)
+        db.session.commit()
+    response = client.post(base + '/categories/power/assign', data={'csrf':token,'track_uuid':'00000000-0000-4000-8000-000000000002'}, follow_redirects=True)
+    assert 'does not belong to this station' in response.get_data(as_text=True)
+    with app.app_context():
+        assert not Track.query.filter_by(uuid='00000000-0000-4000-8000-000000000002').one().categories
+        assignment = ScheduleAssignment.query.filter_by(station_id=Station.query.filter_by(slug='test-station').one().id).one()
+        assignment_id = assignment.id
+    assert client.post(base + '/schedule/edit', data={'csrf':token,'assignment_id':assignment_id,
+        'weekday':'1','time':'12:30','clock':'music'}).status_code == 303
+    with app.app_context():
+        row = db.session.get(ScheduleAssignment, assignment_id)
+        assert row.weekday == 1 and row.start_time == time(12,30)
+    assert client.post('/admin/stations/second-station/schedule/remove', data={'csrf':token,
+        'assignment_id':assignment_id,'confirm':str(assignment_id)}, follow_redirects=True).status_code == 200
+    with app.app_context():
+        assert db.session.get(ScheduleAssignment, assignment_id)
+    assert client.post(base + '/schedule/remove', data={'csrf':token,'assignment_id':assignment_id,
+        'confirm':str(assignment_id)}).status_code == 303
+    with app.app_context():
+        assert db.session.get(ScheduleAssignment, assignment_id) is None
+        assert AuditEvent.query.filter_by(action='schedule_assignment_removed').count() == 1
+
+
+def test_programming_preview_is_read_only_and_invalid_inputs(app):
+    client = admin_client(app)
+    base = '/admin/stations/test-station'
+    with app.app_context():
+        state = AutomationState.query.one()
+        before = state.next_slot_index
+        decisions = SelectionDecision.query.count()
+    assert client.get(base + '/schedule?date=2026-09-14&hours=24').status_code == 200
+    assert client.get(base + '/schedule?date=2026-09-14&hours=168').status_code == 200
+    assert client.get(base + '/clocks/music?preview=10').status_code == 200
+    assert client.get(base + '/rotations/main?preview=10').status_code == 200
+    with app.app_context():
+        assert AutomationState.query.one().next_slot_index == before
+        assert SelectionDecision.query.count() == decisions
+    token = 'test-admin-csrf-token'
+    assert client.post(base + '/schedule/create', data={'csrf':token,'weekday':'7','time':'07:00','clock':'music'}, follow_redirects=True).status_code == 200
+    assert client.post(base + '/schedule/create', data={'csrf':token,'weekday':'1','time':'25:00','clock':'music'}, follow_redirects=True).status_code == 200
+    assert client.post(base + '/clocks/music/slots/add', data={'csrf':token,'slot_type':'SCRIPT','target':'power'}, follow_redirects=True).status_code == 200
+    assert client.post(base + '/rotations/main/slots/move', data={'csrf':token,'position':'1','to':'999'}, follow_redirects=True).status_code == 200
+    with app.app_context():
+        assert ScheduleAssignment.query.count() == 1
+        assert len(Clock.query.filter_by(slug='music').one().slots) == 1
+        assert len(Rotation.query.filter_by(slug='main').one().slots) == 1
+
+
+def test_programming_final_slot_and_active_resource_protection(app):
+    client = admin_client(app)
+    base = '/admin/stations/test-station'
+    token = 'test-admin-csrf-token'
+    response = client.post(base + '/rotations/main/slots/remove', data={'csrf':token,'position':'1'}, follow_redirects=True)
+    assert 'final enabled slot' in response.get_data(as_text=True)
+    response = client.post(base + '/clocks/music/slots/remove', data={'csrf':token,'position':'1'}, follow_redirects=True)
+    assert 'final enabled slot' in response.get_data(as_text=True)
+    response = client.post(base + '/rotations/main/disable', data={'csrf':token}, follow_redirects=True)
+    assert 'active' in response.get_data(as_text=True)
+    response = client.post(base + '/categories/power/disable', data={'csrf':token}, follow_redirects=True)
+    assert 'referenced' in response.get_data(as_text=True)
+    response = client.post(base + '/clocks/music/disable', data={'csrf':token}, follow_redirects=True)
+    assert 'weekly assignments' in response.get_data(as_text=True)
+    with app.app_context():
+        assert Rotation.query.filter_by(slug='main').one().enabled
+        assert Clock.query.filter_by(slug='music').one().enabled
+        assert MediaCategory.query.filter_by(slug='power').one().enabled
+        assert AuditEvent.query.filter(AuditEvent.action.in_(['rotation_disabled','clock_disabled','category_disabled'])).count() == 0
+
+
+def test_programming_timezone_change_is_validated_and_audited(app):
+    client = admin_client(app)
+    route = '/admin/stations/test-station/schedule/timezone'
+    token = 'test-admin-csrf-token'
+    assert client.post(route, data={'csrf':token,'timezone':'America/Phoenix','confirm':'wrong'}, follow_redirects=True).status_code == 200
+    with app.app_context():
+        assert Station.query.filter_by(slug='test-station').one().timezone == 'UTC'
+    assert client.post(route, data={'csrf':token,'timezone':'America/Phoenix','confirm':'UTC'}).status_code == 303
+    with app.app_context():
+        assert Station.query.filter_by(slug='test-station').one().timezone == 'America/Phoenix'
+        assert AuditEvent.query.filter_by(action='station_timezone_changed').count() == 1
+    assert client.post(route, data={'csrf':token,'timezone':'UTC','confirm':'America/Phoenix'}).status_code == 303
+    with app.app_context():
+        assert Station.query.filter_by(slug='test-station').one().timezone == 'UTC'

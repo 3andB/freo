@@ -248,7 +248,15 @@ def decommission_track(slug, track_uuid):
 @admin_media_blueprint.get('/admin/audit')
 @admin_required
 def audit_view():
-    events = AuditEvent.query.order_by(AuditEvent.created_at.desc(), AuditEvent.id.desc()).limit(100).all()
+    query = AuditEvent.query
+    station_slug = request.args.get('station', '')
+    if station_slug:
+        station = station_or_404(station_slug, require_enabled=False)
+        query = query.filter_by(station_id=station.id)
+    action = request.args.get('action', '').strip()[:48]
+    if action:
+        query = query.filter_by(action=action)
+    events = query.order_by(AuditEvent.created_at.desc(), AuditEvent.id.desc()).limit(100).all()
     return render_template('admin/media_audit.html', stations=admin_stations(), selected=None,
                            page='audit', events=events)
 

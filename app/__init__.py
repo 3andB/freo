@@ -19,6 +19,7 @@ from .routes.schedule import schedule_blueprint
 from .routes.web import web_blueprint
 from .admin_cli import admin_cli
 from .routes.admin_media import admin_media_blueprint
+from .routes.admin_programming import admin_programming_blueprint
 
 
 def create_app(config_name=None):
@@ -53,6 +54,7 @@ def create_app(config_name=None):
     app.register_blueprint(web_blueprint)
     app.register_blueprint(admin_cli, cli_group=None)
     app.register_blueprint(admin_media_blueprint)
+    app.register_blueprint(admin_programming_blueprint)
     try:
         upload_limit = int(os.environ.get('MAX_MEDIA_UPLOAD_BYTES', 128 * 1024 * 1024))
     except ValueError as error:

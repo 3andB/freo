@@ -30,9 +30,11 @@ def staged_path(job_id):
 
 
 def audit(action, *, user_id=None, station_id=None, target_type='track', target_id=None, summary=''):
-    db.session.add(AuditEvent(admin_user_id=user_id, station_id=station_id,
-                              action=action, target_type=target_type, target_id=target_id,
-                              summary=summary[:240]))
+    event = AuditEvent(admin_user_id=user_id, station_id=station_id,
+                       action=action, target_type=target_type, target_id=target_id,
+                       summary=summary[:240])
+    db.session.add(event)
+    return event
 
 
 def stage_upload(station, user, file):

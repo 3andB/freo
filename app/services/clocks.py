@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 
 from app.extensions import db
 from app.models import Clock, ClockSlot, ScheduleAssignment
-from app.services.automation import category_for, require_station, rotation_for, state_for
+from app.services.automation import category_for, require_station, rotation_for, state_for, validate_rotation
 from app.services.schedule import parse_local_time, resolve, usable_clock, validate_timezone
 from app.services.stations import validate_slug
 
@@ -42,9 +42,12 @@ def add_clock_slot(slug, clock_slug, slot_type, target):
     kind = slot_type.upper()
     if kind == 'ROTATION':
         rotation = rotation_for(slug, target)
+        validate_rotation(rotation)
         target_fields = {'rotation_id': rotation.id}
     elif kind == 'CATEGORY':
         category = category_for(slug, target)
+        if not category.enabled:
+            raise ValueError('Category is disabled')
         target_fields = {'category_id': category.id}
     else:
         raise ValueError('Supported clock slot types: ROTATION, CATEGORY')
@@ -73,6 +76,43 @@ def move_clock_slot(slug, clock_slug, from_position, to_position):
     return clock
 
 
+def remove_clock_slot(slug, clock_slug, position):
+    clock = clock_for(slug, clock_slug)
+    slots = list(clock.slots)
+    if not 1 <= position <= len(slots):
+        raise ValueError('Slot not found')
+    if len([slot for slot in slots if slot.enabled]) <= 1 and slots[position - 1].enabled:
+        raise ValueError('Disable the clock before removing its final enabled slot')
+    db.session.delete(slots.pop(position - 1))
+    db.session.flush()
+    base = len(slots) * 2 + 2
+    for index, slot in enumerate(slots):
+        slot.position = base + index
+    db.session.flush()
+    for index, slot in enumerate(slots):
+        slot.position = index + 1
+    db.session.commit()
+    db.session.expire(clock, ['slots'])
+
+
+def update_assignment(slug, assignment_id, weekday, local_time, clock_slug):
+    station = require_station(slug)
+    row = ScheduleAssignment.query.filter_by(id=assignment_id, station_id=station.id).first()
+    if row is None:
+        raise ValueError('Assignment not found')
+    if not isinstance(weekday, int) or not 0 <= weekday <= 6:
+        raise ValueError('Weekday must be Monday through Sunday')
+    parsed_time = parse_local_time(local_time)
+    clock = clock_for(slug, clock_slug)
+    validate_clock(clock)
+    existing = ScheduleAssignment.query.filter_by(station_id=station.id, weekday=weekday, start_time=parsed_time).first()
+    if existing and existing.id != row.id:
+        raise ValueError('An assignment already exists at this station-local time')
+    row.weekday, row.start_time, row.clock_id = weekday, parsed_time, clock.id
+    db.session.commit()
+    return row
+
+
 def validate_clock(clock):
     if not clock.enabled:
         raise ValueError('Clock is disabled')
@@ -83,8 +123,8 @@ def validate_clock(clock):
         target = slot.rotation if slot.slot_type == 'ROTATION' else slot.category if slot.slot_type == 'CATEGORY' else None
         if target is None or target.station_id != clock.station_id or not target.enabled:
             raise ValueError(f'Clock slot {slot.position} has an unavailable or cross-station target')
-        if slot.slot_type == 'ROTATION' and not any(item.enabled for item in target.slots):
-            raise ValueError(f'Rotation in clock slot {slot.position} has no enabled slots')
+        if slot.slot_type == 'ROTATION':
+            validate_rotation(target)
     return slots
 
 

@@ -22,3 +22,5 @@ Preview simulates selections without advancing the cursor or writing history. `r
 # Clocks above rotations
 
 A Phase 6 clock may reference a rotation in an ordered programming slot. That slot advances the rotation's category cursor and uses the existing separation rules. The clock cursor is distinct, so clocks can also alternate direct category requests with rotation requests. See [clocks](clocks.md).
+
+Browser programming controls are documented in [programming UI](programming-ui.md). The root CLI remains available for recovery.

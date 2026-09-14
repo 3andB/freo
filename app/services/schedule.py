@@ -90,3 +90,22 @@ def resolve(station, at=None):
     key = f'{assignment.id}:{active[3].isoformat()}' if active else None
     next_transition = min(upcoming) if upcoming else None
     return Resolution(local, assignment, assignment.clock if assignment else None, key, next_transition)
+
+
+def preview_transitions(station, start, hours):
+    """Read-only station-local transitions within an absolute UTC window."""
+    from datetime import timedelta
+    if not 1 <= hours <= 168:
+        raise ValueError('Preview must be 1 to 168 hours')
+    point = utc_instant(start)
+    end = point + timedelta(hours=hours)
+    output = []
+    while point <= end:
+        row = resolve(station, point)
+        output.append({'local_time': row.local_time.isoformat(),
+                       'clock': row.clock.name if row.clock else None,
+                       'assignment_id': row.assignment.id if row.assignment else None})
+        if not row.next_transition or row.next_transition <= point or row.next_transition > end:
+            break
+        point = row.next_transition
+    return output

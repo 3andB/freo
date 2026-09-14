@@ -119,6 +119,8 @@ def admin_section(section):
         abort(404)
     stations = admin_stations()
     station = selected_station(stations)
+    if section in {'categories', 'rotations', 'clocks', 'schedule'} and station:
+        return redirect(url_for('admin_programming.list_page', slug=station.slug, section=section))
     if section == 'media' and station:
         return redirect(url_for('admin_media.library', slug=station.slug))
     data = admin_context(station, with_status=section == 'system') if station else None
