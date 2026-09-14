@@ -1,0 +1,20 @@
+# Freo managed station; generated from validated database fields.
+settings.server.telnet := false
+settings.server.socket := true
+settings.server.socket.path := __CONTROL_SOCKET__
+settings.server.socket.permissions := 0o600
+settings.log.stdout := true
+
+radio = sine(amplitude=0.08, __FREQUENCY__.)
+radio = metadata.map(fun (_) -> [("title", __TITLE__)], radio)
+output.icecast(
+  %mp3(bitrate=64),
+  host="127.0.0.1",
+  port=8001,
+  mount=__MOUNT__,
+  user="source",
+  password=__SOURCE_PASSWORD__,
+  name=__NAME__,
+  description=__DESCRIPTION__,
+  radio
+)

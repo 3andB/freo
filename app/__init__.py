@@ -8,6 +8,8 @@ from .config import DevelopmentConfig, ProductionConfig, TestingConfig
 from .extensions import db, migrate
 from .routes.health import health_blueprint
 from .routes.radio_health import radio_health_blueprint
+from .routes.stations import stations_blueprint
+from .cli import station_cli
 
 
 def create_app(config_name=None):
@@ -27,7 +29,10 @@ def create_app(config_name=None):
         configs[name].init_app(app)
     app.logger.setLevel(getattr(logging, app.config["LOG_LEVEL"].upper(), logging.INFO))
     db.init_app(app)
+    from . import models  # noqa: F401 - register migration metadata
     migrate.init_app(app, db)
     app.register_blueprint(health_blueprint)
     app.register_blueprint(radio_health_blueprint)
+    app.register_blueprint(stations_blueprint)
+    app.register_blueprint(station_cli, cli_group=None)
     return app

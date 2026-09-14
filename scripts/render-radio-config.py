@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Root-only, atomic renderer for the Phase 2 test radio configuration."""
 import json
+import re
 import os
 from pathlib import Path
 import pwd
@@ -53,6 +54,20 @@ def main():
     icecast = (SOURCE / 'deploy/icecast/icecast.xml.template').read_text()
     for key in ('source', 'relay', 'admin'):
         icecast = icecast.replace(f'__{key.upper()}_PASSWORD__', credentials[key])
+    mounts = []
+    station_secrets = SECRETS / 'stations'
+    if station_secrets.exists():
+        for path in sorted(station_secrets.glob('*.json')):
+            slug = path.stem
+            if not re.fullmatch(r'[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?', slug):
+                raise SystemExit('Invalid station secret filename.')
+            if path.stat().st_mode & 0o077:
+                raise SystemExit('Station secret file has unsafe permissions.')
+            source_password = json.loads(path.read_text()).get('source')
+            if not isinstance(source_password, str) or not re.fullmatch(r'[0-9a-f]{64}', source_password):
+                raise SystemExit('Invalid station source credential.')
+            mounts.append(f'<mount type="normal"><mount-name>/{slug}</mount-name><username>source</username><password>{source_password}</password></mount>')
+    icecast = icecast.replace('  <hostname>localhost</hostname>', ''.join(mounts) + '\n  <hostname>localhost</hostname>')
     liquidsoap = (SOURCE / 'deploy/liquidsoap/freo-test.liq.template').read_text().replace('__SOURCE_PASSWORD__', credentials['source'])
     ET.fromstring(icecast)
     icecast_path = RADIO / 'icecast.xml'

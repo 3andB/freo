@@ -7,6 +7,7 @@ Type=simple
 User=icecast2
 Group=icecast
 ExecStart=/usr/bin/icecast2 -c /etc/freo/radio/icecast.xml
+ExecReload=/bin/kill -HUP $MAINPID
 Restart=on-failure
 RestartSec=3
 NoNewPrivileges=true

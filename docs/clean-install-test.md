@@ -16,3 +16,7 @@ The current production server is not a substitute for this clean-install test. R
 ## Phase 2 additions
 
 On the fresh VM, also confirm `liquidsoap` and `icecast2` install and record their versions; `freo-playout` and `icecast2` exist as non-login, non-root identities; `/etc/freo/secrets/engine.json` is restricted; rendered configs and control socket are private; Icecast listens only on localhost; and Liquidsoap connects to the test mount. Verify `/health/icecast`, `/health/playout`, and `/health/stream`. Read bounded bytes from the public test stream and confirm `audio/mpeg` and nonzero payload, rather than relying on HTTP status alone. After reboot and installer rerun, confirm the stream recovers, credentials did not rotate, and no runtime config or secret entered Git.
+
+## Phase 3 additions
+
+On the separate fresh VM, create a managed station through the root-run CLI, confirm its row and stream relationship, render and validate config, start its templated non-root unit, check its private socket, and read public audio bytes. Stop it and verify its mount disappears; start it and verify return. Create a second station, restart the first, and verify the second and diagnostic fixture remain online. Reboot and confirm only desired-running station instances return. Rerun the installer without rotating credentials or destroying station data. Confirm generated station configs, secrets, sockets, and exact route snippets are outside Git and permission-restricted.

@@ -4,6 +4,8 @@ set -euo pipefail
 install_dir=${FREO_INSTALL_DIR:-/opt/freo}
 test -x "$install_dir/venv/bin/python"
 test -f "$install_dir/.env"
+test -f /etc/systemd/system/freo-playout@.service
+test -x "$install_dir/scripts/validate-station-instance.py"
 test "$(stat -c %a "$install_dir/.env")" = 640
 systemctl is-active --quiet postgresql nginx freo.service icecast2.service freo-playout.service
 nginx -t >/dev/null
@@ -16,6 +18,7 @@ if [[ $current != "$heads" ]]; then
 fi
 curl --fail --silent --show-error http://127.0.0.1:8000/health >/dev/null
 curl --fail --silent --show-error http://127.0.0.1:8000/ready >/dev/null
+curl --fail --silent --show-error http://127.0.0.1:8000/api/stations >/dev/null
 for endpoint in icecast playout stream; do
   curl --fail --silent --show-error "http://127.0.0.1:8000/health/$endpoint" >/dev/null
 done

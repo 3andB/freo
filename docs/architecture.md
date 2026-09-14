@@ -22,3 +22,19 @@ Phase 2 added `deploy/liquidsoap/`, `deploy/icecast/`, `/var/lib/freo/playout`, 
 ## Phase 2 engine
 
 The test engine now implements the planned Liquidsoap -> Icecast -> Nginx listener path. See [radio-engine.md](radio-engine.md) for actual versions, config paths, service units, ownership, ports, and health checks. Icecast and Liquidsoap are independent of Flask readiness: `/ready` still measures core web/database readiness, while `/health/icecast`, `/health/playout`, and `/health/stream` observe real local radio components. No application route executes shell commands or controls systemd.
+
+## Phase 3 station runtime
+
+```text
+Internet -> Nginx -> Freo Web/API -> PostgreSQL
+              |                         |
+              +-> exact listener paths   +-> root-run admin CLI (no web control)
+                        |                               |
+                        v                               v
+                   private Icecast <--- Liquidsoap station A (freo-playout@a)
+                        ^          <--- Liquidsoap station B (freo-playout@b)
+                        |
+                  diagnostic freo-test
+```
+
+There is one Icecast backend and one Liquidsoap process/config/socket per managed station. The web app can operate when playout is down. See [stations.md](stations.md) for domain, lifecycle, boot state, security, and future hierarchy. The existing `freo-test` remains a non-database diagnostic fixture.

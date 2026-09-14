@@ -91,11 +91,14 @@ fi
 if [[ -d "$install_dir/migrations" ]]; then
   chown -R root:root "$install_dir/migrations"
 fi
-install -d -o root -g root -m 0755 "$install_dir/deploy/icecast" "$install_dir/deploy/liquidsoap" "$install_dir/deploy/systemd" "$install_dir/scripts"
+install -d -o root -g root -m 0755 "$install_dir/deploy/icecast" "$install_dir/deploy/liquidsoap" "$install_dir/deploy/nginx" "$install_dir/deploy/systemd" "$install_dir/scripts"
 if [[ $source_dir != "$install_dir" ]]; then
   install -m 0644 "$source_dir/deploy/icecast/icecast.xml.template" "$install_dir/deploy/icecast/icecast.xml.template"
   install -m 0644 "$source_dir/deploy/liquidsoap/freo-test.liq.template" "$install_dir/deploy/liquidsoap/freo-test.liq.template"
+  install -m 0644 "$source_dir/deploy/liquidsoap/station.liq.template" "$install_dir/deploy/liquidsoap/station.liq.template"
+  install -m 0644 "$source_dir/deploy/nginx/station-location.conf.template" "$install_dir/deploy/nginx/station-location.conf.template"
   install -m 0755 "$source_dir/scripts/render-radio-config.py" "$install_dir/scripts/render-radio-config.py"
+  install -m 0755 "$source_dir/scripts/validate-station-instance.py" "$install_dir/scripts/validate-station-instance.py"
 fi
 python3 "$install_dir/scripts/render-radio-config.py"
 if [[ -f "$install_dir/migrations/env.py" ]]; then
@@ -110,7 +113,7 @@ install -m 0644 "$unit_src" "$unit_dst"
 systemctl daemon-reload
 systemctl enable --now freo.service
 systemctl restart freo.service
-for service in icecast2 freo-playout; do
+for service in icecast2 freo-playout freo-playout@; do
   unit_src="$source_dir/deploy/systemd/$service.service"
   unit_dst="/etc/systemd/system/$service.service"
   if [[ -f $unit_dst ]] && ! cmp -s "$unit_src" "$unit_dst"; then
@@ -120,8 +123,9 @@ for service in icecast2 freo-playout; do
 done
 systemctl daemon-reload
 systemctl enable --now icecast2.service freo-playout.service
-systemctl restart icecast2.service freo-playout.service
+systemctl reload icecast2.service
 install -m 0644 "$source_dir/deploy/nginx/stream-location.conf" /etc/nginx/snippets/freo-stream.conf
+install -d -o root -g root -m 0755 /etc/nginx/snippets/freo-stations
 site=/etc/nginx/sites-available/freo
 if [[ ! -e $site ]]; then
   host=${FREO_DOMAIN:-$(hostname -I | awk '{print $1}')}
