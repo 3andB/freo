@@ -111,6 +111,16 @@ def album_artwork(slug,album_id):
     except (OSError,ValueError):abort(404)
     return send_file(path,mimetype='image/jpeg',conditional=True,max_age=3600)
 
+@admin_media_blueprint.get('/admin/stations/<slug>/media/<track_uuid>/audition')
+@admin_required
+def audition(slug,track_uuid):
+    station=station_or_404(slug,require_enabled=False);track=owned_track(station,track_uuid)
+    if track.decommissioned_at or track.ingest_status!='accepted': abort(404)
+    from app.services.media_storage import LocalMediaStorage
+    try:path=LocalMediaStorage().regular_file(station.slug,track.storage_key)
+    except (OSError,ValueError):abort(404)
+    response=send_file(path,mimetype='audio/mpeg',conditional=True,max_age=0);response.headers['Cache-Control']='private, no-store';return response
+
 
 @admin_media_blueprint.route('/admin/stations/<slug>/media/upload', methods=['GET', 'POST'])
 @admin_required
@@ -189,11 +199,22 @@ def edit_track(slug, track_uuid):
         track.album_artist=normalize(request.form.get('album_artist'),200,'');track.genre=normalize(request.form.get('genre'),100,'');track.isrc=normalize(request.form.get('isrc'),20,'').upper()
         from app.services.music_catalog import organize_song
         organize_song(track,{'album_artist':track.album_artist,'genre':track.genre,'isrc':track.isrc,'year':request.form.get('year'),'track':request.form.get('track_number'),'disc':request.form.get('disc_number')})
+        def bounded_int(name,minimum,maximum):
+            value=request.form.get(name,'').strip()
+            if not value:return None
+            number=int(value)
+            if not minimum<=number<=maximum:raise MediaValidationError(f'Invalid {name.replace("_"," ")}')
+            return number
+        track.cue_in_ms=bounded_int('cue_in_ms',0,track.duration_ms);track.cue_out_ms=bounded_int('cue_out_ms',0,track.duration_ms);track.segue_ms=bounded_int('segue_ms',0,60000)
+        track.scheduling_restrictions={'notes':normalize(request.form.get('restriction_notes'),500,'')}
+        from app.services.music_catalog import tag_for
+        track.tags=[tag_for(station.id,name) for name in request.form.get('tags','').split(',') if name.strip()][:30]
         audit('media_metadata_updated', user_id=current_admin().id, station_id=station.id,
               target_id=track.uuid, summary='Descriptive metadata updated')
         db.session.commit()
         flash('Track metadata updated.', 'success')
-    except MediaValidationError as error:
+    except (MediaValidationError,ValueError) as error:
+        db.session.rollback()
         flash(str(error), 'error')
     return redirect(url_for('admin_media.track_detail', slug=slug, track_uuid=track_uuid), code=303)
 

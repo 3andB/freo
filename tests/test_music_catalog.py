@@ -41,3 +41,13 @@ def test_multi_file_upload_creates_independent_ingest_jobs(app,tmp_path):
     with app.app_context():
         from app.models import MediaIngestJob
         jobs=MediaIngestJob.query.filter_by(kind='ingest').all();assert len(jobs)==2 and {j.original_filename for j in jobs}=={'01-song.mp3','02-song.mp3'}
+
+
+def test_audition_is_authenticated_station_scoped_and_range_capable(app,tmp_path,monkeypatch):
+    audio=tmp_path/'song.mp3';audio.write_bytes(b'0123456789')
+    monkeypatch.setattr('app.services.media_storage.LocalMediaStorage.regular_file',lambda *args:audio)
+    path='/admin/stations/test-station/media/00000000-0000-4000-8000-000000000001/audition'
+    assert app.test_client().get(path).status_code==302
+    client=admin_client(app);response=client.get(path,headers={'Range':'bytes=0-3'})
+    assert response.status_code==206 and response.data==b'0123' and response.headers['Cache-Control']=='private, no-store'
+    assert client.get(path.replace('test-station','second-station')).status_code==404
