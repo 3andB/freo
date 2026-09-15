@@ -47,6 +47,8 @@ def process_one():
     db.session.commit()
     path = staged_path(job.id) if job.kind in ('ingest', 'imaging') else None
     try:
+        if job.station.deleted_at or job.station.lifecycle_state in ('pending_delete', 'delete_failed'):
+            raise MediaValidationError('Station is being deleted')
         if job.kind not in ('ingest', 'verify', 'enable', 'imaging', 'img_verify', 'img_enable', 'delete'):
             raise MediaValidationError('Unsupported media operation')
         if job.kind == 'delete':

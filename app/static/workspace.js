@@ -85,10 +85,54 @@
   audio.addEventListener('waiting', () => {if (wanted) {state = 'connecting'; render();}});
   audio.addEventListener('error', () => {if (wanted) {wanted = false; state = 'unavailable — press to retry'; render();}});
   document.addEventListener('play', event => {if (event.target !== audio && event.target instanceof HTMLMediaElement) stop();}, true);
+  let nowTimer, nowRequest, nowVersion = 0, lastPlaying = null;
+  const showNow = (label, item) => {
+    const banner = document.querySelector('[data-now-playing]');
+    if (!banner) return;
+    banner.querySelector('[data-now-label]').textContent = label;
+    banner.querySelector('[data-now-title]').textContent = item?.title || '—';
+    banner.querySelector('[data-now-title]').title = item?.title || '';
+    banner.querySelector('[data-now-artist]').title = item?.artist || '';
+    banner.querySelector('[data-now-artist]').textContent = item?.artist || '';
+  };
+  const refreshNow = async () => {
+    clearTimeout(nowTimer);
+    nowRequest?.abort();
+    const version = ++nowVersion, slug = station;
+    if (!document.querySelector('[data-now-playing]')) return;
+    if (!slug) {showNow('Select a station', null); return;}
+    const controller = new AbortController(); nowRequest = controller;
+    const timeout = setTimeout(() => controller.abort(), 4000);
+    try {
+      const response = await fetch(`/admin/api/stations/${encodeURIComponent(slug)}/live-status`, {cache: 'no-store', signal: controller.signal});
+      if (!response.ok) throw new Error('Playback status unavailable');
+      const payload = await response.json();
+      if (version !== nowVersion) return;
+      if (payload.playout_error) {
+        lastPlaying = payload.last_known_current || lastPlaying;
+        showNow(lastPlaying ? 'Last known · Connection lost' : 'Playback unavailable', lastPlaying);
+      } else {
+        const mixer = payload.mixer;
+        const paused = mixer && ['a', 'b'].map(deck => {
+          const item = mixer[deck];
+          return !mixer[deck + '_playing'] && item?.started_at &&
+            (!payload.current || payload.current.decision_id === item.decision_id) ? item : null;
+        }).find(Boolean);
+        lastPlaying = payload.current || paused || null;
+        showNow(paused ? 'Paused' : payload.current ? 'Now playing' : 'Nothing playing', lastPlaying);
+      }
+    } catch (_) {
+      if (version === nowVersion) showNow(lastPlaying ? 'Last known · Connection lost' : 'Playback unavailable', lastPlaying);
+    } finally {
+      clearTimeout(timeout);
+      if (version === nowVersion) nowTimer = setTimeout(refreshNow, 3000);
+    }
+  };
   const mount = () => {
     const placeholder = document.querySelector('[data-master-monitor]');
-    if (!placeholder) {stop(); host?.remove(); return;}
-    const preserve = placeholder.hasAttribute('data-preserve-station');
+    if (!placeholder) {stop(); host?.remove(); clearTimeout(nowTimer); nowVersion++; nowRequest?.abort(); return;}
+    const availableStations = placeholder.dataset.availableStations ? JSON.parse(placeholder.dataset.availableStations) : null;
+    const preserve = placeholder.hasAttribute('data-preserve-station') && (!availableStations || availableStations.includes(station));
     const next = preserve ? station : placeholder.dataset.station || '', nextStream = preserve ? stream : placeholder.dataset.stream || '';
     stationName = preserve ? stationName : placeholder.dataset.stationName || '';
     if (!host) {
@@ -100,10 +144,13 @@
     }
     placeholder.replaceWith(host);
     if (next !== station || nextStream !== stream) {
+      lastPlaying = null; showNow('Checking playback…', null);
       const resume = wanted; station = next; stream = nextStream;
       if (resume) {stop(); play();}
     }
     render();
+    if (lastPlaying) showNow('Checking playback…', lastPlaying);
+    refreshNow();
   };
   window.FreoMonitor = {toggle: () => wanted ? stop() : play(), stop, audio, levels:monitorLevels};
 

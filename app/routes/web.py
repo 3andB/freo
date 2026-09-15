@@ -3,14 +3,14 @@ import hmac
 import secrets
 import time
 
-from flask import Blueprint, flash, abort, redirect, render_template, request, session, url_for, jsonify
+from flask import Blueprint, flash, abort, redirect, render_template, request, session, url_for, jsonify, current_app
 from werkzeug.security import check_password_hash
 from werkzeug.security import generate_password_hash
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.extensions import db
 from app.models import AdminUser, Station
-from app.services.admin_auth import admin_required, csrf_token
+from app.services.admin_auth import admin_required, csrf_token, media_mutation_required, current_admin
 from app.services.stations import get_station
 from app.services.admin_view import context as admin_context, section_data, iso, format_station_time, latest_rows, worker_health
 from app.routes.stations import observed_status
@@ -29,11 +29,14 @@ login_required = admin_required
 
 
 def station_or_404(slug, require_enabled=True):
+    if request.method == 'POST':
+        from app.services.stations import allocation_lock
+        allocation_lock()
     try:
         station = get_station(slug)
     except ValueError:
         station = None
-    if station is None or (require_enabled and not station.enabled):
+    if station is None or station.lifecycle_state in ('pending_delete', 'delete_failed') or (require_enabled and not station.enabled):
         abort(404)
     return station
 
@@ -41,7 +44,7 @@ def station_or_404(slug, require_enabled=True):
 @web_blueprint.get('/')
 def homepage():
     try:
-        stations = Station.query.filter_by(enabled=True).order_by(Station.slug).all()
+        stations = Station.query.filter_by(enabled=True, deleted_at=None).order_by(Station.slug).all()
     except SQLAlchemyError:
         stations = []
     return render_template('home.html', stations=stations)
@@ -49,7 +52,7 @@ def homepage():
 
 @web_blueprint.get('/stations')
 def stations():
-    rows = Station.query.filter_by(enabled=True).order_by(Station.slug).all()
+    rows = Station.query.filter_by(enabled=True, deleted_at=None).order_by(Station.slug).all()
     return render_template('stations.html', stations=rows)
 
 
@@ -72,7 +75,7 @@ def dashboard(slug):
 
 
 def admin_stations():
-    return Station.query.order_by(Station.name, Station.id).all()
+    return Station.query.filter_by(deleted_at=None).order_by(Station.name, Station.id).all()
 
 
 def selected_station(stations):
@@ -85,6 +88,7 @@ def selected_station(stations):
         if station is None:
             abort(404)
         return station
+    stations = [s for s in stations if s.lifecycle_state not in ('pending_delete', 'delete_failed')]
     return next((station for station in stations if station.desired_state == 'running' and station.enabled), stations[0] if stations else None)
 
 
@@ -103,8 +107,10 @@ def admin_home():
 def admin_station_list():
     stations = admin_stations()
     observations = {station.slug: observed_status(station) for station in stations}
-    return render_template('admin/stations.html', stations=stations, observations=observations,
-                           selected=None, page='stations')
+    from app.services.stations import deletion_impact
+    impacts = {station.slug: deletion_impact(station) for station in stations}
+    return render_template('admin/stations.html', stations=stations, observations=observations, impacts=impacts,
+                           selected=None, page='stations', station_limit=current_app.config['FREO_MAX_STATIONS'])
 
 
 @web_blueprint.get('/admin/stations/<slug>')
@@ -274,3 +280,53 @@ def edit_station(slug):
         db.session.rollback()
         flash(str(error) if isinstance(error, ValueError) else 'That station URL was just taken. Choose another.', 'error')
     return redirect(url_for('web.admin_station_list'))
+
+
+@web_blueprint.post('/admin/stations/create')
+@media_mutation_required
+def create_station_page():
+    from app.services.stations import create_station
+    from app.services.schedule import validate_timezone
+    from app.services.admin_media import audit
+    try:
+        zone = validate_timezone(request.form.get('timezone', 'UTC'))
+        station = create_station(request.form.get('name'), request.form.get('slug'),
+                                 request.form.get('description', ''), pending=True, timezone_name=zone)
+        audit('station_create_requested', user_id=current_admin().id, station_id=station.id,
+              target_type='station', target_id=station.slug, summary='Station provisioning requested')
+        db.session.commit()
+        flash('Station added. Provisioning is queued; refresh to see its status.', 'success')
+    except (ValueError, SQLAlchemyError) as error:
+        db.session.rollback()
+        flash(str(error) if isinstance(error, ValueError) else 'Station could not be added. Refresh and try again.', 'error')
+    return redirect(url_for('web.admin_station_list'), code=303)
+
+
+@web_blueprint.post('/admin/stations/<slug>/delete')
+@media_mutation_required
+def delete_station_page(slug):
+    from app.services.stations import request_delete
+    station = get_station(slug)
+    if station is None:
+        abort(404)
+    if request.form.get('confirm') != station.slug:
+        flash('Enter the station slug to confirm deletion.', 'error')
+    else:
+        request_delete(station, current_admin().id)
+        flash('Deletion queued. Shared songs, private media, and history will be retained.', 'success')
+    return redirect(url_for('web.admin_station_list'), code=303)
+
+
+@web_blueprint.post('/admin/stations/<slug>/retry')
+@media_mutation_required
+def retry_station_page(slug):
+    from app.services.station_lifecycle import retry
+    station = get_station(slug)
+    if station is None:
+        abort(404)
+    try:
+        retry(station)
+        flash('Provisioning retry queued.', 'success')
+    except ValueError as error:
+        flash(str(error), 'error')
+    return redirect(url_for('web.admin_station_list'), code=303)

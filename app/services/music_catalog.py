@@ -1,4 +1,5 @@
 """Music catalog identity layered under station-specific song programming."""
+from app.services.availability import available
 import re
 from app.extensions import db
 from app.models import Album, Artist, MusicTag, Track
@@ -62,7 +63,7 @@ def tag_for(station_id,name):
 
 
 def bulk_categories(station, songs, category, assign=True):
-    if category.station_id!=station.id or any(song.station_id!=station.id for song in songs): raise ValueError('Music belongs to another station')
+    if category.station_id!=station.id or any(not available(song,station.id) for song in songs): raise ValueError('Music belongs to another station')
     for song in songs:
         if assign and category not in song.categories: song.categories.append(category)
         if not assign and category in song.categories: song.categories.remove(category)

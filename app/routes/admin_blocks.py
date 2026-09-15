@@ -1,4 +1,5 @@
 """Authenticated station-scoped ordered block editor."""
+from app.services.availability import tracks_for
 from flask import Blueprint, abort, flash, redirect, render_template, request, url_for
 
 from app.extensions import db
@@ -45,7 +46,7 @@ def detail(slug,identifier):
     if log:
         return redirect(url_for('admin_traffic.log_detail',slug=slug,log_date=log.log_date))
     executions=EventBlockExecution.query.filter_by(event_block_id=row.id).order_by(EventBlockExecution.id.desc()).limit(25).all()
-    tracks=Track.query.filter_by(station_id=station.id,enabled=True,ingest_status='accepted',decommissioned_at=None).order_by(Track.title).all()
+    tracks=tracks_for(station.id).filter_by(enabled=True,ingest_status='accepted',decommissioned_at=None).order_by(Track.title).all()
     imaging=ImagingAsset.query.filter_by(station_id=station.id,enabled=True,ingest_status='accepted',decommissioned_at=None).order_by(ImagingAsset.cart_code,ImagingAsset.name).all()
     return render_template('admin/block_detail.html',**context(station,block=row,errors=validate_block(row),tracks=tracks,imaging=imaging,executions=executions,types=BLOCK_TYPES,policies=FAILURE_POLICIES))
 

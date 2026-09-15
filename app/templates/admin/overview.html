@@ -1,7 +1,7 @@
 {% extends 'admin/base.html' %}
 {% block title %}{{ selected.name if selected else 'Overview' }} · Freo operations{% endblock %}
 {% block admin_content %}
-{% if not selected %}<section class="empty-panel"><h1>No managed stations yet</h1><p>Create a station through the server CLI. This dashboard will show its real operational state when one exists.</p></section>{% else %}
+{% if not selected %}<section class="empty-panel"><h1>No managed stations yet</h1><a href="{{ url_for('web.admin_station_list') }}">Add station →</a><p>Add your first station to begin.</p></section>{% else %}
 <div class="admin-hero">
   <div class="admin-hero-copy"><span class="eyebrow">{{ 'STATION DETAIL' if detail else 'OPERATIONAL OVERVIEW' }}</span>
     <div class="hero-title-line"><h1>{{ selected.name }}</h1><span class="onair-pill {{ 'is-on' if data.observed.stream == 'online' else 'is-off' }}" id="admin-onair">{{ 'ON AIR' if data.observed.stream == 'online' else 'OFFLINE' }}</span></div>

@@ -1,4 +1,5 @@
 """Read-only presentation data for the authenticated operations pages."""
+from app.services.availability import tracks_for
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 
@@ -54,10 +55,8 @@ def pending_rows(station, limit=5):
 
 
 def library_counts(station):
-    accepted = (db.session.query(func.count(Track.id))
-                .filter_by(station_id=station.id, ingest_status='accepted').scalar() or 0)
-    enabled = (db.session.query(func.count(Track.id))
-               .filter_by(station_id=station.id, ingest_status='accepted', enabled=True).scalar() or 0)
+    accepted = tracks_for(station.id).filter_by(ingest_status='accepted').count()
+    enabled = tracks_for(station.id).filter_by(ingest_status='accepted', enabled=True).count()
     categories = db.session.query(func.count(MediaCategory.id)).filter_by(station_id=station.id).scalar() or 0
     return {'accepted': accepted, 'enabled': enabled, 'categories': categories}
 
@@ -88,7 +87,7 @@ def context(station, *, history_limit=30, with_status=True):
 
 def section_data(station, section):
     if section == 'media':
-        return {'tracks': Track.query.filter_by(station_id=station.id).order_by(Track.title).limit(100).all(),
+        return {'tracks': tracks_for(station.id).order_by(Track.title).limit(100).all(),
                 'count': library_counts(station)}
     if section == 'categories':
         rows = MediaCategory.query.filter_by(station_id=station.id).order_by(MediaCategory.name).all()

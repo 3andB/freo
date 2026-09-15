@@ -1,4 +1,6 @@
 """Exact-time event definitions, bounded occurrence generation, and execution state."""
+from app.services.availability import available
+from app.services.availability import tracks_for
 import uuid
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
@@ -37,7 +39,7 @@ def event_for(slug, identifier):
 
 def _target(station, content_type, identifier):
     if content_type == 'TRACK':
-        row = Track.query.filter_by(station_id=station.id, uuid=identifier).first()
+        row = tracks_for(station.id).filter_by(uuid=identifier).first()
     elif content_type == 'IMAGING_ASSET':
         row = ImagingAsset.query.filter_by(station_id=station.id, uuid=identifier).first()
     elif content_type == 'EVENT_BLOCK':
@@ -178,11 +180,11 @@ def validate_content(event, storage=None):
             raise ValueError('Event block is disabled or invalid')
         return event.event_block
     playable = event.track or event.imaging_asset
-    if playable is None or playable.station_id != event.station_id or not playable.enabled or playable.ingest_status != 'accepted' or playable.decommissioned_at:
+    if playable is None or (not available(playable, event.station_id) if event.track else playable.station_id != event.station_id) or not playable.enabled or playable.ingest_status != 'accepted' or playable.decommissioned_at:
         raise ValueError('Event content is disabled or unavailable')
     storage = storage or LocalMediaStorage()
     if event.track:
-        storage.regular_file(event.station.slug, playable.storage_key)
+        storage.regular_file(playable.station.slug, playable.storage_key)
     else:
         storage.imaging_file(event.station.slug, playable.storage_key)
     return playable

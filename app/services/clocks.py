@@ -1,4 +1,5 @@
 """Administrative clock and weekly schedule operations; never invoked from public mutations."""
+from app.services.availability import playable
 from datetime import datetime, timezone
 
 from app.extensions import db
@@ -288,8 +289,7 @@ def preview_clock(slug, clock_slug, count=10, storage=None, at=None):
             category = part.category
         else:
             category = slot.category
-        tracks = [track for track in category.tracks if category.enabled and track.station_id == station.id
-                  and track.enabled and track.ingest_status == 'accepted' and _exists(storage, slug, track.storage_key)]
+        tracks = [track for track in category.tracks if category.enabled and playable(track, station.id) and _exists(storage, track.station.slug, track.storage_key)]
         track, relaxation, candidates = _choose(tracks, history, now, state.track_separation_seconds,
                                                 state.artist_separation_seconds) if tracks else (None, 'none', 0)
         output.append({'clock_slot': slot.position, 'type': slot.slot_type,

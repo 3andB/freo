@@ -25,7 +25,7 @@ if id -nG freo-ingest | tr ' ' '\n' | grep -qx freo-playout; then
 fi
 test -x "$install_dir/scripts/validate-station-instance.py"
 test "$(stat -c %a "$install_dir/.env")" = 640
-systemctl is-active --quiet postgresql nginx freo.service icecast2.service freo-playout.service freo-automation.service freo-ingest.service
+systemctl is-active --quiet postgresql nginx freo.service icecast2.service freo-automation.service freo-ingest.service
 nginx -t >/dev/null
 pg_isready -q
 current=$(cd "$install_dir" && runuser -u freo -- env FREO_ENV_FILE="$install_dir/.env" "$install_dir/venv/bin/flask" --app wsgi:app db current)
@@ -47,6 +47,9 @@ for attempt in {1..10}; do
   sleep 2
 done
 curl --fail --silent --show-error http://127.0.0.1:8000/api/stations >/dev/null
+curl --fail --silent --show-error http://127.0.0.1:8000/health/icecast >/dev/null
+systemctl is-active --quiet freo-provision.timer
+if [[ ${FREO_ENABLE_DIAGNOSTIC:-0} == 1 ]]; then
 for endpoint in icecast playout stream; do
   curl --fail --silent --show-error "http://127.0.0.1:8000/health/$endpoint" >/dev/null
 done
@@ -54,6 +57,7 @@ test -S /run/freo/liquidsoap/control.sock
 if [[ $(stat -c %a /run/freo/liquidsoap/control.sock) != 600 ]]; then
   echo 'Liquidsoap control socket is not private.' >&2
   exit 1
+fi
 fi
 for station_socket in /run/freo/playout/*/control.sock; do
   if [[ -S $station_socket && $(stat -c %a "$station_socket") != 660 ]]; then
@@ -63,12 +67,14 @@ for station_socket in /run/freo/playout/*/control.sock; do
 done
 ss -ltn | grep -q '127.0.0.1:8000 '
 ss -ltn | grep -q '127.0.0.1:8001 '
+if [[ ${FREO_ENABLE_DIAGNOSTIC:-0} == 1 ]]; then
 python3 - <<'PY'
 import urllib.request
 with urllib.request.urlopen('http://127.0.0.1:8001/freo-test', timeout=5) as response:
     if response.status != 200 or response.headers.get_content_type() != 'audio/mpeg' or not any(response.read(4096)):
         raise SystemExit('Icecast mount is not delivering audio.')
 PY
+fi
 if [[ $(systemctl show freo.service -p User --value) != freo ]]; then
   echo 'freo.service is not configured for user freo' >&2
   exit 1

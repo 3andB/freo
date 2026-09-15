@@ -101,6 +101,7 @@ PUBLIC_BASE_URL=$public_base
 FREO_DOMAIN=$domain
 LOG_LEVEL=INFO
 FREO_MEDIA_ROOT=/var/lib/freo/media
+FREO_MAX_STATIONS=${FREO_MAX_STATIONS:-3}
 ENV
   unset db_password app_secret
 fi
@@ -139,7 +140,7 @@ install -m 0644 "$unit_src" "$unit_dst"
 systemctl daemon-reload
 systemctl enable --now freo.service
 systemctl restart freo.service
-for service in icecast2 freo-playout freo-playout@ freo-automation freo-ingest; do
+for service in icecast2 freo-playout freo-playout@ freo-automation freo-ingest freo-provision; do
   unit_src="$source_dir/deploy/systemd/$service.service"
   unit_dst="/etc/systemd/system/$service.service"
   if [[ -f $unit_dst ]] && ! cmp -s "$unit_src" "$unit_dst"; then
@@ -148,7 +149,10 @@ for service in icecast2 freo-playout freo-playout@ freo-automation freo-ingest; 
   install -m 0644 "$unit_src" "$unit_dst"
 done
 systemctl daemon-reload
-systemctl enable --now icecast2.service freo-playout.service
+systemctl enable --now icecast2.service
+if [[ ${FREO_ENABLE_DIAGNOSTIC:-0} == 1 ]]; then
+  systemctl enable --now freo-playout.service
+fi
 systemctl enable --now freo-automation.service
 systemctl enable --now freo-ingest.service
 systemctl reload icecast2.service
@@ -184,6 +188,9 @@ PY
 fi
 nginx -t
 systemctl reload nginx
+install -m 0644 "$source_dir/deploy/systemd/freo-provision.timer" /etc/systemd/system/freo-provision.timer
+systemctl daemon-reload
+systemctl enable --now freo-provision.timer
 if [[ ${FREO_ENABLE_HTTPS:-0} == 1 ]]; then
   if [[ -z ${FREO_DOMAIN:-} || -z ${FREO_CERTBOT_EMAIL:-} ]]; then
     echo 'HTTPS requires FREO_DOMAIN and FREO_CERTBOT_EMAIL.' >&2
@@ -191,6 +198,7 @@ if [[ ${FREO_ENABLE_HTTPS:-0} == 1 ]]; then
   fi
   certbot --nginx --non-interactive --agree-tos --redirect -m "$FREO_CERTBOT_EMAIL" -d "$FREO_DOMAIN"
 fi
+if [[ ${FREO_ENABLE_DIAGNOSTIC:-0} == 1 ]]; then
 for attempt in {1..30}; do
   if [[ -S /run/freo/liquidsoap/control.sock ]] && curl --fail --silent --max-time 2 http://127.0.0.1:8000/health/stream >/dev/null; then
     break
@@ -201,4 +209,5 @@ for attempt in {1..30}; do
   fi
   sleep 2
 done
+fi
 "$source_dir/scripts/validate-install.sh"

@@ -6,6 +6,7 @@ class BaseConfig:
     FREO_DOMAIN = ""
     FREO_MEDIA_ROOT = ""
     LOG_LEVEL = "INFO"
+    FREO_MAX_STATIONS = 3
 
 
 class ProductionConfig(BaseConfig):

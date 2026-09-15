@@ -1,4 +1,6 @@
 """Authenticated, CSRF-protected media management; no raw-file delivery."""
+from app.services.availability import artists_for, albums_for
+from app.services.availability import tracks_for, track_scope
 import uuid
 from datetime import datetime, timezone
 
@@ -38,7 +40,7 @@ def library(slug):
     station = station_or_404(slug, require_enabled=False)
     view=request.args.get('view','songs')
     if view not in ('artists','albums','songs'): abort(400)
-    query = Track.query.filter_by(station_id=station.id,deleted_at=None)
+    query = tracks_for(station.id).filter_by(deleted_at=None)
     search = request.args.get('q', '').strip()[:100]
     if search:
         pattern = '%' + search.replace('\\', '\\\\').replace('%', '\\%').replace('_', '\\_') + '%'
@@ -85,31 +87,31 @@ def library(slug):
             .order_by(MediaIngestJob.created_at.desc()).limit(5).all())
     return render_template('admin/media.html', **page_context(station, tracks=tracks, total=total,view=view,
                            page_number=page, pages=max(1, (total + 49) // 50), jobs=jobs,
-                           artists=Artist.query.filter_by(station_id=station.id).order_by(Artist.name).all(),
-                           albums=Album.query.filter_by(station_id=station.id).order_by(Album.title).all(),
+                           artists=artists_for(station.id).order_by(Artist.name).all(),
+                           albums=albums_for(station.id).order_by(Album.title).all(),
                            categories=MediaCategory.query.filter_by(station_id=station.id).order_by(MediaCategory.name).all()))
 
 @admin_media_blueprint.get('/admin/stations/<slug>/media/artists/<int:artist_id>')
 @admin_required
 def artist_detail(slug,artist_id):
-    station=station_or_404(slug,require_enabled=False);artist=Artist.query.filter_by(id=artist_id,station_id=station.id).first_or_404()
-    return render_template('admin/music_artist.html',**page_context(station,artist=artist,**classification_context(station)))
+    station=station_or_404(slug,require_enabled=False);artist=artists_for(station.id).filter_by(id=artist_id).first_or_404()
+    return render_template('admin/music_artist.html',**page_context(station,artist=artist,visible_songs=tracks_for(station.id).filter_by(artist_id=artist.id).all(),visible_albums=albums_for(station.id).filter_by(artist_id=artist.id).all(),**classification_context(station)))
 
 @admin_media_blueprint.get('/admin/stations/<slug>/media/albums/<int:album_id>')
 @admin_required
 def album_detail(slug,album_id):
-    station=station_or_404(slug,require_enabled=False);album=Album.query.filter_by(id=album_id,station_id=station.id).first_or_404()
-    return render_template('admin/music_album.html',**page_context(station,album=album,**classification_context(station)))
+    station=station_or_404(slug,require_enabled=False);album=albums_for(station.id).filter_by(id=album_id).first_or_404()
+    return render_template('admin/music_album.html',**page_context(station,album=album,visible_songs=tracks_for(station.id).filter_by(album_id=album.id).all(),**classification_context(station)))
 
 @admin_media_blueprint.get('/admin/stations/<slug>/media/albums/<int:album_id>/artwork')
 @admin_required
 def album_artwork(slug,album_id):
-    station=station_or_404(slug,require_enabled=False);album=Album.query.filter_by(id=album_id,station_id=station.id).first_or_404()
+    station=station_or_404(slug,require_enabled=False);album=albums_for(station.id).filter_by(id=album_id).first_or_404()
     if album.cover_id:
         return redirect(url_for('catalog_editor.artwork',slug=slug,identifier=album.cover_id))
     if not album.artwork_key: abort(404)
     from app.services.media_storage import LocalMediaStorage
-    try:path=LocalMediaStorage().artwork_file(station.slug,album.artwork_key)
+    try:path=LocalMediaStorage().artwork_file(album.station.slug,album.artwork_key)
     except (OSError,ValueError):abort(404)
     return send_file(path,mimetype='image/jpeg',conditional=True,max_age=3600)
 
@@ -119,7 +121,7 @@ def audition(slug,track_uuid):
     station=station_or_404(slug,require_enabled=False);track=owned_track(station,track_uuid)
     if track.decommissioned_at or track.ingest_status!='accepted': abort(404)
     from app.services.media_storage import LocalMediaStorage
-    try:path=LocalMediaStorage().regular_file(station.slug,track.storage_key)
+    try:path=LocalMediaStorage().regular_file(track.station.slug,track.storage_key)
     except (OSError,ValueError):abort(404)
     response=send_file(path,mimetype='audio/mpeg',conditional=True,max_age=0);response.headers['Cache-Control']='private, no-store';return response
 
@@ -161,7 +163,7 @@ def upload(slug):
 def bulk_categories(slug):
     station=station_or_404(slug,require_enabled=False);ids=request.form.getlist('track_uuid')
     if not ids or len(ids)>500: abort(400)
-    songs=Track.query.filter(Track.station_id==station.id,Track.uuid.in_(ids)).all()
+    songs=Track.query.filter(track_scope(station.id),Track.uuid.in_(ids)).all()
     if len(songs)!=len(set(ids)): abort(404)
     category=MediaCategory.query.filter_by(station_id=station.id,id=request.form.get('category_id')).first_or_404()
     from app.services.music_catalog import bulk_categories as apply
@@ -197,7 +199,8 @@ def track_detail(slug, track_uuid):
     categories = MediaCategory.query.filter_by(station_id=station.id).order_by(MediaCategory.name).all()
     starts = (SelectionDecision.query.filter_by(station_id=station.id, track_id=track.id, status='started')
               .order_by(SelectionDecision.started_at.desc()).limit(5).all())
-    count = SelectionDecision.query.filter_by(station_id=station.id, track_id=track.id, status='started').count()
+    from app.services.airplay import play_counts
+    count = play_counts(station.id, 'track', [track.id]).get(track.id, 0)
     return render_template('admin/media_track.html', **page_context(station, track=track,
                            categories=categories, starts=starts, play_count=count, **classification_context(station)))
 
@@ -258,7 +261,7 @@ def update_categories(slug, track_uuid):
     by_id = {category.id: category for category in categories}
     if not desired.issubset(by_id):
         abort(404)
-    current = {category.id for category in track.categories}
+    current = {category.id for category in track.categories if category.station_id == station.id}
     for category_id in desired - current:
         assign_track(slug, track.uuid, by_id[category_id].slug, True, commit=False)
         audit('media_category_assigned', user_id=current_admin().id, station_id=station.id,
@@ -391,3 +394,22 @@ def process_track(slug,track_uuid):
 def classification_context(station):
     return dict(music_tags=MusicTag.query.filter_by(station_id=station.id).order_by(MusicTag.name).all(),
                 music_categories=MediaCategory.query.filter_by(station_id=station.id).order_by(MediaCategory.name).all())
+
+
+@admin_media_blueprint.post('/admin/stations/<slug>/media/sharing/<kind>/<int:identifier>')
+@media_mutation_required
+def sharing(slug, kind, identifier):
+    from app.services.availability import set_sharing
+    station = station_or_404(slug, require_enabled=False)
+    queries = {'artist': artists_for, 'album': albums_for, 'song': tracks_for}
+    if kind not in queries:
+        abort(404)
+    row = queries[kind](station.id).filter_by(id=identifier).first_or_404()
+    try:
+        set_sharing(row, request.form.get('available_to_all') == 'on', current_admin().id)
+        db.session.commit()
+        flash('Channel availability saved. Existing scheduling rules remain in place and are checked before playback.', 'success')
+    except ValueError as error:
+        db.session.rollback()
+        flash(str(error), 'error')
+    return redirect(media_url(station), code=303)

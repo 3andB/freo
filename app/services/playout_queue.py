@@ -1,4 +1,5 @@
 """Narrow Liquidsoap socket adapter: queue depth and approved request push only."""
+from app.services.availability import playable
 from pathlib import Path
 import re
 import socket
@@ -23,10 +24,20 @@ def _command(slug, command):
     if '\n' in command or '\r' in command or len(command) > 1024:
         raise ValueError('Invalid Liquidsoap command')
     media_root = re.escape(str(LocalMediaStorage().root))
-    music_pattern = rf'(?:freo_queue\.(?:push|insert)|freo_(?:a|b|cart)\.push) annotate:freo_decision=[1-9][0-9]*(?:,freo_gain="-?[0-9]{{1,2}}\.[0-9]{{3}} dB")?:{media_root}/{re.escape(slug)}/originals/[0-9a-f]{{32}}\.mp3'
+    music_pattern = rf'(?:freo_queue\.(?:push|insert)|freo_(?:a|b|cart)\.push) annotate:freo_decision=(?P<decision>[1-9][0-9]*)(?:,freo_gain="-?[0-9]{{1,2}}\.[0-9]{{3}} dB")?:{media_root}/(?P<owner>[a-z0-9](?:[a-z0-9-]{{0,62}}[a-z0-9])?)/originals/(?P<key>[0-9a-f]{{32}}\.mp3)'
     imaging_pattern = rf'(?:freo_queue\.(?:push|insert)|freo_(?:a|b|cart)\.push) annotate:freo_decision=[1-9][0-9]*,title="[A-Za-z0-9 ._-]{{1,120}}",artist="[A-Za-z0-9 ._-]{{1,120}}":{media_root}/{re.escape(slug)}/imaging/[0-9a-f]{{32}}\.mp3'
     if command not in ('freo_queue.queue', 'request.on_air', 'freo_queue.skip', 'freo_queue.flush_and_skip', 'freo_program.rms', 'freo_program.current', 'freo_deck.requests') and not re.fullmatch(r'(?:freo_deck\.(?:take|fade)_[ab](?: (?:[0-9]\.[0-9]{3}|10\.000))?|freo_deck\.(?:pause|clear|future)_[ab]|request.metadata [0-9]+|freo_(?:a|b|cart)\.queue|freo_mixer\.(?:state|fade_a|clear_future|mode (?:AUTO|DJ_BOOTH)|crossfader (?:0\.[0-9]{3}|1\.000)|(?:a_play|b_play) (?:true|false)|cart_mode (?:OVER|TAKEOVER)|duck (?:0\.[0-9]{3}|1\.000)))', command) and not (re.fullmatch(music_pattern, command) or re.fullmatch(imaging_pattern, command)):
         raise ValueError('Liquidsoap command is not allowlisted')
+    music = re.fullmatch(music_pattern, command)
+    if music and music['owner'] != slug:
+        from app.extensions import db
+        from app.models import SelectionDecision
+        row = db.session.get(SelectionDecision, int(music['decision']))
+        if (row is None or row.station.slug != slug or not row.station.enabled or
+                row.station.deleted_at or not row.track or not playable(row.track, row.station_id) or
+                row.track.station.slug != music['owner'] or row.track.storage_key != music['key']):
+            raise ValueError('Shared audio is not approved for this station decision')
+        LocalMediaStorage().regular_file(music['owner'], music['key'])
     path = SOCKET_ROOT / slug / 'control.sock'
     with socket.socket(socket.AF_UNIX) as connection:
         connection.settimeout(8)
@@ -106,7 +117,21 @@ def socket_identity(slug):
 
 def push_decision(decision, storage=None):
     """Build the URI solely from a committed, approved station playable."""
+    if not decision.station.enabled or decision.station.deleted_at or decision.station.lifecycle_state in ('pending_delete', 'delete_failed'):
+        raise ValueError('Station is unavailable')
+    from app.services.stations import allocation_lock
+    from app.services.availability import tracks_for
+    from app.models import Station
+    allocation_lock()
+    # Serialize handoff with sharing/deletion changes, and query current access
+    # rather than trusting an ORM object cached by a long-lived worker.
+    if not Station.query.filter_by(id=decision.station_id, enabled=True, deleted_at=None).filter(
+            ~Station.lifecycle_state.in_(('pending_delete', 'delete_failed'))).first():
+        raise ValueError('Station is unavailable')
     track = decision.track
+    if track and not tracks_for(decision.station_id).filter_by(id=track.id, enabled=True,
+            ingest_status='accepted', decommissioned_at=None).first():
+        raise ValueError('Decision track is not approved for this station')
     imaging = decision.imaging_asset
     slug = decision.station.slug
     if (track is None) == (imaging is None):
@@ -115,9 +140,9 @@ def push_decision(decision, storage=None):
         raise ValueError('Decision must be committed before queueing')
     storage = storage or LocalMediaStorage()
     if track:
-        if track.station_id != decision.station_id or not track.enabled or track.ingest_status != 'accepted':
+        if not playable(track, decision.station_id):
             raise ValueError('Decision track is not approved for this station')
-        path = storage.regular_file(slug, track.storage_key)
+        path = storage.regular_file(track.station.slug, track.storage_key)
     else:
         if imaging.station_id != decision.station_id or not imaging.enabled or imaging.ingest_status != 'accepted' or imaging.decommissioned_at:
             raise ValueError('Decision imaging is not approved for this station')
@@ -139,7 +164,7 @@ def push_decision(decision, storage=None):
         command = f'{queue_name}.{operation} annotate:freo_decision={decision.id},title="{title}",artist="{artist}":{path}'
     else:
         from app.services.loudness import gain_for
-        gain = gain_for(track)['db']
+        gain = gain_for(track, decision.station)['db']
         command = f'{queue_name}.{operation} annotate:freo_decision={decision.id},freo_gain="{gain:.3f} dB":{path}'
     response = _command(slug, command)
     if not REQUEST_ID.fullmatch(response):

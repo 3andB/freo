@@ -1,0 +1,9 @@
+<section class="admin-card"><h2>Channel availability</h2>
+<form method="post" action="{{ url_for('admin_media.sharing',slug=selected.slug,kind=sharing_kind,identifier=sharing_item.id) }}">
+<input type="hidden" name="csrf" value="{{ csrf_token() }}">
+<label><input type="checkbox" name="available_to_all" {% if sharing_item.available_to_all %}checked{% endif %}> MAKE AVAILABLE TO ALL CHANNELS</label>
+<p>Includes channels added later.{% if sharing_kind != 'song' %} Applies to current and future songs in this {{ sharing_kind }}.{% endif %} Each channel chooses its own categories and programming.</p>
+{% if sharing_kind == 'song' and ((sharing_item.catalog_artist and sharing_item.catalog_artist.available_to_all) or (sharing_item.catalog_album and sharing_item.catalog_album.available_to_all)) %}<p>Also available to all channels through its artist or album. Turning off this song's option does not remove inherited availability.</p>{% endif %}
+{% if sharing_kind == 'album' and sharing_item.artist.available_to_all %}<p>Also shared through its artist.</p>{% endif %}
+<p>Changes affect the shared catalog across this installation. Disabled or unapproved songs remain unavailable for broadcast.</p>
+<button type="submit">Save availability</button></form></section>

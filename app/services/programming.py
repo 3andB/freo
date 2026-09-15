@@ -1,4 +1,5 @@
 """Shared station-scoped programming mutations used by the browser and CLI."""
+from app.services.availability import track_scope
 from app.extensions import db
 from app.models import Clock, MediaCategory, Rotation, ScheduleAssignment, Track
 from app.services.automation import category_for, rotation_for, validate_rotation, require_station
@@ -61,7 +62,7 @@ def set_membership(slug, category_slug, track_uuids, assigned):
     unique = list(dict.fromkeys(track_uuids))
     if not unique or len(unique) > 100:
         raise ValueError('Choose between 1 and 100 tracks')
-    tracks = Track.query.filter(Track.station_id == category.station_id, Track.uuid.in_(unique)).all()
+    tracks = Track.query.filter(track_scope(category.station_id), Track.uuid.in_(unique)).all()
     if len(tracks) != len(unique):
         raise ValueError('A selected track does not belong to this station')
     for track in tracks:

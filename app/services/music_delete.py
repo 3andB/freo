@@ -9,6 +9,14 @@ from app.services.admin_media import audit
 
 
 def ensure_deletable(song):
+    from app.services.availability import shared
+    from app.models import LiveCartSlot
+    if shared(song):
+        raise ValueError('Remove artist, album, and song sharing before permanently deleting this music')
+    if any(category.station_id != song.station_id for category in song.categories):
+        raise ValueError('Remove this song from other channels before permanently deleting it')
+    if LiveCartSlot.query.filter_by(track_id=song.id).first():
+        raise ValueError('Remove this song from carts before permanently deleting it')
     if song.analysis_status=='processing':raise ValueError('Wait for this song to finish processing before deleting it')
     if SelectionDecision.query.filter(SelectionDecision.track_id==song.id,SelectionDecision.status.in_(('selected','submitting','queued'))).first():
         raise ValueError('This song is queued. Wait for playback or clear its programming references first.')
@@ -16,12 +24,13 @@ def ensure_deletable(song):
         raise ValueError('Remove this song from Events and Blocks before deleting it.')
     if EventBlockItemExecution.query.filter(EventBlockItemExecution.track_id==song.id,EventBlockItemExecution.state.in_(('PENDING','QUEUED','STARTED'))).first():
         raise ValueError('This song belongs to an active block. Wait for the block to finish.')
-    station=song.station
-    if station.desired_state=='running':
+    for station in Station.query.filter_by(enabled=True, desired_state='running', deleted_at=None):
         snapshot=db.session.get(LiveQueueSnapshot,station.id)
         if not snapshot or snapshot.error_code or (datetime.now(timezone.utc)-snapshot.observed_at.replace(tzinfo=timezone.utc)).total_seconds()>10 or snapshot.unknown_count:
             raise ValueError('Current playback is not confirmed. Try deletion when station status is available.')
         ids=([snapshot.current_decision_id] if snapshot.current_decision_id else [])+(snapshot.queued_decision_ids or [])
+        mixer=snapshot.mixer or {}
+        ids += [mixer[key] for key in ('a_id','b_id','cart_id') if mixer.get(key)]
         if SelectionDecision.query.filter(SelectionDecision.id.in_(ids),SelectionDecision.track_id==song.id).first():
             raise ValueError('This song is on air or queued. Wait until it has finished before deleting it.')
 

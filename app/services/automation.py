@@ -1,4 +1,6 @@
 """Station-scoped category rotations and explainable track selection."""
+from app.services.availability import playable
+from app.services.availability import tracks_for
 from datetime import datetime, timedelta, timezone
 
 from app.extensions import db
@@ -39,7 +41,7 @@ def category_for(slug, category_slug):
 
 def assign_track(slug, track_uuid, category_slug, assigned=True, *, commit=True):
     category = category_for(slug, category_slug)
-    track = Track.query.filter_by(station_id=category.station_id, uuid=track_uuid).first()
+    track = tracks_for(category.station_id).filter_by(uuid=track_uuid).first()
     if track is None:
         raise ValueError('Track not found in station')
     if assigned and track not in category.tracks:
@@ -308,8 +310,8 @@ def _select_category(station, category, state, storage, now, context, rotation=N
     if not category.enabled or category.station_id != station.id:
         reason, tracks = 'disabled_category', []
     else:
-        tracks = [track for track in category.tracks if track.station_id == station.id and track.enabled and track.ingest_status == 'accepted']
-        tracks = [track for track in tracks if _exists(storage, station.slug, track.storage_key)]
+        tracks = [track for track in category.tracks if playable(track, station.id)]
+        tracks = [track for track in tracks if _exists(storage, track.station.slug, track.storage_key)]
         reason = 'empty_category' if not tracks else ''
     base = dict(station_id=station.id, rotation_id=rotation.id if rotation else None,
                 slot_id=rotation_slot.id if rotation_slot else None, category_id=category.id,
@@ -400,8 +402,7 @@ def preview(slug, count=10, storage=None, now=None, rotation_slug=None):
     for index in range(count):
         slot = slots[cursor % len(slots)]
         cursor += 1
-        tracks = [track for track in slot.category.tracks if slot.category.enabled and track.station_id == station.id
-                  and track.enabled and track.ingest_status == 'accepted' and _exists(storage, slug, track.storage_key)]
+        tracks = [track for track in slot.category.tracks if slot.category.enabled and playable(track, station.id) and _exists(storage, track.station.slug, track.storage_key)]
         track, relaxation, candidates = _choose(tracks, history, now, state.track_separation_seconds, state.artist_separation_seconds)
         output.append({'slot': slot.position, 'category': slot.category.slug,
                        'track': track.uuid if track else None, 'relaxation': relaxation,

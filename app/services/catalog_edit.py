@@ -1,4 +1,5 @@
 """Validated catalog selections shared by import and editing."""
+from app.services.availability import artists_for, albums_for
 from app.models import Artist, Album, MusicTag, MediaCategory, MusicArtwork
 from app.services.music_catalog import artist_for, album_for
 
@@ -9,7 +10,8 @@ def owned(model, station_id, identifier):
     if model is not MusicArtwork:
         if not str(identifier).isdecimal(): raise ValueError('Invalid catalog selection')
         identifier=int(identifier)
-    row = model.query.filter_by(station_id=station_id, id=identifier).first()
+    query = artists_for(station_id) if model is Artist else albums_for(station_id) if model is Album else model.query.filter_by(station_id=station_id)
+    row = query.filter_by(id=identifier).first()
     if row is None:
         raise ValueError('That selection is unavailable for this station')
     return row
@@ -55,9 +57,10 @@ def validate_metadata(station_id, data):
     return result
 
 
-def apply_metadata(song, data):
-    data = validate_metadata(song.station_id, data)
-    artist = owned(Artist, song.station_id, data['artist_id']) if data.get('artist_id') else None
+def apply_metadata(song, data, station_id=None):
+    station_id = station_id or song.station_id
+    data = validate_metadata(station_id, data)
+    artist = owned(Artist, station_id, data['artist_id']) if data.get('artist_id') else None
     if data.get('artist_name'): artist = artist_for(song.station_id, data['artist_name'])
     if artist:
         song.catalog_artist = artist;song.artist = artist.name
@@ -65,7 +68,7 @@ def apply_metadata(song, data):
         if song.catalog_album and song.catalog_album.artist_id != artist.id:
             song.catalog_album = None;song.album = ''
     if 'album_id' in data:
-        album = owned(Album, song.station_id, data['album_id']) if data['album_id'] else None
+        album = owned(Album, station_id, data['album_id']) if data['album_id'] else None
         song.catalog_album = album;song.album = album.title if album else ''
     if data.get('album_name'):
         artist = artist or song.catalog_artist or artist_for(song.station_id, song.artist)
@@ -77,5 +80,7 @@ def apply_metadata(song, data):
         if song.catalog_album: song.catalog_album.cover_id = data['cover_id']
         else: song.cover_id = data['cover_id']
     for key, model in [('tags', MusicTag), ('categories', MediaCategory)]:
-        if key in data: setattr(song, key, [owned(model, song.station_id, identifier) for identifier in data[key]])
+        if key in data:
+            preserved = [row for row in getattr(song, key) if row.station_id != station_id]
+            setattr(song, key, preserved + [owned(model, station_id, identifier) for identifier in data[key]])
     return song

@@ -200,6 +200,7 @@ def test_recursive_folder_drop_and_cancelled_song_drag(booth):
     assert not driver.find_elements(By.CSS_SELECTOR,'.pointer-drag-ghost,.drop-active')
     with app.app_context():assert not Station.query.filter_by(slug='test-station').first().automation.cued_track
     driver.get(base+'/admin/stations/test-station/media/upload')
+    WebDriverWait(driver, 8).until(lambda d:d.execute_script("return !!document.querySelector('.drop-zone').ondrop"))
     driver.execute_script("""
       const file={isFile:true,file:resolve=>resolve(new File(['folder song'],'nested.mp3',{type:'audio/mpeg'}))};
       const directory={isDirectory:true,createReader:()=>{let read=false;return {readEntries:resolve=>{resolve(read?[]:[file]);read=true;}}}};
@@ -344,6 +345,11 @@ def test_paused_load_completes_before_engine_reports_current_id(booth, deck):
     wait_text(driver,f'#deck-{key}-state','PAUSED' if deck=='A' else 'EMPTY')
     driver.find_element(By.CSS_SELECTOR,f'[data-load-deck="{deck}"]').click()
     wait_text(driver,f'#deck-{key}-state','LOADING')
+    # LOADING is optimistic; wait for the request to reach the server.
+    def command_received(_):
+        with app.app_context():
+            return LiveControlCommand.query.filter_by(status='pending').count() == 1
+    WebDriverWait(driver, 8).until(command_received)
     with app.app_context():
         command=LiveControlCommand.query.filter_by(status='pending').one()
         assert command.deck==deck and not command.play_on_load

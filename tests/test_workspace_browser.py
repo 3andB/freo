@@ -121,3 +121,45 @@ def test_programming_event_series_and_content_picker(booth):
         driver.set_window_size(width,1000)
         assert driver.execute_script('return document.documentElement.scrollWidth<=innerWidth')
     driver.save_screenshot('/tmp/freo-programming-calendar.png')
+
+
+def test_now_playing_persists_without_monitor_and_handles_stale_state(booth):
+    app, driver, base, tmp_path = booth
+    wait_text(driver, '[data-now-title]', 'Verified Test Track')
+    wait_text(driver, '[data-now-artist]', 'Test Artist')
+    assert driver.execute_script('return FreoMonitor.audio.paused')
+    driver.find_element(By.CSS_SELECTOR, '.admin-nav a[href$="/categories"]').click()
+    wait_text(driver, '[data-now-title]', 'Verified Test Track')
+    with app.app_context():
+        snapshot = LiveQueueSnapshot.query.first()
+        snapshot.error_code = 'Connection unavailable'
+        db.session.commit()
+    wait_text(driver, '[data-now-label]', 'Last known')
+    wait_text(driver, '[data-now-title]', 'Verified Test Track')
+    with app.app_context():
+        snapshot = LiveQueueSnapshot.query.first()
+        snapshot.error_code = None
+        snapshot.current_decision_id = None
+        snapshot.mixer = {}
+        db.session.commit()
+    wait_text(driver, '[data-now-label]', 'Nothing playing')
+    assert driver.find_element(By.CSS_SELECTOR, '[data-now-title]').text == '—'
+    driver.set_window_size(390, 844)
+    assert driver.find_element(By.CSS_SELECTOR, '[data-now-playing]').is_displayed()
+    assert driver.execute_script('return document.documentElement.scrollWidth <= innerWidth')
+    driver.set_window_size(1600, 1200)
+    with app.app_context():
+        snapshot = LiveQueueSnapshot.query.first()
+        current = SelectionDecision.query.filter_by(status='started').first()
+        snapshot.mixer = dict(a_id=current.id, a_playing=False, b_id=None, b_playing=False)
+        db.session.commit()
+    wait_text(driver, '[data-now-label]', 'Paused')
+    wait_text(driver, '[data-now-title]', 'Verified Test Track')
+    driver.find_element(By.CSS_SELECTOR, '.admin-nav a[href*="/media"]').click()
+    wait_text(driver, '.song-row-copy', '1 plays')
+    wait_text(driver, '#room-categories', '1 plays')
+    Select(driver.find_element(By.ID, 'station-select')).select_by_visible_text('Second Station')
+    driver.find_element(By.CSS_SELECTOR, '.station-picker button').click()
+    WebDriverWait(driver, 10).until(lambda d:'second-station' in d.current_url)
+    wait_text(driver, '[data-now-label]', 'Playback unavailable')
+    assert driver.find_element(By.CSS_SELECTOR, '[data-now-title]').text == '—'

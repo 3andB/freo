@@ -1,3 +1,7 @@
+> Current lifecycle and library behavior: [Station lifecycle and shared music](channel-management.md).
+> The Phase 3 notes below describe the original implementation. Creation/deletion
+> now also have authenticated UI workflows; music can be available to all channels.
+
 # Station management (Phase 3)
 
 The Phase 2 `freo-test` stream is a separate diagnostic fixture: it answers whether this installation can generate and deliver audio. It is not in the station database. `freo-demo` is the first database-managed station; `freo-demo-2` was used for two-process isolation and is now stopped. Both managed stations currently emit generated tone audio, not programming.

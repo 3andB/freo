@@ -1,4 +1,6 @@
 """Station-scoped operator intent. Only the automation worker touches playout sockets."""
+from app.services.availability import playable
+from app.services.availability import tracks_for
 import uuid
 from datetime import datetime, timedelta, timezone
 
@@ -75,7 +77,7 @@ def queue_playable(station, user, kind, identifier, nonce, *, bus='A', cart_mode
     if not station.enabled or station.desired_state != 'running':
         raise ValueError('Station is not running')
     if kind == 'track':
-        playable = Track.query.filter_by(station_id=station.id, uuid=identifier).first()
+        playable = tracks_for(station.id).filter_by(uuid=identifier).first()
     elif kind == 'imaging':
         playable = ImagingAsset.query.filter_by(station_id=station.id, uuid=identifier).first()
     else:
@@ -85,7 +87,7 @@ def queue_playable(station, user, kind, identifier, nonce, *, bus='A', cart_mode
     storage = LocalMediaStorage()
     try:
         if kind == 'track':
-            storage.regular_file(station.slug, playable.storage_key)
+            storage.regular_file(playable.station.slug, playable.storage_key)
         else:
             storage.imaging_file(station.slug, playable.storage_key)
     except (OSError, ValueError) as error:
@@ -149,14 +151,14 @@ def request_fade(station, user, expected_decision_id, nonce):
 
 
 def cue_track(station, user, identifier):
-    track = Track.query.filter_by(station_id=station.id, uuid=identifier,
+    track = tracks_for(station.id).filter_by(uuid=identifier,
         enabled=True, ingest_status='accepted', decommissioned_at=None).first()
     if track is None:
         raise ValueError('Song is unavailable for this station')
     if not station.automation or not station.enabled or station.desired_state != 'running':
         raise ValueError('Station is not running')
     try:
-        LocalMediaStorage().regular_file(station.slug, track.storage_key)
+        LocalMediaStorage().regular_file(track.station.slug, track.storage_key)
     except (OSError, ValueError) as error:
         raise ValueError('Approved audio is unavailable') from error
     if station.automation.cued_track_id == track.id:
@@ -182,7 +184,7 @@ def request_takeover(station,user,identifier,expected_decision_id,nonce):
     current = SelectionDecision.query.filter_by(id=expected_decision_id, station_id=station.id, status='started').first() if expected_decision_id is not None else None
     if expected_decision_id is not None and current is None:
         raise ValueError('Current item changed; refresh before takeover')
-    track=Track.query.filter_by(station_id=station.id,uuid=identifier,enabled=True,ingest_status='accepted',decommissioned_at=None).first()
+    track=tracks_for(station.id).filter_by(uuid=identifier,enabled=True,ingest_status='accepted',decommissioned_at=None).first()
     if not track:raise ValueError('Song is unavailable for this station')
     if not station.enabled or station.desired_state != 'running':
         raise ValueError('Station is not running')
@@ -199,7 +201,7 @@ def request_takeover(station,user,identifier,expected_decision_id,nonce):
         if deck_current or observed['queue'] or observed['unknown_queue_items']:
             raise ValueError('Station audio changed. Review the current song before taking air.')
     try:
-        LocalMediaStorage().regular_file(station.slug, track.storage_key)
+        LocalMediaStorage().regular_file(track.station.slug, track.storage_key)
     except (OSError, ValueError) as error:
         raise ValueError('Approved audio is unavailable') from error
     target=SelectionDecision(station_id=station.id,track_id=track.id,selection_method='manual_track',admin_user_id=user.id,idempotency_key=nonce,status='selected',reason='operator_takeover');db.session.add(target);db.session.flush()
@@ -217,12 +219,12 @@ def assign_cart(station, user, role, position, identifier, label='', description
         raise ValueError('Choose play over or take over and a volume reduction from 0 to 100%')
     identifier = (identifier or '').removeprefix('track:').removeprefix('imaging:')
     asset = ImagingAsset.query.filter_by(station_id=station.id, uuid=identifier, enabled=True, ingest_status='accepted', decommissioned_at=None).first()
-    track = Track.query.filter_by(station_id=station.id, uuid=identifier, enabled=True, ingest_status='accepted', decommissioned_at=None).first() if not asset else None
+    track = tracks_for(station.id).filter_by(uuid=identifier, enabled=True, ingest_status='accepted', decommissioned_at=None).first() if not asset else None
     if not asset and not track:
         raise ValueError('Cart audio is unavailable for this station')
     try:
         if track:
-            LocalMediaStorage().regular_file(station.slug, track.storage_key)
+            LocalMediaStorage().regular_file(track.station.slug, track.storage_key)
         else:
             LocalMediaStorage().imaging_file(station.slug, asset.storage_key)
     except (OSError, ValueError) as error:
@@ -440,11 +442,11 @@ def request_deck(station, user, deck, action, identifier, expected, nonce, fade_
         raise ValueError('Load a song on this deck first')
     target = None
     if action in ('LOAD','REPEAT'):
-        track = Track.query.filter_by(station_id=station.id,uuid=identifier,enabled=True,ingest_status='accepted',decommissioned_at=None).first() if action=='LOAD' else current.track
-        if not track or not track.enabled or track.decommissioned_at:
+        track = tracks_for(station.id).filter_by(uuid=identifier,enabled=True,ingest_status='accepted',decommissioned_at=None).first() if action=='LOAD' else current.track
+        if not track or not playable(track, station.id):
             raise ValueError('Choose an available song for this deck')
         try:
-            LocalMediaStorage().regular_file(station.slug,track.storage_key)
+            LocalMediaStorage().regular_file(track.station.slug,track.storage_key)
         except (OSError,ValueError) as error:
             raise ValueError('The song audio is unavailable') from error
         target=SelectionDecision(station_id=station.id,track=track,playback_bus=deck,selection_method='manual_track',admin_user_id=user.id,idempotency_key=str(uuid.uuid4()),status='selected',reason='deck_'+action.lower())

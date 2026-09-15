@@ -67,6 +67,7 @@ def main():
             if not isinstance(source_password, str) or not re.fullmatch(r'[0-9a-f]{64}', source_password):
                 raise SystemExit('Invalid station source credential.')
             mounts.append(f'<mount type="normal"><mount-name>/{slug}</mount-name><username>source</username><password>{source_password}</password></mount>')
+    icecast = icecast.replace('<sources>4</sources>', f'<sources>{max(4, len(mounts) + 1)}</sources>')
     icecast = icecast.replace('  <hostname>localhost</hostname>', ''.join(mounts) + '\n  <hostname>localhost</hostname>')
     liquidsoap = (SOURCE / 'deploy/liquidsoap/freo-test.liq.template').read_text().replace('__SOURCE_PASSWORD__', credentials['source'])
     ET.fromstring(icecast)

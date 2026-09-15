@@ -1,4 +1,5 @@
 """Station-scoped listening and music organization workspace."""
+from app.services.availability import tracks_for, track_scope
 import math
 import re
 import uuid
@@ -14,19 +15,22 @@ from app.services.admin_auth import admin_required, current_admin, require_csrf,
 from app.services.admin_media import audit
 from app.services.analysis_queue import request_analysis
 from app.services.loudness import gain_for
-from app.routes.catalog_editor import cover_url
+from app.routes.catalog_editor import cover_url, context_slug
+from app.services.airplay import play_counts
 
 sound_room=Blueprint('sound_room',__name__)
 
 
-def song_data(song):
+def song_data(song, plays=None, station=None):
+    station = station or song.station
     return dict(uuid=song.uuid,title=song.title,artist=song.artist,album=song.album,
+        play_count=play_counts(station.id, 'track', [song.id]).get(song.id, 0) if plays is None else plays,
         duration_ms=song.duration_ms,enabled=song.enabled,notes=song.notes,
         analysis=song.analysis_status,requested=song.analysis_requested,error=song.analysis_error,
-        bpm=song.bpm,lufs=song.loudness_lufs,peak=song.true_peak_db,gain=gain_for(song),
+        bpm=song.bpm,lufs=song.loudness_lufs,peak=song.true_peak_db,gain=gain_for(song, station),
         categories=[x.id for x in song.categories],tags=[x.id for x in song.tags],
-        audition=url_for('admin_media.audition',slug=song.station.slug,track_uuid=song.uuid),
-        detail=url_for('admin_media.track_detail',slug=song.station.slug,track_uuid=song.uuid),
+        audition=url_for('admin_media.audition',slug=context_slug(song),track_uuid=song.uuid),
+        detail=url_for('admin_media.track_detail',slug=context_slug(song),track_uuid=song.uuid),
         artwork=cover_url(song))
 
 
@@ -41,7 +45,7 @@ def page(slug):
 @admin_required
 def catalog(slug):
     station=station_or_404(slug,require_enabled=False)
-    base=Track.query.filter_by(station_id=station.id,decommissioned_at=None,ingest_status='accepted')
+    base=tracks_for(station.id).filter_by(decommissioned_at=None,ingest_status='accepted')
     query=base
     term=request.args.get('q','').strip()[:100]
     if term:
@@ -57,7 +61,7 @@ def catalog(slug):
     if analysis=='unfinished':query=query.filter(Track.analysis_status!='complete')
     elif analysis in ('pending','processing','complete','failed'):query=query.filter_by(analysis_status=analysis)
     elif analysis:abort(400)
-    if request.args.get('uncategorized')=='1':query=query.filter(~Track.categories.any())
+    if request.args.get('uncategorized')=='1':query=query.filter(~Track.categories.any(MediaCategory.station_id==station.id))
     enabled=request.args.get('enabled','')
     if enabled in ('yes','no'):query=query.filter_by(enabled=enabled=='yes')
     elif enabled:abort(400)
@@ -65,10 +69,12 @@ def catalog(slug):
     except ValueError:abort(400)
     total=query.count()
     songs=query.options(selectinload(Track.tags),selectinload(Track.categories),selectinload(Track.station),selectinload(Track.catalog_album)).order_by(Track.artist,Track.title,Track.id).offset((page-1)*50).limit(50).all()
-    category_counts=dict(db.session.query(track_categories.c.category_id,func.count()).join(Track,Track.id==track_categories.c.track_id).filter(Track.station_id==station.id,Track.decommissioned_at.is_(None)).group_by(track_categories.c.category_id).all())
-    tag_counts=dict(db.session.query(song_tags.c.tag_id,func.count()).join(Track,Track.id==song_tags.c.track_id).filter(Track.station_id==station.id,Track.decommissioned_at.is_(None)).group_by(song_tags.c.tag_id).all())
-    result=dict(songs=[song_data(x) for x in songs],total=total,page=page,pages=max(1,(total+49)//50),target_lufs=station.target_lufs,
-        categories=[dict(id=x.id,name=x.name,count=category_counts.get(x.id,0),enabled=x.enabled,description=x.description) for x in MediaCategory.query.filter_by(station_id=station.id).order_by(MediaCategory.name)],
+    category_counts=dict(db.session.query(track_categories.c.category_id,func.count()).join(Track,Track.id==track_categories.c.track_id).filter(track_scope(station.id),Track.decommissioned_at.is_(None)).group_by(track_categories.c.category_id).all())
+    tag_counts=dict(db.session.query(song_tags.c.tag_id,func.count()).join(Track,Track.id==song_tags.c.track_id).filter(track_scope(station.id),Track.decommissioned_at.is_(None)).group_by(song_tags.c.tag_id).all())
+    song_plays = play_counts(station.id, 'track', [x.id for x in songs])
+    category_plays = play_counts(station.id, 'category')
+    result=dict(songs=[song_data(x, song_plays.get(x.id, 0), station) for x in songs],total=total,page=page,pages=max(1,(total+49)//50),target_lufs=station.target_lufs,
+        categories=[dict(id=x.id,name=x.name,count=category_counts.get(x.id,0),play_count=category_plays.get(x.id,0),enabled=x.enabled,description=x.description) for x in MediaCategory.query.filter_by(station_id=station.id).order_by(MediaCategory.name)],
         tags=[dict(id=x.id,name=x.name,color=x.color,description=x.description,count=tag_counts.get(x.id,0)) for x in MusicTag.query.filter_by(station_id=station.id).order_by(MusicTag.name)],
         unfinished=base.filter(Track.analysis_status!='complete').count())
     response=jsonify(result);response.headers['Cache-Control']='private, no-store';return response
@@ -78,14 +84,14 @@ def catalog(slug):
 @admin_required
 def song(slug,identifier):
     station=station_or_404(slug,require_enabled=False)
-    track=Track.query.filter_by(station_id=station.id,uuid=identifier,decommissioned_at=None,ingest_status='accepted').first_or_404()
-    return jsonify(song_data(track))
+    track=tracks_for(station.id).filter_by(uuid=identifier,decommissioned_at=None,ingest_status='accepted').first_or_404()
+    return jsonify(song_data(track, station=station))
 
 
 def selected_songs(station,data):
     ids=data.get('songs',[])
     if not isinstance(ids,list) or not 1<=len(ids)<=500 or any(not isinstance(x,str) for x in ids):raise ValueError('Select between 1 and 500 songs')
-    songs=Track.query.filter(Track.station_id==station.id,Track.uuid.in_(ids),Track.decommissioned_at.is_(None),Track.ingest_status=='accepted').all()
+    songs=Track.query.filter(track_scope(station.id),Track.uuid.in_(ids),Track.decommissioned_at.is_(None),Track.ingest_status=='accepted').all()
     if len(songs)!=len(set(ids)):raise ValueError('One or more songs are unavailable for this station')
     return songs
 

@@ -1,4 +1,5 @@
 """Trusted station media ingestion and approved playlist generation."""
+from app.services.availability import tracks_for
 import hashlib
 import os
 from pathlib import Path
@@ -163,7 +164,7 @@ def ingest(slug, source, title=None, artist=None, album=None, storage=None, *,
 
 def approved_tracks(slug):
     station = station_for_media(slug)
-    return Track.query.filter_by(station_id=station.id, ingest_status='accepted', enabled=True).order_by(Track.id).all()
+    return tracks_for(station.id).filter_by(ingest_status='accepted', enabled=True, decommissioned_at=None).order_by(Track.id).all()
 
 
 def refresh_playlist(slug, storage=None):
@@ -173,7 +174,7 @@ def refresh_playlist(slug, storage=None):
     paths = []
     for track in tracks:
         try:
-            paths.append(str(storage.regular_file(slug, track.storage_key)))
+            paths.append(str(storage.regular_file(track.station.slug, track.storage_key)))
         except (OSError, ValueError):
             continue
     import grp

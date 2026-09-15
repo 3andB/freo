@@ -5,7 +5,8 @@
 <header class="admin-topbar">
   <a class="wordmark" href="{{ url_for('web.admin_home') }}">freo<span>.world</span></a>
   <span class="admin-topbar-label">Station operations <span class="readonly-pill">ADMIN</span></span>
-  <div data-master-monitor {% if not selected %}data-preserve-station{% endif %} data-station="{{ selected.slug if selected else '' }}" data-station-name="{{ selected.name if selected else '' }}" data-stream="{{ selected.stream.public_path if selected else '' }}"></div>
+  <div class="topbar-now-playing" data-now-playing role="status"><small data-now-label>Checking playback…</small><strong data-now-title>—</strong><span data-now-artist></span></div>
+  <div data-master-monitor data-available-stations='{{ stations|selectattr("enabled")|map(attribute="slug")|list|tojson }}' {% if not selected %}data-preserve-station{% endif %} data-station="{{ selected.slug if selected else '' }}" data-station-name="{{ selected.name if selected else '' }}" data-stream="{{ selected.stream.public_path if selected else '' }}"></div>
   <div class="admin-topbar-end"><a href="{{ url_for('web.homepage') }}">Public site</a>
     <form action="{{ url_for('web.logout') }}" method="post"><input type="hidden" name="csrf" value="{{ session.get('logout_csrf', '') }}"><button type="submit">Sign out</button></form>
   </div>

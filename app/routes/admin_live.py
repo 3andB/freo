@@ -1,4 +1,5 @@
 """Authenticated Live Assist; mutations create worker-processed intent only."""
+from app.services.availability import tracks_for
 import uuid
 
 from flask import Blueprint, abort, flash, jsonify, redirect, render_template, request, url_for
@@ -33,7 +34,7 @@ def page(slug):
     station = station_for_operator(slug)
     search = request.args.get('q', '').strip()[:100]
     pattern = search_term()
-    tracks = Track.query.filter_by(station_id=station.id, enabled=True, ingest_status='accepted', decommissioned_at=None)
+    tracks = tracks_for(station.id).filter_by(enabled=True, ingest_status='accepted', decommissioned_at=None)
     imaging = ImagingAsset.query.filter_by(station_id=station.id, enabled=True, ingest_status='accepted', decommissioned_at=None)
     category=request.args.get('category','')
     if category:
@@ -61,7 +62,7 @@ def live_status(slug):
 @admin_required
 def song_search(slug):
     station=station_for_operator(slug);term=request.args.get('q','').strip()[:100]
-    query=Track.query.filter_by(station_id=station.id,enabled=True,ingest_status='accepted',decommissioned_at=None)
+    query=tracks_for(station.id).filter_by(enabled=True,ingest_status='accepted',decommissioned_at=None)
     if term:
         pattern='%' + term.replace('\\','\\\\').replace('%','\\%').replace('_','\\_') + '%'
         query=query.filter(or_(Track.title.ilike(pattern,escape='\\'),Track.artist.ilike(pattern,escape='\\'),Track.album.ilike(pattern,escape='\\')))
@@ -152,6 +153,6 @@ def action(slug, action):
 def cart_search(slug):
     station=station_for_operator(slug)
     pattern=search_term()
-    tracks=Track.query.filter_by(station_id=station.id,enabled=True,ingest_status='accepted',decommissioned_at=None).filter(or_(Track.title.ilike(pattern,escape='\\'),Track.artist.ilike(pattern,escape='\\'))).order_by(Track.title).limit(50).all()
+    tracks=tracks_for(station.id).filter_by(enabled=True,ingest_status='accepted',decommissioned_at=None).filter(or_(Track.title.ilike(pattern,escape='\\'),Track.artist.ilike(pattern,escape='\\'))).order_by(Track.title).limit(50).all()
     assets=ImagingAsset.query.filter_by(station_id=station.id,enabled=True,ingest_status='accepted',decommissioned_at=None).filter(or_(ImagingAsset.name.ilike(pattern,escape='\\'),ImagingAsset.cart_code.ilike(pattern,escape='\\'))).order_by(ImagingAsset.name).limit(50).all()
     return jsonify([{'uuid':x.uuid,'label':f'Song · {x.artist} · {x.title}'} for x in tracks]+[{'uuid':x.uuid,'label':f'{x.asset_type.replace("_"," ")} · {x.name}'} for x in assets])

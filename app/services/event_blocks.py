@@ -1,4 +1,6 @@
 """Station-scoped block definitions and immutable ordered execution snapshots."""
+from app.services.availability import available
+from app.services.availability import tracks_for
 import re
 from datetime import datetime, timezone
 
@@ -54,7 +56,7 @@ def save_block(slug, *, identifier=None, name, description='', block_type='GENER
     db.session.add(row); db.session.commit(); return row
 
 def _target(block, item_type, identifier):
-    if item_type == 'TRACK': row = Track.query.filter_by(station_id=block.station_id, uuid=identifier).first()
+    if item_type == 'TRACK': row = tracks_for(block.station_id).filter_by(uuid=identifier).first()
     elif item_type == 'IMAGING_ASSET': row = ImagingAsset.query.filter_by(station_id=block.station_id, uuid=identifier).first()
     else: raise ValueError('Unsupported block item type')
     if row is None: raise ValueError('Block content belongs to another station or does not exist')
@@ -94,10 +96,10 @@ def validate_block(block, storage=None):
     if not enabled: errors.append('Block must contain at least one enabled item.')
     for item in enabled:
         target=item.track or item.imaging_asset
-        if target is None or target.station_id!=block.station_id or not target.enabled or target.ingest_status!='accepted' or target.decommissioned_at:
+        if target is None or (not available(target,block.station_id) if item.item_type == 'TRACK' else target.station_id!=block.station_id) or not target.enabled or target.ingest_status!='accepted' or target.decommissioned_at:
             errors.append(f'Item {item.position} is disabled or unavailable.'); continue
         try:
-            (storage.regular_file if item.track else storage.imaging_file)(block.station.slug,target.storage_key)
+            (storage.regular_file if item.track else storage.imaging_file)(target.station.slug,target.storage_key)
         except (OSError,ValueError): errors.append(f'Item {item.position} failed storage verification.')
     return errors
 
@@ -133,7 +135,7 @@ def prepare_next(execution, now=None):
     item=next((i for i in execution.items if i.state=='PENDING'),None)
     if item is None: return None
     target=item.track or item.imaging_asset
-    valid=target and target.station_id==execution.station_id and target.enabled and target.ingest_status=='accepted' and not target.decommissioned_at
+    valid=target and (available(target,execution.station_id) if item.track else target.station_id==execution.station_id) and target.enabled and target.ingest_status=='accepted' and not target.decommissioned_at
     if not valid:
         item.state='FAILED'; item.failed_at=now; item.failure_reason='content_unavailable'
         if item.failure_policy=='ABORT_BLOCK': execution.state='FAILED'; execution.failure_reason='content_unavailable'

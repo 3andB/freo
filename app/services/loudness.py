@@ -6,8 +6,9 @@ TRUE_PEAK_CEILING = -1.5
 MAX_BOOST_DB = 12.0
 
 
-def gain_for(song):
-    target = song.station.target_lufs if song.station.target_lufs is not None else TARGET_LUFS
+def gain_for(song, station=None):
+    station = station or song.station
+    target = station.target_lufs if station.target_lufs is not None else TARGET_LUFS
     measured, peak = song.loudness_lufs, song.true_peak_db
     if song.analysis_status != 'complete' or any(x is None or not math.isfinite(x) for x in (measured, peak)):
         return dict(target=target, db=0.0, factor=1.0, status='Needs analysis', output_lufs=None)

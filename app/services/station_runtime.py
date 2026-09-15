@@ -1,5 +1,9 @@
 """Root-run station rendering and narrowly scoped systemd operations."""
 import json
+import fcntl
+from contextlib import contextmanager
+from contextvars import ContextVar
+from functools import wraps
 import os
 from pathlib import Path
 import secrets
@@ -15,6 +19,37 @@ SECRETS = ROOT / 'secrets/stations'
 CONFIGS = ROOT / 'radio/stations'
 SNIPPETS = Path('/etc/nginx/snippets/freo-stations')
 SOURCE = Path(__file__).resolve().parents[2]
+PLAYLISTS = Path('/var/lib/freo/playlists')
+
+
+_runtime_locked = ContextVar('freo_runtime_locked', default=False)
+
+
+@contextmanager
+def operation_lock():
+    require_root()
+    if _runtime_locked.get():
+        yield
+        return
+    ROOT.mkdir(parents=True, exist_ok=True)
+    path = ROOT / 'station-provision.lock'
+    if path.is_symlink():
+        raise ValueError('Symlink provisioning lock is forbidden')
+    with path.open('a') as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        token = _runtime_locked.set(True)
+        try:
+            yield
+        finally:
+            _runtime_locked.reset(token)
+
+
+def serialized(operation):
+    @wraps(operation)
+    def guarded(*args, **kwargs):
+        with operation_lock():
+            return operation(*args, **kwargs)
+    return guarded
 
 
 def require_root():
@@ -92,6 +127,7 @@ def render_liquidsoap(station, password):
     return liquidsoap
 
 
+@serialized
 def render(station):
     require_root()
     slug = validate_slug(station.slug)
@@ -151,3 +187,34 @@ def service_action(slug, action):
     if action == 'stop':
         run_checked(['/bin/systemctl', 'disable', unit])
     run_checked(['/bin/systemctl', action, unit])
+
+
+@serialized
+def remove(station):
+    """Remove only this station's runtime; each step is safe to repeat.
+
+    On reload failure keep the station disabled and retain a retryable operation.
+    No other playout process is stopped or restarted.
+    """
+    require_root()
+    slug = validate_slug(station.slug)
+    service_action(slug, 'stop')
+    if service_action(slug, 'status'):
+        raise RuntimeError('Station is still running')
+    for parent, suffix in ((SNIPPETS, '.conf'), (CONFIGS, '.liq'), (SECRETS, '.json')):
+        if parent.is_symlink():
+            raise ValueError('Symlink runtime directory is forbidden')
+        for ending in (suffix, suffix + '.previous'):
+            path = parent / (slug + ending)
+            if path.is_symlink():
+                raise ValueError('Symlink runtime file is forbidden')
+            path.unlink(missing_ok=True)
+    run_checked(['/opt/freo/venv/bin/python', str(SOURCE / 'scripts/render-radio-config.py')])
+    run_checked(['/usr/sbin/nginx', '-t'])
+    run_checked(['/bin/systemctl', 'reload', 'icecast2.service'])
+    run_checked(['/bin/systemctl', 'reload', 'nginx.service'])
+    playlist = PLAYLISTS / (slug + '.m3u')
+    if playlist.is_symlink():
+        raise ValueError('Symlink playlist is forbidden')
+    playlist.unlink(missing_ok=True)
+    # systemd owns the runtime directory; stopping its unit removes it.

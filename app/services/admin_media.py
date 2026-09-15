@@ -1,4 +1,5 @@
 """Station-scoped browser media operations; filesystem writes stay in the ingest worker."""
+from app.services.availability import tracks_for
 import os
 from pathlib import Path
 import re
@@ -83,4 +84,4 @@ def stage_upload(station, user, file, *, kind='ingest', imaging_type=None, imagi
 def track_for_station(station, track_uuid):
     if not isinstance(track_uuid, str) or len(track_uuid) != 36:
         return None
-    return Track.query.filter_by(station_id=station.id, uuid=track_uuid).first()
+    return tracks_for(station.id).filter_by(uuid=track_uuid).first()

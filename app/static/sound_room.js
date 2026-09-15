@@ -46,7 +46,7 @@
         if(kind==='tag'){
           const handle=el('span','⠿','tag-drag');handle.title='Drag this tag onto a song';handle.setAttribute('aria-hidden','true');Object.assign(handle.dataset,{tag:item.id});row.append(handle);row.style.setProperty('--tag-color',item.color);
         }
-        const name=button(item.name,()=>{if(kind==='category')openCategory(item);else{editingCategory=null;setFilter({[kind]:item.id},item.name);}},'destination-name');name.append(el('small',`${item.count}${item.enabled===false?' · disabled':''}`));
+        const name=button(item.name,()=>{if(kind==='category')openCategory(item);else{editingCategory=null;setFilter({[kind]:item.id},item.name);}},'destination-name');name.append(el('small',`${item.count}${kind==='category'?` songs · ${item.play_count} plays`:''}${item.enabled===false?' · disabled':''}`));
         if(String(filter[kind])===String(item.id))name.setAttribute('aria-current','true');
         const apply=button('Apply',()=>assign(kind,item.id,[...selected]),'destination-apply');apply.dataset.apply='';apply.title=`Apply ${item.name} to selected songs`;
         row.append(name,apply);
@@ -64,7 +64,7 @@
       const row=el('article',undefined,'room-song');row.dataset.song=song.uuid;row.tabIndex=0;row.classList.toggle('inspecting',active===song.uuid);
       const check=el('input');check.type='checkbox';check.setAttribute('aria-label',`Select ${song.title}`);check.addEventListener('change',()=>{check.checked?selected.add(song.uuid):selected.delete(song.uuid);selection();});
       const handle=el('span','⠿','song-drag');handle.title='Drag song to a category or tag';handle.setAttribute('aria-hidden','true');
-      const copy=el('div',undefined,'song-row-copy');copy.append(el('b',song.title),el('span',song.artist),el('small',`${song.album||'Single'} · ${duration(song.duration_ms)}`));
+      const copy=el('div',undefined,'song-row-copy');copy.append(el('b',song.title),el('span',song.artist),el('small',`${song.album||'Single'} · ${duration(song.duration_ms)} · ${song.play_count} plays`));
       copy.append(FreoMusicToggles.create(song,data,root.dataset));
       const status=el('div',undefined,'song-row-status');status.append(el('span',song.analysis==='pending'?(song.requested?'Queued':'Waiting'):song.analysis),el('small',song.lufs===null?'LUFS pending':`${song.lufs.toFixed(1)} LUFS`));
       if(!song.enabled)status.append(el('small','Needs review'));

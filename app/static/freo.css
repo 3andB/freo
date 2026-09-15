@@ -271,3 +271,11 @@ html{scroll-behavior:auto}.admin-primary{display:inline-flex;align-items:center;
 .scheduling-nav summary{cursor:pointer;padding:12px 16px;font-weight:700}.scheduling-nav a{display:block;margin-left:12px}.template-tabs{font-size:.9rem}.calendar-coverage{border-left:3px solid #64748b;background:#172630;padding:10px;margin:8px 0;color:#c9d4dc;font-size:12px;overflow-wrap:anywhere}.calendar-coverage small{display:block}.event-lane{border-top:1px solid #cbd5e1;margin-top:12px;padding-top:10px}.event-lane h4{margin:4px 0}.schedule-preview td{vertical-align:top}.event-options{grid-column:1/-1}.event-options .event-form-grid{margin-top:12px}.schedule-explanation{margin-bottom:16px}.calendar-event.is-commercial{border-left-color:#b45309}.calendar-event .event-result{display:block;font-size:.85rem}.schedule-preview{scroll-margin-top:80px}
 
 .calendar-hero .inline-actions{gap:8px;flex-wrap:wrap}.calendar-empty{padding:4px 5px}.calendar-coverage small{font-size:10px;color:#a9bdc4;margin-top:5px}
+
+/* Station metadata remains visible independently of local monitoring. */
+.topbar-now-playing{display:flex;flex:1 1 200px;min-width:0;flex-direction:column;gap:3px;overflow-wrap:anywhere}
+.topbar-now-playing small{color:#9daabd;font-size:11px}
+.topbar-now-playing strong{color:#e8edf4;font-size:14px}
+.topbar-now-playing span{color:#b8c9dd;font-size:12px}
+@media(max-width:800px){.topbar-now-playing{order:3;flex-basis:100%}.admin-topbar-end{width:auto;margin-left:auto}}
+.topbar-now-playing strong,.topbar-now-playing span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-height:1.2em}

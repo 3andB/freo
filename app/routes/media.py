@@ -1,4 +1,5 @@
 """Safe read-only station media metadata."""
+from app.services.availability import tracks_for
 from flask import Blueprint, jsonify, request
 from sqlalchemy import or_
 from app.models import Track
@@ -28,7 +29,7 @@ def list_media(slug):
     station = station_or_none(slug)
     if station is None:
         return jsonify(status='not_found'), 404
-    query = Track.query.filter_by(station_id=station.id)
+    query = tracks_for(station.id)
     if request.args.get('enabled') in ('true', 'false'):
         query = query.filter_by(enabled=request.args['enabled'] == 'true')
     search = request.args.get('q', '').strip()[:100]
@@ -43,7 +44,7 @@ def show_media(slug, track_uuid):
     station = station_or_none(slug)
     if station is None:
         return jsonify(status='not_found'), 404
-    track = Track.query.filter_by(station_id=station.id, uuid=track_uuid).first()
+    track = tracks_for(station.id).filter_by(uuid=track_uuid).first()
     if track is None:
         return jsonify(status='not_found'), 404
     return jsonify(public_track(track))

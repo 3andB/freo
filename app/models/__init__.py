@@ -65,6 +65,9 @@ class Station(db.Model):
     public_slug = db.Column(db.String(64), unique=True)
     created_at = db.Column(db.DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
     updated_at = db.Column(db.DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    deleted_at = db.Column(db.DateTime(timezone=True), index=True)
+    lifecycle_state = db.Column(db.String(24), nullable=False, default='ready', server_default='ready')
+    lifecycle_error = db.Column(db.String(500), nullable=False, default='', server_default='')
     stream = db.relationship('StreamMount', back_populates='station', uselist=False, cascade='all, delete-orphan')
 
 
@@ -108,6 +111,7 @@ class MusicArtwork(db.Model):
 class Artist(db.Model):
     __tablename__ = 'artists'
     __table_args__ = (db.UniqueConstraint('station_id', 'normalized_name', name='uq_artist_station_name'),)
+    available_to_all = db.Column(db.Boolean, nullable=False, default=False, server_default=db.false())
     id = db.Column(db.Integer, primary_key=True)
     station_id = db.Column(db.Integer, db.ForeignKey('stations.id', ondelete='CASCADE'), nullable=False, index=True)
     name = db.Column(db.String(200), nullable=False)
@@ -120,6 +124,7 @@ class Artist(db.Model):
 class Album(db.Model):
     __tablename__ = 'albums'
     __table_args__ = (db.UniqueConstraint('station_id', 'artist_id', 'normalized_title', name='uq_album_station_artist_title'),)
+    available_to_all = db.Column(db.Boolean, nullable=False, default=False, server_default=db.false())
     id = db.Column(db.Integer, primary_key=True)
     station_id = db.Column(db.Integer, db.ForeignKey('stations.id', ondelete='CASCADE'), nullable=False, index=True)
     artist_id = db.Column(db.Integer, db.ForeignKey('artists.id', ondelete='RESTRICT'), nullable=False, index=True)
@@ -162,6 +167,7 @@ class Track(db.Model):
         db.CheckConstraint('duration_ms > 0', name='ck_tracks_duration'),
         db.CheckConstraint('file_size_bytes > 0', name='ck_tracks_size'),
     )
+    available_to_all = db.Column(db.Boolean, nullable=False, default=False, server_default=db.false())
     id = db.Column(db.Integer, primary_key=True)
     station_id = db.Column(db.Integer, db.ForeignKey('stations.id', ondelete='RESTRICT'), nullable=False, index=True)
     uuid = db.Column(db.String(36), unique=True, nullable=False, index=True)

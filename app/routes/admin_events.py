@@ -1,4 +1,5 @@
 """Authenticated station-scoped timed-event management."""
+from app.services.availability import tracks_for
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 
@@ -63,7 +64,7 @@ def _save(station, row=None):
         missed_policy=request.form.get('missed_policy'), interrupt_policy=request.form.get('interrupt_policy'), priority=request.form.get('priority'))
 
 
-def _tracks(station): return Track.query.filter_by(station_id=station.id, enabled=True, ingest_status='accepted', decommissioned_at=None).order_by(Track.title).all()
+def _tracks(station): return tracks_for(station.id).filter_by(enabled=True, ingest_status='accepted', decommissioned_at=None).order_by(Track.title).all()
 def _imaging(station): return ImagingAsset.query.filter_by(station_id=station.id, enabled=True, ingest_status='accepted', decommissioned_at=None).order_by(ImagingAsset.name).all()
 def _blocks(station): return EventBlock.query.filter_by(station_id=station.id, enabled=True).order_by(EventBlock.name).all()
 

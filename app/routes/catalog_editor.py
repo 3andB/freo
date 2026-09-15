@@ -1,4 +1,6 @@
 """Station-scoped catalog, artwork, and live media editor endpoints."""
+from app.services.availability import artists_for, albums_for
+from app.services.availability import tracks_for
 import io
 import json
 import subprocess
@@ -18,13 +20,17 @@ from app.services.music_catalog import artist_for, album_for
 catalog_editor = Blueprint('catalog_editor', __name__)
 
 
+def context_slug(song):
+    return (request.view_args or {}).get('slug') or song.station.slug
+
+
 def cover_url(song):
     identifier = song.catalog_album.cover_id if song.catalog_album and song.catalog_album.cover_id else song.cover_id
-    if identifier: return url_for('catalog_editor.artwork', slug=song.station.slug, identifier=identifier)
+    if identifier: return url_for('catalog_editor.artwork', slug=context_slug(song), identifier=identifier)
     if song.catalog_album and song.catalog_album.artwork_key:
-        return url_for('admin_media.album_artwork', slug=song.station.slug, album_id=song.album_id)
+        return url_for('admin_media.album_artwork', slug=context_slug(song), album_id=song.album_id)
     if song.artwork_key:
-        return url_for('catalog_editor.song_artwork',slug=song.station.slug,identifier=song.uuid)
+        return url_for('catalog_editor.song_artwork',slug=context_slug(song),identifier=song.uuid)
     return None
 
 
@@ -37,15 +43,15 @@ def state(song):
                 broadcast=('Decommissioned' if song.decommissioned_at else
                            'Enabled for broadcast' if eligible else 'Enabled — choose an active category for rotation' if song.enabled else
                            'Processing before broadcast' if song.auto_enable_pending else 'Disabled'),
-                audition=url_for('admin_media.audition',slug=song.station.slug,track_uuid=song.uuid))
+                audition=url_for('admin_media.audition',slug=context_slug(song),track_uuid=song.uuid))
 
 
 @catalog_editor.get('/admin/api/stations/<slug>/catalog')
 @admin_required
 def catalog(slug):
     station = station_or_404(slug, require_enabled=False)
-    return jsonify(artists=[dict(id=a.id,name=a.name) for a in Artist.query.filter_by(station_id=station.id).order_by(Artist.name)],
-                   albums=[dict(id=a.id,name=a.title,artist_id=a.artist_id,cover_id=a.cover_id) for a in Album.query.filter_by(station_id=station.id).order_by(Album.title)],
+    return jsonify(artists=[dict(id=a.id,name=a.name) for a in artists_for(station.id).order_by(Artist.name)],
+                   albums=[dict(id=a.id,name=a.title,artist_id=a.artist_id,cover_id=a.cover_id) for a in albums_for(station.id).order_by(Album.title)],
                    tags=[dict(id=t.id,name=t.name) for t in MusicTag.query.filter_by(station_id=station.id).order_by(MusicTag.name)],
                    categories=[dict(id=c.id,name=c.name,enabled=c.enabled) for c in MediaCategory.query.filter_by(station_id=station.id).order_by(MediaCategory.name)])
 
@@ -72,7 +78,7 @@ def create(slug, kind):
 @admin_required
 def song(slug,identifier):
     station=station_or_404(slug,require_enabled=False)
-    track=Track.query.filter_by(station_id=station.id,uuid=identifier,deleted_at=None).first_or_404()
+    track=tracks_for(station.id).filter_by(uuid=identifier,deleted_at=None).first_or_404()
     if request.method=='POST':
         from app.services.admin_auth import require_csrf
         require_csrf()
@@ -88,7 +94,7 @@ def song(slug,identifier):
                 set_enabled_db(track,data['enabled'])
             else:
                 if not str(data.get('title','')).strip(): raise ValueError('Song title is required')
-                apply_metadata(track,data)
+                apply_metadata(track,data,station.id)
             audit('media_editor_updated',user_id=current_admin().id,station_id=station.id,target_id=track.uuid,summary='Song details or broadcast state updated')
             db.session.commit()
         except (ValueError,TypeError,IntegrityError) as error:
@@ -117,7 +123,7 @@ def upload_artwork(slug):
             art=MusicArtwork(id=str(uuid.uuid4()),station_id=station.id,image=output.read_bytes());db.session.add(art)
         if request.form.get('album_id'): owned(Album,station.id,request.form['album_id']).cover_id=art.id
         if request.form.get('song_id'):
-            track=Track.query.filter_by(uuid=request.form['song_id'],station_id=station.id,deleted_at=None,decommissioned_at=None).first()
+            track=tracks_for(station.id).filter_by(uuid=request.form['song_id'],deleted_at=None,decommissioned_at=None).first()
             if not track: raise ValueError('Song unavailable')
             if track.catalog_album: track.catalog_album.cover_id=art.id
             else: track.cover_id=art.id
@@ -131,7 +137,12 @@ def upload_artwork(slug):
 @admin_required
 def artwork(slug,identifier):
     station=station_or_404(slug,require_enabled=False)
-    art=MusicArtwork.query.filter_by(id=identifier,station_id=station.id).first_or_404()
+    from sqlalchemy import or_
+    allowed_covers = tracks_for(station.id).with_entities(Track.cover_id)
+    album_covers = albums_for(station.id).with_entities(Album.cover_id)
+    art=MusicArtwork.query.filter(MusicArtwork.id==identifier, or_(
+        MusicArtwork.station_id==station.id, MusicArtwork.id.in_(allowed_covers),
+        MusicArtwork.id.in_(album_covers))).first_or_404()
     return send_file(io.BytesIO(art.image),mimetype='image/jpeg',max_age=3600)
 
 
@@ -141,8 +152,8 @@ def song_artwork(slug,identifier):
     from flask import abort
     from app.services.media_storage import LocalMediaStorage
     station=station_or_404(slug,require_enabled=False)
-    track=Track.query.filter_by(station_id=station.id,uuid=identifier,deleted_at=None).first_or_404()
+    track=tracks_for(station.id).filter_by(uuid=identifier,deleted_at=None).first_or_404()
     if not track.artwork_key: abort(404)
-    try: path=LocalMediaStorage().artwork_file(slug,track.artwork_key)
+    try: path=LocalMediaStorage().artwork_file(track.station.slug,track.artwork_key)
     except (OSError,ValueError): abort(404)
     return send_file(path,mimetype='image/jpeg',conditional=True,max_age=3600)

@@ -1,4 +1,5 @@
 """Authenticated, CSRF-protected forms over the shared programming services."""
+from app.services.availability import tracks_for
 from datetime import datetime, time, timezone
 from zoneinfo import ZoneInfo
 from flask import Blueprint, abort, flash, redirect, render_template, request, url_for
@@ -24,6 +25,9 @@ KINDS = {'categories': 'category', 'rotations': 'rotation', 'clocks': 'clock'}
 
 
 def page(station, section, **extra):
+    from app.services.airplay import play_counts
+    if section == 'categories':
+        extra['play_counts'] = play_counts(station.id, 'category')
     return render_template('admin/programming.html', stations=admin_stations(), selected=station,
         page=section, section=section, kind=KINDS.get(section), data=admin_context(station, with_status=False), **extra)
 
@@ -127,7 +131,7 @@ def detail(slug, section, resource):
     extra = {}
     if section == 'categories':
         search = request.args.get('q', '').strip()[:80]
-        query = Track.query.filter_by(station_id=station.id, ingest_status='accepted')
+        query = tracks_for(station.id).filter_by(ingest_status='accepted')
         if search:
             pattern = '%' + search.replace('\\', '\\\\').replace('%', '\\%').replace('_', '\\_') + '%'
             query = query.filter(Track.title.ilike(pattern, escape='\\') | Track.artist.ilike(pattern, escape='\\'))

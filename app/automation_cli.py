@@ -1,4 +1,5 @@
 """Root-run administration for categories, rotations, and automation."""
+from app.services.availability import playable
 import click
 from flask import Blueprint
 
@@ -182,9 +183,9 @@ def rotation_validate(station, slug):
             click.echo(f'Warning: slot {slot.position} category is disabled')
         count = 0
         for track in slot.category.tracks:
-            if track.station_id == item.station_id and track.enabled and track.ingest_status == 'accepted':
+            if playable(track, item.station_id):
                 try:
-                    storage.regular_file(station, track.storage_key)
+                    storage.regular_file(track.station.slug, track.storage_key)
                     count += 1
                 except (OSError, ValueError):
                     pass

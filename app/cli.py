@@ -1,5 +1,6 @@
 """Root-run station administration. No mutation endpoint is exposed by Flask."""
 import time
+import json
 import click
 from flask import Blueprint
 
@@ -36,7 +37,7 @@ def admin():
 
 @station_group.command('list')
 def list_command():
-    for item in Station.query.order_by(Station.slug):
+    for item in Station.query.filter_by(deleted_at=None).order_by(Station.slug):
         click.echo(f'{item.slug}\t{item.name}\t{item.desired_state}')
 
 
@@ -44,17 +45,86 @@ def list_command():
 @click.argument('slug')
 @click.option('--name', required=True)
 @click.option('--description', default='')
-def create_command(slug, name, description):
+@click.option('--timezone', 'timezone_name', default='UTC')
+@click.option('--if-not-exists', is_flag=True, help='Resume an identical setup request safely.')
+@click.option('--json', 'as_json', is_flag=True)
+@click.option('--start', 'start_after', is_flag=True)
+def create_command(slug, name, description, timezone_name, if_not_exists, as_json, start_after):
     admin()
     try:
-        station = create_station(name, slug, description)
-        from app.services.media import _prepare_dirs
-        from app.services.media_storage import LocalMediaStorage
-        _prepare_dirs(LocalMediaStorage(), station.slug)
-        render(station)
+        from app.services.station_lifecycle import process_station
+        from app.services.schedule import validate_timezone
+        timezone_name = validate_timezone(timezone_name)
+        station = get_station(slug) if if_not_exists else None
+        if station:
+            if (station.name, station.description, station.timezone) != (name.strip(), description, timezone_name):
+                raise ValueError('Existing station differs from the requested setup')
+            if station.lifecycle_state not in ('ready', 'pending_create', 'create_failed'):
+                raise ValueError('Station is being deleted')
+        else:
+            station = create_station(name, slug, description, pending=True, timezone_name=timezone_name)
+        process_station(station)
+        if start_after and not station.enabled:
+            raise ValueError('Station is disabled; enable it before starting')
+        if start_after and station.desired_state != 'running':
+            service_action(slug, 'start')
+            if not wait_online(station):
+                service_action(slug, 'stop')
+                raise ValueError('Station did not begin streaming')
+            station.desired_state = 'running'
+            db.session.commit()
+        click.echo(json.dumps(public_station(station)) if as_json else f'Created and rendered {station.slug}; desired state {station.desired_state}')
     except Exception as error:
-        raise click.ClickException(str(error)) from error
-    click.echo(f'Created and rendered {station.slug}; desired state stopped')
+        db.session.rollback()
+        raise click.ClickException(str(error) if isinstance(error, ValueError) else 'Station setup failed; check provisioning status and retry') from error
+
+
+@station_group.command('delete')
+@click.argument('slug')
+@click.option('--yes', is_flag=True, help='Confirm removal of this station runtime; retain media and history.')
+@click.option('--json', 'as_json', is_flag=True)
+def delete_command(slug, yes, as_json):
+    admin()
+    from app.services.stations import validate_slug, request_delete
+    from app.services.station_lifecycle import process_station
+    try:
+        validate_slug(slug)
+        station = Station.query.filter_by(slug=slug).first()
+        if station is None:
+            raise ValueError('Station not found')
+        if not yes:
+            raise ValueError('Pass --yes to remove this station runtime. Media and history are retained.')
+        if not station.deleted_at:
+            request_delete(station)
+            process_station(station)
+        click.echo(json.dumps(dict(slug=slug, status='deleted', media='retained')) if as_json else f'Deleted {slug}; media and history retained')
+    except Exception as error:
+        db.session.rollback()
+        raise click.ClickException(str(error) if isinstance(error, ValueError) else 'Station deletion failed; check provisioning status and retry') from error
+
+
+@station_group.command('process-pending')
+def process_pending_command():
+    admin()
+    from app.services.station_lifecycle import process_pending
+    try:
+        process_pending()
+    except Exception as error:
+        raise click.ClickException('Station provisioning failed; retry from Stations after checking runtime services') from error
+
+
+@station_group.command('retry')
+@click.argument('slug')
+def retry_command(slug):
+    admin()
+    from app.services.station_lifecycle import retry, process_station
+    station = known(slug)
+    try:
+        retry(station)
+        process_station(station)
+    except Exception as error:
+        raise click.ClickException('Station retry failed; check runtime services') from error
+    click.echo(station.lifecycle_state)
 
 
 @station_group.command('show')
@@ -111,6 +181,8 @@ def disable_command(slug):
 def enable_command(slug):
     admin()
     station = known(slug)
+    if station.lifecycle_state != 'ready':
+        raise click.ClickException('Station provisioning is not ready')
     set_enabled(station, True)
     click.echo(f'Enabled {slug}; desired state stopped')
 
@@ -129,7 +201,7 @@ def wait_online(station):
 def start_command(slug):
     admin()
     station = known(slug)
-    if not station.enabled or not station.stream.enabled:
+    if station.lifecycle_state != 'ready' or not station.enabled or not station.stream.enabled:
         raise click.ClickException('Station is disabled')
     try:
         render(station)

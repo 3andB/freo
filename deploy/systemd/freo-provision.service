@@ -1,0 +1,14 @@
+[Unit]
+Description=Freo station provisioning
+After=postgresql.service nginx.service icecast2.service
+
+[Service]
+Type=oneshot
+TimeoutStartSec=300
+User=root
+WorkingDirectory=/opt/freo
+EnvironmentFile=/opt/freo/.env
+ExecStart=/opt/freo/venv/bin/flask --app wsgi:app station process-pending
+UMask=0077
+PrivateTmp=true
+ProtectHome=true

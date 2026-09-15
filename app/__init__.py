@@ -44,6 +44,12 @@ def create_app(config_name=None):
     for key in ("SECRET_KEY", "PUBLIC_BASE_URL", "FREO_DOMAIN", "FREO_MEDIA_ROOT", "LOG_LEVEL"):
         if key in os.environ:
             app.config[key] = os.environ[key]
+    try:
+        app.config['FREO_MAX_STATIONS'] = int(os.environ.get('FREO_MAX_STATIONS', app.config['FREO_MAX_STATIONS']))
+        if app.config['FREO_MAX_STATIONS'] < 0:
+            raise ValueError()
+    except ValueError:
+        raise RuntimeError('FREO_MAX_STATIONS must be a non-negative integer (0 means unlimited)')
     if "DATABASE_URL" in os.environ:
         app.config["SQLALCHEMY_DATABASE_URI"] = os.environ["DATABASE_URL"]
     if hasattr(configs[name], "init_app"):

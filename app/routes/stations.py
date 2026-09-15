@@ -35,7 +35,7 @@ def observed_status(station):
 
 @stations_blueprint.get('/api/stations')
 def list_stations():
-    stations = Station.query.order_by(Station.slug).all()
+    stations = Station.query.filter_by(deleted_at=None).order_by(Station.slug).all()
     return jsonify(stations=[public_station(s) for s in stations])
 
 
