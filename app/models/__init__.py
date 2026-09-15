@@ -31,6 +31,7 @@ class MediaIngestJob(db.Model):
     __table_args__ = (db.CheckConstraint("status IN ('pending','processing','accepted','duplicate','rejected','error')", name='ck_media_ingest_job_status'),)
     id = db.Column(db.String(36), primary_key=True)
     kind = db.Column(db.String(12), nullable=False, default='ingest')
+    import_metadata = db.Column(db.JSON, nullable=False, default=dict, server_default='{}')
     station_id = db.Column(db.Integer, db.ForeignKey('stations.id', ondelete='RESTRICT'), nullable=False, index=True)
     admin_user_id = db.Column(db.Integer, db.ForeignKey('admin_users.id', ondelete='SET NULL'))
     original_filename = db.Column(db.String(255), nullable=False)
@@ -97,6 +98,13 @@ class StreamMount(db.Model):
         return '/listen/' + self.station.public_slug if self.station.public_slug else '/stream/' + self.station.slug
 
 
+class MusicArtwork(db.Model):
+    __tablename__ = 'music_artwork'
+    id = db.Column(db.String(36), primary_key=True)
+    station_id = db.Column(db.Integer, db.ForeignKey('stations.id', ondelete='CASCADE'), nullable=False, index=True)
+    image = db.deferred(db.Column(db.LargeBinary, nullable=False))
+
+
 class Artist(db.Model):
     __tablename__ = 'artists'
     __table_args__ = (db.UniqueConstraint('station_id', 'normalized_name', name='uq_artist_station_name'),)
@@ -121,6 +129,7 @@ class Album(db.Model):
     release_year = db.Column(db.Integer)
     genre = db.Column(db.String(100), nullable=False, default='')
     artwork_key = db.Column(db.String(50))
+    cover_id = db.Column(db.String(36), db.ForeignKey('music_artwork.id', ondelete='SET NULL'))
     created_at = db.Column(db.DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
     updated_at = db.Column(db.DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
     station = db.relationship('Station')
@@ -168,12 +177,15 @@ class Track(db.Model):
     genre = db.Column(db.String(100), nullable=False, default='')
     isrc = db.Column(db.String(20), nullable=False, default='')
     artwork_key = db.Column(db.String(50))
+    cover_id = db.Column(db.String(36), db.ForeignKey('music_artwork.id', ondelete='SET NULL'))
     bpm = db.Column(db.Float)
     loudness_lufs = db.Column(db.Float)
     true_peak_db = db.Column(db.Float)
     cue_in_ms = db.Column(db.Integer)
     cue_out_ms = db.Column(db.Integer)
     segue_ms = db.Column(db.Integer)
+    waveform = db.Column(db.JSON, nullable=False, default=list, server_default='[]')
+    auto_enable_pending = db.Column(db.Boolean, nullable=False, default=False, server_default=db.false())
     analysis_status = db.Column(db.String(16), nullable=False, default='pending')
     analysis_requested = db.Column(db.Boolean, nullable=False, default=False)
     analysis_attempts = db.Column(db.Integer, nullable=False, default=0)

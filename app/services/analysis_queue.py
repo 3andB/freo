@@ -30,6 +30,14 @@ def process_analysis(requested=False):
             try: extract_artwork(song)
             except (OSError,ValueError): pass
     else: song.analysis_retry_at=now+timedelta(minutes=5*song.analysis_attempts)
+    db.session.flush()
+    if song.analysis_status=='complete':
+        # Conditional SQL observes manual disable/decommission made during analysis.
+        from sqlalchemy import update
+        activated=db.session.execute(update(Track).where(Track.id==song.id, Track.auto_enable_pending.is_(True), Track.ingest_status=='accepted', Track.decommissioned_at.is_(None), Track.deleted_at.is_(None)).values(enabled=True, auto_enable_pending=False))
+        if activated.rowcount:
+            from app.services.admin_media import audit
+            audit('media_auto_enabled',station_id=song.station_id,target_id=song.uuid,summary='Audio processing completed; import enabled for broadcast')
     db.session.commit()
     return True
 

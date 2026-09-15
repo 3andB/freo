@@ -236,7 +236,7 @@ def page_security_headers(response):
     if response.mimetype == 'text/html':
         response.headers['Content-Security-Policy'] = (
             "default-src 'self'; img-src 'self' data:; style-src 'self'; "
-            "script-src 'self'; media-src 'self'; connect-src 'self'; "
+            "script-src 'self'; media-src 'self' blob:; connect-src 'self'; "
             "base-uri 'self'; frame-ancestors 'none'")
         response.headers['X-Content-Type-Options'] = 'nosniff'
         response.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'

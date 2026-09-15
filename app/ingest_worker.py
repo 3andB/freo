@@ -81,7 +81,7 @@ def process_one():
         else:
             track, duplicate = ingest(job.station.slug, path,
                                       original_filename=job.original_filename,
-                                      enabled=False, update_playlist=False)
+                                      enabled=False, update_playlist=False, auto_enable_pending=True, import_metadata=job.import_metadata or {})
             job.status = 'duplicate' if duplicate else 'accepted'
             job.track_id = track.id
             if not duplicate:

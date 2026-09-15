@@ -1,0 +1,81 @@
+"""Validated catalog selections shared by import and editing."""
+from app.models import Artist, Album, MusicTag, MediaCategory, MusicArtwork
+from app.services.music_catalog import artist_for, album_for
+
+
+def owned(model, station_id, identifier):
+    if isinstance(identifier,bool) or not isinstance(identifier,(str,int)):
+        raise ValueError('Invalid catalog selection')
+    if model is not MusicArtwork:
+        if not str(identifier).isdecimal(): raise ValueError('Invalid catalog selection')
+        identifier=int(identifier)
+    row = model.query.filter_by(station_id=station_id, id=identifier).first()
+    if row is None:
+        raise ValueError('That selection is unavailable for this station')
+    return row
+
+
+def validate_metadata(station_id, data):
+    if not isinstance(data, dict):
+        raise ValueError('Invalid song details')
+    result = {}
+    for name, limit in [('title', 200), ('artist_name', 200), ('album_name', 200)]:
+        if name in data:
+            value = data[name]
+            if not isinstance(value, str) or len(value.strip()) > limit:
+                raise ValueError(f'{name.replace("_", " ").title()} must be under {limit} characters')
+            if value.strip(): result[name] = value.strip()
+    if data.get('artist_id') and result.get('artist_name'):
+        raise ValueError('Choose an artist or enter a new name')
+    if data.get('album_id') and result.get('album_name'):
+        raise ValueError('Choose an album or enter a new name')
+    artist = None
+    if data.get('artist_id'):
+        artist = owned(Artist, station_id, data['artist_id']);result['artist_id'] = artist.id
+    if 'album_id' in data:
+        result['album_id'] = None
+        if data['album_id']:
+            album = owned(Album, station_id, data['album_id'])
+            if not artist or album.artist_id != artist.id:
+                raise ValueError('Choose an album belonging to the selected artist')
+            result['album_id'] = album.id
+    if data.get('cover_id'):
+        result['cover_id'] = owned(MusicArtwork, station_id, data['cover_id']).id
+    for key, model in [('tags', MusicTag), ('categories', MediaCategory)]:
+        if key in data:
+            values = data[key]
+            if not isinstance(values, list) or len(values) > 500:
+                raise ValueError('Choose valid tags and categories')
+            result[key] = list({owned(model, station_id, value).id for value in values})
+    if data.get('track_number') not in (None, ''):
+        try: number = int(data['track_number'])
+        except (ValueError, TypeError): raise ValueError('Track number must be between 1 and 999')
+        if not 1 <= number <= 999: raise ValueError('Track number must be between 1 and 999')
+        result['track_number'] = number
+    return result
+
+
+def apply_metadata(song, data):
+    data = validate_metadata(song.station_id, data)
+    artist = owned(Artist, song.station_id, data['artist_id']) if data.get('artist_id') else None
+    if data.get('artist_name'): artist = artist_for(song.station_id, data['artist_name'])
+    if artist:
+        song.catalog_artist = artist;song.artist = artist.name
+        # Changing artist cannot retain an album belonging to somebody else.
+        if song.catalog_album and song.catalog_album.artist_id != artist.id:
+            song.catalog_album = None;song.album = ''
+    if 'album_id' in data:
+        album = owned(Album, song.station_id, data['album_id']) if data['album_id'] else None
+        song.catalog_album = album;song.album = album.title if album else ''
+    if data.get('album_name'):
+        artist = artist or song.catalog_artist or artist_for(song.station_id, song.artist)
+        song.catalog_album = album_for(song.station_id, artist, data['album_name'])
+        song.album = song.catalog_album.title
+    if 'title' in data: song.title = data['title']
+    if 'track_number' in data: song.track_number = data['track_number']
+    if 'cover_id' in data:
+        if song.catalog_album: song.catalog_album.cover_id = data['cover_id']
+        else: song.cover_id = data['cover_id']
+    for key, model in [('tags', MusicTag), ('categories', MediaCategory)]:
+        if key in data: setattr(song, key, [owned(model, song.station_id, identifier) for identifier in data[key]])
+    return song

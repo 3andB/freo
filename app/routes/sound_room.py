@@ -14,6 +14,7 @@ from app.services.admin_auth import admin_required, current_admin, require_csrf,
 from app.services.admin_media import audit
 from app.services.analysis_queue import request_analysis
 from app.services.loudness import gain_for
+from app.routes.catalog_editor import cover_url
 
 sound_room=Blueprint('sound_room',__name__)
 
@@ -26,7 +27,7 @@ def song_data(song):
         categories=[x.id for x in song.categories],tags=[x.id for x in song.tags],
         audition=url_for('admin_media.audition',slug=song.station.slug,track_uuid=song.uuid),
         detail=url_for('admin_media.track_detail',slug=song.station.slug,track_uuid=song.uuid),
-        artwork=url_for('admin_media.album_artwork',slug=song.station.slug,album_id=song.album_id) if song.catalog_album and song.catalog_album.artwork_key else None)
+        artwork=cover_url(song))
 
 
 @sound_room.get('/admin/stations/<slug>/sound-room')

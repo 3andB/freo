@@ -105,6 +105,8 @@ def album_detail(slug,album_id):
 @admin_required
 def album_artwork(slug,album_id):
     station=station_or_404(slug,require_enabled=False);album=Album.query.filter_by(id=album_id,station_id=station.id).first_or_404()
+    if album.cover_id:
+        return redirect(url_for('catalog_editor.artwork',slug=slug,identifier=album.cover_id))
     if not album.artwork_key: abort(404)
     from app.services.media_storage import LocalMediaStorage
     try:path=LocalMediaStorage().artwork_file(station.slug,album.artwork_key)
@@ -138,9 +140,13 @@ def upload(slug):
             return jsonify(message='Choose an audio file to upload.'), 400
         flash('Choose an audio file to upload.', 'error')
         return redirect(url_for('admin_media.upload', slug=slug))
+    import json
+    from app.services.catalog_edit import validate_metadata
+    try: metadata=validate_metadata(station.id,json.loads(request.form.get('metadata','{}')))
+    except (ValueError,TypeError): return jsonify(message='Check the artist, album, tags, and song details.'),400
     jobs=[];errors=[]
     for file in files:
-        try: jobs.append(stage_upload(station,current_admin(),file))
+        try: jobs.append(stage_upload(station,current_admin(),file,import_metadata=metadata))
         except MediaValidationError as error: errors.append(f'{file.filename}: {error}')
     if request.accept_mimetypes.best == 'application/json':
         return jsonify(jobs=[dict(id=job.id, name=job.original_filename, status_url=url_for('.job_json', slug=slug, job_id=job.id)) for job in jobs], errors=errors), 202 if jobs else 422
@@ -168,7 +174,8 @@ def bulk_categories(slug):
 def job_json(slug, job_id):
     station = station_or_404(slug, require_enabled=False)
     job = MediaIngestJob.query.filter_by(station_id=station.id, id=job_id).first_or_404()
-    return jsonify(status=job.status, error=job.error_code,
+    from app.routes.catalog_editor import state
+    return jsonify(status=job.status, error=job.error_code, song=state(job.track) if job.track and not job.track.deleted_at else None,
         review_url=url_for('.track_detail', slug=slug, track_uuid=job.track.uuid) if job.track else None)
 
 
@@ -192,7 +199,7 @@ def track_detail(slug, track_uuid):
               .order_by(SelectionDecision.started_at.desc()).limit(5).all())
     count = SelectionDecision.query.filter_by(station_id=station.id, track_id=track.id, status='started').count()
     return render_template('admin/media_track.html', **page_context(station, track=track,
-                           categories=categories, starts=starts, play_count=count))
+                           categories=categories, starts=starts, play_count=count, **classification_context(station)))
 
 
 @admin_media_blueprint.post('/admin/stations/<slug>/media/<track_uuid>/edit')
@@ -221,14 +228,17 @@ def edit_track(slug, track_uuid):
         track.cue_in_ms=bounded_int('cue_in_ms',0,track.duration_ms);track.cue_out_ms=bounded_int('cue_out_ms',0,track.duration_ms);track.segue_ms=bounded_int('segue_ms',0,60000)
         track.scheduling_restrictions={'notes':normalize(request.form.get('restriction_notes'),500,'')}
         from app.services.music_catalog import tag_for
-        names=[name for name in request.form.get('tags','').split(',') if name.strip()][:30]
-        track.tags=list({tag.id:tag for tag in (tag_for(station.id,name) for name in names)}.values())
+        if 'tags' in request.form:
+            names=[name for name in request.form.get('tags','').split(',') if name.strip()][:30]
+            track.tags=list({tag.id:tag for tag in (tag_for(station.id,name) for name in names)}.values())
         audit('media_metadata_updated', user_id=current_admin().id, station_id=station.id,
               target_id=track.uuid, summary='Descriptive metadata updated')
         db.session.commit()
+        if request.accept_mimetypes.best=='application/json': return jsonify(message='Saved')
         flash('Track metadata updated.', 'success')
     except (MediaValidationError,ValueError) as error:
         db.session.rollback()
+        if request.accept_mimetypes.best=='application/json': return jsonify(message=str(error)),400
         flash(str(error), 'error')
     return redirect(url_for('admin_media.track_detail', slug=slug, track_uuid=track_uuid), code=303)
 
@@ -320,6 +330,7 @@ def decommission_track(slug, track_uuid):
     if track.decommissioned_at is None:
         track.decommissioned_at = datetime.now(timezone.utc)
         track.enabled = False
+        track.auto_enable_pending = False
         track.categories.clear()
         audit('media_decommissioned', user_id=current_admin().id, station_id=station.id,
               target_id=track.uuid, summary='Disabled and uncategorized; file and history retained')

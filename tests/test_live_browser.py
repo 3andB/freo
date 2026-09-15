@@ -177,17 +177,17 @@ def test_file_picker_and_drop_import_results(booth):
     driver.find_element(By.ID,'media-file').send_keys(str(browser_audio))
     wait_text(driver,'#selected-files','picked.mp3')
     driver.find_element(By.CSS_SELECTOR,'#media-upload-form [type=submit]').click()
-    wait_text(driver,'#selected-files','Waiting for audio processing')
+    wait_text(driver,'.import-card:last-child','Waiting for audio processing')
     shutil.rmtree(upload_dir)
     with app.app_context():assert MediaIngestJob.query.count()==1
     driver.execute_script("const data=new DataTransfer();data.items.add(new File(['drop audio'],'dropped.mp3',{type:'audio/mpeg'}));document.querySelector('.drop-zone').dispatchEvent(new DragEvent('drop',{dataTransfer:data,bubbles:true,cancelable:true}));")
     wait_text(driver,'#selected-files','dropped.mp3')
     driver.find_element(By.CSS_SELECTOR,'#media-upload-form [type=submit]').click()
-    wait_text(driver,'#selected-files','Waiting for audio processing')
+    wait_text(driver,'.import-card:last-child','Waiting for audio processing')
     with app.app_context():
         jobs=MediaIngestJob.query.all();assert len(jobs)==2
-        jobs[-1].status='accepted';jobs[-1].track_id=Track.query.first().id;db.session.commit()
-    wait_text(driver,'#selected-files','Imported — review and enable')
+        jobs[-1].status='accepted';jobs[-1].track_id=Track.query.first().id;Track.query.first().analysis_status='complete';db.session.commit()
+    wait_text(driver,'#selected-files','Enabled for broadcast')
     assert driver.find_element(By.CSS_SELECTOR,'#selected-files a').get_attribute('href').startswith(base+'/admin/stations/test-station/media/')
 
 
@@ -209,7 +209,7 @@ def test_recursive_folder_drop_and_cancelled_song_drag(booth):
     """)
     wait_text(driver,'#selected-files','nested.mp3')
     driver.find_element(By.CSS_SELECTOR,'#media-upload-form [type=submit]').click()
-    wait_text(driver,'#selected-files','Waiting for audio processing')
+    wait_text(driver,'.import-card:last-child','Waiting for audio processing')
     with app.app_context():assert MediaIngestJob.query.one().original_filename=='nested.mp3'
 
 

@@ -1,76 +1,53 @@
-(() => {
-  const scope = window.FreoPage;
-  const form=document.getElementById('media-upload-form');
-  const input=document.getElementById('media-file');
-  // Imaging keeps its native form submission and server-rendered result.
-  if(!form||!input)return;
-  const folder=document.getElementById('media-folder'),zone=form.querySelector('.drop-zone');
-  const list=document.getElementById('selected-files'),summary=document.getElementById('selection-summary');
-  const submit=form.querySelector('[type="submit"]'),progress=document.getElementById('upload-progress');
-  let selected=[],uploading=false;
-  const showSelection=files=>{
+(async () => {
+  const form=document.getElementById('media-upload-form');if(!form)return;
+  const scope=FreoPage,$=id=>document.getElementById(id),{el}=FreoCatalog,config=form.dataset;
+  let items=[],uploading=false,catalog,batchSelectors,batchChips,batchCover=null;
+  const message=text=>$('import-message').textContent=text;
+  try{catalog=await FreoCatalog.load(config.base);batchSelectors=FreoCatalog.selectors($('batch-catalog'),catalog,{}, {...config,importing:true,message});batchChips=FreoCatalog.chips($('batch-classification'),catalog);}catch(e){message(e.message);return;}
+  function summary(){$('import-defaults').hidden=items.length<2;$('selection-summary').textContent=`${items.length} files · ${items.filter(i=>i.selected.checked&&!i.job).length} selected for import`;form.querySelector('[type=submit]').disabled=uploading||!items.some(i=>i.selected.checked&&!i.job&&!i.invalid);}
+  function addFiles(files){
     if(uploading)return;
-    selected=files.map(file=>({file,status:/\.mp3$/i.test(file.name)?'Ready':'Unsupported format — MP3 required'}));
-    render();
-  };
-  const render=()=>{
-    list.replaceChildren();summary.textContent=`${selected.length} file${selected.length===1?'':'s'} selected`;
-    selected.forEach(item=>{
-      const li=document.createElement('li'),name=document.createElement('b'),status=document.createElement('span');
-      name.textContent=item.file.webkitRelativePath||item.file.name;status.textContent=item.status;li.append(name,status);
-      if(item.review){const a=document.createElement('a');a.href=item.review;a.textContent='Review song';li.append(a);}
-      list.append(li);
-    });
-    submit.disabled=uploading||!selected.some(item=>item.status==='Ready'||item.status.startsWith('Failed'));
-  };
-  document.getElementById('choose-files').addEventListener('click',()=>input.click());
-  document.getElementById('choose-folder').addEventListener('click',()=>folder.click());
-  input.addEventListener('change',()=>showSelection([...input.files]));folder.addEventListener('change',()=>showSelection([...folder.files]));
-  const walk=async entry=>{
-    if(entry.isFile)return [await new Promise((resolve,reject)=>entry.file(resolve,reject))];
-    if(!entry.isDirectory)return [];
-    const reader=entry.createReader();let files=[];
-    while(true){const entries=await new Promise((resolve,reject)=>reader.readEntries(resolve,reject));if(!entries.length)break;for(const child of entries)files.push(...await walk(child));}
-    return files;
-  };
-  for(const name of ['dragenter','dragover'])zone.addEventListener(name,event=>{event.preventDefault();zone.classList.add('is-dragging');});
-  zone.addEventListener('dragleave',event=>{if(!zone.contains(event.relatedTarget))zone.classList.remove('is-dragging');});
-  zone.addEventListener('drop',async event=>{
-    event.preventDefault();zone.classList.remove('is-dragging');if(uploading)return;
-    const entries=[...event.dataTransfer.items].filter(item=>item.kind==='file').map(item=>item.webkitGetAsEntry?.());
-    const files=[...event.dataTransfer.files];summary.textContent='Reading files…';
-    try{let found=[];if(entries.length&&entries.every(Boolean)){for(const entry of entries)found.push(...await walk(entry));}else found=files;showSelection(found);}
-    catch(_){summary.textContent='Could not read that folder. Use Choose folder to try again.';}
-  });
-  scope.listen(window,'dragover',event=>{if([...event.dataTransfer.types].includes('Files'))event.preventDefault();});
-  scope.listen(window,'drop',event=>{if([...event.dataTransfer.types].includes('Files'))event.preventDefault();});
-  const upload=item=>new Promise((resolve,reject)=>{
-    const request=new XMLHttpRequest(),body=new FormData();
-    body.set('csrf',form.elements.csrf.value);body.append('files',item.file,item.file.name);
-    request.open('POST',form.action);request.setRequestHeader('Accept','application/json');request.timeout=180000;
-    request.upload.onprogress=event=>{if(event.lengthComputable){progress.querySelector('progress').value=event.loaded/event.total*100;progress.querySelector('span').textContent=`${item.file.name} · ${Math.round(event.loaded/event.total*100)}%`;}};
-    request.onload=()=>{try{const result=JSON.parse(request.responseText);if(request.status>=400)throw new Error(result.errors?.join(' ')||result.message||'Upload rejected');resolve(result.jobs[0]);}catch(error){reject(new Error(request.status===413?'File exceeds the server upload limit':error instanceof SyntaxError?'Session or server unavailable. Refresh and sign in if needed.':error.message));}};
-    request.onerror=()=>reject(new Error('Connection interrupted; retry this file.'));request.ontimeout=()=>reject(new Error('Upload timed out; retry this file.'));request.send(body);
-  });
-  const observe=async(item,url)=>{
-    try{
-      const response=await scope.fetch(url,{headers:{Accept:'application/json'},cache:'no-store'});if(!response.ok)throw new Error();const job=await response.json();
-      item.status=({pending:'Waiting for audio processing',processing:'Processing audio',accepted:'Imported — review and enable to use in the booth',duplicate:'Already in your library',rejected:'Audio rejected'})[job.status]||`Processing result: ${job.status}`;
-      item.review=job.review_url;render();
-      if(['pending','processing'].includes(job.status))setTimeout(()=>observe(item,url),3000);
-    }catch(_){item.status='Uploaded; status unavailable. Check Music for the result.';render();}
-  };
-  form.addEventListener('submit',async event=>{
-    event.preventDefault();if(uploading)return;uploading=true;progress.hidden=false;render();
-    for(const item of selected){
-      if(item.status!=='Ready'&&!item.status.startsWith('Failed'))continue;
-      if(item.file.size>Number(form.dataset.fileLimit)){item.status='File exceeds the per-song limit';continue;}
-      item.status='Uploading…';render();
-      try{const job=await upload(item);item.status='Uploaded — processing';observe(item,job.status_url);}
-      catch(error){item.status=`Failed: ${error.message}`;}
-      render();
+    for(const file of files){if(items.some(i=>i.file.name===file.name&&i.file.size===file.size&&i.file.lastModified===file.lastModified))continue;
+      const item={file,cover:null,job:null,invalid:!file.name.toLowerCase().endsWith('.mp3')||file.size>Number(config.fileLimit)};
+      const card=el('article',undefined,'import-card'),top=el('div',undefined,'import-card-head'),check=el('input'),title=el('input'),status=el('p'),preview=el('button','▶ Listen'),details=el('div',undefined,'import-song-fields'),classifications=el('div');
+      check.type='checkbox';check.checked=!item.invalid;check.setAttribute('aria-label',`Import ${file.name}`);title.placeholder='Song title — from file metadata';title.maxLength=200;title.setAttribute('aria-label',`Song title for ${file.name}`);preview.type='button';
+      const source=URL.createObjectURL(file);item.source=source;preview.onclick=()=>FreoPreview.play({uuid:source,title:title.value||file.name,artist:'Import preview',audition:source});
+      const remove=el('button','Remove');remove.type='button';remove.onclick=()=>{if(uploading||item.job)return;URL.revokeObjectURL(source);items=items.filter(i=>i!==item);card.remove();summary();};
+      top.append(check,el('b',file.webkitRelativePath||file.name),preview,remove);const label=el('label','Song title');label.append(title);details.append(label);const selectorHost=el('div');details.append(selectorHost);
+      const selectors=FreoCatalog.selectors(selectorHost,catalog,{}, {...config,importing:true,message});const chips=FreoCatalog.chips(classifications,catalog);
+      const number=el('input');number.type='number';number.min=1;number.max=999;const numberLabel=el('label','Track number');numberLabel.append(number);details.append(numberLabel);
+      const art=el('button','+ Artwork');art.type='button';const image=el('img',undefined,'import-cover');image.hidden=true;art.onclick=async()=>{const cover=await FreoCatalog.chooseCover(config);if(cover){item.cover=cover;image.src=cover.url;image.hidden=false;}};
+      status.setAttribute('role','status');status.textContent=item.invalid?'MP3 required, within the per-song size limit':'Ready to import';card.append(top,details,classifications,image,art,status);$('selected-files').append(card);
+      Object.assign(item,{card,selected:check,title,selectors,chips,number,status,image,art,preview});check.onchange=summary;items.push(item);
+      FreoReadMetadata(file).then(metadata=>{if(item.job||uploading)return;if(!title.value&&metadata.title)title.value=metadata.title;if(!number.value&&metadata.track_number)number.value=parseInt(metadata.track_number)||'';selectors.detected(metadata);}).catch(()=>{});
     }
-    uploading=false;progress.hidden=true;render();
-  });
-  render();
+    $('import-defaults').hidden=items.length<2;summary();
+  }
+  $('choose-files').onclick=()=>$('media-file').click();$('choose-folder').onclick=()=>$('media-folder').click();for(const id of ['media-file','media-folder'])$(id).onchange=e=>addFiles([...e.target.files]);
+  async function walk(entry){if(entry.isFile)return [await new Promise((resolve,reject)=>entry.file(resolve,reject))];if(!entry.isDirectory)return [];const reader=entry.createReader();let result=[];while(true){const chunk=await new Promise((resolve,reject)=>reader.readEntries(resolve,reject));if(!chunk.length)return result;for(const child of chunk)result.push(...await walk(child));}}
+  const zone=form.querySelector('.drop-zone');zone.ondragover=e=>{e.preventDefault();zone.classList.add('is-dragging');};zone.ondragleave=()=>zone.classList.remove('is-dragging');zone.ondrop=async e=>{e.preventDefault();zone.classList.remove('is-dragging');const entries=[...e.dataTransfer.items].map(i=>i.webkitGetAsEntry?.()).filter(Boolean),files=[...e.dataTransfer.files];try{let found=[];if(entries.length){for(const entry of entries)found.push(...await walk(entry));}else found=files;addFiles(found);}catch(_){message('Could not read the folder. Use Choose folder.');}};
+  scope.listen(window,'dragover',e=>{if([...e.dataTransfer.types].includes('Files'))e.preventDefault();});scope.listen(window,'drop',e=>{if([...e.dataTransfer.types].includes('Files'))e.preventDefault();});
+  $('batch-artwork').onclick=async()=>{const result=await FreoCatalog.chooseCover(config);if(result){batchCover=result;$('batch-status').textContent='Artwork selected. Apply it to the selected songs below.';}};
+  $('apply-batch').onclick=async()=>{const values=batchSelectors.values();for(const item of items.filter(i=>i.selected.checked&&!i.job)){await item.selectors.refresh();item.selectors.set(values);item.chips.set(batchChips.values());if(batchCover){item.cover=batchCover;item.image.src=batchCover.url;item.image.hidden=false;}}$('batch-status').textContent='Choices applied. Individual song details can still be changed.';};
+  function upload(item){return new Promise((resolve,reject)=>{const xhr=new XMLHttpRequest(),body=new FormData();const metadata={...item.selectors.values(),...item.chips.values()};if(item.title.value.trim())metadata.title=item.title.value.trim();if(item.number.value)metadata.track_number=item.number.value;if(item.cover)metadata.cover_id=item.cover.id;body.set('metadata',JSON.stringify(metadata));body.set('csrf',config.csrf);body.append('files',item.file,item.file.name);xhr.open('POST',form.action);xhr.setRequestHeader('Accept','application/json');xhr.timeout=180000;
+    xhr.upload.onprogress=e=>{if(e.lengthComputable){$('upload-progress').querySelector('progress').value=e.loaded/e.total*100;$('upload-progress').querySelector('span').textContent=`${item.file.name} · ${Math.round(e.loaded/e.total*100)}%`;}};
+    xhr.onload=()=>{try{const result=JSON.parse(xhr.responseText);if(xhr.status>=400||!result.jobs?.length)throw Error(result.message||result.errors?.join(' ')||'Upload failed');resolve(result.jobs[0]);}catch(e){reject(Error(e.message));}};xhr.onerror=()=>reject(Error('Connection interrupted. Retry import.'));xhr.ontimeout=()=>reject(Error('Upload timed out. Retry import.'));xhr.send(body);});}
+  async function observe(item){try{const response=await scope.fetch(item.job.status_url,{cache:'no-store'});if(!response.ok)throw Error();const result=await response.json();const song=result.song;
+    if(result.status==='duplicate')item.status.textContent='Already in your library — existing song kept';
+    else if(['rejected','error'].includes(result.status))item.status.textContent=`Import failed: ${result.error||'invalid audio'}`;
+    else if(song)item.status.textContent=song.error?`Processing needs attention: ${song.error}`:song.analysis==='complete'?song.broadcast:`Audio ${song.analysis}…`;
+    else item.status.textContent=result.status==='processing'?'Checking audio…':'Waiting for audio processing…';
+    if(result.review_url&&!item.review){item.review=el('a','Edit song');item.review.href=result.review_url;item.card.append(item.review);}
+    if(song){item.preview.onclick=()=>FreoPreview.play({uuid:song.uuid,title:song.title,artist:song.artist,audition:song.audition});if(!item.title.value)item.title.value=song.title;}
+    item.done=['duplicate','rejected','error'].includes(result.status)||(song&&['complete','failed'].includes(song.analysis));
+    if((['rejected','error'].includes(result.status)||song?.analysis==='failed')&&!item.retry){
+      item.retry=el('button',song?'Retry processing':'Retry import');item.retry.type='button';item.card.append(item.retry);
+      item.retry.onclick=async()=>{try{if(song){await FreoCatalog.api(config.base.replace(/\/catalog$/,'/music/actions/process'),config.csrf,{data:JSON.stringify({songs:[song.uuid]})});item.done=false;item.status.textContent='Processing queued…';}else{item.job=null;item.done=false;item.card.querySelectorAll('input,select,button').forEach(n=>n.disabled=false);item.status.textContent='Ready to retry. Import selected music.';summary();}item.retry.remove();item.retry=null;}catch(e){item.status.textContent=e.message;}};
+    }
+
+  }catch(_){item.status.textContent='Uploaded; status temporarily unavailable. Checking again…';}}
+  form.onsubmit=async e=>{e.preventDefault();if(uploading)return;uploading=true;summary();$('upload-progress').hidden=false;const pending=items.filter(i=>i.selected.checked&&!i.job&&!i.invalid);
+    for(const item of pending){item.status.textContent='Uploading…';item.card.querySelectorAll('input,select,button').forEach(n=>n.disabled=true);try{item.job=await upload(item);item.preview.disabled=false;observe(item);}catch(error){item.status.textContent=error.message;item.card.querySelectorAll('input,select,button').forEach(n=>n.disabled=false);}}
+    uploading=false;$('upload-progress').hidden=true;summary();};
+  scope.interval(()=>{for(const item of items)if(item.job&&!item.done)observe(item);},2500);scope.cleanup(()=>items.forEach(i=>URL.revokeObjectURL(i.source)));for(const id of ['media-file','media-folder'])if($(id).files.length)addFiles([...$(id).files]);summary();
 })();

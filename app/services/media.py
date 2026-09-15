@@ -82,7 +82,7 @@ def _prepare_dirs(storage, slug):
 
 
 def ingest(slug, source, title=None, artist=None, album=None, storage=None, *,
-           original_filename=None, enabled=True, update_playlist=True):
+           original_filename=None, enabled=True, update_playlist=True, auto_enable_pending=False, import_metadata=None):
     require_ingest_identity()
     station = station_for_media(slug)
     storage = storage or LocalMediaStorage()
@@ -135,12 +135,18 @@ def ingest(slug, source, title=None, artist=None, album=None, storage=None, *,
             storage_key=key, media_type=details['media_type'], duration_ms=details['duration_ms'],
             bitrate_kbps=details['bitrate_kbps'], sample_rate_hz=details['sample_rate_hz'],
             channels=details['channels'], file_size_bytes=total, checksum_sha256=digest,
-            enabled=enabled, ingest_status='accepted',
+            enabled=enabled, auto_enable_pending=auto_enable_pending, ingest_status='accepted',
         )
         db.session.add(track)
         db.session.flush()
         from app.services.music_catalog import organize_song
         organize_song(track, tags)
+        if import_metadata is not None:
+            from app.services.catalog_edit import apply_metadata
+            choices=dict(import_metadata)
+            if choices.get('artist_id') and 'album_id' not in choices and not choices.get('album_name') and track.album:
+                choices['album_name']=track.album
+            apply_metadata(track,choices)
         db.session.commit()
         committed = True
         if update_playlist:
@@ -217,4 +223,5 @@ def set_enabled_db(track, enabled):
         raise ValueError('Only accepted tracks can be enabled')
     if enabled and track.decommissioned_at:
         raise ValueError('Decommissioned tracks cannot be enabled')
+    track.auto_enable_pending = False
     track.enabled = bool(enabled)

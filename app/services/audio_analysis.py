@@ -24,6 +24,8 @@ def analyze_song(song, storage=None, timeout=120):
         if song.cue_out_ms is None: song.cue_out_ms=round(ends[-1]*1000) if ends and ends[-1]>song.duration_ms/1000-10 else song.duration_ms
         try: song.bpm = _estimate_bpm(path,min(timeout,60))
         except (OSError,subprocess.SubprocessError,ValueError): pass
+        try: song.waveform = waveform(path, song.duration_ms, timeout)
+        except (OSError,subprocess.SubprocessError,ValueError): pass
         song.analysis_status='complete';song.analysis_error=''
     except (OSError,subprocess.SubprocessError,ValueError,KeyError):
         song.analysis_status='failed';song.analysis_error='Audio analysis failed. Check the file and retry.'
@@ -49,3 +51,19 @@ def extract_artwork(song, storage=None, timeout=30):
         if song.catalog_album and not song.catalog_album.artwork_key: song.catalog_album.artwork_key=key
     except (OSError,subprocess.SubprocessError): target.unlink(missing_ok=True)
     return song.artwork_key
+
+
+def waveform(path, duration_ms, timeout=120):
+    """600 RMS bins from streaming decoded audio; no full-file PCM buffer."""
+    import math, tempfile
+    from pathlib import Path
+    frame = max(1, math.ceil(max(1, duration_ms) * 8 / 600))
+    with tempfile.TemporaryDirectory(prefix='freo-waveform-') as directory:
+        output = Path(directory) / 'levels.txt'
+        filters = f'aresample=8000,asetnsamples=n={frame}:p=0,astats=metadata=1:reset=1,ametadata=mode=print:key=lavfi.astats.Overall.RMS_level:file={output}'
+        subprocess.run(['ffmpeg','-nostdin','-v','error','-threads','1','-i',str(path),'-vn','-af',filters,
+                        '-f','null','-'],capture_output=True,timeout=timeout,check=True)
+        levels = re.findall(r'lavfi.astats.Overall.RMS_level=([^\s]+)', output.read_text())
+        values = [10 ** (float(level)/20) if math.isfinite(float(level)) else 0 for level in levels[:601]]
+        maximum = max(values, default=0) or 1
+        return [round(value/maximum,4) for value in values]

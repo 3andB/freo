@@ -132,3 +132,21 @@ def test_probe_timeout_and_no_shell(monkeypatch):
     monkeypatch.setattr(subprocess, 'run', timeout)
     with pytest.raises(MediaValidationError, match='Audio probe failed'):
         probe('/tmp/anything', timeout=1)
+
+
+def test_import_metadata_is_atomic_and_duplicates_keep_existing_details(media_app,tmp_path):
+    app,storage=media_app
+    from app.models import MusicTag,Station
+    with app.app_context():
+        source=fixture_audio(tmp_path,frequency=640)
+        foreign=MusicTag.query.filter_by(station_id=Station.query.filter_by(slug='two').one().id).first()
+        with pytest.raises(ValueError):
+            media.ingest('one',source,storage=storage,enabled=False,auto_enable_pending=True,
+                         update_playlist=False,import_metadata={'title':'Invalid import','tags':[foreign.id]})
+        assert Track.query.count()==0
+        song,duplicate=media.ingest('one',source,storage=storage,enabled=False,auto_enable_pending=True,
+                                    update_playlist=False,import_metadata={'title':'Chosen title','artist_name':'Chosen artist','album_name':'Chosen album'})
+        assert not duplicate and song.title=='Chosen title' and song.artist=='Chosen artist' and song.album=='Chosen album'
+        assert song.auto_enable_pending and not song.enabled
+        same,duplicate=media.ingest('one',source,storage=storage,import_metadata={'title':'Overwrite'})
+        assert duplicate and same.title=='Chosen title'
