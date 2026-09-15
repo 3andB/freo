@@ -25,7 +25,7 @@ def _command(slug, command):
     media_root = re.escape(str(LocalMediaStorage().root))
     music_pattern = rf'freo_queue\.push annotate:freo_decision=[1-9][0-9]*:{media_root}/{re.escape(slug)}/originals/[0-9a-f]{{32}}\.mp3'
     imaging_pattern = rf'freo_queue\.push annotate:freo_decision=[1-9][0-9]*,title="[A-Za-z0-9 ._-]{{1,120}}",artist="[A-Za-z0-9 ._-]{{1,120}}":{media_root}/{re.escape(slug)}/imaging/[0-9a-f]{{32}}\.mp3'
-    if command not in ('freo_queue.queue', 'request.on_air', 'freo_queue.skip') and not re.fullmatch(r'request.metadata [0-9]+', command) and not (re.fullmatch(music_pattern, command) or re.fullmatch(imaging_pattern, command)):
+    if command not in ('freo_queue.queue', 'request.on_air', 'freo_queue.skip', 'freo_queue.flush_and_skip') and not re.fullmatch(r'request.metadata [0-9]+', command) and not (re.fullmatch(music_pattern, command) or re.fullmatch(imaging_pattern, command)):
         raise ValueError('Liquidsoap command is not allowlisted')
     path = SOCKET_ROOT / slug / 'control.sock'
     with socket.socket(socket.AF_UNIX) as connection:
@@ -72,6 +72,11 @@ def request_decision_id(slug, request_id):
 
 def skip_current(slug):
     return _command(slug, 'freo_queue.skip')
+
+
+def interrupt_for_event(slug):
+    """Worker-only fixed operation: clear stale lookahead and advance current."""
+    return _command(slug, 'freo_queue.flush_and_skip')
 
 
 def active_ids(slug):

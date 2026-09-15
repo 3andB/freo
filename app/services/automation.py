@@ -359,6 +359,12 @@ def playback_started(decision_id, slug, now=None):
         return False
     decision.status = 'started'
     decision.started_at = now or datetime.now(timezone.utc)
+    from app.models import TimedEventOccurrence
+    occurrence = TimedEventOccurrence.query.filter_by(selection_decision_id=decision.id).first()
+    if occurrence and occurrence.state != 'STARTED':
+        occurrence.state = 'STARTED'
+        occurrence.started_at = decision.started_at
+        occurrence.failure_reason = None
     if decision.reason in ('playout_restarted', 'request_not_started'):
         decision.reason = 'late_event_confirmation'
     db.session.commit()

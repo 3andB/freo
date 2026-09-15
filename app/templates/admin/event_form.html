@@ -1,0 +1,6 @@
+{% extends 'admin/base.html' %}
+{% block title %}Create timed event · {{ selected.name }}{% endblock %}
+{% block admin_content %}
+<div class="section-title"><div><span class="eyebrow">EVENTS / CREATE</span><h1>Create timed event</h1><p>All date and weekly inputs use {{ selected.timezone }}.</p></div></div>
+<section class="admin-card event-editor"><form method="post"><input type="hidden" name="csrf" value="{{ csrf_token() }}">{% include 'admin/event_fields.html' %}<button type="submit">Create event</button></form></section>
+{% endblock %}

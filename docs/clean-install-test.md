@@ -46,3 +46,7 @@ Upload a generated legal MP3 as a station ID through Admin → Imaging. Confirm 
 ## Phase 10 Live Assist additions
 
 Log in, open a running station's Live Assist page, confirm real Now/Next/Recent, hold automation and observe that existing queue items may finish while refill stops. Queue an enabled generated music track and cart, confirm each actual start and manual history attribution, skip a controlled item, then resume and confirm current scheduled programming refills without service restart. Test a schedule boundary during hold, worker restart with a pending request, Liquidsoap restart reconciliation, queue idempotency and limit, CSRF/IDOR, and web socket denial. Verify both streams remain online and restore normal automation. Fresh-VM validation remains the public installation gate.
+
+## Phase 11 timed-event additions
+
+Create an exact generated imaging event through Admin → Events and preview its occurrence. Test HARD within a predeclared tolerance against interruptible automated music, SOFT without skip, NON_INTERRUPTING against protected content, SKIP miss, PLAY_LATE, same-time priority, worker restart, and Liquidsoap failure reconciliation. Confirm a real `on_track` start and offset, unchanged clock/rotation cursors, separation/recurrence effects, the Live Assist countdown, DST spring shift and fall single occurrence, CSRF/IDOR, both streams, and no new port. Remove or disable test events and restore normal programming. Do not claim public installability before the separate fresh-VM run.

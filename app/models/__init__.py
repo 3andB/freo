@@ -397,6 +397,79 @@ class LiveQueueSnapshot(db.Model):
     error_code = db.Column(db.String(40))
 
 
+class TimedEvent(db.Model):
+    __tablename__ = 'timed_events'
+    __table_args__ = (
+        db.CheckConstraint("timing_mode IN ('SOFT','HARD','NON_INTERRUPTING')", name='ck_timed_event_mode'),
+        db.CheckConstraint("recurrence_type IN ('ONE_TIME','WEEKLY')", name='ck_timed_event_recurrence'),
+        db.CheckConstraint("content_type IN ('TRACK','IMAGING_ASSET')", name='ck_timed_event_content_type'),
+        db.CheckConstraint("missed_policy IN ('SKIP','PLAY_LATE')", name='ck_timed_event_missed'),
+        db.CheckConstraint("interrupt_policy IN ('NEVER','MUSIC_ONLY')", name='ck_timed_event_interrupt'),
+        db.CheckConstraint("(content_type='TRACK' AND track_id IS NOT NULL AND imaging_asset_id IS NULL) OR (content_type='IMAGING_ASSET' AND imaging_asset_id IS NOT NULL AND track_id IS NULL)", name='ck_timed_event_content'),
+        db.CheckConstraint("(recurrence_type='ONE_TIME' AND scheduled_at_utc IS NOT NULL AND weekday IS NULL AND local_time IS NULL) OR (recurrence_type='WEEKLY' AND scheduled_at_utc IS NULL AND weekday BETWEEN 0 AND 6 AND local_time IS NOT NULL)", name='ck_timed_event_schedule'),
+        db.CheckConstraint('early_tolerance_seconds BETWEEN 0 AND 3600 AND late_tolerance_seconds BETWEEN 1 AND 86400', name='ck_timed_event_window'),
+    )
+    id = db.Column(db.Integer, primary_key=True)
+    uuid = db.Column(db.String(36), nullable=False, unique=True, index=True)
+    station_id = db.Column(db.Integer, db.ForeignKey('stations.id', ondelete='CASCADE'), nullable=False, index=True)
+    name = db.Column(db.String(120), nullable=False)
+    description = db.Column(db.String(500), nullable=False, default='')
+    enabled = db.Column(db.Boolean, nullable=False, default=True)
+    timing_mode = db.Column(db.String(20), nullable=False)
+    content_type = db.Column(db.String(20), nullable=False)
+    track_id = db.Column(db.Integer, db.ForeignKey('tracks.id', ondelete='RESTRICT'))
+    imaging_asset_id = db.Column(db.Integer, db.ForeignKey('imaging_assets.id', ondelete='RESTRICT'))
+    recurrence_type = db.Column(db.String(12), nullable=False)
+    scheduled_at_utc = db.Column(db.DateTime(timezone=True))
+    weekday = db.Column(db.Integer)
+    local_time = db.Column(db.Time)
+    early_tolerance_seconds = db.Column(db.Integer, nullable=False, default=0)
+    late_tolerance_seconds = db.Column(db.Integer, nullable=False, default=10)
+    missed_policy = db.Column(db.String(12), nullable=False, default='SKIP')
+    interrupt_policy = db.Column(db.String(16), nullable=False, default='NEVER')
+    priority = db.Column(db.Integer, nullable=False, default=100)
+    created_at = db.Column(db.DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+    updated_at = db.Column(db.DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    station = db.relationship('Station')
+    track = db.relationship('Track')
+    imaging_asset = db.relationship('ImagingAsset')
+    occurrences = db.relationship('TimedEventOccurrence', back_populates='event', cascade='all, delete-orphan')
+
+
+class TimedEventOccurrence(db.Model):
+    __tablename__ = 'timed_event_occurrences'
+    __table_args__ = (
+        db.UniqueConstraint('timed_event_id', 'scheduled_for_utc', name='uq_timed_occurrence_instant'),
+        db.CheckConstraint("state IN ('PENDING','READY','QUEUED','STARTED','MISSED','FAILED','CANCELLED')", name='ck_timed_occurrence_state'),
+    )
+    id = db.Column(db.Integer, primary_key=True)
+    timed_event_id = db.Column(db.Integer, db.ForeignKey('timed_events.id', ondelete='CASCADE'), nullable=False, index=True)
+    station_id = db.Column(db.Integer, db.ForeignKey('stations.id', ondelete='CASCADE'), nullable=False, index=True)
+    scheduled_for_utc = db.Column(db.DateTime(timezone=True), nullable=False, index=True)
+    eligible_at_utc = db.Column(db.DateTime(timezone=True), nullable=False)
+    deadline_at_utc = db.Column(db.DateTime(timezone=True), nullable=False)
+    state = db.Column(db.String(12), nullable=False, default='PENDING', index=True)
+    selection_decision_id = db.Column(db.Integer, db.ForeignKey('selection_decisions.id', ondelete='SET NULL'), unique=True)
+    queued_at = db.Column(db.DateTime(timezone=True))
+    started_at = db.Column(db.DateTime(timezone=True))
+    missed_at = db.Column(db.DateTime(timezone=True))
+    failure_reason = db.Column(db.String(80))
+    created_at = db.Column(db.DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+    updated_at = db.Column(db.DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    event = db.relationship('TimedEvent', back_populates='occurrences')
+    station = db.relationship('Station')
+    selection_decision = db.relationship('SelectionDecision', foreign_keys=[selection_decision_id],
+        backref=db.backref('timed_event_occurrence', uselist=False))
+
+    @property
+    def timing_offset_seconds(self):
+        if not self.started_at:
+            return None
+        started = self.started_at.replace(tzinfo=self.started_at.tzinfo or timezone.utc)
+        scheduled = self.scheduled_for_utc.replace(tzinfo=self.scheduled_for_utc.tzinfo or timezone.utc)
+        return (started - scheduled).total_seconds()
+
+
 class AutomationHeartbeat(db.Model):
     __tablename__ = 'automation_heartbeat'
     id = db.Column(db.Integer, primary_key=True)

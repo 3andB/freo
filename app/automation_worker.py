@@ -3,14 +3,14 @@ import logging
 import os
 from pathlib import Path
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import math
 
 from app import create_app
 from app.extensions import db
-from app.models import AutomationHeartbeat, AutomationState, LiveControlCommand, LiveQueueSnapshot, SelectionDecision, Station
+from app.models import AutomationHeartbeat, AutomationState, LiveControlCommand, LiveQueueSnapshot, SelectionDecision, Station, TimedEventOccurrence
 from app.services.automation import playback_started, select_next
-from app.services.playout_queue import push_decision, queue_depth, queued_ids, queued_order, active_ids, socket_identity, request_decision_id, skip_current
+from app.services.playout_queue import push_decision, queue_depth, queued_ids, queued_order, active_ids, socket_identity, request_decision_id, skip_current, interrupt_for_event
 from app.services.schedule import resolve, usable_clock
 
 logger = logging.getLogger('freo.automation')
@@ -118,6 +118,11 @@ def reconcile_requests(slug):
             row.reason = 'playout_restarted' if row.socket_identity != identity else 'request_not_started'
             changed += 1
     if changed:
+        for row in rows:
+            if row.status == 'failed' and row.selection_method == 'timed_event':
+                occurrence = TimedEventOccurrence.query.filter_by(selection_decision_id=row.id).first()
+                if occurrence and occurrence.state == 'QUEUED':
+                    occurrence.state, occurrence.failure_reason = 'FAILED', row.reason
         db.session.commit()
     return changed
 
@@ -199,6 +204,100 @@ def observe_queue(station, error_code=None):
     db.session.commit()
 
 
+def _queue_event(occurrence, slug, now):
+    decision = occurrence.selection_decision
+    decision.status = 'submitting'
+    db.session.commit()
+    request_id = push_decision(decision)
+    decision.status = 'queued'
+    decision.liquidsoap_request_id = request_id
+    decision.socket_identity = socket_identity(slug)
+    occurrence.state = 'QUEUED'
+    occurrence.queued_at = now
+    db.session.commit()
+    logger.info('Timed event queued station=%s occurrence=%s event=%s scheduled=%s', slug, occurrence.id, occurrence.event.name, occurrence.scheduled_for_utc)
+
+
+def process_timed_events(station, reader, now=None):
+    """Prepare and execute durable occurrences; returns seconds to next event."""
+    from app.services.timed_events import generate_occurrences, prepare_decision, upcoming
+    now = now or datetime.now(timezone.utc)
+    # A request can transiently disappear between queue prefetch and on-air
+    # observation. The later authoritative on_track confirmation wins.
+    confirmed = TimedEventOccurrence.query.join(TimedEventOccurrence.selection_decision).filter(
+        TimedEventOccurrence.station_id == station.id,
+        SelectionDecision.status == 'started', TimedEventOccurrence.state != 'STARTED').all()
+    for occurrence in confirmed:
+        occurrence.state = 'STARTED'
+        occurrence.started_at = occurrence.selection_decision.started_at
+        occurrence.failure_reason = None
+    if confirmed:
+        db.session.commit()
+    generate_occurrences(station, now)
+    rows = upcoming(station, now, 20)
+    for candidate in rows:
+        occurrence = TimedEventOccurrence.query.filter_by(id=candidate.id).with_for_update().first()
+        if occurrence is None or occurrence.state not in ('PENDING','READY','QUEUED'):
+            continue
+        event = occurrence.event
+        deadline = occurrence.deadline_at_utc.replace(tzinfo=occurrence.deadline_at_utc.tzinfo or timezone.utc)
+        scheduled = occurrence.scheduled_for_utc.replace(tzinfo=occurrence.scheduled_for_utc.tzinfo or timezone.utc)
+        if now > deadline and occurrence.state != 'QUEUED':
+            if occurrence.state != 'STARTED':
+                occurrence.state = 'MISSED'
+                occurrence.missed_at = now
+                occurrence.failure_reason = 'deadline_exceeded'
+                if occurrence.selection_decision and occurrence.selection_decision.status in ('selected','submitting'):
+                    occurrence.selection_decision.status = 'failed'
+                    occurrence.selection_decision.reason = 'timed_event_missed'
+                db.session.commit()
+                logger.warning('Timed event missed station=%s occurrence=%s event=%s', station.slug, occurrence.id, event.name)
+            continue
+        if occurrence.state == 'PENDING' and (scheduled-now).total_seconds() <= 60:
+            try:
+                prepare_decision(occurrence, now)
+            except (OSError, ValueError):
+                occurrence.state, occurrence.failure_reason = 'FAILED', 'content_unavailable'
+                db.session.commit()
+                logger.warning('Timed event content unavailable station=%s occurrence=%s', station.slug, occurrence.id)
+                continue
+        if occurrence.state != 'READY':
+            continue
+        # One event owns the real queue at a time. Same-time collisions were
+        # ordered by priority; lower-priority events wait for policy handling.
+        if TimedEventOccurrence.query.filter_by(station_id=station.id, state='QUEUED').first():
+            continue
+        due = now >= scheduled if event.timing_mode != 'SOFT' else now >= occurrence.eligible_at_utc.replace(tzinfo=occurrence.eligible_at_utc.tzinfo or timezone.utc)
+        if not due:
+            continue
+        active = active_ids(station.slug)
+        current = SelectionDecision.query.filter_by(station_id=station.id, socket_identity=socket_identity(station.slug)).filter(
+            SelectionDecision.liquidsoap_request_id.in_(active)).first() if active else None
+        if event.timing_mode == 'HARD':
+            interruptible = current is None or (current.track_id is not None and current.admin_user_id is None and current.selection_method != 'timed_event' and event.interrupt_policy == 'MUSIC_ONLY')
+            if not interruptible:
+                continue
+            interrupt_for_event(station.slug)
+            logger.info('Timed event hard interruption station=%s occurrence=%s current_decision=%s', station.slug, occurrence.id, current.id if current else None)
+            # Old queued automation was deliberately removed and is reconciled
+            # on the next pass; the timed event is now the sole next request.
+            _queue_event(occurrence, station.slug, now)
+            break
+        elif queue_depth(station.slug) == 0:
+            # SOFT and NON_INTERRUPTING never cut current content. SOFT may use
+            # its early window; NON_INTERRUPTING waits until target time.
+            duration_ms = current.track.duration_ms if current and current.track else current.imaging_asset.duration_ms if current and current.imaging_asset else 0
+            started = current.started_at.replace(tzinfo=current.started_at.tzinfo or timezone.utc) if current and current.started_at else now
+            expected_end = started + timedelta(milliseconds=duration_ms)
+            if current and expected_end > deadline:
+                continue
+            _queue_event(occurrence, station.slug, now)
+            break
+    future = [row for row in rows if row.state in ('PENDING','READY') and row.event.timing_mode != 'NON_INTERRUPTING']
+    return min(((row.scheduled_for_utc.replace(tzinfo=row.scheduled_for_utc.tzinfo or timezone.utc)-now).total_seconds()
+                for row in future), default=None)
+
+
 def tick(reader, target_depth=2):
     heartbeat()
     states = AutomationState.query.all()
@@ -210,6 +309,7 @@ def tick(reader, target_depth=2):
             continue
         try:
             process_manual(state.station, reader)
+            event_seconds = process_timed_events(state.station, reader)
             if not state.enabled or state.hold:
                 state.worker_heartbeat_at = datetime.now(timezone.utc)
                 state.observed_queue_depth = queue_depth(slug)
@@ -223,6 +323,8 @@ def tick(reader, target_depth=2):
                 observe_queue(state.station)
                 continue
             depth_limit = target_depth
+            if event_seconds is not None and 0 < event_seconds <= 20:
+                depth_limit = 0
             if programming.next_transition:
                 remaining = (programming.next_transition - datetime.now(timezone.utc)).total_seconds()
                 if 0 < remaining <= 20:
@@ -253,7 +355,17 @@ def main():
             except Exception:
                 db.session.rollback()
                 logger.exception('Automation database or worker tick failed')
-            time.sleep(2)
+            # Two-second normal cadence; the final event window adapts to 250ms
+            # without a persistent busy loop.
+            nearest = None
+            try:
+                from app.models import TimedEventOccurrence
+                due = TimedEventOccurrence.query.filter(TimedEventOccurrence.state.in_(('PENDING','READY'))).order_by(TimedEventOccurrence.scheduled_for_utc).first()
+                if due:
+                    nearest = (due.scheduled_for_utc.replace(tzinfo=due.scheduled_for_utc.tzinfo or timezone.utc)-datetime.now(timezone.utc)).total_seconds()
+            except Exception:
+                db.session.rollback()
+            time.sleep(.25 if nearest is not None and -5 <= nearest <= 5 else 2)
 
 
 if __name__ == '__main__':

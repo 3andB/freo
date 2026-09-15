@@ -2,6 +2,8 @@
 
 Every station has a canonical IANA timezone (`UTC` initially; set explicitly for each station). Absolute selection and playback timestamps remain UTC. Weekly assignments contain a weekday (Monday=0) and station-local `HH:MM` wall time. An assignment remains active until the next enabled assignment, including across midnight and the Sunday-to-Monday wrap. Disabled assignments or clocks are ignored. With no usable assignment, Freo uses an optional default clock, then the Phase 5 active rotation, then Liquidsoap's generated fallback if nothing can be selected.
 
+Weekly schedule assignments select the active clock; they do not represent exact-time playback. Phase 11 [timed events](timed-events.md) overlay specific approved content at or near a target without changing the active clock.
+
 At spring-forward, a skipped local assignment is considered active at the first valid time after the gap. At fall-back, an assignment in the repeated hour activates on its first occurrence and remains active through the second copy of that hour until a later assignment; it does not activate twice. Occurrence identity uses assignment ID plus effective local date. A worker restart within an occurrence resumes its cursor; the next weekly occurrence resets. Server UTC clock accuracy is an operating-system prerequisite.
 
 ```sh

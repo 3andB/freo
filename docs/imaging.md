@@ -12,4 +12,6 @@ Root-run recovery CLI: `flask imaging list --station freo-demo`, `flask imaging 
 
 Enabled accepted imaging assets can be queued from the authenticated [Live Assist cart wall](live-assist.md). They enter the existing approved Liquidsoap queue through the automation worker. A manual confirmed start affects later imaging recurrence; a queued cart alone does not.
 
+An exact ImagingAsset can also be timed-event content. It remains non-interruptible when already playing. A confirmed event start enters the same imaging recurrence history. See [timed events](timed-events.md).
+
 Each browser mutation requires an authenticated global admin and CSRF token and records a safe audit event. Group, asset, and clock target lookups are station-scoped. The local commit does not perform a fresh-VM installation test; that remains the public installability gate.

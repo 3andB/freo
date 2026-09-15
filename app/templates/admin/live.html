@@ -8,6 +8,7 @@
   </section>
   <section class="admin-card live-state"><span class="eyebrow">PROGRAMMING</span><strong id="live-clock">{{ live.clock or 'No active clock' }}</strong><small id="live-transition">{{ live.next_transition or 'No next transition' }}</small></section>
   <section class="admin-card live-state"><span class="eyebrow">PLAYOUT</span><strong id="live-playout">{{ live.playout_error or 'Connected' }}</strong><small id="live-fallback">Fallback: {{ live.fallback }}</small></section>
+  <section class="admin-card live-state"><span class="eyebrow">NEXT TIMED EVENT</span><strong id="next-event-name">{{ live.next_event.name if live.next_event else 'None scheduled' }}</strong><small id="next-event-detail" data-at="{{ live.next_event.scheduled_for if live.next_event else '' }}">{% if live.next_event %}{{ live.next_event.timing_mode }} · {{ live.next_event.state }}{% else %}Timed events remain active during automation hold.{% endif %}</small><b class="event-countdown" id="event-countdown"></b></section>
 </div>
 <div class="live-main">
   <section class="admin-card live-now"><div class="card-heading"><span class="eyebrow">ON AIR / SOCKET CONFIRMED</span><h2>Now playing</h2></div>

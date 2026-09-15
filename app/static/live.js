@@ -29,6 +29,11 @@
       text('live-transition', data.next_transition || 'No next transition');
       text('live-playout', data.playout_error || 'Connected');
       text('live-fallback', `Fallback: ${data.fallback}`);
+      text('next-event-name', data.next_event?.name || 'None scheduled');
+      const eventDetail = document.getElementById('next-event-detail');
+      eventDetail.dataset.at = data.next_event?.scheduled_for || '';
+      const overrun = data.next_event?.estimated_current_overrun_seconds;
+      eventDetail.textContent = data.next_event ? `${data.next_event.timing_mode} · ${data.next_event.state}${overrun == null ? '' : ` · current estimate ${overrun > 0 ? '+' : ''}${overrun}s`}` : 'Timed events remain active during automation hold.';
       text('queue-count', String(data.queue.length));
       const current = document.getElementById('live-current');
       current.replaceChildren();
@@ -41,8 +46,17 @@
       fill('live-recent', data.recent, 'No confirmed starts yet.');
     } catch { text('live-playout', 'Status unavailable'); }
   }
+  function countdown() {
+    const at = document.getElementById('next-event-detail').dataset.at;
+    if (!at) return text('event-countdown', '');
+    const seconds = Math.round((Date.parse(at) - Date.now()) / 1000);
+    const sign = seconds < 0 ? '+' : '';
+    const value = Math.abs(seconds);
+    text('event-countdown', `${sign}${Math.floor(value / 60)}:${String(value % 60).padStart(2, '0')}`);
+  }
   document.querySelectorAll('.live-results form, .cart-wall form, #skip-form').forEach(form => form.addEventListener('submit', () => {
     form.querySelector('button').disabled = true;
   }));
   setInterval(refresh, 3000);
+  countdown(); setInterval(countdown, 1000);
 })();

@@ -57,6 +57,11 @@ def can_control_playout(user, station):
     return bool(user and user.active and station is not None)
 
 
+def can_manage_events(user, station):
+    """Timed events are programming mutations, kept as an explicit boundary."""
+    return can_manage_programming(user, station)
+
+
 def programming_mutation_required(view):
     @admin_required
     @wraps(view)

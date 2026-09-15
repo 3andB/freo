@@ -108,7 +108,7 @@
 @media(max-width:720px){.schedule-summary .week-row{grid-template-columns:1fr}.schedule-summary .week-row details[open]{min-width:0}}
 
 /* Live Assist: a compact operator surface within the existing admin shell. */
-.live-strip{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;margin:18px 0}
+.live-strip{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px;margin:18px 0}
 .live-state{padding:18px;display:flex;flex-direction:column;gap:8px}
 .live-state strong{font-size:24px;line-height:1.1;color:#eef5fb}
 .live-state small{color:#91a6bb}
@@ -139,5 +139,6 @@
 .cart-tile b{color:#82bdfa;font-family:ui-monospace,monospace}
 .cart-tile strong{font-size:13px;overflow-wrap:anywhere}
 .cart-tile form{margin-top:auto;padding-top:8px}
+.event-countdown{font:18px ui-monospace,monospace;color:#82bdfa}.event-editor{padding:18px;margin-bottom:14px}.event-editor .card-heading{padding:0 0 14px}.event-editor form>button{margin-top:18px;background:#2c689e;color:#fff;border-radius:7px;padding:10px 18px}.event-form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.event-form-grid label{color:#9bafc2;font-size:12px}.event-form-grid input,.event-form-grid select{display:block;width:100%;margin-top:5px;padding:9px;background:#0d141d;border:1px solid #3b4d60;border-radius:6px;color:#eef5fb}.event-form-grid small{display:block;margin-top:4px;color:#71879d}
 @media(max-width:900px){.live-strip,.live-main{grid-template-columns:1fr}}
-@media(max-width:520px){.cart-wall{grid-template-columns:1fr}.live-search{flex-wrap:wrap}.live-search label{flex-basis:100%}}
+@media(max-width:520px){.cart-wall,.event-form-grid{grid-template-columns:1fr}.live-search{flex-wrap:wrap}.live-search label{flex-basis:100%}}

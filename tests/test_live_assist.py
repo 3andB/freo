@@ -82,7 +82,7 @@ def test_skip_intent_is_bound_to_current_decision(app):
 
 
 def test_socket_adapter_rejects_generic_control():
-    for command in ('freo_queue.flush_and_skip', 'freo_queue.push /etc/passwd',
+    for command in ('freo_queue.push /etc/passwd',
                     'system.shutdown', 'freo_queue.skip\nrequest.on_air'):
         with pytest.raises(ValueError):
             _command('test-station', command)

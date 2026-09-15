@@ -1,6 +1,6 @@
 """Station-scoped operator intent. Only the automation worker touches playout sockets."""
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from app.extensions import db
 from app.models import (AutomationState, ImagingAsset, LiveControlCommand, LiveQueueSnapshot,
@@ -96,16 +96,17 @@ def request_skip(station, user, expected_decision_id, nonce):
 
 
 def safe_item(row):
+    source = 'EVENT' if row.selection_method == 'timed_event' else 'MANUAL' if row.admin_user_id else 'AUTO'
     if row.track:
         return dict(decision_id=row.id, kind='track', title=row.track.title,
-                    artist=row.track.artist, source='MANUAL' if row.admin_user_id else 'AUTO',
+                    artist=row.track.artist, source=source,
                     started_at=row.started_at.isoformat() if row.started_at else None,
                     duration_ms=row.track.duration_ms)
     if row.imaging_asset:
         asset = row.imaging_asset
         return dict(decision_id=row.id, kind='imaging', title=asset.name,
                     artist=asset.asset_type.replace('_', ' ').title(), cart_code=asset.cart_code,
-                    source='MANUAL' if row.admin_user_id else 'AUTO',
+                    source=source,
                     started_at=row.started_at.isoformat() if row.started_at else None,
                     duration_ms=asset.duration_ms)
     return dict(decision_id=row.id, kind='unavailable', title='Unavailable item', artist='', source='UNKNOWN')
@@ -128,10 +129,21 @@ def status(station):
     recent = SelectionDecision.query.filter_by(station_id=station.id, status='started').order_by(
         SelectionDecision.started_at.desc(), SelectionDecision.id.desc()).limit(10).all()
     programming = resolve(station)
+    from app.services.timed_events import upcoming
+    events = upcoming(station, limit=1)
+    next_event = events[0] if events else None
+    overrun_seconds = None
+    if next_event and current and current.get('started_at') and current.get('duration_ms'):
+        estimated_end = datetime.fromisoformat(current['started_at']) + timedelta(milliseconds=current['duration_ms'])
+        scheduled = next_event.scheduled_for_utc.replace(tzinfo=next_event.scheduled_for_utc.tzinfo or timezone.utc)
+        overrun_seconds = round((estimated_end - scheduled).total_seconds())
     return dict(station=station.slug, automation='HELD' if state and state.hold else 'RUNNING' if state and state.enabled else 'DISABLED',
         current=current, queue=queue, unknown_queue_items=unknown,
         fallback='Possible' if not current and not live_error and station.desired_state == 'running' else 'Not observed',
         playout_error=live_error, recent=[safe_item(row) for row in recent],
         clock=programming.clock.name if programming.clock else None,
         next_transition=programming.next_transition.isoformat() if programming.next_transition else None,
-        local_time=programming.local_time.isoformat())
+        local_time=programming.local_time.isoformat(), timed_events='ACTIVE',
+        next_event=(dict(id=next_event.id, name=next_event.event.name,
+            timing_mode=next_event.event.timing_mode, state=next_event.state,
+            scheduled_for=next_event.scheduled_for_utc.isoformat(), estimated_current_overrun_seconds=overrun_seconds) if next_event else None))

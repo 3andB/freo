@@ -19,6 +19,7 @@
       <a href="{{ url_for('web.admin_home') }}{{ suffix }}" {% if page == 'overview' %}aria-current="page"{% endif %}>Overview</a>
       <a href="{{ url_for('web.admin_station_list') }}" {% if page == 'stations' %}aria-current="page"{% endif %}>Stations</a>
       {% if selected %}<a href="{{ url_for('admin_live.page', slug=selected.slug) }}" {% if page == 'live' %}aria-current="page"{% endif %}>Live Assist</a>{% endif %}
+      {% if selected %}<a href="{{ url_for('admin_events.list_page', slug=selected.slug) }}" {% if page == 'events' %}aria-current="page"{% endif %}>Events</a>{% endif %}
       <span class="admin-nav-label">PROGRAMMING</span>
       <a href="{{ url_for('web.admin_section', section='media') }}{{ suffix }}" {% if page == 'media' %}aria-current="page"{% endif %}>Media</a>
       {% if selected %}<a href="{{ url_for('admin_imaging.library', slug=selected.slug) }}" {% if page == 'imaging' %}aria-current="page"{% endif %}>Imaging</a>{% endif %}
