@@ -292,3 +292,12 @@ def schedule_action(slug, operation):
     if operation not in actions:
         abort(404)
     return response(station, 'schedule', actions[operation], action, kind='schedule_assignment')
+
+
+@admin_programming_blueprint.get('/admin/stations/<slug>/tags')
+@admin_required
+def tags(slug):
+    from app.models import MusicTag
+    station = station_or_404(slug, require_enabled=False)
+    return render_template('admin/tags.html', selected=station, stations=admin_stations(), page='tags',
+                           tags=MusicTag.query.filter_by(station_id=station.id).order_by(MusicTag.name).all())

@@ -1,3 +1,11 @@
 {% macro play(song) -%}
 {% set gain=music_gain(song) %}<button class="preview-button" type="button" data-preview="{{ song.uuid }}" data-title="{{ song.title }}" data-artist="{{ song.artist }}" data-audition="{{ url_for('admin_media.audition',slug=selected.slug,track_uuid=song.uuid) }}" data-gain="{{ gain.factor }}" data-gain-db="{{ gain.db }}" data-gain-status="{{ gain.status }}" aria-label="Play {{ song.title }}" {% if song.decommissioned_at or song.ingest_status!='accepted' %}disabled{% endif %}>▶</button>
 {%- endmacro %}
+
+{% macro toggles(song) -%}
+<div class="music-toggles" data-song="{{ song.uuid }}" data-actions="{{ url_for('sound_room.mutate',slug=selected.slug,action='ACTION') }}" data-csrf="{{ csrf_token() }}">
+{% for kind, label, items, assigned in [('tag','Tags',music_tags,song.tags),('category','Categories',music_categories,song.categories)] %}
+<div class="music-toggle-group" role="group" aria-label="{{ label }}"><small>{{ label }}</small>
+{% for item in items %}<button type="button" class="music-toggle" data-music-toggle data-kind="{{ kind }}" data-target="{{ item.id }}" {% if item.description %}data-description="{{ item.description }}" aria-description="{{ item.description }}"{% endif %} aria-label="{{ item.name }} for {{ song.title }}" aria-pressed="{{ 'true' if item in assigned else 'false' }}" title="{{ item.description }}{% if kind == 'category' and not item.enabled %} · Disabled in programming{% endif %}" {% if song.decommissioned_at or song.ingest_status != 'accepted' %}disabled{% endif %}><span class="toggle-check" aria-hidden="true">{{ '✓' if item in assigned else '+' }}</span>{{ item.name }}</button>{% else %}<span class="room-hint">No {{ label|lower }} yet</span>{% endfor %}
+</div>{% endfor %}<small class="toggle-status" role="status"></small></div>
+{%- endmacro %}

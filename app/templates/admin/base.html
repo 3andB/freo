@@ -1,5 +1,5 @@
 {% extends 'base.html' %}
-{% block head %}{{ super() }}{% if page in ['media','sound-room'] %}<link rel="stylesheet" href="{{ url_for('static',filename='music.css',v='sound-room-1') }}">{% endif %}{% endblock %}
+{% block head %}{{ super() }}{% if page in ['media','sound-room','tags'] %}<link rel="stylesheet" href="{{ url_for('static',filename='music.css',v='music-tags-1') }}">{% endif %}{% endblock %}
 {% block body_class %}dashboard-page admin-page{% endblock %}
 {% block header %}
 <header class="admin-topbar">
@@ -11,7 +11,7 @@
   </div>
 </header>
 {% endblock %}
-{% block scripts %}<script defer src="{{ url_for('static', filename='admin.js') }}"></script>{% if page in ['media','sound-room'] %}<script defer src="{{ url_for('static',filename='music_preview.js',v='sound-room-1') }}"></script>{% endif %}{% endblock %}
+{% block scripts %}<script defer src="{{ url_for('static', filename='admin.js') }}"></script>{% if page in ['media','sound-room','tags'] %}<script defer src="{{ url_for('static',filename='music_preview.js',v='sound-room-1') }}"></script><script defer src="{{ url_for('static',filename='music_toggles.js',v='1') }}"></script>{% endif %}{% endblock %}
 {% block content %}
 <div class="admin-layout">
   <aside class="admin-sidebar" aria-label="Admin navigation">
@@ -25,6 +25,7 @@
       <a href="{{ url_for('web.admin_section', section='media') }}{{ suffix }}" {% if page == 'media' %}aria-current="page"{% endif %}>Music</a>
       <a href="{{ url_for('admin_programming.list_page', slug=selected.slug, section='categories') if selected else url_for('web.admin_section', section='categories') }}" {% if page == 'categories' %}aria-current="page"{% endif %}>Categories</a>
       {% if selected %}
+      <a href="{{ url_for('admin_programming.tags',slug=selected.slug) }}" {% if page == 'tags' %}aria-current="page"{% endif %}>Tags</a>
       <a href="{{ url_for('sound_room.page',slug=selected.slug) }}" {% if page == 'sound-room' %}aria-current="page"{% endif %}>Sound Room</a>
       <a href="{{ url_for('admin_imaging.library', slug=selected.slug) }}" {% if page == 'imaging' %}aria-current="page"{% endif %}>Imaging</a>
       <details class="scheduling-nav" {% if page in ['calendar','events','blocks','traffic','clocks','rotations','schedule'] %}open{% endif %}>
@@ -52,7 +53,7 @@
       {% with messages = get_flashed_messages(with_categories=true) %}{% for category, message in messages %}<p class="admin-notice {{ 'error' if category == 'error' else 'success' }}" role="status">{{ message }}</p>{% endfor %}{% endwith %}
       {% if selected and page in ['calendar','events','blocks','traffic','clocks','rotations','schedule'] %}{% include 'admin/_scheduling_tabs.html' %}{% endif %}
       {% block admin_content %}{% endblock %}
-      {% if page in ['media','sound-room'] %}{% include 'admin/_music_player.html' %}{% endif %}
+      {% if page in ['media','sound-room','tags'] %}{% include 'admin/_music_player.html' %}{% endif %}
     </div>
   </div>
 </div>

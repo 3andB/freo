@@ -142,6 +142,7 @@ class MusicTag(db.Model):
     name = db.Column(db.String(80), nullable=False)
     slug = db.Column(db.String(80), nullable=False)
     color = db.Column(db.String(7), nullable=False, default='#b9e79b')
+    description = db.Column(db.String(500), nullable=False, default='', server_default='')
 
 
 class Track(db.Model):

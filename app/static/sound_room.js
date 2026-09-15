@@ -11,10 +11,7 @@
     if(busy){message('Finishing the previous change…');return null;}
     busy=true;root.setAttribute('aria-busy','true');
     try{
-      const body=new FormData();body.set('csrf',root.dataset.csrf);body.set('data',JSON.stringify(payload));
-      const response=await scope.fetch(root.dataset.actions.replace('ACTION',action),{method:'POST',body,headers:{Accept:'application/json'}});
-      if(!response.headers.get('content-type')?.includes('application/json'))throw Error('Session or server unavailable. Refresh and sign in if needed.');
-      const result=await response.json();if(!response.ok)throw Error(result.message);
+      const result=await FreoMusicToggles.request(root.dataset,action,payload);
       message(result.message);root.querySelector('.job-status-link')?.remove();if(result.job_url){const link=el('a','Deletion status','job-status-link');link.href=result.job_url;root.querySelector('.room-message').append(link);}if(result.undo){undo=result.undo;$('room-undo').hidden=false;}
       if(action==='undo'){undo=null;$('room-undo').hidden=true;}
       return result;
@@ -59,20 +56,16 @@
     }
     $('unfinished-count').textContent=data.unfinished;
   }
+  const rowsSignature=()=>JSON.stringify([data.songs,data.tags,data.categories,data.page,data.total,editingCategory]);
   function rows(){
-    const list=$('room-songs'),signature=JSON.stringify([data.songs,data.page,data.total,editingCategory]);if(list.dataset.render===signature){selection();window.FreoPreview?.sync();return;}list.dataset.render=signature;list.replaceChildren();
+    const list=$('room-songs'),signature=rowsSignature();if(list.dataset.render===signature){selection();window.FreoPreview?.sync();return;}list.dataset.render=signature;list.replaceChildren();
     if(!data.songs.length)list.append(el('p','No songs match. Try another filter or import some music.','room-empty'));
     data.songs.forEach(song=>{
       const row=el('article',undefined,'room-song');row.dataset.song=song.uuid;row.tabIndex=0;row.classList.toggle('inspecting',active===song.uuid);
       const check=el('input');check.type='checkbox';check.setAttribute('aria-label',`Select ${song.title}`);check.addEventListener('change',()=>{check.checked?selected.add(song.uuid):selected.delete(song.uuid);selection();});
       const handle=el('span','⠿','song-drag');handle.title='Drag song to a category or tag';handle.setAttribute('aria-hidden','true');
       const copy=el('div',undefined,'song-row-copy');copy.append(el('b',song.title),el('span',song.artist),el('small',`${song.album||'Single'} · ${duration(song.duration_ms)}`));
-      const chips=el('div',undefined,'song-row-chips');
-      for(const [kind,ids,items] of [['category',song.categories,data.categories],['tag',song.tags,data.tags]]){
-        ids.forEach(id=>{const item=items.find(x=>x.id===id);if(!item)return;const chip=kind==='category'?button(item.name,()=>openCategory(item),'song-chip'):el('span',item.name,'song-chip');if(kind==='tag')chip.style.setProperty('--tag-color',item.color);chips.append(chip);});
-      }
-      copy.append(chips);
-      if(editingCategory){const assigned=song.categories.includes(editingCategory);copy.append(button(assigned?'Remove from category':'Add to category',()=>assign('category',editingCategory,[song.uuid],assigned?'remove':'add'),'category-membership'));}
+      copy.append(FreoMusicToggles.create(song,data,root.dataset));
       const status=el('div',undefined,'song-row-status');status.append(el('span',song.analysis==='pending'?(song.requested?'Queued':'Waiting'):song.analysis),el('small',song.lufs===null?'LUFS pending':`${song.lufs.toFixed(1)} LUFS`));
       if(!song.enabled)status.append(el('small','Needs review'));
       const menu=el('details',undefined,'song-menu'),summary=el('summary','⋯');summary.setAttribute('aria-label',`Song menu: ${song.title}`);menu.append(summary);
@@ -130,16 +123,30 @@
     panel.dataset.dropKind='category';panel.dataset.dropTarget=item.id;
     panel.append(button('Browse songs to add',()=>{filter={};page=1;$('collection-title').textContent=`Add songs to ${item.name}`;load();}),button('View category songs',()=>setFilter({category:item.id},item.name)));
   }
+  scope.listen(document,'music-toggle-start',()=>{version++;});
+  scope.listen(document,'music-toggle-saved',event=>{
+    const {kind,target,songs,assigned,before}=event.detail;
+    const key=kind==='tag'?'tags':'categories';
+    for(const song of [...(data?.songs||[]),activeSong].filter(Boolean)){
+      if(!songs.includes(song.uuid))continue;
+      song[key]=assigned?[...new Set([...song[key],target])]:song[key].filter(id=>id!==target);
+    }
+    const item=data?.[key].find(item=>item.id===target);
+    if(item&&assigned!==before)item.count+=assigned?1:-1;
+    if(data){destinations();$('room-songs').dataset.render=rowsSignature();}
+    if(activeSong&&!notesDirty)inspector(activeSong);
+  });
   async function load(){
+    if(FreoMusicToggles.pending)return;
     const attempt=++version;const params=new URLSearchParams({...filter,page});
     const form=$('room-search');for(const key of ['q','analysis','enabled'])if(form.elements[key].value)params.set(key,form.elements[key].value);
-    try{const response=await scope.fetch(root.dataset.catalog+'?'+params,{cache:'no-store'});if(!response.ok||!response.headers.get('content-type')?.includes('application/json'))throw Error();const next=await response.json();if(attempt!==version)return;data=next;destinations();rows();if(editingCategory&&!notesDirty){const category=data.categories.find(x=>x.id===editingCategory);if(category)categoryInspector(category);}else if(active&&!notesDirty)await inspect(active);}
+    try{const response=await scope.fetch(root.dataset.catalog+'?'+params,{cache:'no-store'});if(!response.ok||!response.headers.get('content-type')?.includes('application/json'))throw Error();const next=await response.json();if(attempt!==version||FreoMusicToggles.pending)return;data=next;destinations();rows();if(editingCategory&&!notesDirty){const category=data.categories.find(x=>x.id===editingCategory);if(category)categoryInspector(category);}else if(active&&!notesDirty)await inspect(active);}
     catch(_){message('Music could not load. Check your connection or refresh to sign in again.',true);}
   }
   async function process(ids){if(!ids.length)return;const result=await post('process',{songs:ids});if(result)load();}
-  function openDestination(kind,item=null){editing={kind,item};$('destination-title').textContent=`${item?'Edit':'Create'} ${kind}`;const form=$('destination-form');form.elements.name.value=item?.name||'';form.elements.color.value=item?.color||'#b9e79b';$('tag-color-label').hidden=kind!=='tag';$('destination-error').textContent='';$('destination-dialog').showModal();form.elements.name.focus();}
+  function openDestination(kind,item=null){editing={kind,item};$('destination-title').textContent=`${item?'Edit':'Create'} ${kind}`;const form=$('destination-form');form.elements.name.value=item?.name||'';form.elements.color.value=item?.color||'#b9e79b';form.elements.description.value=item?.description||'';$('tag-color-label').hidden=kind!=='tag';$('destination-error').textContent='';$('destination-dialog').showModal();form.elements.name.focus();}
   root.querySelectorAll('[data-create]').forEach(node=>node.addEventListener('click',()=>openDestination(node.dataset.create)));
-  $('destination-form').addEventListener('submit',async event=>{event.preventDefault();const form=event.currentTarget;const action=editing.item?'edit-tag':`create-${editing.kind}`;const result=await post(action,{name:form.elements.name.value,color:form.elements.color.value,id:editing.item?.id});if(result){$('destination-dialog').close();load();}else $('destination-error').textContent=$('room-message-text').textContent;});
+  $('destination-form').addEventListener('submit',async event=>{event.preventDefault();const form=event.currentTarget;const action=editing.item?'edit-tag':`create-${editing.kind}`;const result=await post(action,{name:form.elements.name.value,color:form.elements.color.value,description:form.elements.description.value,id:editing.item?.id});if(result){$('destination-dialog').close();load();}else $('destination-error').textContent=$('room-message-text').textContent;});
   $('target-form').addEventListener('submit',async event=>{event.preventDefault();if(await post('loudness',{target:event.currentTarget.elements.target.value}))load();});
   $('room-search').addEventListener('submit',event=>{event.preventDefault();page=1;load();});
   let timer;$('room-search').elements.q.addEventListener('input',()=>{clearTimeout(timer);timer=setTimeout(()=>{page=1;load();},200);});

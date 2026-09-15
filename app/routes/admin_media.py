@@ -6,7 +6,7 @@ from flask import Blueprint, abort, current_app, flash, jsonify, redirect, rende
 from sqlalchemy import or_
 
 from app.extensions import db
-from app.models import Album,Artist,AuditEvent,MediaCategory,MediaIngestJob,SelectionDecision,Track
+from app.models import Album,Artist,AuditEvent,MediaCategory,MusicTag,MediaIngestJob,SelectionDecision,Track
 from app.services.admin_auth import admin_required, current_admin, media_mutation_required
 from app.services.admin_media import audit, stage_upload, track_for_station
 from app.services.automation import assign_track
@@ -93,13 +93,13 @@ def library(slug):
 @admin_required
 def artist_detail(slug,artist_id):
     station=station_or_404(slug,require_enabled=False);artist=Artist.query.filter_by(id=artist_id,station_id=station.id).first_or_404()
-    return render_template('admin/music_artist.html',**page_context(station,artist=artist))
+    return render_template('admin/music_artist.html',**page_context(station,artist=artist,**classification_context(station)))
 
 @admin_media_blueprint.get('/admin/stations/<slug>/media/albums/<int:album_id>')
 @admin_required
 def album_detail(slug,album_id):
     station=station_or_404(slug,require_enabled=False);album=Album.query.filter_by(id=album_id,station_id=station.id).first_or_404()
-    return render_template('admin/music_album.html',**page_context(station,album=album))
+    return render_template('admin/music_album.html',**page_context(station,album=album,**classification_context(station)))
 
 @admin_media_blueprint.get('/admin/stations/<slug>/media/albums/<int:album_id>/artwork')
 @admin_required
@@ -375,3 +375,8 @@ def process_track(slug,track_uuid):
     except ValueError as error:
         db.session.rollback();flash(str(error),'error')
     return redirect(url_for('admin_media.track_detail',slug=slug,track_uuid=track.uuid),code=303)
+
+
+def classification_context(station):
+    return dict(music_tags=MusicTag.query.filter_by(station_id=station.id).order_by(MusicTag.name).all(),
+                music_categories=MediaCategory.query.filter_by(station_id=station.id).order_by(MediaCategory.name).all())

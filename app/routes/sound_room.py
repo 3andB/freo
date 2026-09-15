@@ -10,7 +10,7 @@ from sqlalchemy.orm import selectinload
 from app.extensions import db
 from app.models import Station, Track, MusicTag, MediaCategory, MusicEdit, song_tags, track_categories
 from app.routes.web import admin_stations, station_or_404
-from app.services.admin_auth import admin_required, current_admin, require_csrf
+from app.services.admin_auth import admin_required, current_admin, require_csrf, can_manage_programming
 from app.services.admin_media import audit
 from app.services.analysis_queue import request_analysis
 from app.services.loudness import gain_for
@@ -68,7 +68,7 @@ def catalog(slug):
     tag_counts=dict(db.session.query(song_tags.c.tag_id,func.count()).join(Track,Track.id==song_tags.c.track_id).filter(Track.station_id==station.id,Track.decommissioned_at.is_(None)).group_by(song_tags.c.tag_id).all())
     result=dict(songs=[song_data(x) for x in songs],total=total,page=page,pages=max(1,(total+49)//50),target_lufs=station.target_lufs,
         categories=[dict(id=x.id,name=x.name,count=category_counts.get(x.id,0),enabled=x.enabled,description=x.description) for x in MediaCategory.query.filter_by(station_id=station.id).order_by(MediaCategory.name)],
-        tags=[dict(id=x.id,name=x.name,color=x.color,count=tag_counts.get(x.id,0)) for x in MusicTag.query.filter_by(station_id=station.id).order_by(MusicTag.name)],
+        tags=[dict(id=x.id,name=x.name,color=x.color,description=x.description,count=tag_counts.get(x.id,0)) for x in MusicTag.query.filter_by(station_id=station.id).order_by(MusicTag.name)],
         unfinished=base.filter(Track.analysis_status!='complete').count())
     response=jsonify(result);response.headers['Cache-Control']='private, no-store';return response
 
@@ -103,6 +103,8 @@ def mutate(slug,action):
     station=station_or_404(slug,require_enabled=False)
     # Reuse the established form-CSRF boundary; JSON data is one form field.
     require_csrf()
+    if action in ('create-tag', 'edit-tag', 'delete-tag') and not can_manage_programming(current_admin(), station):
+        abort(403)
     import json
     try:
         data=json.loads(request.form.get('data','{}'))
@@ -141,14 +143,22 @@ def mutate(slug,action):
             if not name or len(name)>80:raise ValueError('Use a name between 1 and 80 characters')
             key=re.sub(r'[^a-z0-9]+','-',name.casefold()).strip('-')[:64]
             if not key:raise ValueError('Include letters or numbers in the name')
+            description=data.get('description','')
+            if not isinstance(description,str) or len(description)>500:raise ValueError('Description must be under 500 characters')
             if action=='create-category':
-                row=MediaCategory(station_id=station.id,name=name,slug=key);db.session.add(row)
+                row=MediaCategory(station_id=station.id,name=name,slug=key,description=description.strip());db.session.add(row)
             else:
                 color=data.get('color','#b9e79b')
                 if not isinstance(color,str) or not re.fullmatch(r'#[0-9a-fA-F]{6}',color):raise ValueError('Choose a valid tag color')
                 row=target_for(station,'tag',data.get('id')) if action=='edit-tag' else MusicTag(station_id=station.id)
-                row.name=name;row.slug=key;row.color=color;db.session.add(row)
+                row.name=name;row.slug=key;row.color=color;row.description=description.strip();db.session.add(row)
             message='Category created' if action=='create-category' else 'Tag saved'
+        elif action=='delete-tag':
+            tag=target_for(station,'tag',data.get('id'))
+            if data.get('confirm')!=tag.id:raise ValueError('Confirm deletion of this tag')
+            message=f'Tag {tag.name} deleted'
+            db.session.execute(song_tags.delete().where(song_tags.c.tag_id==tag.id))
+            db.session.delete(tag)
         elif action=='edit-category':
             category=target_for(station,'category',data.get('id'))
             name=str(data.get('name','')).strip();description=str(data.get('description',''))
@@ -177,7 +187,7 @@ def mutate(slug,action):
             station.target_lufs=target;message=f'Station target saved: {target:g} LUFS. Applies to newly queued songs.'
         else:abort(404)
         audit('music_'+action.replace('-','_'),user_id=current_admin().id,station_id=station.id,target_type='music',target_id=undo,summary=message)
-        db.session.commit();return jsonify(message=message,undo=undo)
+        db.session.commit();return jsonify(message=message,undo=undo,tag_id=row.id if action in ('create-tag','edit-tag') else None)
     except (ValueError,TypeError,IntegrityError) as error:
         db.session.rollback()
         return jsonify(message='That name already exists. Choose an existing destination or another name.' if isinstance(error,IntegrityError) else str(error)),409

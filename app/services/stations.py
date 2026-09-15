@@ -25,6 +25,9 @@ def create_station(name, slug, description=''):
     station = Station(name=name, slug=slug, description=description, enabled=True, desired_state='stopped')
     station.stream = StreamMount(format='mp3', bitrate=64, enabled=True)
     db.session.add(station)
+    db.session.flush()
+    from app.services.music_tags import seed_starter_tags
+    seed_starter_tags(station.id)
     db.session.commit()
     return station
 
