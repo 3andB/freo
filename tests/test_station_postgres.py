@@ -127,3 +127,63 @@ def test_concurrent_cart_fire_accepts_only_one_operator(monkeypatch):
     with app.app_context():
         assert SelectionDecision.query.filter_by(station_id=station_id,playback_bus='CART').count()==1
         db.session.remove();db.engine.dispose()
+
+
+def test_domain_constraints_concurrent_claims_and_primary_changes(monkeypatch):
+    from datetime import datetime, timezone
+    from sqlalchemy.exc import IntegrityError
+    from app.models import StationDomain
+    from app.services import station_domains as domains
+    monkeypatch.setenv('DATABASE_URL', os.environ['FREO_TEST_POSTGRES_URL'])
+    monkeypatch.setenv('FREO_ENV_FILE', '/dev/null')
+    monkeypatch.setenv('SECRET_KEY', 'test-only')
+    app = create_app('testing')
+    with app.app_context():
+        station_ids = [station.id for station in Station.query.limit(2)]
+    barrier = Barrier(2)
+
+    def claim(station_id):
+        with app.app_context():
+            barrier.wait(timeout=10)
+            try:
+                domains.add_domain(db.session.get(Station, station_id), 'same.example.test')
+                db.session.commit()
+                return True
+            except (IntegrityError, ValueError):
+                db.session.rollback()
+                return False
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        assert sum(pool.map(claim, station_ids)) == 1
+    with app.app_context():
+        row = StationDomain.query.one()
+        row.enabled = True
+        with pytest.raises(IntegrityError):
+            db.session.commit()
+        db.session.rollback()
+        row.verified_at = datetime.now(timezone.utc)
+        row.enabled = True
+        row.is_primary = True
+        other = domains.add_domain(row.station, 'other.example.test')
+        other.verified_at = datetime.now(timezone.utc)
+        other.enabled = True
+        db.session.commit()
+        other.is_primary = True
+        with pytest.raises(IntegrityError):
+            db.session.commit()
+        db.session.rollback()
+        domains.set_primary(other)
+        db.session.commit()
+        assert StationDomain.query.filter_by(is_primary=True).one().id == other.id
+        station_id = row.station_id
+        db.session.remove()
+    runner = app.test_cli_runner()
+    result = runner.invoke(args=['db', 'downgrade', 'c48f1d207ab9'])
+    assert result.exit_code == 0, result.output
+    result = runner.invoke(args=['db', 'upgrade'])
+    assert result.exit_code == 0, result.output
+    with app.app_context():
+        assert db.session.get(Station, station_id)
+        assert StationDomain.query.count() == 0
+        db.session.remove()
+        db.engine.dispose()

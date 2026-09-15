@@ -1,0 +1,29 @@
+<section class="admin-card station-settings" id="domains">
+<h2>Domains</h2>
+<p>Give this station its own listening address. Existing station URLs continue to work.</p>
+<form method="post" action="{{ url_for('station_domains.mutate', slug=selected.slug, action='add') }}">
+<input type="hidden" name="csrf" value="{{ csrf_token() }}">
+<label>Hostname<input name="hostname" placeholder="rock.example.com" maxlength="260" required></label>
+<button type="submit">Add domain</button>
+</form>
+<h3>DNS instructions</h3>
+{% if config.FREO_DOMAIN_TARGET_HOST or config.FREO_DOMAIN_TARGET_IPS %}
+<p>Subdomain: create a CNAME such as <code>rock</code> pointing to <code>{{ config.FREO_DOMAIN_TARGET_HOST or 'the operator’s server hostname' }}</code>.</p>
+<p>Apex domain: create an A record at <code>@</code> for the server IPv4 address, and an AAAA record only if IPv6 is configured. Server addresses: <code>{{ config.FREO_DOMAIN_TARGET_IPS or 'Ask the operator for the server IP addresses' }}</code>.</p>
+{% else %}<p>The installation operator must configure the server hostname or IP addresses before domains can be verified.</p>{% endif %}
+<p>Add the TXT record shown below to prove control of each domain, then select Verify. All A/AAAA addresses must point to this installation. DNS changes may take time to propagate.</p>
+<p>The operator must also configure each hostname and its HTTPS certificate in the reverse proxy. DNS verification does not provision HTTPS.</p>
+{% for domain in selected.domains %}
+<article>
+<h3>{{ domain.hostname }}{% if domain.is_primary %} · Primary{% endif %}</h3>
+<p>{% if domain.enabled and domain.verified_at %}Verified · Enabled · {{ domain.verified_at }}{% else %}Pending verification · Routing inactive{% endif %}</p>
+<p>TXT name: <code>_freo-verification.{{ domain.hostname }}</code><br>TXT value: <code>freo-verification={{ domain.verification_token }}</code></p>
+<form method="post" action="{{ url_for('station_domains.mutate', slug=selected.slug, action='verify') }}">
+<input type="hidden" name="csrf" value="{{ csrf_token() }}"><input type="hidden" name="domain_id" value="{{ domain.id }}">
+<button type="submit">Verify</button>
+{% if domain.enabled and not domain.is_primary %}<button type="submit" formaction="{{ url_for('station_domains.mutate', slug=selected.slug, action='primary') }}">Set primary</button>{% endif %}
+<button type="submit" formaction="{{ url_for('station_domains.mutate', slug=selected.slug, action='remove') }}">Remove domain</button>
+</form>
+</article>
+{% else %}<p>No custom domains added.</p>{% endfor %}
+</section>

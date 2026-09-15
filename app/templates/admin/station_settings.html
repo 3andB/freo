@@ -17,8 +17,9 @@
 <label>Upload or replace logo<input name="logo" type="file" accept="image/jpeg,image/png,image/webp"></label><p class="quiet">JPEG, PNG or WebP, up to 10 MB and 3000 × 3000 pixels. A square (1:1) logo is recommended.</p>
 <h2>Station URL</h2><label>Public URL name<input name="public_slug" value="{{ values.public_slug or selected.slug }}" required maxlength="64" pattern="[a-z0-9][a-z0-9-]*"></label><p class="quiet">Use lowercase letters, numbers and hyphens. Previous URLs continue to work.</p>
 <label>Public listening page<input id="station-public-url" readonly value="{{ public_url }}"></label>
-<p><button type="button" id="copy-station-url">Copy URL</button> <a href="{{ url_for('web.player',slug=selected.public_slug or selected.slug) }}">Open station ↗</a><span id="copy-url-status" role="status"></span></p>
+<p><button type="button" id="copy-station-url">Copy URL</button> <a href="{{ public_url }}">Open station ↗</a><span id="copy-url-status" role="status"></span></p>
 <button class="admin-primary" type="submit">Save station settings</button>
 </form></section>
+{% include 'admin/_station_domains.html' %}
 {% endblock %}
 {% block scripts %}{{ super() }}<script defer src="{{ url_for('static',filename='station_settings.js') }}"></script>{% endblock %}

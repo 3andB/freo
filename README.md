@@ -11,3 +11,8 @@ The stack is Python 3.12, Flask, Gunicorn, PostgreSQL, Nginx, systemd, Liquidsoa
 The installer deploys the fuller stack but has **not** been tested on a separate fresh Ubuntu VM. Public one-command installation is not yet claimed as supported. Local development needs a Python 3.12 venv, `requirements-dev.txt`, a private `.env`, and `flask --app wsgi:app db upgrade`; run `pytest` for tests. Root, a domain, and radio services are not required for unit tests.
 
 No license has been selected. The owner must choose one before broadly promoting reuse as open-source software.
+
+### Custom station domains
+
+See [custom domain setup](docs/custom-domains.md) for verified station domains,
+DNS instructions, and HTTPS deployment with the existing Nginx/Certbot setup.

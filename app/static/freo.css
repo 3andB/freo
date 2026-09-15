@@ -293,3 +293,4 @@ html{scroll-behavior:auto}.admin-primary{display:inline-flex;align-items:center;
 .dj-booth .cart-queued [data-fire-cart]:disabled{opacity:1;background:#244a73;color:#dbf2ff}
 @media(prefers-reduced-motion:reduce){.hot-cart.cart-playing,.id-cart.cart-playing,.hot-cart.cart-queued,.id-cart.cart-queued{animation:none}}
 .dj-booth > .booth-notice{height:76px;overflow:auto;overflow-wrap:anywhere}@media(max-width:650px){.dj-booth > .booth-notice{height:108px;font-size:12px}}
+#domains code,#domains h3{overflow-wrap:anywhere}#domains article{border-top:1px solid var(--line);margin-top:20px;padding-top:12px}#domains article form{display:flex;gap:8px;flex-wrap:wrap}

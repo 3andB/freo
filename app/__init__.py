@@ -41,7 +41,7 @@ def create_app(config_name=None):
         raise ValueError("FLASK_ENV must be development, production, or testing")
     app = Flask(__name__)
     app.config.from_object(configs[name])
-    for key in ("SECRET_KEY", "PUBLIC_BASE_URL", "FREO_DOMAIN", "FREO_MEDIA_ROOT", "LOG_LEVEL"):
+    for key in ("SECRET_KEY", "PUBLIC_BASE_URL", "FREO_DOMAIN", "FREO_INSTALLATION_HOSTS", "FREO_DOMAIN_TARGET_HOST", "FREO_DOMAIN_TARGET_IPS", "FREO_MEDIA_ROOT", "LOG_LEVEL"):
         if key in os.environ:
             app.config[key] = os.environ[key]
     try:
@@ -77,6 +77,10 @@ def create_app(config_name=None):
     from .routes.station_settings import station_settings
     from .routes.song_flags import song_flags
     app.register_blueprint(station_settings)
+    from .routes.station_domains import station_domains
+    from .services.station_domains import route_public_host
+    app.register_blueprint(station_domains)
+    app.before_request(route_public_host)
     app.register_blueprint(song_flags)
     app.register_blueprint(admin_programming_blueprint)
     app.register_blueprint(admin_imaging_blueprint)

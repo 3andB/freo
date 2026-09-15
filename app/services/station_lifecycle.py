@@ -2,7 +2,7 @@
 from datetime import datetime, timezone
 
 from app.extensions import db
-from app.models import Station, MediaIngestJob, LiveControlCommand, SelectionDecision
+from app.models import Station, StationDomain, MediaIngestJob, LiveControlCommand, SelectionDecision
 from app.services.admin_media import audit
 from app.services.stations import allocation_lock
 from app.services import station_runtime as runtime
@@ -35,6 +35,9 @@ def process_station(station):
                 SelectionDecision.query.filter(SelectionDecision.station_id == station.id,
                     SelectionDecision.status.in_(('selected', 'submitting', 'queued'))).update(
                     {'status': 'failed', 'reason': 'station_deleted'})
+                # Release host claims only once deletion succeeds. Re-adding a
+                # hostname requires a fresh DNS token and verification.
+                StationDomain.query.filter_by(station_id=station.id).delete(synchronize_session='fetch')
                 station.deleted_at = datetime.now(timezone.utc)
                 station.lifecycle_state = 'deleted'
                 station.enabled = False

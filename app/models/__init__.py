@@ -77,6 +77,31 @@ class Station(db.Model):
     stream = db.relationship('StreamMount', back_populates='station', uselist=False, cascade='all, delete-orphan')
 
 
+class StationDomain(db.Model):
+    __tablename__ = 'station_domains'
+    __table_args__ = (
+        db.CheckConstraint('NOT enabled OR verified_at IS NOT NULL', name='ck_station_domains_verified'),
+        db.CheckConstraint('NOT is_primary OR enabled', name='ck_station_domains_primary_enabled'),
+        db.Index('uq_station_domains_primary', 'station_id', unique=True,
+                 postgresql_where=db.text('is_primary'), sqlite_where=db.text('is_primary = 1')),
+    )
+    id = db.Column(db.Integer, primary_key=True)
+    station_id = db.Column(db.Integer, db.ForeignKey('stations.id', ondelete='CASCADE'), nullable=False, index=True)
+    hostname = db.Column(db.String(253), nullable=False, unique=True)
+    is_primary = db.Column(db.Boolean, nullable=False, default=False, server_default=db.false())
+    verified_at = db.Column(db.DateTime(timezone=True))
+    enabled = db.Column(db.Boolean, nullable=False, default=False, server_default=db.false())
+    verification_token = db.Column(db.String(64), nullable=False)
+    created_at = db.Column(db.DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+    updated_at = db.Column(db.DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    station = db.relationship('Station', backref=db.backref('domains', cascade='all, delete-orphan', order_by='StationDomain.hostname'))
+
+    @db.validates('hostname')
+    def normalize_hostname(self, key, value):
+        from app.services.station_domains import normalize_hostname
+        return normalize_hostname(value, domain=True)
+
+
 class StationAlias(db.Model):
     __tablename__ = 'station_aliases'
     slug = db.Column(db.String(64), primary_key=True)

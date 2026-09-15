@@ -1,10 +1,10 @@
-# Render FREO_SERVER_NAME to a validated domain or the server IP.
+# Replace FREO_CUSTOM_HOSTNAME with validated customer hostname(s).
+# Enable this site, nginx -t, reload, then use the existing Certbot --nginx flow.
 server {
     listen 80;
-    server_name FREO_SERVER_NAME;
+    server_name FREO_CUSTOM_HOSTNAME;
     include /etc/nginx/snippets/freo-stream.conf;
     include /etc/nginx/snippets/freo-stations/*.conf;
-    include /etc/nginx/snippets/freo-admin-upload.conf;
 
     location / {
         proxy_pass http://127.0.0.1:8000;
@@ -17,4 +17,3 @@ server {
         proxy_read_timeout 60s;
     }
 }
-# Optional Certbot augments this HTTP site with TLS and redirects.

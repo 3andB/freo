@@ -212,3 +212,31 @@ def test_delete_requested_during_creation_is_not_overwritten(app,monkeypatch):
         assert station.lifecycle_state=='pending_delete' and not station.enabled
         process_station(station)
         assert station.deleted_at
+
+
+def test_station_deletion_releases_domains_only_after_success(app, monkeypatch):
+    from datetime import datetime, timezone
+    from app.models import StationDomain
+    from app.services.station_domains import add_domain
+    with app.app_context():
+        station = create_station('Domain owner', 'domain-owner')
+        other = create_station('Next owner', 'next-owner')
+        row = add_domain(station, 'reusable.example.test')
+        row.enabled = True
+        row.verified_at = datetime.now(timezone.utc)
+        row.is_primary = True
+        db.session.commit()
+        token = row.verification_token
+        request_delete(station, AdminUser.query.first().id)
+        monkeypatch.setattr(runtime, 'remove', Mock(side_effect=RuntimeError('retry deletion')))
+        with pytest.raises(RuntimeError):
+            process_station(station)
+        assert StationDomain.query.count() == 1
+        monkeypatch.setattr(runtime, 'remove', Mock())
+        retry(station)
+        process_station(station)
+        assert station.deleted_at and StationDomain.query.count() == 0
+        replacement = add_domain(other, 'reusable.example.test')
+        db.session.commit()
+        assert replacement.verification_token != token
+        assert not replacement.enabled and replacement.verified_at is None
