@@ -30,10 +30,10 @@ def set_hold(station, user, held):
 
 def set_mode(station,user,mode):
     mode=(mode or '').upper()
-    if mode not in ('AUTO','LIVE_ASSIST','LIVE'):raise ValueError('Invalid booth mode')
+    if mode not in ('AUTO','DJ_BOOTH'):raise ValueError('Invalid booth mode')
     state=db.session.get(AutomationState,station.id)
     if state is None or not state.enabled or not station.enabled or station.desired_state!='running':raise ValueError('Station automation is unavailable')
-    state.operator_mode=mode;state.hold=mode=='LIVE'
+    state.operator_mode=mode;state.hold=mode=='DJ_BOOTH'
     audit('live_mode_changed',user_id=user.id,station_id=station.id,target_type='station',target_id=station.slug,summary=f'DJ booth mode changed to {mode}')
     db.session.commit();return state
 
@@ -255,6 +255,7 @@ def status(station):
         cue['album_id'] = state.cued_track.album_id
     return dict(station=station.slug, automation='HELD' if state and state.hold else 'RUNNING' if state and state.enabled else 'DISABLED',mode=state.operator_mode if state else 'AUTO',cue=cue,
         current=current, queue=queue, unknown_queue_items=unknown,
+        program_rms=snapshot.program_rms if fresh else None,
         fallback='Possible' if not current and not live_error and station.desired_state == 'running' else 'Not observed',
         playout_error=live_error, recent=[safe_item(row) for row in recent],
         clock=programming.clock.name if programming.clock else None,

@@ -554,6 +554,7 @@ class LiveQueueSnapshot(db.Model):
     unknown_count = db.Column(db.Integer, nullable=False, default=0)
     observed_at = db.Column(db.DateTime(timezone=True), nullable=False)
     error_code = db.Column(db.String(40))
+    program_rms = db.Column(db.Float)
 
 
 class TimedEvent(db.Model):

@@ -20,6 +20,7 @@ radio = fallback(track_sensitive=false, [queue, tone])
 # A short broadcast transition applies to natural changes and the fixed
 # worker-only fade/advance operation. Browsers never receive socket access.
 radio = mksafe(crossfade(duration=3.0, radio))
+radio = server.rms(id="freo_program", radio)
 output.icecast(
   %mp3(bitrate=64),
   host="127.0.0.1",

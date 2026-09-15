@@ -52,8 +52,7 @@ def test_hold_resume_and_audit(app):
 def test_three_booth_modes_have_explicit_hold_semantics(app):
     with app.app_context():
         station=Station.query.filter_by(slug='test-station').first();user=AdminUser.query.first()
-        set_mode(station,user,'LIVE_ASSIST');assert station.automation.operator_mode=='LIVE_ASSIST' and not station.automation.hold
-        set_mode(station,user,'LIVE');assert station.automation.operator_mode=='LIVE' and station.automation.hold
+        set_mode(station,user,'DJ_BOOTH');assert station.automation.operator_mode=='DJ_BOOTH' and station.automation.hold
         set_mode(station,user,'AUTO');assert station.automation.operator_mode=='AUTO' and not station.automation.hold
         with pytest.raises(ValueError):set_mode(station,user,'ENGINEERING')
 
@@ -79,7 +78,7 @@ def test_takeover_intent_and_cart_assignment_are_station_scoped(app,monkeypatch)
         asset=ImagingAsset(station_id=station.id,uuid=str(uuid.uuid4()),name='Legal ID',cart_code='ID-1',asset_type='STATION_ID',original_filename='id.mp3',storage_key='c'*32+'.mp3',media_type='mp3',duration_ms=3000,sample_rate_hz=44100,channels=2,file_size_bytes=100,checksum_sha256='c'*64,enabled=True,ingest_status='accepted');db.session.add(asset);db.session.commit()
         slot=assign_cart(station,user,'ID',1,asset.uuid,'Legal');assert slot.imaging_asset_id==asset.id
     client=admin_client(app);base='/admin/stations/test-station/live'
-    assert client.post(base+'/mode',data={'csrf':'test-admin-csrf-token','mode':'LIVE_ASSIST'}).status_code==302
+    assert client.post(base+'/mode',data={'csrf':'test-admin-csrf-token','mode':'DJ_BOOTH'}).status_code==302
     assert client.post(base+'/assign-cart',data={'csrf':'test-admin-csrf-token','role':'HOT','position':'1','identifier':'foreign'}).status_code==302
     with app.app_context():assert LiveCartSlot.query.count()==1
 
@@ -124,6 +123,15 @@ def test_socket_adapter_rejects_generic_control():
             _command('test-station', command)
 
 
+def test_program_meter_parses_only_bounded_liquidsoap_rms(monkeypatch):
+    from app.services.playout_queue import program_rms
+    monkeypatch.setattr('app.services.playout_queue._command', lambda slug, command: '0.25')
+    assert program_rms('test-station') == 0.25
+    monkeypatch.setattr('app.services.playout_queue._command', lambda slug, command: '2.0')
+    with pytest.raises(RuntimeError):
+        program_rms('test-station')
+
+
 def test_live_page_and_status_use_sanitized_worker_snapshot(app, monkeypatch):
     monkeypatch.setattr('app.services.playout_queue._command', lambda *args: (_ for _ in ()).throw(AssertionError('web socket access')))
     with app.app_context():
@@ -143,7 +151,7 @@ def test_live_page_and_status_use_sanitized_worker_snapshot(app, monkeypatch):
     assert page.data.count(b'data-role="ID"') == 4
     assert page.data.count(b'data-assign') >= 12
     assert b'DECK B' in page.data and b'NOTHING CUED' in page.data
-    assert b'PROGRAM / LIVE' in page.data and b'CUE / MONITOR' in page.data
+    assert b'PROGRAM / LIVE' in page.data and b'>MONITOR<' in page.data
     assert b'STATUS / ENGINEERING' in page.data
     payload = client.get('/admin/api/stations/test-station/live-status')
     assert payload.status_code == 200

@@ -272,6 +272,11 @@ def observe_queue(station, error_code=None):
         snapshot.queued_decision_ids = []
         snapshot.unknown_count = 0
     else:
+        from app.services.playout_queue import program_rms
+        try:
+            snapshot.program_rms = program_rms(station.slug)
+        except (OSError, RuntimeError, ValueError):
+            snapshot.program_rms = None
         identity = socket_identity(station.slug)
         active, ordered = active_ids(station.slug), queued_order(station.slug)
         rows = SelectionDecision.query.filter_by(station_id=station.id, socket_identity=identity).filter(
