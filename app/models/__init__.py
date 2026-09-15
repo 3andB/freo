@@ -60,9 +60,18 @@ class Station(db.Model):
     enabled = db.Column(db.Boolean, nullable=False, default=True)
     desired_state = db.Column(db.String(12), nullable=False, default='stopped')
     timezone = db.Column(db.String(64), nullable=False, default='UTC')
+    target_lufs = db.Column(db.Float, nullable=False, default=-16.0)
+    public_slug = db.Column(db.String(64), unique=True)
     created_at = db.Column(db.DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
     updated_at = db.Column(db.DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
     stream = db.relationship('StreamMount', back_populates='station', uselist=False, cascade='all, delete-orphan')
+
+
+class StationAlias(db.Model):
+    __tablename__ = 'station_aliases'
+    slug = db.Column(db.String(64), primary_key=True)
+    station_id = db.Column(db.Integer, db.ForeignKey('stations.id', ondelete='CASCADE'), nullable=False)
+    station = db.relationship('Station')
 
 
 class StreamMount(db.Model):
@@ -85,7 +94,7 @@ class StreamMount(db.Model):
 
     @property
     def public_path(self):
-        return '/stream/' + self.station.slug
+        return '/listen/' + self.station.public_slug if self.station.public_slug else '/stream/' + self.station.slug
 
 
 class Artist(db.Model):
@@ -132,6 +141,7 @@ class MusicTag(db.Model):
     station_id = db.Column(db.Integer, db.ForeignKey('stations.id', ondelete='CASCADE'), nullable=False, index=True)
     name = db.Column(db.String(80), nullable=False)
     slug = db.Column(db.String(80), nullable=False)
+    color = db.Column(db.String(7), nullable=False, default='#b9e79b')
 
 
 class Track(db.Model):
@@ -164,6 +174,14 @@ class Track(db.Model):
     cue_out_ms = db.Column(db.Integer)
     segue_ms = db.Column(db.Integer)
     analysis_status = db.Column(db.String(16), nullable=False, default='pending')
+    analysis_requested = db.Column(db.Boolean, nullable=False, default=False)
+    analysis_attempts = db.Column(db.Integer, nullable=False, default=0)
+    analysis_started_at = db.Column(db.DateTime(timezone=True))
+    analyzed_at = db.Column(db.DateTime(timezone=True))
+    analysis_retry_at = db.Column(db.DateTime(timezone=True))
+    analysis_error = db.Column(db.String(240), nullable=False, default='')
+    notes = db.Column(db.Text, nullable=False, default='')
+    deleted_at = db.Column(db.DateTime(timezone=True))
     scheduling_restrictions = db.Column(db.JSON, nullable=False, default=dict)
     original_filename = db.Column(db.String(255), nullable=False)
     storage_key = db.Column(db.String(50), nullable=False)
@@ -305,6 +323,9 @@ class AutomationState(db.Model):
     enabled = db.Column(db.Boolean, nullable=False, default=False)
     hold = db.Column(db.Boolean, nullable=False, default=False)
     operator_mode = db.Column(db.String(16), nullable=False, default='AUTO')
+    crossfader = db.Column(db.Float, nullable=False, default=0.0)
+    deck_a_playing = db.Column(db.Boolean, nullable=False, default=True)
+    deck_b_playing = db.Column(db.Boolean, nullable=False, default=False)
     cued_track_id = db.Column(db.Integer, db.ForeignKey('tracks.id', ondelete='SET NULL'))
     next_slot_index = db.Column(db.Integer, nullable=False, default=0)
     track_separation_seconds = db.Column(db.Integer, nullable=False, default=0)
@@ -492,6 +513,9 @@ class SelectionDecision(db.Model):
     imaging_asset_id = db.Column(db.Integer, db.ForeignKey('imaging_assets.id', ondelete='SET NULL'))
     imaging_group_id = db.Column(db.Integer, db.ForeignKey('imaging_groups.id', ondelete='SET NULL'))
     selection_method = db.Column(db.String(24), nullable=False, default='music')
+    playback_bus = db.Column(db.String(8), nullable=False, default='A')
+    cart_mode = db.Column(db.String(8), nullable=False, default='OVER')
+    duck_percent = db.Column(db.Integer, nullable=False, default=50)
     admin_user_id = db.Column(db.Integer, db.ForeignKey('admin_users.id', ondelete='SET NULL'))
     idempotency_key = db.Column(db.String(36), unique=True)
     selected_at = db.Column(db.DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
@@ -521,13 +545,16 @@ class SelectionDecision(db.Model):
 class LiveControlCommand(db.Model):
     """Worker-mediated skip only; never a generic socket command table."""
     __tablename__ = 'live_control_commands'
-    __table_args__ = (db.CheckConstraint("status IN ('pending','sent','failed')", name='ck_live_control_status'),db.CheckConstraint("action IN ('SKIP','TAKEOVER','FADE')",name='ck_live_control_action'))
+    __table_args__ = (db.CheckConstraint("status IN ('pending','sent','failed')", name='ck_live_control_status'),db.CheckConstraint("action IN ('SKIP','TAKEOVER','FADE','DECK_LOAD','DECK_PLAY','DECK_PAUSE','DECK_CLEAR','DECK_FADE','DECK_REPEAT')",name='ck_live_control_action'))
     id = db.Column(db.Integer, primary_key=True)
     station_id = db.Column(db.Integer, db.ForeignKey('stations.id', ondelete='CASCADE'), nullable=False, index=True)
     admin_user_id = db.Column(db.Integer, db.ForeignKey('admin_users.id', ondelete='SET NULL'))
     idempotency_key = db.Column(db.String(36), nullable=False, unique=True)
     expected_decision_id = db.Column(db.Integer, db.ForeignKey('selection_decisions.id', ondelete='SET NULL'))
     target_decision_id = db.Column(db.Integer, db.ForeignKey('selection_decisions.id', ondelete='SET NULL'))
+    deck = db.Column(db.String(1))
+    fade_seconds = db.Column(db.Float, nullable=False, default=3.0, server_default='3')
+    play_on_load = db.Column(db.Boolean, nullable=False, default=False, server_default=db.false())
     action = db.Column(db.String(12), nullable=False, default='SKIP')
     status = db.Column(db.String(12), nullable=False, default='pending')
     created_at = db.Column(db.DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
@@ -544,6 +571,20 @@ class LiveCartSlot(db.Model):
     __table_args__=(db.UniqueConstraint('station_id','role','position',name='uq_live_cart_station_role_position'),db.CheckConstraint("role IN ('HOT','ID')",name='ck_live_cart_role'),db.CheckConstraint("(role='HOT' AND position BETWEEN 1 AND 8) OR (role='ID' AND position BETWEEN 1 AND 4)",name='ck_live_cart_position'))
     id=db.Column(db.Integer,primary_key=True);station_id=db.Column(db.Integer,db.ForeignKey('stations.id',ondelete='CASCADE'),nullable=False,index=True);role=db.Column(db.String(4),nullable=False);position=db.Column(db.Integer,nullable=False);imaging_asset_id=db.Column(db.Integer,db.ForeignKey('imaging_assets.id',ondelete='SET NULL'));label=db.Column(db.String(40),nullable=False,default='');imaging_asset=db.relationship('ImagingAsset');station=db.relationship('Station')
 
+    track_id = db.Column(db.Integer, db.ForeignKey('tracks.id', ondelete='SET NULL'))
+    description = db.Column(db.String(500), nullable=False, default='')
+    playback_mode = db.Column(db.String(8), nullable=False, default='OVER')
+    duck_percent = db.Column(db.Integer, nullable=False, default=50)
+    track = db.relationship('Track')
+
+    @property
+    def playable(self):
+        return self.track or self.imaging_asset
+
+    @property
+    def title(self):
+        return self.track.title if self.track else self.imaging_asset.name if self.imaging_asset else 'Unassigned'
+
 
 class LiveQueueSnapshot(db.Model):
     """Worker-observed socket state, stripped of paths and raw metadata."""
@@ -555,6 +596,7 @@ class LiveQueueSnapshot(db.Model):
     observed_at = db.Column(db.DateTime(timezone=True), nullable=False)
     error_code = db.Column(db.String(40))
     program_rms = db.Column(db.Float)
+    mixer = db.Column(db.JSON)
 
 
 class TimedEvent(db.Model):
@@ -677,3 +719,33 @@ class AutomationHeartbeat(db.Model):
     __tablename__ = 'automation_heartbeat'
     id = db.Column(db.Integer, primary_key=True)
     seen_at = db.Column(db.DateTime(timezone=True), nullable=False)
+
+
+class MusicEdit(db.Model):
+    """Durable single-use undo for category and tag membership changes."""
+    __tablename__ = 'music_edits'
+    id = db.Column(db.String(36), primary_key=True)
+    station_id = db.Column(db.Integer, db.ForeignKey('stations.id'), nullable=False)
+    admin_user_id = db.Column(db.Integer, db.ForeignKey('admin_users.id'), nullable=False)
+    kind = db.Column(db.String(16), nullable=False)
+    target_id = db.Column(db.Integer, nullable=False)
+    changes = db.Column(db.JSON, nullable=False)
+    undone = db.Column(db.Boolean, nullable=False, default=False)
+    created_at = db.Column(db.DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+
+
+class ScheduleProgram(db.Model):
+    __tablename__ = 'schedule_programs'
+    id = db.Column(db.Integer, primary_key=True)
+    station_id = db.Column(db.Integer, db.ForeignKey('stations.id', ondelete='CASCADE'), nullable=False, index=True)
+    name = db.Column(db.String(120), nullable=False)
+    weekday = db.Column(db.Integer, nullable=False)
+    on_date = db.Column(db.Date)
+    start_minute = db.Column(db.Integer, nullable=False)
+    end_minute = db.Column(db.Integer, nullable=False)
+    clock_id = db.Column(db.Integer, db.ForeignKey('clocks.id', ondelete='RESTRICT'), nullable=False)
+    enabled = db.Column(db.Boolean, nullable=False, default=True)
+    created_at = db.Column(db.DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+    clock = db.relationship('Clock')
+    station = db.relationship('Station')
+    __table_args__ = (db.CheckConstraint('weekday BETWEEN 0 AND 6 AND start_minute BETWEEN 0 AND 1439 AND end_minute BETWEEN 1 AND 2880 AND end_minute > start_minute AND end_minute - start_minute <= 1440', name='ck_program_window'),)

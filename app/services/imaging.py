@@ -13,7 +13,7 @@ from app.models import IMAGING_TYPES, ImagingAsset, ImagingGroup, SelectionDecis
 from app.services.automation import require_station
 from app.services.media import MAX_MEDIA_FILE_BYTES, _prepare_dirs, normalize, require_ingest_identity
 from app.services.media_probe import MediaValidationError, probe
-from app.services.media_storage import LocalMediaStorage
+from app.services.media_storage import LocalMediaStorage, grant_playout_read
 from app.services.stations import validate_slug
 
 CART_CODE = re.compile(r'^[A-Za-z0-9][A-Za-z0-9_-]{0,31}$')
@@ -179,7 +179,7 @@ def ingest_imaging(slug, source, asset_type, name=None, cart_code=None, storage=
             os.chown(temp, 0, playout_gid)
         elif temp.stat().st_gid != playout_gid:
             raise PermissionError('Staged imaging lacks the playout-read group')
-        os.chmod(temp, 0o640)
+        grant_playout_read(temp)
         os.replace(temp, final)
         asset = ImagingAsset(station_id=station.id, uuid=str(asset_uuid), name=display,
             cart_code=code, asset_type=kind, original_filename=original, storage_key=key,

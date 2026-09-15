@@ -206,8 +206,8 @@ def current(slug, at=None):
     clock = resolution.clock or (default if usable_clock(default, station.id) else None)
     return {'timezone': station.timezone, 'local_time': resolution.local_time.isoformat(),
             'clock': clock.slug if clock else None,
-            'source': 'weekly' if resolution.clock else 'default' if clock else 'rotation',
-            'assignment_id': resolution.assignment.id if resolution.clock else None,
+            'source': 'calendar' if resolution.program else 'weekly' if resolution.clock else 'default' if clock else 'rotation',
+            'assignment_id': resolution.assignment.id if resolution.assignment else None,
             'occurrence': resolution.occurrence_key if resolution.clock else f'default:{clock.id}' if clock else None,
             'next_transition': resolution.next_transition.isoformat() if resolution.next_transition else None}
 

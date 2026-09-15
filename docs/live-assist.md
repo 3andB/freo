@@ -1,25 +1,64 @@
-# DJ Booth
+# DJ Booth and AUTO
 
-The flagship frontend has two clear modes. `AUTO` reduces the interface to current artwork, song, category, clock, progress, Program level, and optional Monitor while Freo follows schedule and clocks. `DJ BOOTH` reveals paired On Air and Cue decks and holds normal music refill; Timed Events, traffic, active EventBlocks, fallback, and confirmed-start reconciliation remain active under their established policies. Mode changes are persisted and audited.
+DJ mode is controlled by the buttons on the two decks. There is no broadcast crossfader, Playing Next panel, Queue button, or queue drop target in DJ. AUTO displays schedule status and monitoring without song details or a song browser. Shared Hot Carts, Station IDs and Sweepers work in either mode.
 
-Now Playing is driven by worker-observed Liquidsoap request identity. The illuminated ring wraps around the platter according to estimated elapsed time from the confirmed start and probed duration. Track facts include category, BPM, year, and loudness when analysis supplied them. The Program meter is read from Liquidsoap by the automation worker and remains active without browser playback. The separate Monitor meter samples the station monitor or authenticated cue audition only after the operator starts it. Neither is simulated.
+## Deck buttons
 
-Songs can be dragged to Up Next for Queue End, to Deck B to cue, or to Deck A for a confirmed takeover. A pointer-driven drag path supports mouse, pen, and touch without relying on inconsistent native `DataTransfer` behavior; every interaction also has a button fallback. Both decks provide a searchable **Cue Song** picker. Cueing creates a real durable queue decision, so Deck B follows Deck A after the already-observed queue ahead of it has played. Starting the Cue deck or dropping on Deck A creates a durable worker-mediated takeover intent bound to the confirmed current decision. The worker verifies that identity, uses only the fixed allowlisted clear/advance operation, then submits the approved station-owned Song. A validated three-second Liquidsoap crossfade wraps natural transitions and Fade/Takeover. The browser never sends a Liquidsoap command or path. Future-request removal and queue reordering remain unavailable because submitted request.queue entries cannot be reconciled safely.
+Both decks provide the same controls:
 
-Eight Hot Cart positions and four Station ID positions persist approved station ImagingAsset assignments. Every position exposes an Assign button and searchable approved-audio dialog, and Imaging can also be dragged directly onto it. Identity positions accept IDs, sweepers, liners, and jingles. Firing creates the existing audited manual Imaging request. A wide top-bar digital display morphs between the confirmed song and artist. Its restrained level bars, LED LIVE state, paired decks, progress ring, meters, carts, and IDs respect reduced-motion preferences.
+| Button | Result |
+| --- | --- |
+| Load Song / drop a song | Replace a non-playing deck silently and leave the new song READY. A playing deck asks ‘Replace and go live?’; accepting replaces it and starts the new song from the beginning. |
+| Play / Take Air | Fade this deck in while fading the other deck out, then pause the outgoing deck. |
+| Resume / Take Air | Resume from the saved position and crossfade from the other deck. |
+| Pause | Pause this deck in place. It does not start the other deck. |
+| Stop / Clear | Stop and unload this deck, including its pending repeat. |
+| Fade Out | Fade this deck out over the selected duration, then stop and unload it. A subsequent Play, Pause, Clear, or mode change cancels an older fade timer. |
+| Repeat ×1 | Replace this deck's future repeat with one copy of its song, played immediately afterward. Repeated clicks do not build an unbounded queue. |
+| Preview | Audition the deck's song privately, stopping MASTER MONITOR. Click again to stop preview. Broadcast playback is unaffected. |
 
-The authenticated station DJ Booth page shows a worker-observed Liquidsoap queue, confirmed current item, recent confirmed starts, current scheduled clock, and automation hold state. It searches enabled accepted music and imaging by station. Operator actions require admin authorization and CSRF; queue and skip requests carry UUID idempotency tokens and are audited. The web process stores intent in PostgreSQL and has no direct station socket access. The automation worker is the sole socket controller.
+The shared Fade Length slider selects 0–10 seconds for Take Air and Fade Out (default 3 seconds, remembered in this browser). Zero switches immediately. Take Air occupies its own full-width row. Both decks play during a crossfade; the outgoing deck pauses when it completes. A newer Take Air cancels the previous completion timer.
 
-**Hold** stops new automated refill after the worker observes it. It preserves the current item and already queued requests; these may play before generated fallback. **Resume** clears hold and the worker resolves the current schedule at its next tick. Clock and rotation cursors do not advance during hold. Manual actual starts enter the same confirmed history as automation and therefore affect later music separation or imaging recurrence. Merely queuing a request does not count as a play.
+Prepared songs are READY, playing decks LIVE, and interrupted/paused decks PAUSED. Empty Deck B flashes gently. Timers use engine position, including pauses and cart interruptions. Playing neither deck deliberately produces silence in DJ mode. Taking DJ control preserves AUTO's current song on A and clears automated lookahead. Returning to AUTO resumes the current schedule.
 
-**Queue End** appends an approved station Track or ImagingAsset to Liquidsoap's `request.queue`. The current Liquidsoap queue is append-only, so Queue Next and Play Now are intentionally unavailable. Manual requests may be added while automation runs, and automated refill counts them toward its queue depth. The station limit is 20 pending requests. Skip is a separate, fixed `freo_queue.skip` operation, processed by the worker only if the expected request is still on air. It does not restart a service. A failed or stale operation is recorded; it is not retried as an arbitrary command.
+MASTER MONITOR remains in the shared header, survives internal navigation, and must be reactivated after a preview. Listening volume and cart ducking remain adjustable; they are separate from deck transport.
 
-The worker records sanitized queue decision IDs and observation time in PostgreSQL. The page marks the observation unavailable when it is over 10 seconds old. Unknown external requests are counted but their raw URI or path is never shown. “Fallback possible” means no approved request was observed on air while the station is running; it is not a direct Liquidsoap fallback detector. The page polls one authenticated status endpoint every 2 seconds. A worker restart retains hold, pending manual intent, and idempotency records; it reconciles a push interrupted between socket and database commits using the decision annotation. Liquidsoap restart invalidates old request IDs, and existing reconciliation marks unstarted queued decisions failed. No raw media, generic Liquidsoap command, socket path, or filesystem path is accepted from the browser.
+Program meters show the worker-observed engine RMS on a −60 to 0 dB scale, smoothed between observations. Both program bars share this aggregate measurement. Monitor meters measure the actual left/right audio of MASTER MONITOR or private preview and return to zero when listening stops.
 
-Phase 11 adds the next timed event, mode, durable state, and client-side countdown. Timed events remain active during automation hold. Manual audio is protected from HARD interruption; operators should use the countdown when inserting long items near an event. Event timing is executed from server UTC, never the browser clock.
+## Reliable control
 
-Recovery: confirm station and worker health via `/health/automation`, inspect recent audit and confirmed history, then return to AUTO when appropriate. The root CLI remains available for station maintenance. Browser Cue Monitor is a private audition, not a studio sound-card/PFL output. Repeat ×1 adds one copy to Queue End because the underlying queue cannot safely front-insert. Freo still does not provide microphone ingest, hardware source switching, or editable submitted queue positions.
+The web app stores authenticated, CSRF-protected deck commands with an idempotency token and expected decision identity. It cannot access private engine sockets. The worker rechecks the specific deck before applying a command. A stale command fails without controlling a replacement song; pending and failed commands appear in the UI. Buttons wait for the current command to be applied.
 
-## Ordered blocks
+Liquidsoap reports both playing and prepared requests through its `current()` source method: paused prefetched audio is not necessarily listed by `request.on_air`. The worker includes these request identities during reconciliation, so a loaded deck is not incorrectly marked failed. Preparing a request does not count as an aired song. Confirmed starts update history and separation rules only when the deck plays audibly.
 
-DJ Booth can Queue Block and shows active snapshot progress. Automation Hold does not freeze a running block. Abort Block is a distinct operator intent processed by the worker before ordinary programming resumes.
+DJ ignores old ordinary queue intents; deck preparation/repeat commands and explicit carts own playback. A delayed observation disables mutations without stopping audio. Engine restart invalidates old request identities. The saved AUTO/DJ mode is preserved during rendering.
+
+## Shared carts
+
+Assign an approved song or imaging asset with a label, description, and behavior:
+
+- PLAY OVER keeps the main deck advancing while reducing its volume by the chosen percentage.
+- TAKE OVER pauses main audio, plays the cart, then resumes the interrupted position.
+
+One cart plays at a time. The engine restores the selected deck's audio after the cart.
+
+## Validation
+
+`tests/test_deck_controls.py` exercises station scoping, stale commands, repeat targeting and worker intent. Chromium tests cover button requests, loading/clearing/dragging, private preview, queue visibility and responsive layout. Run `FREO_ENGINE_TEST=1 venv/bin/pytest -q tests/test_deck_engine.py` for isolated real-worker/Liquidsoap playback validation using generated audio and temporary storage. No production station audio is used by those tests.
+
+## Button-deck rollout — 2026-09-15
+
+Deployed migration `b680aa432d19` with a verified database/config backup at `/var/backups/freo/deck-buttons-20260915T073346Z`. Both station templates validated; the running station retained DJ mode and the stopped station retained AUTO. Web, worker and playout services are active. Public/readiness routes returned HTTP 200, the stream returned MP3 bytes, and the worker reported fresh engine observations with no error. Empty DJ decks produced zero program signal.
+
+Validation: 133 regression tests passed (the opt-in engine test skipped in that run); the real worker/Liquidsoap integration passed separately. All eight browser/workspace checks passed, with additional final Preview and screenshot checks. Nine focused deck-command tests passed, including rejection of obsolete DJ Up Next requests. The isolated engine audio proof verified both decks' load/play/pause/resume/fade/clear behavior, repeat once, cancellation of an older fade, cart overlay and takeover/resume, and return to AUTO. PostgreSQL upgrade/downgrade/re-upgrade passed in a temporary cluster.
+
+
+## Deck transition update
+
+Migration `c39fa204bb17` adds the selected fade duration and confirmed play-on-load intent to durable deck commands. Apply it before restarting the web and automation services. Render and restart playout to activate the updated Liquidsoap envelopes; restarting playout interrupts the stream and clears its in-memory deck positions. The real-engine recording test measures both tone amplitudes through each crossfade and checks RMS telemetry and timer cancellation.
+
+### Activated — 2026-09-15
+
+Applied migration `c39fa204bb17`, validated and installed both station configurations, and restarted the web, automation, ingest, and running Freo Demo playout services. Freo Demo retained DJ mode with empty decks after restart; Freo Demo Two remained stopped in AUTO. HTTP health/readiness and radio checks passed, the stream delivered MP3 bytes, and worker observations were fresh with no playout error. All four restarted services were active. Zero program RMS is expected until a deck is played.
+
+Verified pre-update database and configuration backup: `/var/backups/freo/deck-transitions-20260915T134020Z`. Validation included 146 non-browser regression tests (two filesystem ACL cases passed outside the sandbox), five focused browser workflows, real-worker playback, recorded crossfades in both directions, and migration upgrade/downgrade/re-upgrade checks.

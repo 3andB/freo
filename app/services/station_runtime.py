@@ -79,6 +79,7 @@ def render_liquidsoap(station, password):
         '__PLAYLIST__': json.dumps(f'/var/lib/freo/playlists/{slug}.m3u'),
         '__EVENT_FILE__': json.dumps(f'/run/freo/playout/{slug}/events.log'),
         '__FREQUENCY__': str(frequency),
+        '__OPERATOR_MODE__': json.dumps('DJ_BOOTH' if station.automation and station.automation.operator_mode == 'DJ_BOOTH' else 'AUTO'),
         '__TITLE__': json.dumps(f'{station.name} Engine Test'),
         '__MOUNT__': json.dumps('/' + slug),
         '__SOURCE_PASSWORD__': json.dumps(password),

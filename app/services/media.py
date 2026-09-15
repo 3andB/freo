@@ -9,7 +9,7 @@ import uuid as uuidlib
 from app.extensions import db
 from app.models import Track
 from app.services.media_probe import MediaValidationError, probe
-from app.services.media_storage import LocalMediaStorage
+from app.services.media_storage import LocalMediaStorage, grant_playout_read
 from app.services.stations import get_station
 
 MAX_MEDIA_FILE_BYTES = 1024 * 1024 * 1024
@@ -127,7 +127,7 @@ def ingest(slug, source, title=None, artist=None, album=None, storage=None, *,
             os.chown(temp, 0, playout_gid)
         elif temp.stat().st_gid != playout_gid:
             raise PermissionError('Staged media does not have the playout-read group')
-        os.chmod(temp, 0o640)
+        grant_playout_read(temp)
         os.replace(temp, final)
         track = Track(
             station_id=station.id, uuid=str(track_uuid), title=display_title,

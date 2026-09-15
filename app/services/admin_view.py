@@ -77,7 +77,8 @@ def context(station, *, history_limit=30, with_status=True):
     today = (ScheduleAssignment.query.filter_by(station_id=station.id, weekday=local_today)
              .order_by(ScheduleAssignment.start_time).all())
     observed = observed_status(station) if with_status else None
-    return {'station': station, 'observed': observed, 'programming': programming,
+    from app.services.live_assist import status as live_status
+    return {'live': live_status(station), 'station': station, 'observed': observed, 'programming': programming,
             'automation': state, 'worker': worker_health(station),
             'history': history, 'rotation_names': rotation_names,
             'now_playing': history[0] if history else None,

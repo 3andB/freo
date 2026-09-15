@@ -23,9 +23,9 @@ def _command(slug, command):
     if '\n' in command or '\r' in command or len(command) > 1024:
         raise ValueError('Invalid Liquidsoap command')
     media_root = re.escape(str(LocalMediaStorage().root))
-    music_pattern = rf'freo_queue\.push annotate:freo_decision=[1-9][0-9]*:{media_root}/{re.escape(slug)}/originals/[0-9a-f]{{32}}\.mp3'
-    imaging_pattern = rf'freo_queue\.push annotate:freo_decision=[1-9][0-9]*,title="[A-Za-z0-9 ._-]{{1,120}}",artist="[A-Za-z0-9 ._-]{{1,120}}":{media_root}/{re.escape(slug)}/imaging/[0-9a-f]{{32}}\.mp3'
-    if command not in ('freo_queue.queue', 'request.on_air', 'freo_queue.skip', 'freo_queue.flush_and_skip', 'freo_program.rms') and not re.fullmatch(r'request.metadata [0-9]+', command) and not (re.fullmatch(music_pattern, command) or re.fullmatch(imaging_pattern, command)):
+    music_pattern = rf'(?:freo_queue|freo_b|freo_cart)\.push annotate:freo_decision=[1-9][0-9]*(?:,freo_gain="-?[0-9]{{1,2}}\.[0-9]{{3}} dB")?:{media_root}/{re.escape(slug)}/originals/[0-9a-f]{{32}}\.mp3'
+    imaging_pattern = rf'(?:freo_queue|freo_b|freo_cart)\.push annotate:freo_decision=[1-9][0-9]*,title="[A-Za-z0-9 ._-]{{1,120}}",artist="[A-Za-z0-9 ._-]{{1,120}}":{media_root}/{re.escape(slug)}/imaging/[0-9a-f]{{32}}\.mp3'
+    if command not in ('freo_queue.queue', 'request.on_air', 'freo_queue.skip', 'freo_queue.flush_and_skip', 'freo_program.rms', 'freo_program.current', 'freo_deck.requests') and not re.fullmatch(r'(?:freo_deck\.(?:take|fade)_[ab](?: (?:[0-9]\.[0-9]{3}|10\.000))?|freo_deck\.(?:pause|clear|future)_[ab]|request.metadata [0-9]+|freo_(?:b|cart)\.queue|freo_mixer\.(?:state|fade_a|clear_future|mode (?:AUTO|DJ_BOOTH)|crossfader (?:0\.[0-9]{3}|1\.000)|(?:a_play|b_play) (?:true|false)|cart_mode (?:OVER|TAKEOVER)|duck (?:0\.[0-9]{3}|1\.000)))', command) and not (re.fullmatch(music_pattern, command) or re.fullmatch(imaging_pattern, command)):
         raise ValueError('Liquidsoap command is not allowlisted')
     path = SOCKET_ROOT / slug / 'control.sock'
     with socket.socket(socket.AF_UNIX) as connection:
@@ -88,8 +88,10 @@ def program_rms(slug):
 
 def active_ids(slug):
     body = _command(slug, 'request.on_air')
-    if not body:
-        return set()
+    try:
+        body += ' ' + _command(slug, 'freo_deck.requests')
+    except (OSError,RuntimeError,ValueError):
+        pass  # Older engines do not expose prepared deck requests.
     ids = body.split()
     if not all(REQUEST_ID.fullmatch(value) for value in ids):
         raise RuntimeError('Invalid Liquidsoap active request state')
@@ -120,13 +122,91 @@ def push_decision(decision, storage=None):
         if imaging.station_id != decision.station_id or not imaging.enabled or imaging.ingest_status != 'accepted' or imaging.decommissioned_at:
             raise ValueError('Decision imaging is not approved for this station')
         path = storage.imaging_file(slug, imaging.storage_key)
+    bus = getattr(decision, 'playback_bus', None) or 'A'
+    queue_name = {'A':'freo_queue','B':'freo_b','CART':'freo_cart'}.get(bus)
+    if not queue_name:
+        raise ValueError('Invalid broadcast bus')
     if imaging:
         title = _metadata(imaging.name, imaging.asset_type.replace('_', ' ').title())
         artist = _metadata(decision.station.name, slug)
-        command = f'freo_queue.push annotate:freo_decision={decision.id},title="{title}",artist="{artist}":{path}'
+        command = f'{queue_name}.push annotate:freo_decision={decision.id},title="{title}",artist="{artist}":{path}'
     else:
-        command = f'freo_queue.push annotate:freo_decision={decision.id}:{path}'
+        from app.services.loudness import gain_for
+        gain = gain_for(track)['db']
+        command = f'{queue_name}.push annotate:freo_decision={decision.id},freo_gain="{gain:.3f} dB":{path}'
     response = _command(slug, command)
     if not REQUEST_ID.fullmatch(response):
         raise RuntimeError('Liquidsoap did not accept the request')
     return int(response)
+
+
+def program_decision_id(slug):
+    """Final-output metadata, after crossfade buffering; None means no managed audio."""
+    body = _command(slug, "freo_program.current")
+    if not body:
+        return None
+    if not REQUEST_ID.fullmatch(body):
+        raise RuntimeError("Invalid program decision")
+    return int(body)
+
+
+def mixer_state(slug):
+    import math
+    parts = _command(slug, 'freo_mixer.state').split('|')
+    if len(parts) != 9 or parts[0] not in ('AUTO','DJ_BOOTH') or any(value not in ('true','false') for value in parts[2:4]):
+        raise RuntimeError('Invalid mixer state')
+    numeric = [float(parts[index]) for index in (1,7,8)]
+    if not all(math.isfinite(value) for value in numeric) or not 0 <= numeric[0] <= 1:
+        raise RuntimeError('Invalid mixer levels')
+    if any(value and not REQUEST_ID.fullmatch(value) for value in parts[4:7]):
+        raise RuntimeError('Invalid mixer identity')
+    return dict(mode=parts[0],crossfader=numeric[0],a_playing=parts[2]=='true',b_playing=parts[3]=='true',
+                a_id=int(parts[4]) if parts[4] else None,b_id=int(parts[5]) if parts[5] else None,
+                cart_id=int(parts[6]) if parts[6] else None,a_elapsed=max(0,numeric[1]),b_elapsed=max(0,numeric[2]))
+
+
+def sync_mixer(station):
+    state = station.automation
+    observed = mixer_state(station.slug)
+    _command(station.slug, 'freo_mixer.mode ' + state.operator_mode)
+    return observed
+
+
+def channel_queue(slug, bus):
+    name = {'A':'freo_queue','B':'freo_b','CART':'freo_cart'}.get(bus)
+    if not name:
+        raise ValueError('Invalid broadcast bus')
+    value = _command(slug, name + '.queue')
+    if any(not REQUEST_ID.fullmatch(part) for part in value.split()):
+        raise RuntimeError('Invalid channel queue')
+    return [int(part) for part in value.split()]
+
+
+def prepare_cart(decision):
+    if decision.cart_mode not in ('OVER','TAKEOVER') or not 0 <= decision.duck_percent <= 100:
+        raise ValueError('Invalid cart behavior')
+    _command(decision.station.slug, 'freo_mixer.cart_mode ' + decision.cart_mode)
+    _command(decision.station.slug, f'freo_mixer.duck {decision.duck_percent/100:.3f}')
+
+
+def fade_current(slug):
+    try:
+        mixer_state(slug)
+    except (OSError, RuntimeError, ValueError):
+        return skip_current(slug)
+    return _command(slug, 'freo_mixer.fade_a')
+
+
+def clear_future(slug):
+    return _command(slug, 'freo_mixer.clear_future')
+
+
+def deck_control(slug, deck, action, fade_seconds=None):
+    if deck not in ('A','B') or action not in ('take','pause','clear','fade','future'):
+        raise ValueError('Invalid deck control')
+    argument = ''
+    if fade_seconds is not None:
+        if action not in ('take','fade') or not 0 <= float(fade_seconds) <= 10:
+            raise ValueError('Invalid fade duration')
+        argument = f' {float(fade_seconds):.3f}'
+    return _command(slug, f'freo_deck.{action}_{deck.lower()}{argument}')

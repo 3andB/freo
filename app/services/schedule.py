@@ -40,6 +40,7 @@ class Resolution:
     clock: object | None
     occurrence_key: str | None
     next_transition: datetime | None
+    program: object | None = None
 
 
 def _assignments(station):
@@ -57,6 +58,7 @@ def usable_clock(clock, station_id):
             and any(part.enabled for part in slot.rotation.slots))
         or (slot.slot_type == 'CART' and slot.imaging_asset and slot.imaging_asset.station_id == station_id)
         or (slot.slot_type == 'IMAGING_GROUP' and slot.imaging_group and slot.imaging_group.station_id == station_id)
+        or (slot.slot_type == 'EVENT_BLOCK' and slot.event_block and slot.event_block.enabled and slot.event_block.station_id == station_id)
         for slot in slots)
 
 
@@ -92,6 +94,12 @@ def resolve(station, at=None):
     assignment = active[2] if active else None
     key = f'{assignment.id}:{active[3].isoformat()}' if active else None
     next_transition = min(upcoming) if upcoming else None
+    from app.services.calendar import resolve_program
+    (program, day), boundary = resolve_program(station, now)
+    if boundary:
+        next_transition = min(point for point in (next_transition, boundary) if point)
+    if program:
+        return Resolution(local, None, program.clock, f'program:{program.id}:{day.isoformat()}', next_transition, program)
     return Resolution(local, assignment, assignment.clock if assignment else None, key, next_transition)
 
 

@@ -2,7 +2,7 @@
 import uuid
 from datetime import datetime, timezone
 
-from flask import Blueprint, abort, current_app, flash, redirect, render_template, request, send_file, url_for
+from flask import Blueprint, abort, current_app, flash, jsonify, redirect, render_template, request, send_file, url_for
 from sqlalchemy import or_
 
 from app.extensions import db
@@ -23,7 +23,7 @@ def page_context(station, **extra):
 
 def owned_track(station, track_uuid):
     track = track_for_station(station, track_uuid)
-    if track is None:
+    if track is None or track.deleted_at:
         abort(404)
     return track
 
@@ -38,7 +38,7 @@ def library(slug):
     station = station_or_404(slug, require_enabled=False)
     view=request.args.get('view','songs')
     if view not in ('artists','albums','songs'): abort(400)
-    query = Track.query.filter_by(station_id=station.id)
+    query = Track.query.filter_by(station_id=station.id,deleted_at=None)
     search = request.args.get('q', '').strip()[:100]
     if search:
         pattern = '%' + search.replace('\\', '\\\\').replace('%', '\\%').replace('_', '\\_') + '%'
@@ -134,12 +134,16 @@ def upload(slug):
         abort(409)
     files=[f for f in request.files.getlist('files')+request.files.getlist('file') if f and f.filename]
     if not files:
+        if request.accept_mimetypes.best == 'application/json':
+            return jsonify(message='Choose an audio file to upload.'), 400
         flash('Choose an audio file to upload.', 'error')
         return redirect(url_for('admin_media.upload', slug=slug))
     jobs=[];errors=[]
     for file in files:
         try: jobs.append(stage_upload(station,current_admin(),file))
         except MediaValidationError as error: errors.append(f'{file.filename}: {error}')
+    if request.accept_mimetypes.best == 'application/json':
+        return jsonify(jobs=[dict(id=job.id, name=job.original_filename, status_url=url_for('.job_json', slug=slug, job_id=job.id)) for job in jobs], errors=errors), 202 if jobs else 422
     if errors: flash(f'{len(errors)} file(s) rejected before staging. '+errors[0],'error')
     if not jobs: return redirect(url_for('admin_media.upload',slug=slug))
     if len(jobs)==1 and len(files)==1:return redirect(url_for('admin_media.job_status',slug=slug,job_id=jobs[0].id),code=303)
@@ -157,6 +161,15 @@ def bulk_categories(slug):
     from app.services.music_catalog import bulk_categories as apply
     count=apply(station,songs,category,request.form.get('operation','assign')=='assign')
     audit('music_bulk_category_updated',user_id=current_admin().id,station_id=station.id,target_type='category',target_id=str(category.id),summary=f'{count} songs updated');db.session.commit();flash(f'{count} songs updated.','success');return redirect(media_url(station),code=303)
+
+
+@admin_media_blueprint.get('/admin/api/stations/<slug>/media/jobs/<job_id>')
+@admin_required
+def job_json(slug, job_id):
+    station = station_or_404(slug, require_enabled=False)
+    job = MediaIngestJob.query.filter_by(station_id=station.id, id=job_id).first_or_404()
+    return jsonify(status=job.status, error=job.error_code,
+        review_url=url_for('.track_detail', slug=slug, track_uuid=job.track.uuid) if job.track else None)
 
 
 @admin_media_blueprint.get('/admin/stations/<slug>/media/jobs/<job_id>')
@@ -208,7 +221,8 @@ def edit_track(slug, track_uuid):
         track.cue_in_ms=bounded_int('cue_in_ms',0,track.duration_ms);track.cue_out_ms=bounded_int('cue_out_ms',0,track.duration_ms);track.segue_ms=bounded_int('segue_ms',0,60000)
         track.scheduling_restrictions={'notes':normalize(request.form.get('restriction_notes'),500,'')}
         from app.services.music_catalog import tag_for
-        track.tags=[tag_for(station.id,name) for name in request.form.get('tags','').split(',') if name.strip()][:30]
+        names=[name for name in request.form.get('tags','').split(',') if name.strip()][:30]
+        track.tags=list({tag.id:tag for tag in (tag_for(station.id,name) for name in names)}.values())
         audit('media_metadata_updated', user_id=current_admin().id, station_id=station.id,
               target_id=track.uuid, summary='Descriptive metadata updated')
         db.session.commit()
@@ -335,3 +349,29 @@ def upload_too_large(_error):
     limit = current_app.config['MAX_MEDIA_UPLOAD_BYTES'] // (1024 * 1024)
     return render_template('admin/media_error.html', stations=admin_stations(), selected=None,
                            page='media', message=f'Upload exceeds the {limit} MB limit.'), 413
+
+
+@admin_media_blueprint.post('/admin/stations/<slug>/media/<track_uuid>/delete')
+@media_mutation_required
+def delete_track(slug,track_uuid):
+    station=station_or_404(slug,require_enabled=False);track=owned_track(station,track_uuid)
+    if request.form.get('confirm')!=track.uuid:abort(400)
+    try:
+        from app.services.music_delete import queue_delete
+        job=queue_delete(track,current_admin());db.session.commit()
+        return redirect(url_for('admin_media.job_status',slug=slug,job_id=job.id),code=303)
+    except ValueError as error:
+        db.session.rollback();flash(str(error),'error')
+        return redirect(url_for('admin_media.track_detail',slug=slug,track_uuid=track.uuid),code=303)
+
+
+@admin_media_blueprint.post('/admin/stations/<slug>/media/<track_uuid>/process')
+@media_mutation_required
+def process_track(slug,track_uuid):
+    station=station_or_404(slug,require_enabled=False);track=owned_track(station,track_uuid)
+    try:
+        from app.services.analysis_queue import request_analysis
+        request_analysis(track);db.session.commit();flash('Song queued for priority processing.','success')
+    except ValueError as error:
+        db.session.rollback();flash(str(error),'error')
+    return redirect(url_for('admin_media.track_detail',slug=slug,track_uuid=track.uuid),code=303)

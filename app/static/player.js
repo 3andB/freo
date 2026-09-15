@@ -1,4 +1,5 @@
 (() => {
+  const scope = window.FreoPage;
   const root = document.querySelector('.player-shell');
   if (!root) return;
   const slug = root.dataset.station;
@@ -10,7 +11,7 @@
   const status = byId('stream-status');
   const setText = (id, value) => { byId(id).textContent = value ?? '—'; };
   const get = async path => {
-    const response = await fetch(path, {cache: 'no-store'});
+    const response = await scope.fetch(path, {cache: 'no-store'});
     if (!response.ok) throw new Error('Unavailable');
     return response.json();
   };
@@ -70,5 +71,5 @@
     catch { event.target.textContent = 'Copy this page URL'; }
     setTimeout(() => { event.target.textContent = 'Copy player link'; }, 2200);
   });
-  refresh(); setInterval(refresh, 15000);
+  refresh(); scope.interval(refresh, 15000);
 })();

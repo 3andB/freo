@@ -1,0 +1,7 @@
+{% extends 'admin/base.html' %}
+{% block title %}Sound Room · {{ selected.name }} · Freo{% endblock %}
+{% block admin_content %}
+<div class="studio-heading"><div><span class="eyebrow">{{ selected.name }} / MUSIC DIRECTION</span><h1>Sound Room<span class="studio-dot">.</span></h1><p>Find the feeling. Build the collection.</p></div><a class="studio-link" href="{{ url_for('admin_media.upload',slug=selected.slug) }}">Import music ↗</a></div>
+{% include 'admin/_sound_workspace.html' %}
+{% endblock %}
+{% block scripts %}{{ super() }}<script defer src="{{ url_for('static',filename='sound_room.js',v='sound-room-1') }}"></script>{% endblock %}

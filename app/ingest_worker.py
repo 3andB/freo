@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 from app import create_app
 from app.extensions import db
 from app.models import MediaIngestJob
+from app.services.analysis_queue import process_analysis, recover_analysis
 from app.services.admin_media import JOB_ID, audit, staged_path, upload_root
 from app.services.media import ingest, set_enabled_db, verify
 from app.services.media_probe import MediaValidationError
@@ -46,9 +47,12 @@ def process_one():
     db.session.commit()
     path = staged_path(job.id) if job.kind in ('ingest', 'imaging') else None
     try:
-        if job.kind not in ('ingest', 'verify', 'enable', 'imaging', 'img_verify', 'img_enable'):
+        if job.kind not in ('ingest', 'verify', 'enable', 'imaging', 'img_verify', 'img_enable', 'delete'):
             raise MediaValidationError('Unsupported media operation')
-        if job.kind in ('img_verify', 'img_enable'):
+        if job.kind == 'delete':
+            from app.services.music_delete import delete_audio
+            delete_audio(job.track);job.status='accepted'
+        elif job.kind in ('img_verify', 'img_enable'):
             verify_imaging(job.imaging_asset)
             if job.kind == 'img_enable':
                 set_asset_enabled(job.imaging_asset, True)
@@ -82,7 +86,9 @@ def process_one():
             job.track_id = track.id
             if not duplicate:
                 from app.services.audio_analysis import analyze_song,extract_artwork
-                extract_artwork(track);analyze_song(track)
+                extract_artwork(track)
+                # Commit ingest promptly; the idle analysis queue picks this up.
+                track.analysis_status='pending'
             audit('media_ingest_accepted', user_id=job.admin_user_id, station_id=job.station_id,
                   target_id=track.uuid, summary='Existing file reused' if duplicate else 'Audio validated and accepted disabled')
     except MediaValidationError as error:
@@ -118,13 +124,14 @@ def main():
         # A crash can leave processing rows; re-check staged bytes after restart.
         MediaIngestJob.query.filter_by(status='processing').update({'status': 'pending'})
         db.session.commit()
+        recover_analysis()
         last_cleanup = 0
         while True:
             try:
                 if time.monotonic() - last_cleanup > 3600:
                     cleanup_staging()
                     last_cleanup = time.monotonic()
-                if not process_one():
+                if not (process_analysis(requested=True) or process_one() or process_analysis()):
                     time.sleep(2)
             except Exception:
                 db.session.rollback()

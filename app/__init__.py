@@ -19,9 +19,11 @@ from .routes.schedule import schedule_blueprint
 from .routes.web import web_blueprint
 from .admin_cli import admin_cli
 from .routes.admin_media import admin_media_blueprint
+from .routes.sound_room import sound_room
 from .routes.admin_programming import admin_programming_blueprint
 from .routes.admin_imaging import admin_imaging_blueprint
 from .routes.admin_live import admin_live_blueprint
+from .routes.admin_calendar import admin_calendar
 from .routes.admin_events import admin_events_blueprint
 from .routes.admin_blocks import admin_blocks_blueprint
 from .routes.admin_traffic import admin_traffic_blueprint
@@ -63,9 +65,11 @@ def create_app(config_name=None):
     app.register_blueprint(web_blueprint)
     app.register_blueprint(admin_cli, cli_group=None)
     app.register_blueprint(admin_media_blueprint)
+    app.register_blueprint(sound_room)
     app.register_blueprint(admin_programming_blueprint)
     app.register_blueprint(admin_imaging_blueprint)
     app.register_blueprint(admin_live_blueprint)
+    app.register_blueprint(admin_calendar)
     app.register_blueprint(admin_events_blueprint)
     app.register_blueprint(admin_blocks_blueprint)
     app.register_blueprint(admin_traffic_blueprint)
@@ -90,4 +94,6 @@ def create_app(config_name=None):
                       MAX_MEDIA_UPLOAD_BYTES=upload_limit,
                       MAX_MEDIA_BATCH_BYTES=batch_limit,
                       MAX_CONTENT_LENGTH=batch_limit + 1024 * 1024)
+    from .services.loudness import gain_for
+    app.jinja_env.globals['music_gain'] = gain_for
     return app

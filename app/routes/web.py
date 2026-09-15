@@ -3,7 +3,7 @@ import hmac
 import secrets
 import time
 
-from flask import Blueprint, abort, redirect, render_template, request, session, url_for, jsonify
+from flask import Blueprint, flash, abort, redirect, render_template, request, session, url_for, jsonify
 from werkzeug.security import check_password_hash
 from werkzeug.security import generate_password_hash
 from sqlalchemy.exc import SQLAlchemyError
@@ -55,7 +55,14 @@ def stations():
 
 @web_blueprint.get('/player/<slug>')
 def player(slug):
-    return render_template('player.html', station=station_or_404(slug))
+    from app.services.stations import public_station_for
+    try:
+        station = public_station_for(slug)
+    except ValueError:
+        station = None
+    if not station or not station.enabled:
+        abort(404)
+    return render_template('player.html', station=station)
 
 
 @web_blueprint.get('/dashboard/<slug>')
@@ -196,6 +203,9 @@ def login():
         return render_template('login.html', csrf=token, error='Email or password was not accepted.'), 401
     session.clear()
     session['admin_user_id'] = user.id
+    # Initialize together before polling/navigation can send concurrent requests.
+    session['admin_csrf'] = secrets.token_urlsafe(32)
+    session['logout_csrf'] = secrets.token_urlsafe(32)
     session.permanent = True
     return redirect(url_for('web.admin_home'))
 
@@ -230,3 +240,33 @@ def page_security_headers(response):
 
 
 _DUMMY_HASH = generate_password_hash('unusable-random-placeholder', method='scrypt')
+
+
+@web_blueprint.get('/listen/<slug>')
+def listen_alias(slug):
+    from app.services.stations import public_station_for
+    try:
+        station = public_station_for(slug)
+    except ValueError:
+        station = None
+    if not station or not station.enabled:
+        abort(404)
+    return redirect('/stream/' + station.slug, code=307)
+
+
+@web_blueprint.post('/admin/stations/<slug>/edit')
+@admin_required
+def edit_station(slug):
+    from app.services.admin_auth import current_admin, require_csrf
+    from app.services.stations import update_station
+    from sqlalchemy.exc import IntegrityError
+    require_csrf()
+    station = station_or_404(slug, require_enabled=False)
+    try:
+        update_station(station, name=request.form.get('name'), description=request.form.get('description'),
+            public_slug=request.form.get('public_slug'), timezone_name=request.form.get('timezone'), user=current_admin())
+        flash('Station details saved. Previous listener URLs still work.', 'success')
+    except (ValueError, IntegrityError) as error:
+        db.session.rollback()
+        flash(str(error) if isinstance(error, ValueError) else 'That station URL was just taken. Choose another.', 'error')
+    return redirect(url_for('web.admin_station_list'))

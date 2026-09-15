@@ -1,4 +1,5 @@
 (() => {
+  const scope = window.FreoPage;
   const form=document.getElementById('music-organizer');
   if(!form)return;
   let dragged=null;

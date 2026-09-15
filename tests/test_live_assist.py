@@ -65,8 +65,11 @@ def test_cue_deck_and_fade_are_durable_worker_intents(app, monkeypatch):
         track=Track.query.first();current=SelectionDecision.query.filter_by(status='started').first()
         cue_track(station,user,track.uuid)
         assert station.automation.cued_track_id == track.id
-        queued=SelectionDecision.query.filter_by(station_id=station.id,reason='operator_cue').one()
-        assert queued.track_id == track.id and queued.status == 'selected'
+        assert SelectionDecision.query.filter_by(station_id=station.id, status='selected').count() == 0
+        from app.services.live_assist import clear_cue
+        clear_cue(station,user)
+        assert station.automation.cued_track_id is None
+        assert SelectionDecision.query.filter_by(station_id=station.id, status='selected').count() == 0
         command=request_fade(station,user,current.id,str(uuid.uuid4()))
         assert command.action == 'FADE' and command.status == 'pending'
 
@@ -267,3 +270,103 @@ def test_confirmed_manual_music_start_affects_automation_separation():
         selection_method='manual_track', started_at=now, selected_at=now)]
     chosen, relaxation, _ = _choose([manual, same_artist, other], history, now, 300, 300)
     assert chosen is other and relaxation == 'none'
+
+
+def test_cue_json_reports_missing_audio_and_success(app, monkeypatch):
+    client = admin_client(app)
+    path = '/admin/stations/test-station/live/cue'
+    data = {'csrf':'test-admin-csrf-token', 'identifier':'00000000-0000-4000-8000-000000000001'}
+    monkeypatch.setattr('app.services.media_storage.LocalMediaStorage.regular_file', lambda *args: (_ for _ in ()).throw(FileNotFoundError()))
+    response = client.post(path, data=data, headers={'Accept':'application/json'})
+    assert response.status_code == 409
+    assert response.json['message'] == 'Approved audio is unavailable'
+    monkeypatch.setattr('app.services.media_storage.LocalMediaStorage.regular_file', lambda *args: '/safe')
+    response = client.post(path, data=data, headers={'Accept':'application/json'})
+    assert response.status_code == 200 and response.json['ok']
+
+
+def test_stale_takeover_never_becomes_an_ordinary_queue_request(app, monkeypatch):
+    from app.automation_worker import EventReader, process_manual
+    monkeypatch.setattr('app.services.media_storage.LocalMediaStorage.regular_file', lambda *args: '/safe')
+    monkeypatch.setattr('app.automation_worker.socket_identity', lambda slug: 'socket-1')
+    monkeypatch.setattr('app.automation_worker.queued_ids', lambda slug: set())
+    monkeypatch.setattr('app.automation_worker.active_ids', lambda slug: set())
+    monkeypatch.setattr('app.automation_worker.reconcile_requests', lambda slug: 0)
+    monkeypatch.setattr('app.automation_worker.push_decision', lambda *_: (_ for _ in ()).throw(AssertionError('stale takeover queued')))
+    with app.app_context():
+        station=Station.query.filter_by(slug='test-station').first()
+        current=SelectionDecision.query.filter_by(status='started').first()
+        current.socket_identity='socket-1';current.liquidsoap_request_id=45;db.session.commit()
+        nonce=str(uuid.uuid4())
+        command=request_takeover(station,AdminUser.query.first(),Track.query.first().uuid,current.id,nonce)
+        assert request_takeover(station,AdminUser.query.first(),Track.query.first().uuid,current.id,nonce).id == command.id
+        process_manual(station,EventReader())
+        assert command.status=='failed' and command.target_decision.status=='failed'
+        process_manual(station,EventReader())
+
+
+def test_start_cue_rejects_changed_current_and_keeps_selection(app, monkeypatch):
+    from datetime import datetime, timezone
+    monkeypatch.setattr('app.services.media_storage.LocalMediaStorage.regular_file', lambda *args: '/safe')
+    with app.app_context():
+        station=Station.query.filter_by(slug='test-station').first()
+        current=SelectionDecision.query.filter_by(status='started').first()
+        db.session.add(LiveQueueSnapshot(station_id=station.id,current_decision_id=current.id,queued_decision_ids=[],unknown_count=0,observed_at=datetime.now(timezone.utc)))
+        cue_track(station,AdminUser.query.first(),Track.query.first().uuid)
+        current_id=current.id
+    client=admin_client(app)
+    data={'csrf':'test-admin-csrf-token','nonce':str(uuid.uuid4()),'expected_decision_id':str(current_id+100)}
+    result=client.post('/admin/stations/test-station/live/start-cue',data=data,headers={'Accept':'application/json'})
+    assert result.status_code==409
+    with app.app_context():assert Station.query.filter_by(slug='test-station').first().automation.cued_track
+    data['expected_decision_id']=str(current_id)
+    result=client.post('/admin/stations/test-station/live/start-cue',data=data,headers={'Accept':'application/json'})
+    assert result.status_code==200
+
+
+def test_idle_deck_start_rechecks_engine_and_never_skips(app, monkeypatch):
+    from datetime import datetime, timezone
+    from app.automation_worker import EventReader, process_manual
+    monkeypatch.setattr('app.services.media_storage.LocalMediaStorage.regular_file', lambda *args: '/safe')
+    monkeypatch.setattr('app.automation_worker.socket_identity', lambda slug: 'socket-1')
+    monkeypatch.setattr('app.automation_worker.queued_ids', lambda slug: set())
+    monkeypatch.setattr('app.automation_worker.active_ids', lambda slug: set())
+    monkeypatch.setattr('app.automation_worker.reconcile_requests', lambda slug: 0)
+    monkeypatch.setattr('app.automation_worker.push_decision', lambda decision: 55)
+    monkeypatch.setattr('app.automation_worker.interrupt_for_event', lambda *_: pytest.fail('Idle start must never skip'))
+    with app.app_context():
+        station = Station.query.filter_by(slug='test-station').first()
+        db.session.add(LiveQueueSnapshot(station_id=station.id, observed_at=datetime.now(timezone.utc), queued_decision_ids=[], unknown_count=0))
+        db.session.commit()
+        command = request_takeover(station, AdminUser.query.first(), Track.query.first().uuid, None, str(uuid.uuid4()))
+        process_manual(station, EventReader())
+        assert command.status == 'sent' and command.target_decision.liquidsoap_request_id == 55
+        command = request_takeover(station, AdminUser.query.first(), Track.query.first().uuid, None, str(uuid.uuid4()))
+        monkeypatch.setattr('app.automation_worker.active_ids', lambda slug: {56})
+        process_manual(station, EventReader())
+        assert command.status == 'failed' and command.target_decision.status == 'failed'
+
+
+def test_delayed_observation_keeps_last_identity_without_claiming_live(app):
+    from datetime import datetime, timedelta, timezone
+    from app.services.live_assist import status
+    with app.app_context():
+        station = Station.query.filter_by(slug='test-station').first()
+        current = SelectionDecision.query.filter_by(status='started').first()
+        db.session.add(LiveQueueSnapshot(station_id=station.id,current_decision_id=current.id,
+            observed_at=datetime.now(timezone.utc)-timedelta(seconds=20), queued_decision_ids=[], unknown_count=0))
+        db.session.commit()
+        payload = status(station)
+        assert payload['current'] is None and not payload['observation_fresh']
+        assert payload['last_known_current']['title'] == 'Verified Test Track'
+        with pytest.raises(ValueError, match='observation is unavailable'):
+            request_takeover(station, AdminUser.query.first(), Track.query.first().uuid, None, str(uuid.uuid4()))
+
+
+def test_dj_control_does_not_require_automation_enabled(app):
+    with app.app_context():
+        station = Station.query.filter_by(slug='test-station').first()
+        station.automation.enabled = False
+        db.session.commit()
+        set_mode(station, AdminUser.query.first(), 'DJ_BOOTH')
+        assert station.automation.hold and station.automation.operator_mode == 'DJ_BOOTH'

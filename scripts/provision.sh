@@ -19,7 +19,7 @@ fi
 export DEBIAN_FRONTEND=noninteractive
 printf 'Installing required Freo system packages without upgrading existing packages...\n'
 apt-get update
-apt-get install --no-upgrade -y python3 python3-venv python3-pip tzdata git nginx postgresql postgresql-contrib openssl certbot python3-certbot-nginx liquidsoap icecast2 ffmpeg
+apt-get install --no-upgrade -y python3 python3-venv python3-pip tzdata git nginx postgresql postgresql-contrib openssl certbot python3-certbot-nginx liquidsoap icecast2 ffmpeg acl
 dpkg-query -W -f='Installed ${Package} ${Version}\n' liquidsoap icecast2 ffmpeg
 systemctl enable --now postgresql nginx
 if ! id freo >/dev/null 2>&1; then
@@ -56,6 +56,7 @@ for station_dir in /var/lib/freo/media/*; do
   find "$station_dir/originals" -maxdepth 1 -type f -name '*.mp3' -exec chown freo-ingest:freo-playout {} +
   find "$station_dir/imaging" -maxdepth 1 -type f -name '*.mp3' -exec chown freo-ingest:freo-playout {} +
 done
+bash "$source_dir/scripts/media-web-access.sh" /var/lib/freo/media
 install -d -o freo -g freo -m 0750 /var/lib/freo/state
 install -d -o icecast2 -g icecast -m 0750 /var/log/icecast2
 # Only named release files are deployed; .env, media, .git and runtime files stay untouched.

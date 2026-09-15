@@ -15,7 +15,7 @@ from app.services.automation import (activate, add_slot, category_create, catego
 from app.services.clocks import (add_clock_slot, assign, clock_for, create_clock,
     current, move_clock_slot, preview_clock, remove_assignment, remove_clock_slot,
     set_timezone, update_assignment, validate_clock)
-from app.services.programming import (assignment_for, candidate_warnings, clean_text, set_membership,
+from app.services.programming import (category_usage, delete_category, assignment_for, candidate_warnings, clean_text, set_membership,
     set_resource_enabled, set_slot_enabled, update_resource)
 from app.services.schedule import preview_transitions
 
@@ -139,6 +139,10 @@ def detail(slug, section, resource):
                                     else preview_clock(slug, resource, int(request.args['preview'])))
             except ValueError as error:
                 extra['preview_error'] = str(error)
+    if section == 'categories':
+        parts, clock_parts = category_usage(item)
+        extra['usage_names'] = sorted({slot.rotation.name for slot in parts} | {slot.clock.name for slot in clock_parts})
+        extra['replacement_categories'] = MediaCategory.query.filter(MediaCategory.station_id == station.id, MediaCategory.id != item.id, MediaCategory.enabled.is_(True)).order_by(MediaCategory.name).all()
     return page(station, section, item=item, **extra)
 
 
@@ -163,6 +167,16 @@ def resource_action(slug, section, resource, operation):
         abort(404)
     station = station_or_404(slug, require_enabled=False)
     kind = KINDS[section]
+    if section == 'categories' and operation == 'delete':
+        try:
+            name = delete_category(slug, resource, request.form.get('replacement'))
+            recorded(station, 'category_deleted', 'category', resource, f'Category {name} deleted; songs retained')
+            flash(f'{name} deleted. All songs were kept.', 'success')
+        except ValueError as error:
+            db.session.rollback()
+            flash(str(error), 'error')
+            return redirect(back(station, section, resource))
+        return redirect(back(station, section))
     if operation == 'edit':
         def action():
             obj = update_resource(slug, kind, resource, name=request.form.get('name'), description=request.form.get('description'))

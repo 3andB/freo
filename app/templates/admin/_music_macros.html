@@ -1,0 +1,3 @@
+{% macro play(song) -%}
+{% set gain=music_gain(song) %}<button class="preview-button" type="button" data-preview="{{ song.uuid }}" data-title="{{ song.title }}" data-artist="{{ song.artist }}" data-audition="{{ url_for('admin_media.audition',slug=selected.slug,track_uuid=song.uuid) }}" data-gain="{{ gain.factor }}" data-gain-db="{{ gain.db }}" data-gain-status="{{ gain.status }}" aria-label="Play {{ song.title }}" {% if song.decommissioned_at or song.ingest_status!='accepted' %}disabled{% endif %}>▶</button>
+{%- endmacro %}

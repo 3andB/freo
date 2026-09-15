@@ -59,6 +59,31 @@ def test_ingest_duplicate_and_station_isolation(media_app, tmp_path):
         assert str(storage.root) not in body and 'storage_key' not in body
 
 
+@pytest.mark.parametrize('kind', ['music', 'imaging'])
+def test_ingest_restores_group_read_with_private_staging_acl(media_app, tmp_path, kind):
+    app, storage = media_app
+    with app.app_context():
+        _, staging = media._prepare_dirs(storage, 'one')
+        # Reproduce web-preview ACL inheritance from a private staging folder.
+        subprocess.run(['setfacl', '-m',
+                        'd:u::rwx,d:u:65534:r--,d:g::---,d:m::r--,d:o::---',
+                        str(staging)], check=True)
+        source = fixture_audio(tmp_path)
+        if kind == 'music':
+            item, _ = media.ingest('one', source, storage=storage)
+            path = storage.regular_file('one', item.storage_key)
+        else:
+            from app.services.imaging import ingest_imaging
+            item, _ = ingest_imaging('one', source, asset_type='STATION_ID', storage=storage)
+            path = storage.imaging_file('one', item.storage_key)
+        acl = subprocess.check_output(['getfacl', '-cpn', str(path)], text=True)
+        assert 'group::r--\n' in acl
+        assert 'mask::r--\n' in acl
+        assert 'user:65534:r--\n' in acl
+        assert 'other::---\n' in acl
+        assert staging.stat().st_mode & 0o777 == 0o700
+
+
 def test_invalid_files_and_paths(media_app, tmp_path):
     app, storage = media_app
     with app.app_context():

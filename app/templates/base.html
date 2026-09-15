@@ -5,7 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#0b1420">
   <title>{% block title %}Freo{% endblock %}</title>
-  <link rel="stylesheet" href="{{ url_for('static', filename='freo.css', v='20260915f') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='freo.css',v='20260915-deck-transitions') }}">
+  <script defer src="{{ url_for('static', filename='workspace.js',v='20260915-deck-transitions') }}"></script>
   {% block head %}{% endblock %}
 </head>
 <body class="{% block body_class %}public{% endblock %}">
@@ -21,6 +22,7 @@
         {% if session.get('admin_user_id') %}<a href="{{ url_for('web.admin_home') }}">Admin</a>{% else %}<a href="{{ url_for('web.login') }}">Admin sign in</a>{% endif %}
       </nav>
       {% if session.get('admin_user_id') %}
+      <div data-master-monitor data-preserve-station></div>
       <form action="{{ url_for('web.logout') }}" method="post"><input type="hidden" name="csrf" value="{{ session.get('logout_csrf', '') }}"><button class="text-button" type="submit">Sign out</button></form>
       {% endif %}
     </div>

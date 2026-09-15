@@ -245,7 +245,7 @@ def select_next(slug, storage=None, now=None):
             clock_slot = clock_slots[index]
             clock_state.next_slot_index = (index + 1) % len(clock_slots)
             context = {'clock_id': clock.id, 'clock_slot_id': clock_slot.id,
-                       'schedule_assignment_id': programming.assignment.id if programming.clock else None,
+                       'schedule_assignment_id': programming.assignment.id if programming.assignment else None,
                        'schedule_occurrence': occurrence}
             if clock_slot.slot_type == 'CATEGORY' and clock_slot.category and clock_slot.category.station_id == station.id:
                 decision = _select_category(station, clock_slot.category, state, storage, now, context)

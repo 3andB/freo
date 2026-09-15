@@ -51,3 +51,16 @@ def test_audition_is_authenticated_station_scoped_and_range_capable(app,tmp_path
     client=admin_client(app);response=client.get(path,headers={'Range':'bytes=0-3'})
     assert response.status_code==206 and response.data==b'0123' and response.headers['Cache-Control']=='private, no-store'
     assert client.get(path.replace('test-station','second-station')).status_code==404
+
+
+def test_json_upload_and_job_status_are_station_scoped(app,tmp_path):
+    root=tmp_path/'uploads';root.mkdir();app.config['FREO_UPLOAD_ROOT']=str(root)
+    client=admin_client(app)
+    response=client.post('/admin/stations/test-station/media/upload',headers={'Accept':'application/json'},data={'csrf':'test-admin-csrf-token','files':(BytesIO(b'audio'),'song.mp3')})
+    assert response.status_code==202
+    url=response.json['jobs'][0]['status_url']
+    assert client.get(url).json['status']=='pending'
+    assert app.test_client().get(url).status_code==302
+    assert client.get(url.replace('test-station','second-station')).status_code==404
+    bad=client.post('/admin/stations/test-station/media/upload',headers={'Accept':'application/json'},data={'csrf':'test-admin-csrf-token','files':(BytesIO(b'audio'),'folder/song.mp3')})
+    assert bad.status_code==422 and bad.json['errors']

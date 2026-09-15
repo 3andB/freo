@@ -3,10 +3,20 @@ import os
 from pathlib import Path
 import re
 import stat
+import subprocess
 
 MEDIA_ROOT = Path('/var/lib/freo/media')
 KEY_PATTERN = re.compile(r'^[0-9a-f]{32}\.(mp3|flac|wav|ogg)$')
 ARTWORK_PATTERN = re.compile(r'^[0-9a-f]{32}\.jpg$')
+
+
+def grant_playout_read(path):
+    """Publish with group read access even when staging supplied an ACL."""
+    # With an extended ACL, chmod changes the mask, not the owning-group
+    # entry. mkstemp can inherit group::--- from private staging.
+    os.chmod(path, 0o640)
+    subprocess.run(['/usr/bin/setfacl', '-n', '-m', 'g::r--', '--', str(path)],
+                   check=True, capture_output=True, timeout=10)
 
 
 class LocalMediaStorage:

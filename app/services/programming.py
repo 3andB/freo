@@ -35,6 +35,9 @@ def set_resource_enabled(slug, kind, resource_slug, enabled):
             if any(s.enabled and s.rotation_id == item.id for c in Clock.query.filter_by(station_id=station.id) for s in c.slots):
                 raise ValueError('This rotation is referenced by a clock')
         elif kind == 'clock':
+            from app.models import ScheduleProgram
+            if ScheduleProgram.query.filter_by(station_id=station.id,clock_id=item.id,enabled=True).first():
+                raise ValueError('This show template is used by calendar programs')
             if station.automation and station.automation.default_clock_id == item.id:
                 raise ValueError('This clock is the station default')
             if ScheduleAssignment.query.filter_by(station_id=station.id, clock_id=item.id, enabled=True).first():
@@ -113,3 +116,34 @@ def candidate_warnings(resource):
                          for track in category.tracks):
                 warnings.append(f'Slot {slot.position}: {category.name} has no enabled accepted tracks')
     return warnings
+
+
+def category_usage(category):
+    """All editable references, including inactive templates that could be reused."""
+    from app.models import ClockSlot, RotationSlot
+    rotations = RotationSlot.query.join(Rotation).filter(Rotation.station_id == category.station_id, RotationSlot.category_id == category.id).all()
+    clocks = ClockSlot.query.join(Clock).filter(Clock.station_id == category.station_id, ClockSlot.category_id == category.id).all()
+    return rotations, clocks
+
+
+def delete_category(slug, resource, replacement_slug=None):
+    from app.models import SelectionDecision
+    category = category_for(slug, resource)
+    rotations, clocks = category_usage(category)
+    if rotations or clocks:
+        if not replacement_slug:
+            raise ValueError('This category is used in programming. Choose a replacement category before deleting it. Songs will be kept.')
+        replacement = category_for(slug, replacement_slug)
+        if replacement.id == category.id or not replacement.enabled:
+            raise ValueError('Choose a different enabled replacement category')
+        if not any(track.enabled and track.ingest_status == 'accepted' and not track.decommissioned_at for track in replacement.tracks):
+            raise ValueError('The replacement category needs at least one enabled song')
+        for slot in rotations + clocks:
+            slot.category = replacement
+    # Historical decisions keep the track and all other airplay attribution.
+    SelectionDecision.query.filter_by(category_id=category.id).update({'category_id': None})
+    category.tracks.clear()
+    name = category.name
+    db.session.delete(category)
+    db.session.commit()
+    return name
