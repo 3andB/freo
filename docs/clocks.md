@@ -2,7 +2,7 @@
 
 Clocks define repeating programming sequence and state. Phase 11 timed events remain separate: firing an event between two clock items does not consume or advance a ClockSlot. See [timed events](timed-events.md).
 
-A clock is a reusable, station-scoped ordered list of music requests. Phase 6 supports `CATEGORY` and `ROTATION` slots only. A category slot asks the proven Phase 5 candidate selector for one approved track. A rotation slot asks a named rotation for its next category, then uses the same selector. Unsupported slot types fail validation; no database value is evaluated as code. A rotation's internal category cursor and a clock's programming cursor are separate.
+A clock is a reusable, station-scoped ordered list of music requests. Supported slot types are `CATEGORY`, `ROTATION`, `CART`, `IMAGING_GROUP`, and `EVENT_BLOCK`. A category slot asks the proven Phase 5 candidate selector for one approved track. A rotation slot asks a named rotation for its next category, then uses the same selector. Unsupported slot types fail validation; no database value is evaluated as code. A rotation's internal category cursor and a clock's programming cursor are separate.
 
 The clock repeats its enabled slots while active. A new weekly assignment occurrence starts at slot one. A worker restart within the same occurrence resumes the durable `clock_states` cursor. The same clock on a later day is a new occurrence and starts at slot one. Editing a clock affects future decisions; the current track is not interrupted. Referenced categories and rotations must belong to the same station and be enabled. Deletion is deliberately deferred; disable or replace references first.
 
@@ -17,6 +17,6 @@ flask --app wsgi clock preview --station freo-demo --slots 12 morning
 flask --app wsgi clock default --station freo-demo morning
 ```
 
-`clock preview` simulates choices in memory and does not advance durable cursors or history. Public `GET /api/stations/<slug>/clocks` and `/clocks/<clock-slug>` expose safe read-only programming metadata. There are no anonymous mutation routes. A future phase can add carts, IDs, sweepers, and breaks as explicitly implemented slot types; these are not supported now.
+`clock preview` simulates choices in memory and does not advance durable cursors or history. Public `GET /api/stations/<slug>/clocks` and `/clocks/<clock-slug>` expose safe read-only programming metadata. There are no anonymous mutation routes. Carts and imaging groups supply IDs and sweepers; event-block slots supply ordered sequences. Use timed events when the content belongs near a wall-clock time instead of a position in the repeating show. The interface calls clocks show templates.
 
 Browser programming controls are documented in [programming UI](programming-ui.md). The root CLI remains available for recovery.

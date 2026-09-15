@@ -63,7 +63,7 @@ def usable_clock(clock, station_id):
 
 
 def _wall_to_utc(local_naive, zone):
-    """First occurrence on fall-back; first valid instant after a spring gap."""
+    """First occurrence on fall-back; shift forward by a spring gap."""
     aware = local_naive.replace(tzinfo=zone, fold=0)
     candidate = aware.astimezone(timezone.utc)
     roundtrip = candidate.astimezone(zone).replace(tzinfo=None)
@@ -98,6 +98,12 @@ def resolve(station, at=None):
     (program, day), boundary = resolve_program(station, now)
     if boundary:
         next_transition = min(point for point in (next_transition, boundary) if point)
+    if program and program.baseline_assignment_id:
+        assignment = program.baseline_assignment
+        origin = local.date() - timedelta(days=(local.weekday() - assignment.weekday) % 7)
+        if _wall_to_utc(datetime.combine(origin, assignment.start_time), zone) > now:
+            origin -= timedelta(days=7)
+        return Resolution(local, assignment, program.clock, f'{assignment.id}:{origin.isoformat()}', next_transition, program)
     if program:
         return Resolution(local, None, program.clock, f'program:{program.id}:{day.isoformat()}', next_transition, program)
     return Resolution(local, assignment, assignment.clock if assignment else None, key, next_transition)

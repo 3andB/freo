@@ -626,6 +626,7 @@ class TimedEvent(db.Model):
     recurrence_type = db.Column(db.String(12), nullable=False)
     scheduled_at_utc = db.Column(db.DateTime(timezone=True))
     weekday = db.Column(db.Integer)
+    weekdays = db.Column(db.String(20))
     local_time = db.Column(db.Time)
     early_tolerance_seconds = db.Column(db.Integer, nullable=False, default=0)
     late_tolerance_seconds = db.Column(db.Integer, nullable=False, default=10)
@@ -639,6 +640,10 @@ class TimedEvent(db.Model):
     imaging_asset = db.relationship('ImagingAsset')
     event_block = db.relationship('EventBlock')
     occurrences = db.relationship('TimedEventOccurrence', back_populates='event', cascade='all, delete-orphan')
+
+    @property
+    def repeat_days(self):
+        return [int(day) for day in self.weekdays.split(',')] if self.weekdays else ([self.weekday] if self.weekday is not None else [])
 
 
 class TimedEventOccurrence(db.Model):
@@ -744,6 +749,8 @@ class ScheduleProgram(db.Model):
     start_minute = db.Column(db.Integer, nullable=False)
     end_minute = db.Column(db.Integer, nullable=False)
     clock_id = db.Column(db.Integer, db.ForeignKey('clocks.id', ondelete='RESTRICT'), nullable=False)
+    baseline_assignment_id = db.Column(db.Integer, db.ForeignKey('schedule_assignments.id', ondelete='RESTRICT'))
+    baseline_assignment = db.relationship('ScheduleAssignment')
     enabled = db.Column(db.Boolean, nullable=False, default=True)
     created_at = db.Column(db.DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
     clock = db.relationship('Clock')

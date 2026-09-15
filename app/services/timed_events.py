@@ -68,7 +68,7 @@ def parse_event_time(value):
 
 
 def save_event(slug, *, identifier=None, name, description='', timing_mode, recurrence_type,
-               content_type, content_identifier, local_date=None, local_time=None, weekday=None,
+               content_type, content_identifier, local_date=None, local_time=None, weekday=None, weekdays=None,
                early_tolerance_seconds=0, late_tolerance_seconds=10, missed_policy='SKIP',
                interrupt_policy='NEVER', priority=100):
     station = get_station(slug)
@@ -78,6 +78,8 @@ def save_event(slug, *, identifier=None, name, description='', timing_mode, recu
         raise ValueError('Unsupported event option')
     if timing_mode != 'HARD' and interrupt_policy != 'NEVER':
         raise ValueError('Only HARD events may interrupt music')
+    if identifier and commercial_log(event_for(slug, identifier)):
+        raise ValueError('Finalized commercial events are managed through Commercials')
     target = _target(station, content_type, content_identifier)
     early = _integer(early_tolerance_seconds, 0, 3600, 'Early tolerance')
     late = _integer(late_tolerance_seconds, 1, 86400, 'Late tolerance')
@@ -90,7 +92,10 @@ def save_event(slug, *, identifier=None, name, description='', timing_mode, recu
             raise ValueError('Enter a valid station-local date and time') from error
         scheduled = _wall_to_utc(local, ZoneInfo(validate_timezone(station.timezone)))
     else:
-        day = _integer(weekday, 0, 6, 'Weekday')
+        selected_days = sorted({_integer(value, 0, 6, 'Weekday') for value in weekdays}) if weekdays is not None else [_integer(weekday, 0, 6, 'Weekday')]
+        if not selected_days:
+            raise ValueError('Choose at least one repeat day')
+        day = selected_days[0]
         at = parse_event_time(local_time)
     row = event_for(slug, identifier) if identifier else TimedEvent(uuid=str(uuid.uuid4()), station_id=station.id)
     if identifier:
@@ -103,6 +108,7 @@ def save_event(slug, *, identifier=None, name, description='', timing_mode, recu
     row.imaging_asset_id = target.id if content_type == 'IMAGING_ASSET' else None
     row.event_block_id = target.id if content_type == 'EVENT_BLOCK' else None
     row.scheduled_at_utc, row.weekday, row.local_time = scheduled, day, at
+    row.weekdays = ','.join(map(str, selected_days)) if recurrence_type == 'WEEKLY' else None
     row.early_tolerance_seconds, row.late_tolerance_seconds = early, late
     row.missed_policy, row.interrupt_policy, row.priority = missed_policy, interrupt_policy, priority
     db.session.add(row)
@@ -112,6 +118,8 @@ def save_event(slug, *, identifier=None, name, description='', timing_mode, recu
 
 
 def set_enabled(row, enabled):
+    if commercial_log(row):
+        raise ValueError('Finalized commercial events are managed through Commercials')
     row.enabled = bool(enabled)
     if not enabled:
         for occurrence in row.occurrences:
@@ -131,7 +139,7 @@ def _instants(event, start, end):
     output = []
     for offset in range(-1, (end - start).days + 3):
         day = local_start + timedelta(days=offset)
-        if day.weekday() == event.weekday:
+        if day.weekday() in event.repeat_days:
             value = _wall_to_utc(datetime.combine(day, event.local_time), zone)
             if start - timedelta(days=1) <= value <= end:
                 output.append(value)
@@ -209,13 +217,51 @@ def upcoming(station, now=None, limit=20):
 
 
 def conflict_warnings(event):
-    duration = (event.track or event.imaging_asset or event.event_block).duration_ms / 1000
     warnings = []
-    if duration > event.late_tolerance_seconds:
-        warnings.append('Content duration exceeds the late tolerance window.')
+    if event.timing_mode == 'SOFT' and event.late_tolerance_seconds < 180:
+        warnings.append('The late allowance may be shorter than the remaining song. Consider five minutes.')
     for other in TimedEvent.query.filter(TimedEvent.station_id == event.station_id, TimedEvent.id != event.id, TimedEvent.enabled.is_(True)).all():
-        if event.recurrence_type == other.recurrence_type == 'WEEKLY' and event.weekday == other.weekday and event.local_time == other.local_time:
+        if event.recurrence_type == other.recurrence_type == 'WEEKLY' and set(event.repeat_days) & set(other.repeat_days) and event.local_time == other.local_time:
             warnings.append(f'Collides with {other.name}; higher priority executes first.')
         elif event.recurrence_type == other.recurrence_type == 'ONE_TIME' and event.scheduled_at_utc == other.scheduled_at_utc:
             warnings.append(f'Collides with {other.name}; higher priority executes first.')
     return warnings
+
+
+def commercial_log(event):
+    """Materialized traffic is immutable through generic event editors."""
+    if not event.event_block_id:
+        return None
+    from app.services.event_blocks import commercial_log_for_block
+    return commercial_log_for_block(event.event_block)
+
+
+def projected_occurrences(station, start, end):
+    """Read-only forecast merged with execution results, including distant weeks."""
+    from types import SimpleNamespace
+    start, end = utc_instant(start), utc_instant(end)
+    recorded = TimedEventOccurrence.query.filter(
+        TimedEventOccurrence.station_id == station.id,
+        TimedEventOccurrence.scheduled_for_utc >= start,
+        TimedEventOccurrence.scheduled_for_utc < end).all()
+    def aware(value):
+        return value.replace(tzinfo=value.tzinfo or timezone.utc)
+    by_key = {(row.timed_event_id, aware(row.scheduled_for_utc)): row for row in recorded}
+    output = []
+    for event in TimedEvent.query.filter_by(station_id=station.id, enabled=True).all():
+        for instant in _instants(event, start, end):
+            if not start <= instant < end:
+                continue
+            row = by_key.pop((event.id, instant), None)
+            output.append(SimpleNamespace(event=event, scheduled_for_utc=instant,
+                state=row.state if row else 'PROJECTED', started_at=row.started_at if row else None,
+                failure_reason=row.failure_reason if row else None,
+                timing_offset_seconds=row.timing_offset_seconds if row else None,
+                commercial_log=commercial_log(event)))
+    # Keep historical outcomes visible even when a definition is disabled or edited.
+    for row in by_key.values():
+        if row.state not in ('PENDING', 'READY', 'CANCELLED'):
+            output.append(SimpleNamespace(event=row.event, scheduled_for_utc=aware(row.scheduled_for_utc),
+                state=row.state, started_at=row.started_at, failure_reason=row.failure_reason,
+                timing_offset_seconds=row.timing_offset_seconds, commercial_log=commercial_log(row.event)))
+    return sorted(output, key=lambda row: (row.scheduled_for_utc, -row.event.priority, row.event.id))

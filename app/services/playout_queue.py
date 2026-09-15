@@ -23,8 +23,8 @@ def _command(slug, command):
     if '\n' in command or '\r' in command or len(command) > 1024:
         raise ValueError('Invalid Liquidsoap command')
     media_root = re.escape(str(LocalMediaStorage().root))
-    music_pattern = rf'(?:freo_queue|freo_a|freo_b|freo_cart)\.push annotate:freo_decision=[1-9][0-9]*(?:,freo_gain="-?[0-9]{{1,2}}\.[0-9]{{3}} dB")?:{media_root}/{re.escape(slug)}/originals/[0-9a-f]{{32}}\.mp3'
-    imaging_pattern = rf'(?:freo_queue|freo_a|freo_b|freo_cart)\.push annotate:freo_decision=[1-9][0-9]*,title="[A-Za-z0-9 ._-]{{1,120}}",artist="[A-Za-z0-9 ._-]{{1,120}}":{media_root}/{re.escape(slug)}/imaging/[0-9a-f]{{32}}\.mp3'
+    music_pattern = rf'(?:freo_queue\.(?:push|insert)|freo_(?:a|b|cart)\.push) annotate:freo_decision=[1-9][0-9]*(?:,freo_gain="-?[0-9]{{1,2}}\.[0-9]{{3}} dB")?:{media_root}/{re.escape(slug)}/originals/[0-9a-f]{{32}}\.mp3'
+    imaging_pattern = rf'(?:freo_queue\.(?:push|insert)|freo_(?:a|b|cart)\.push) annotate:freo_decision=[1-9][0-9]*,title="[A-Za-z0-9 ._-]{{1,120}}",artist="[A-Za-z0-9 ._-]{{1,120}}":{media_root}/{re.escape(slug)}/imaging/[0-9a-f]{{32}}\.mp3'
     if command not in ('freo_queue.queue', 'request.on_air', 'freo_queue.skip', 'freo_queue.flush_and_skip', 'freo_program.rms', 'freo_program.current', 'freo_deck.requests') and not re.fullmatch(r'(?:freo_deck\.(?:take|fade)_[ab](?: (?:[0-9]\.[0-9]{3}|10\.000))?|freo_deck\.(?:pause|clear|future)_[ab]|request.metadata [0-9]+|freo_(?:a|b|cart)\.queue|freo_mixer\.(?:state|fade_a|clear_future|mode (?:AUTO|DJ_BOOTH)|crossfader (?:0\.[0-9]{3}|1\.000)|(?:a_play|b_play) (?:true|false)|cart_mode (?:OVER|TAKEOVER)|duck (?:0\.[0-9]{3}|1\.000)))', command) and not (re.fullmatch(music_pattern, command) or re.fullmatch(imaging_pattern, command)):
         raise ValueError('Liquidsoap command is not allowlisted')
     path = SOCKET_ROOT / slug / 'control.sock'
@@ -128,14 +128,19 @@ def push_decision(decision, storage=None):
         queue_name='freo_a'
     if not queue_name:
         raise ValueError('Invalid broadcast bus')
+    occurrence = getattr(decision, 'timed_event_occurrence', None)
+    item = getattr(decision, 'block_item_execution', None)
+    if item and item.execution.timed_event_occurrence:
+        occurrence = item.execution.timed_event_occurrence
+    operation = 'insert' if queue_name == 'freo_queue' and occurrence and occurrence.event.timing_mode == 'SOFT' else 'push'
     if imaging:
         title = _metadata(imaging.name, imaging.asset_type.replace('_', ' ').title())
         artist = _metadata(decision.station.name, slug)
-        command = f'{queue_name}.push annotate:freo_decision={decision.id},title="{title}",artist="{artist}":{path}'
+        command = f'{queue_name}.{operation} annotate:freo_decision={decision.id},title="{title}",artist="{artist}":{path}'
     else:
         from app.services.loudness import gain_for
         gain = gain_for(track)['db']
-        command = f'{queue_name}.push annotate:freo_decision={decision.id},freo_gain="{gain:.3f} dB":{path}'
+        command = f'{queue_name}.{operation} annotate:freo_decision={decision.id},freo_gain="{gain:.3f} dB":{path}'
     response = _command(slug, command)
     if not REQUEST_ID.fullmatch(response):
         raise RuntimeError('Liquidsoap did not accept the request')

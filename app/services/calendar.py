@@ -35,6 +35,8 @@ def overlap(first, second):
     if first.on_date and second.on_date and first.on_date != second.on_date:
         # Overnight windows can overlap the following date.
         pass
+    if bool(first.baseline_assignment_id) != bool(second.baseline_assignment_id):
+        return False
     if bool(first.on_date) != bool(second.on_date):
         return False  # A dated exception intentionally takes priority over the weekly program.
     anchor = first.on_date or date(2026, 1, 5)
@@ -91,14 +93,26 @@ def create_program(station, *, name, weekdays, start, end, category_slug=None, c
 def resolve_program(station, now):
     now = utc_instant(now)
     today = now.astimezone(ZoneInfo(station.timezone)).date()
-    active, boundaries = [], []
+    active, boundaries, baseline_sources = [], [], {}
     for program in ScheduleProgram.query.filter_by(station_id=station.id, enabled=True).all():
         if not usable_clock(program.clock, station.id):
             continue
         for day, start, end in occurrences(program, today, 7):
             if start <= now < end:
-                active.append((bool(program.on_date), start, program.id, program, day))
-            boundaries.extend(point for point in (start, end) if point > now)
+                active.append((2 if program.on_date else 0 if program.baseline_assignment_id else 1, start, program.id, program, day))
+            if program.baseline_assignment_id:
+                baseline_sources[program.baseline_assignment_id] = program.baseline_assignment
+            else:
+                boundaries.extend(point for point in (start, end) if point > now)
+    # Midnight display splits are not playback transitions. Only the original
+    # weekly assignment boundary can change the baseline occurrence.
+    zone = ZoneInfo(station.timezone)
+    for assignment in baseline_sources.values():
+        day = today + timedelta(days=(assignment.weekday - today.weekday()) % 7)
+        point = _wall_to_utc(datetime.combine(day, assignment.start_time), zone)
+        if point <= now:
+            point = _wall_to_utc(datetime.combine(day + timedelta(days=7), assignment.start_time), zone)
+        boundaries.append(point)
     chosen = max(active, key=lambda value: value[:3]) if active else None
     return (chosen[3], chosen[4]) if chosen else (None, None), min(boundaries) if boundaries else None
 

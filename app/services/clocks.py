@@ -120,6 +120,10 @@ def update_assignment(slug, assignment_id, weekday, local_time, clock_slug):
     row = ScheduleAssignment.query.filter_by(id=assignment_id, station_id=station.id).first()
     if row is None:
         raise ValueError('Assignment not found')
+    from app.models import ScheduleProgram
+    if ScheduleProgram.query.filter_by(baseline_assignment_id=row.id, enabled=True).first():
+        raise ValueError('Restore the weekly baseline in Defaults before editing assignments')
+
     if not isinstance(weekday, int) or not 0 <= weekday <= 6:
         raise ValueError('Weekday must be Monday through Sunday')
     parsed_time = parse_local_time(local_time)
@@ -177,6 +181,9 @@ def set_default_clock(slug, clock_slug=None):
 
 def assign(slug, weekday, local_time, clock_slug):
     station = require_station(slug)
+    from app.models import ScheduleProgram
+    if ScheduleProgram.query.filter(ScheduleProgram.station_id == station.id, ScheduleProgram.baseline_assignment_id.isnot(None), ScheduleProgram.enabled.is_(True)).first():
+        raise ValueError('Restore the weekly baseline in Defaults before adding assignments')
     if not isinstance(weekday, int) or not 0 <= weekday <= 6:
         raise ValueError('Weekday must be 0 (Monday) through 6 (Sunday)')
     parsed_time = parse_local_time(local_time)
@@ -195,6 +202,15 @@ def remove_assignment(slug, assignment_id):
     row = ScheduleAssignment.query.filter_by(id=assignment_id, station_id=station.id).first()
     if row is None:
         raise ValueError('Assignment not found')
+    from app.models import ScheduleProgram
+    if ScheduleProgram.query.filter_by(baseline_assignment_id=row.id).first():
+        if ScheduleProgram.query.filter_by(baseline_assignment_id=row.id, enabled=True).first():
+            raise ValueError('Restore the weekly baseline in Defaults before editing assignments')
+        # Inactive conversion rows are historical; keep their source identity.
+        row.enabled = False
+        db.session.commit()
+        return
+
     db.session.delete(row)
     db.session.commit()
 

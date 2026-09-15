@@ -152,6 +152,15 @@ def process_block(station, reader, now=None):
             if item.state in ('PENDING','QUEUED'): item.state='SKIPPED'; item.failure_reason='operator_abort'
         execution.state='ABORTED'; execution.aborted_at=now; execution.failure_reason='operator_abort'; db.session.commit()
         return False
+    for item in execution.items:
+        if item.state == 'PENDING' and item.selection_decision and item.selection_decision.status == 'queued':
+            item.state = 'QUEUED'
+            item.queued_at = item.queued_at or now
+            execution.state = 'QUEUED'
+            if execution.timed_event_occurrence:
+                execution.timed_event_occurrence.state = 'QUEUED'
+                execution.timed_event_occurrence.queued_at = now
+    db.session.commit()
     # Translate request loss into item policy rather than allowing automation
     # to slip between block items.
     for item in execution.items:
@@ -396,6 +405,11 @@ def observe_queue(station, error_code=None):
 
 def _queue_event(occurrence, slug, now):
     decision = occurrence.selection_decision
+    if decision.status == 'queued':
+        occurrence.state = 'QUEUED'
+        occurrence.queued_at = occurrence.queued_at or now
+        db.session.commit()
+        return
     decision.status = 'submitting'
     db.session.commit()
     request_id = push_decision(decision)
@@ -406,6 +420,18 @@ def _queue_event(occurrence, slug, now):
     occurrence.queued_at = now
     db.session.commit()
     logger.info('Timed event queued station=%s occurrence=%s event=%s scheduled=%s', slug, occurrence.id, occurrence.event.name, occurrence.scheduled_for_utc)
+
+
+def automatic_future_only(station):
+    """Unknown/manual/event requests must never be displaced by scheduling."""
+    requests = queued_ids(station.slug)
+    if not requests:
+        return True
+    rows = SelectionDecision.query.filter_by(station_id=station.id, socket_identity=socket_identity(station.slug)).filter(
+        SelectionDecision.liquidsoap_request_id.in_(requests)).all()
+    return {row.liquidsoap_request_id for row in rows} == requests and all(
+        row.admin_user_id is None and row.selection_method not in ('timed_event', 'event_block')
+        and row.playback_bus in (None, 'A') for row in rows)
 
 
 def process_timed_events(station, reader, now=None):
@@ -435,6 +461,10 @@ def process_timed_events(station, reader, now=None):
             continue
         if occurrence.block_execution and occurrence.block_execution.state in ('PENDING','QUEUED','STARTED','COMPLETED'):
             continue
+        if occurrence.state in ('PENDING', 'READY') and occurrence.selection_decision and occurrence.selection_decision.status == 'queued':
+            occurrence.state = 'QUEUED'
+            occurrence.queued_at = occurrence.queued_at or now
+            db.session.commit()
         event = occurrence.event
         deadline = occurrence.deadline_at_utc.replace(tzinfo=occurrence.deadline_at_utc.tzinfo or timezone.utc)
         scheduled = occurrence.scheduled_for_utc.replace(tzinfo=occurrence.scheduled_for_utc.tzinfo or timezone.utc)
@@ -468,9 +498,9 @@ def process_timed_events(station, reader, now=None):
             continue
         active = active_ids(station.slug)
         current = SelectionDecision.query.filter_by(station_id=station.id, socket_identity=socket_identity(station.slug)).filter(
-            SelectionDecision.liquidsoap_request_id.in_(active)).first() if active else None
+            SelectionDecision.liquidsoap_request_id.in_(active), SelectionDecision.status == 'started').order_by(SelectionDecision.started_at.desc()).first() if active else None
         if event.timing_mode == 'HARD':
-            interruptible = current is None or (current.track_id is not None and current.admin_user_id is None and current.selection_method != 'timed_event' and event.interrupt_policy == 'MUSIC_ONLY')
+            interruptible = (current is None and not active) or (current is not None and current.track_id is not None and current.admin_user_id is None and current.selection_method != 'timed_event' and event.interrupt_policy == 'MUSIC_ONLY')
             if not interruptible:
                 continue
             interrupt_for_event(station.slug)
@@ -484,7 +514,7 @@ def process_timed_events(station, reader, now=None):
             else:
                 _queue_event(occurrence, station.slug, now)
             break
-        elif queue_depth(station.slug) == 0:
+        elif queue_depth(station.slug) == 0 or (event.timing_mode == 'SOFT' and automatic_future_only(station)):
             # SOFT and NON_INTERRUPTING never cut current content. SOFT may use
             # its early window; NON_INTERRUPTING waits until target time.
             duration_ms = current.track.duration_ms if current and current.track else current.imaging_asset.duration_ms if current and current.imaging_asset else 0
@@ -499,7 +529,7 @@ def process_timed_events(station, reader, now=None):
             else:
                 _queue_event(occurrence, station.slug, now)
             break
-    future = [row for row in rows if row.state in ('PENDING','READY') and row.event.timing_mode != 'NON_INTERRUPTING']
+    future = [row for row in rows if row.state in ('PENDING','READY') and row.event.timing_mode == 'HARD']
     return min(((row.scheduled_for_utc.replace(tzinfo=row.scheduled_for_utc.tzinfo or timezone.utc)-now).total_seconds()
                 for row in future), default=None)
 
@@ -604,7 +634,7 @@ def tick(reader, target_depth=2):
             from app.models import ClockState
             prior_clock = db.session.get(ClockState, state.station_id)
             next_key = programming.occurrence_key if programming.clock else f'default:{state.default_clock_id}' if state.default_clock_id else None
-            if prior_clock and prior_clock.occurrence_key and prior_clock.occurrence_key != next_key:
+            if prior_clock and prior_clock.occurrence_key and prior_clock.occurrence_key != next_key and automatic_future_only(state.station):
                 from app.services.playout_queue import clear_future
                 try:
                     clear_future(slug)

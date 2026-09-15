@@ -7,7 +7,7 @@ from app.routes.web import admin_stations, station_or_404
 from app.services.admin_auth import admin_required, can_manage_events, current_admin, require_csrf
 from app.services.admin_media import audit
 from app.services.event_blocks import (BLOCK_TYPES, FAILURE_POLICIES, add_item, block_for,
-    remove_item, reorder, save_block, set_enabled, validate_block)
+    commercial_log_for_block, remove_item, reorder, save_block, set_enabled, validate_block)
 
 admin_blocks_blueprint=Blueprint('admin_blocks',__name__)
 
@@ -41,6 +41,9 @@ def detail(slug,identifier):
     station=station_for_admin(slug)
     try: row=block_for(slug,identifier)
     except ValueError: abort(404)
+    log = commercial_log_for_block(row)
+    if log:
+        return redirect(url_for('admin_traffic.log_detail',slug=slug,log_date=log.log_date))
     executions=EventBlockExecution.query.filter_by(event_block_id=row.id).order_by(EventBlockExecution.id.desc()).limit(25).all()
     tracks=Track.query.filter_by(station_id=station.id,enabled=True,ingest_status='accepted',decommissioned_at=None).order_by(Track.title).all()
     imaging=ImagingAsset.query.filter_by(station_id=station.id,enabled=True,ingest_status='accepted',decommissioned_at=None).order_by(ImagingAsset.cart_code,ImagingAsset.name).all()

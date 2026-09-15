@@ -3,7 +3,7 @@ from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 from flask import Blueprint, abort, flash, redirect, render_template, request, url_for
 from app.extensions import db
-from app.models import Clock, MediaCategory, Rotation, ScheduleProgram, TimedEventOccurrence
+from app.models import Clock, MediaCategory, Rotation, ScheduleProgram
 from app.routes.web import admin_stations, station_or_404
 from app.services.admin_auth import admin_required, current_admin, require_csrf
 from app.services.admin_media import audit
@@ -25,13 +25,15 @@ def page(slug):
     if view not in ('week','day','agenda'):
         view = 'week'
     first = day - timedelta(days=day.weekday()) if view == 'week' else day
+    from app.services.planning import preview_days
+    preview = preview_days(station, first, 1 if view == 'day' else 7)
     return render_template('admin/calendar.html',page='calendar',selected=station,stations=admin_stations(),
         days=calendar_days(station, first, 1 if view=='day' else 7),view=view,day=day,
         previous=first-timedelta(days=1 if view=='day' else 7),following=first+timedelta(days=1 if view=='day' else 7),
         categories=MediaCategory.query.filter_by(station_id=station.id,enabled=True).order_by(MediaCategory.name).all(),
         clocks=Clock.query.filter_by(station_id=station.id,enabled=True).order_by(Clock.name).all(),
         rotations=Rotation.query.filter_by(station_id=station.id,enabled=True).order_by(Rotation.name).all(),
-        events=TimedEventOccurrence.query.filter_by(station_id=station.id).filter(TimedEventOccurrence.scheduled_for_utc >= datetime.combine(first,datetime.min.time(),tzinfo=ZoneInfo(station.timezone)),TimedEventOccurrence.scheduled_for_utc < datetime.combine(first+timedelta(days=7),datetime.min.time(),tzinfo=ZoneInfo(station.timezone))).order_by(TimedEventOccurrence.scheduled_for_utc).all(),
+        preview_days=preview,
         active=resolve(station),error=None)
 
 
@@ -46,6 +48,8 @@ def action(slug, action):
                 previous=ScheduleProgram.query.filter_by(station_id=station.id,id=request.form.get('program_id'),enabled=True).with_for_update().first()
                 if not previous:
                     raise ValueError('This program was changed by another editor. Reload the calendar.')
+                if previous.baseline_assignment_id:
+                    raise ValueError('Restore the weekly baseline in Defaults before editing its times')
                 previous.enabled=False
                 db.session.flush()
             kind=request.form.get('kind','category')
@@ -59,6 +63,8 @@ def action(slug, action):
             row=ScheduleProgram.query.filter_by(station_id=station.id,id=request.form.get('id')).first()
             if not row:
                 abort(404)
+            if row.baseline_assignment_id:
+                raise ValueError('Restore the weekly baseline in Defaults before removing its times')
             row.enabled=False
             summary=f'Removed future occurrences of {row.name}; current audio may finish'
         else:

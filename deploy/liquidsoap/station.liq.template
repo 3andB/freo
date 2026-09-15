@@ -10,7 +10,49 @@ tone = sine(amplitude=0.08, __FREQUENCY__.)
 tone = metadata.map(fun (_) -> [("title", __TITLE__)], tone)
 # Engine-owned sources: the browser only submits worker-mediated intent.
 deck_a = request.queue(id="freo_a", prefetch=1)
-queue = request.queue(id="freo_queue", prefetch=1)
+# One program queue with an atomic insert operation for between-song events.
+# Expose both prefetched and waiting requests so inserting preserves music order.
+def program_queue()
+  waiting = ref([])
+  def next()
+    if list.is_empty(waiting()) then null()
+    else
+      let [r, ...rest] = waiting()
+      waiting := rest
+      (r:request)
+    end
+  end
+  source = request.dynamic(id="freo_queue", prefetch=1, available={not list.is_empty(waiting())}, next)
+  def all_requests() = [...source.queue(), ...waiting()] end
+  def set_queue(requests)
+    waiting := requests
+    source.set_queue([])
+  end
+  def push(uri)
+    r = request.create(uri)
+    waiting := [...waiting(), r]
+    ignore(source.fetch())
+    string(request.id(r))
+  end
+  def insert(uri)
+    r = request.create(uri)
+    if request.resolve(r) then
+      set_queue([r, ...all_requests()])
+      ignore(source.fetch())
+      string(request.id(r))
+    else
+      request.destroy(r)
+      "ERROR unavailable event audio"
+    end
+  end
+  server.register(namespace="freo_queue", "push", push)
+  server.register(namespace="freo_queue", "insert", insert)
+  server.register(namespace="freo_queue", "queue", fun (_) -> string.concat(separator=" ", list.map(fun (r) -> string(request.id(r)), all_requests())))
+  server.register(namespace="freo_queue", "skip", fun (_) -> begin source.skip(); "OK" end)
+  server.register(namespace="freo_queue", "flush_and_skip", fun (_) -> begin set_queue([]); source.skip(); "OK" end)
+  source.{set_queue=set_queue, queue=all_requests}
+end
+queue = program_queue()
 deck_b = request.queue(id="freo_b", prefetch=1)
 cart = request.queue(id="freo_cart", prefetch=1)
 mode = ref(__OPERATOR_MODE__)

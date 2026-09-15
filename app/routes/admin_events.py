@@ -1,17 +1,16 @@
 """Authenticated station-scoped timed-event management."""
 from datetime import datetime, timezone
-import uuid
 from zoneinfo import ZoneInfo
 
 from flask import Blueprint, abort, flash, redirect, render_template, request, url_for
 
 from app.extensions import db
-from app.models import AuditEvent, EventBlock, ImagingAsset, TimedEvent, TimedEventOccurrence, Track
+from app.models import EventBlock, ImagingAsset, TimedEvent, TimedEventOccurrence, Track
 from app.routes.web import admin_stations, station_or_404
 from app.services.admin_auth import admin_required, can_manage_events, current_admin, require_csrf
 from app.services.admin_media import audit
-from app.services.timed_events import (CONTENTS, INTERRUPTS, MISSED, MODES, RECURRENCES,
-    conflict_warnings, event_for, generate_occurrences, save_event, set_enabled, upcoming)
+from app.services.timed_events import (INTERRUPTS, MISSED, MODES, RECURRENCES,
+    commercial_log, conflict_warnings, event_for, save_event, set_enabled, upcoming)
 
 admin_events_blueprint = Blueprint('admin_events', __name__)
 
@@ -29,7 +28,7 @@ def context(station, **extra):
 @admin_events_blueprint.get('/admin/stations/<slug>/events')
 @admin_required
 def list_page(slug):
-    station = operator_station(slug); generate_occurrences(station)
+    station = operator_station(slug)
     rows = TimedEvent.query.filter_by(station_id=station.id).order_by(TimedEvent.enabled.desc(), TimedEvent.name).all()
     return render_template('admin/events.html', **context(station, events=rows, upcoming=upcoming(station, limit=20)))
 
@@ -59,6 +58,7 @@ def _save(station, row=None):
         timing_mode=request.form.get('timing_mode'), recurrence_type=request.form.get('recurrence_type'),
         content_type=request.form.get('content_type'), content_identifier=request.form.get('content_identifier'),
         local_date=request.form.get('local_date'), local_time=request.form.get('local_time'), weekday=request.form.get('weekday'),
+        weekdays=request.form.getlist('weekdays') if 'repeat_days_present' in request.form else None,
         early_tolerance_seconds=request.form.get('early_tolerance_seconds'), late_tolerance_seconds=request.form.get('late_tolerance_seconds'),
         missed_policy=request.form.get('missed_policy'), interrupt_policy=request.form.get('interrupt_policy'), priority=request.form.get('priority'))
 
@@ -78,7 +78,7 @@ def detail(slug, identifier):
     event_local = row.scheduled_at_utc.replace(tzinfo=row.scheduled_at_utc.tzinfo or timezone.utc).astimezone(ZoneInfo(station.timezone)) if row.scheduled_at_utc else None
     return render_template('admin/event_detail.html', **context(station, event=row, occurrences=occurrences,
         event_local=event_local,
-        warnings=conflict_warnings(row), tracks=_tracks(station), imaging=_imaging(station), blocks=_blocks(station), modes=MODES,
+        commercial_log=commercial_log(row), warnings=conflict_warnings(row), tracks=_tracks(station), imaging=_imaging(station), blocks=_blocks(station), modes=MODES,
         recurrences=RECURRENCES, missed=MISSED, interrupts=INTERRUPTS))
 
 

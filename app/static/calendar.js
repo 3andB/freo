@@ -2,6 +2,7 @@
   const dialog=document.getElementById('program-dialog');if(!dialog)return;
   const form=dialog.querySelector('form[method="post"]');let dragged=null;
   const open=(day,category,name)=>{
+    form.reset();
     form.elements.program_id.value='';
     if(day!==undefined)form.querySelectorAll('[name="weekday"]').forEach(input=>input.checked=input.value===String(day));
     if(category){form.elements.kind.value='category';form.elements.category.value=category;form.elements.name.value=name;}

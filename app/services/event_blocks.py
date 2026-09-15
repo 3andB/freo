@@ -29,11 +29,26 @@ def block_for(slug, identifier):
     if row is None: raise ValueError('Block not found')
     return row
 
+def commercial_log_for_block(block):
+    if not block.id:
+        return None
+    from app.models import TrafficLog, TrafficPlacement
+    return TrafficLog.query.join(TrafficPlacement, TrafficPlacement.traffic_log_id == TrafficLog.id).join(
+        EventBlockItem, EventBlockItem.id == TrafficPlacement.event_block_item_id).filter(
+        TrafficLog.station_id == block.station_id, EventBlockItem.event_block_id == block.id).first()
+
+
+def require_editable(block):
+    if commercial_log_for_block(block):
+        raise ValueError('Finalized commercial sequences are managed through Commercials')
+
+
 def save_block(slug, *, identifier=None, name, description='', block_type='GENERIC', failure_policy='ABORT_BLOCK'):
     station = get_station(slug)
     if station is None: raise ValueError('Station not found')
     if block_type not in BLOCK_TYPES or failure_policy not in FAILURE_POLICIES: raise ValueError('Unsupported block option')
     row = block_for(slug, identifier) if identifier else EventBlock(station_id=station.id, slug=_slug(name), enabled=False)
+    require_editable(row)
     row.name, row.description = _clean(name,120,True), _clean(description,500)
     row.block_type, row.failure_policy = block_type, failure_policy
     db.session.add(row); db.session.commit(); return row
@@ -46,6 +61,7 @@ def _target(block, item_type, identifier):
     return row
 
 def add_item(block, item_type, identifier, label='', failure_policy=None):
+    require_editable(block)
     if failure_policy not in (None,'') + FAILURE_POLICIES: raise ValueError('Unsupported item failure policy')
     target = _target(block,item_type,identifier)
     row = EventBlockItem(block=block, position=len(block.items)+1, item_type=item_type,
@@ -54,6 +70,7 @@ def add_item(block, item_type, identifier, label='', failure_policy=None):
     db.session.add(row); db.session.commit(); return row
 
 def remove_item(block, item_id):
+    require_editable(block)
     row = EventBlockItem.query.filter_by(id=item_id,event_block_id=block.id).first()
     if row is None: raise ValueError('Block item not found')
     db.session.delete(row); db.session.flush()
@@ -61,6 +78,7 @@ def remove_item(block, item_id):
     db.session.commit()
 
 def reorder(block, ordered_ids):
+    require_editable(block)
     items = {i.id:i for i in block.items}
     try: ids=[int(v) for v in ordered_ids]
     except (TypeError,ValueError): raise ValueError('Invalid block item order')
@@ -84,6 +102,7 @@ def validate_block(block, storage=None):
     return errors
 
 def set_enabled(block, enabled):
+    require_editable(block)
     if enabled:
         errors=validate_block(block)
         if errors: raise ValueError(errors[0])

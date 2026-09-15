@@ -96,3 +96,28 @@ def test_capture_demonstration_screens_when_requested(booth):
     wait_text(driver,'.calendar-grid','Morning discoveries')
     driver.save_screenshot('/opt/freo/app/static/product-schedule.png')
     assert Path('/opt/freo/app/static/product-dj.png').stat().st_size>10000
+
+
+def test_programming_event_series_and_content_picker(booth):
+    app,driver,base,tmp_path=booth
+    driver.get(base+'/admin/stations/test-station/events/create?date=2027-01-04')
+    form=driver.find_element(By.CSS_SELECTOR,'.event-editor form')
+    Select(form.find_element(By.NAME,'recurrence_type')).select_by_value('WEEKLY')
+    form.find_element(By.NAME,'name').send_keys('Weekday announcement')
+    for day in ('0','2','4'):
+        form.find_element(By.CSS_SELECTOR,f'[name="weekdays"][value="{day}"]').click()
+    driver.execute_script("arguments[0].value='10:15:00'",form.find_element(By.NAME,'local_time'))
+    with app.app_context():
+        identifier=Track.query.first().uuid
+    Select(form.find_element(By.NAME,'content_identifier')).select_by_value(identifier)
+    assert form.find_element(By.NAME,'late_tolerance_seconds').get_attribute('value')=='300'
+    form.find_element(By.CSS_SELECTOR,'button[type=submit]').click()
+    WebDriverWait(driver,10).until(lambda d:'/events/create' not in d.current_url)
+    assert 'Weekday announcement' in driver.find_element(By.TAG_NAME,'h1').text
+    driver.get(base+'/admin/stations/test-station/calendar?date=2027-01-04')
+    assert len(driver.find_elements(By.CSS_SELECTOR,'.calendar-event'))==3
+    assert 'Weekly baseline' in driver.find_element(By.CSS_SELECTOR,'.calendar-grid').text
+    for width in (430,820,1440):
+        driver.set_window_size(width,1000)
+        assert driver.execute_script('return document.documentElement.scrollWidth<=innerWidth')
+    driver.save_screenshot('/tmp/freo-programming-calendar.png')

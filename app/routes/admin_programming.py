@@ -4,7 +4,7 @@ from zoneinfo import ZoneInfo
 from flask import Blueprint, abort, flash, redirect, render_template, request, url_for
 
 from app.extensions import db
-from app.models import Clock, EventBlock, MediaCategory, Rotation, ScheduleAssignment, Track, ImagingAsset, ImagingGroup
+from app.models import Clock, EventBlock, MediaCategory, Rotation, ScheduleAssignment, ScheduleProgram, Track, ImagingAsset, ImagingGroup
 from app.routes.web import admin_stations, station_or_404
 from app.services.admin_auth import admin_required, current_admin, programming_mutation_required
 from app.services.admin_media import audit
@@ -100,8 +100,18 @@ def list_page(slug, section):
             preview = preview_transitions(station, start, hours)
         except (ValueError, OverflowError) as error:
             preview_error = str(error)
+    from app.services.planning import baseline_conversion
+    try:
+        conversion, conversion_token = baseline_conversion(station)
+        conversion_error = None
+    except ValueError as error:
+        conversion, conversion_token, conversion_error = [], None, str(error)
     return page(station, section, rows=rows, clocks=clocks, days=DAY_NAMES,
-                programming=current(slug), preview=preview, preview_error=preview_error)
+                conversion=conversion, conversion_token=conversion_token, conversion_error=conversion_error,
+                converted=ScheduleProgram.query.filter(ScheduleProgram.station_id == station.id,ScheduleProgram.baseline_assignment_id.isnot(None),ScheduleProgram.enabled.is_(True)).count(),
+                programming=current(slug), preview=preview, preview_error=preview_error,
+                default_categories=MediaCategory.query.filter_by(station_id=station.id,enabled=True).order_by(MediaCategory.name).all(),
+                default_rotations=Rotation.query.filter_by(station_id=station.id,enabled=True).order_by(Rotation.name).all())
 
 
 @admin_programming_blueprint.get('/admin/stations/<slug>/<section>/<resource>')
@@ -242,6 +252,18 @@ def slot_action(slug, section, resource, operation):
 def schedule_action(slug, operation):
     station = station_or_404(slug, require_enabled=False)
     def action():
+        if operation == 'convert':
+            from app.services.planning import convert_baseline
+            count = convert_baseline(station, request.form.get('conversion_token'))
+            return slug, f'Converted baseline into {count} calendar blocks; clock progress preserved'
+        if operation == 'restore':
+            from app.services.planning import restore_baseline
+            count = restore_baseline(station)
+            return slug, f'Restored weekly assignments from {count} baseline blocks'
+        if operation == 'default':
+            from app.services.planning import set_station_default
+            clock = set_station_default(station, request.form.get('choice'))
+            return clock.slug, f'Station default set to {clock.name}'
         if operation == 'timezone':
             if request.form.get('confirm') != station.timezone:
                 raise ValueError('Confirm the current timezone before changing it')
@@ -265,7 +287,7 @@ def schedule_action(slug, operation):
             remove_assignment(slug, row.id)
             return row.id, summary
         abort(404)
-    actions = {'timezone': 'station_timezone_changed', 'create': 'schedule_assignment_created',
+    actions = {'convert': 'baseline_converted', 'restore': 'baseline_restored', 'default': 'station_default_changed', 'timezone': 'station_timezone_changed', 'create': 'schedule_assignment_created',
                'edit': 'schedule_assignment_updated', 'remove': 'schedule_assignment_removed'}
     if operation not in actions:
         abort(404)

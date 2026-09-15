@@ -116,7 +116,7 @@ def admin_station(slug):
                            data=data, page='stations', detail=True)
 
 
-_SECTIONS = {'media', 'categories', 'rotations', 'clocks', 'schedule', 'history', 'system'}
+_SECTIONS = {'media', 'categories', 'rotations', 'clocks', 'schedule', 'history', 'system', 'calendar', 'events', 'blocks', 'traffic'}
 
 
 @web_blueprint.get('/admin/<section>')
@@ -126,6 +126,10 @@ def admin_section(section):
         abort(404)
     stations = admin_stations()
     station = selected_station(stations)
+    scheduling = {'calendar':'admin_calendar.page', 'events':'admin_events.list_page',
+                  'blocks':'admin_blocks.list_page', 'traffic':'admin_traffic.page'}
+    if section in scheduling and station:
+        return redirect(url_for(scheduling[section], slug=station.slug))
     if section in {'categories', 'rotations', 'clocks', 'schedule'} and station:
         return redirect(url_for('admin_programming.list_page', slug=station.slug, section=section))
     if section == 'media' and station:

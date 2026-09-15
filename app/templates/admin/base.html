@@ -21,15 +21,21 @@
       <a href="{{ url_for('web.admin_home') }}{{ suffix }}" {% if page == 'overview' %}aria-current="page"{% endif %}>Overview</a>
       <a href="{{ url_for('web.admin_station_list') }}" {% if page == 'stations' %}aria-current="page"{% endif %}>Stations</a>
       {% if selected %}<a href="{{ url_for('admin_live.page', slug=selected.slug) }}" {% if page == 'live' %}aria-current="page"{% endif %}>DJ Booth</a>{% endif %}
-      {% if selected %}<a href="{{ url_for('admin_calendar.page',slug=selected.slug) }}" {% if page == 'calendar' %}aria-current="page"{% endif %}>Schedule</a>{% endif %}
       <span class="admin-nav-label">PROGRAMMING</span>
-      {% if selected %}<a href="{{ url_for('sound_room.page',slug=selected.slug) }}" {% if page == 'sound-room' %}aria-current="page"{% endif %}>Sound Room</a>{% endif %}
       <a href="{{ url_for('web.admin_section', section='media') }}{{ suffix }}" {% if page == 'media' %}aria-current="page"{% endif %}>Music</a>
-      {% if selected %}<a href="{{ url_for('admin_imaging.library', slug=selected.slug) }}" {% if page == 'imaging' %}aria-current="page"{% endif %}>Imaging</a>{% endif %}
       <a href="{{ url_for('admin_programming.list_page', slug=selected.slug, section='categories') if selected else url_for('web.admin_section', section='categories') }}" {% if page == 'categories' %}aria-current="page"{% endif %}>Categories</a>
-      <a href="{{ url_for('admin_programming.list_page', slug=selected.slug, section='rotations') if selected else url_for('web.admin_section', section='rotations') }}" {% if page == 'rotations' %}aria-current="page"{% endif %}>Rotations</a>
-      <a href="{{ url_for('admin_programming.list_page', slug=selected.slug, section='clocks') if selected else url_for('web.admin_section', section='clocks') }}" {% if page == 'clocks' %}aria-current="page"{% endif %}>Clocks</a>
-      <a href="{{ url_for('admin_programming.list_page', slug=selected.slug, section='schedule') if selected else url_for('web.admin_section', section='schedule') }}" {% if page == 'schedule' %}aria-current="page"{% endif %}>Weekly defaults</a>
+      {% if selected %}
+      <a href="{{ url_for('sound_room.page',slug=selected.slug) }}" {% if page == 'sound-room' %}aria-current="page"{% endif %}>Sound Room</a>
+      <a href="{{ url_for('admin_imaging.library', slug=selected.slug) }}" {% if page == 'imaging' %}aria-current="page"{% endif %}>Imaging</a>
+      <details class="scheduling-nav" {% if page in ['calendar','events','blocks','traffic','clocks','rotations','schedule'] %}open{% endif %}>
+        <summary>Scheduling</summary>
+        <a href="{{ url_for('admin_calendar.page',slug=selected.slug) }}" {% if page == 'calendar' %}aria-current="page"{% endif %}>Calendar</a>
+        <a href="{{ url_for('admin_events.list_page',slug=selected.slug) }}" {% if page == 'events' %}aria-current="page"{% endif %}>Events</a>
+        <a href="{{ url_for('admin_programming.list_page',slug=selected.slug,section='clocks') }}" {% if page in ['clocks','rotations','blocks'] %}aria-current="page"{% endif %}>Templates</a>
+        <a href="{{ url_for('admin_traffic.page',slug=selected.slug) }}" {% if page == 'traffic' %}aria-current="page"{% endif %}>Commercials</a>
+        <a href="{{ url_for('admin_programming.list_page',slug=selected.slug,section='schedule') }}" {% if page == 'schedule' %}aria-current="page"{% endif %}>Defaults</a>
+      </details>
+      {% endif %}
       <span class="admin-nav-label">OBSERVATION</span>
       <a href="{{ url_for('web.admin_section', section='history') }}{{ suffix }}" {% if page == 'history' %}aria-current="page"{% endif %}>History</a>
       <a href="{{ url_for('web.admin_section', section='system') }}{{ suffix }}" {% if page == 'system' %}aria-current="page"{% endif %}>System</a>
@@ -40,11 +46,11 @@
   <div class="admin-main">
     <div class="admin-toolbar">
       <div><span class="eyebrow">FREO / {{ page|upper }}</span><span class="toolbar-caption">{{ stations|length }} managed station{{ '' if stations|length == 1 else 's' }}</span></div>
-      {% if stations %}<form method="get" action="{{ url_for('web.admin_section', section=page) if page in ['media','categories','rotations','clocks','schedule'] else url_for('web.admin_home') if detail is defined and detail else request.path }}" class="station-picker"><label for="station-select">Station</label><select id="station-select" name="station">{% for station in stations %}<option value="{{ station.slug }}" {% if selected and station.id == selected.id %}selected{% endif %}>{{ station.name }}</option>{% endfor %}</select><button type="submit">View</button></form>{% endif %}
+      {% if stations %}<form method="get" action="{{ url_for('web.admin_section', section=page) if page in ['media','categories','rotations','clocks','schedule','calendar','events','blocks','traffic'] else url_for('web.admin_home') if detail is defined and detail else request.path }}" class="station-picker"><label for="station-select">Station</label><select id="station-select" name="station">{% for station in stations %}<option value="{{ station.slug }}" {% if selected and station.id == selected.id %}selected{% endif %}>{{ station.name }}</option>{% endfor %}</select><button type="submit">View</button></form>{% endif %}
     </div>
     <div class="admin-content">
       {% with messages = get_flashed_messages(with_categories=true) %}{% for category, message in messages %}<p class="admin-notice {{ 'error' if category == 'error' else 'success' }}" role="status">{{ message }}</p>{% endfor %}{% endwith %}
-      {% if selected and page in ['events','blocks','traffic','clocks','rotations','schedule'] %}<nav class="planning-tabs" aria-label="Scheduling tools"><a href="{{ url_for('admin_calendar.page',slug=selected.slug) }}">Calendar</a><a href="{{ url_for('admin_events.list_page',slug=selected.slug) }}">Timed events</a><a href="{{ url_for('admin_blocks.list_page',slug=selected.slug) }}">Sequences</a><a href="{{ url_for('admin_traffic.page',slug=selected.slug) }}">Commercial breaks</a><a href="{{ url_for('admin_programming.list_page',slug=selected.slug,section='clocks') }}">Show templates</a></nav>{% endif %}
+      {% if selected and page in ['calendar','events','blocks','traffic','clocks','rotations','schedule'] %}{% include 'admin/_scheduling_tabs.html' %}{% endif %}
       {% block admin_content %}{% endblock %}
       {% if page in ['media','sound-room'] %}{% include 'admin/_music_player.html' %}{% endif %}
     </div>

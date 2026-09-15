@@ -213,3 +213,49 @@ def test_auto_and_dj_crossfade(app,tmp_path,monkeypatch,deck,direction):
     ratios=[(a/outgoing,b/incoming) for a,b in levels]
     assert sum(.1<a<.9 and .1<b<.9 for a,b in ratios)>=15
     assert sum(a2<a1-.01 for (a1,_),(a2,_) in zip(ratios,ratios[1:]))>=15
+
+
+def test_soft_insert_preserves_current_song_and_all_future_requests(app,tmp_path,monkeypatch):
+    """Actual engine proof: song → event → both prefetched and waiting music."""
+    from app.services.playout_queue import _command, queued_order
+    media=tmp_path/'media';runtime=tmp_path/'runtime';directory=runtime/'test-station';directory.mkdir(parents=True)
+    originals=media/'test-station'/'originals';originals.mkdir(parents=True)
+    for key,seconds in [('a',5),('b',2),('c',2),('d',1)]:
+        subprocess.run(['ffmpeg','-v','error','-f','lavfi','-i',f'sine=frequency=440:duration={seconds}','-y',str(originals/(key*32+'.mp3'))],check=True)
+    monkeypatch.setenv('FREO_MEDIA_ROOT',str(media));monkeypatch.setattr('app.services.playout_queue.SOCKET_ROOT',runtime)
+    with app.app_context():
+        station=Station.query.filter_by(slug='test-station').one();station.automation.operator_mode='AUTO'
+        source=render_liquidsoap(station,'a'*64).replace('/run/freo/playout/test-station',str(directory))
+    source='settings.init.allow_root := true\n'+source[:source.index('output.icecast(')]+f'output.file(%wav, "{tmp_path}/insert.wav", radio)\n'
+    config=tmp_path/'insert.liq';config.write_text(source)
+    with (tmp_path/'insert.log').open('w') as log:
+        proc=subprocess.Popen(['liquidsoap',str(config)],stdout=log,stderr=log)
+        try:
+            for _ in range(300):
+                if (directory/'control.sock').exists():break
+                if proc.poll() is not None:pytest.fail((tmp_path/'insert.log').read_text()[-2500:])
+                time.sleep(.2)
+            def enqueue(key,identifier,operation='push'):
+                return int(_command('test-station',f'freo_queue.{operation} annotate:freo_decision={identifier}:{originals/(key*32+".mp3")}'))
+            enqueue('a',1)
+            def starts():
+                file=directory/'events.log'
+                return [(int(line.split()[0]),float(line.split()[1])) for line in file.read_text().splitlines()] if file.exists() else []
+            for _ in range(60):
+                if starts():break
+                time.sleep(.1)
+            assert starts()[0][0] == 1
+            second=enqueue('b',2);third=enqueue('c',3)
+            event=enqueue('d',4,'insert')
+            assert queued_order('test-station') == [event,second,third]
+            assert [identifier for identifier,_ in starts()] == [1]
+            for _ in range(140):
+                if len(starts()) >= 4:break
+                time.sleep(.1)
+            actual=starts()
+            assert [identifier for identifier,_ in actual] == [1,4,2,3]
+            assert actual[1][1]-actual[0][1] >= 4.5
+        finally:
+            proc.terminate()
+            try:proc.wait(timeout=5)
+            except subprocess.TimeoutExpired:proc.kill();proc.wait()
