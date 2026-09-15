@@ -216,12 +216,15 @@ def _choose(tracks, history, now, track_seconds, artist_seconds):
     return None, 'none', 0
 
 
-def select_next(slug, storage=None, now=None):
+def select_next(slug, storage=None, now=None, programming_signature=None):
     """Lock one station cursor, select one playable object, and commit its decision."""
     station = require_station(slug)
     state = AutomationState.query.filter_by(station_id=station.id).with_for_update().first()
     if state is None or not state.enabled:
         raise ValueError('Automation is not enabled')
+    from app.services.programming_refresh import signature,checkpoint
+    selected_signature=programming_signature or signature(station,now)
+    selected_checkpoint=checkpoint(station)
     now = now or datetime.now(timezone.utc)
     storage = storage or LocalMediaStorage()
     from app.services.schedule import resolve, usable_clock
@@ -266,6 +269,8 @@ def select_next(slug, storage=None, now=None):
                 db.session.add(SelectionDecision(station_id=station.id, selected_at=now, status='failed',
                                                  reason='invalid_clock_slot', **context))
             if decision:
+                decision.programming_signature=selected_signature
+                decision.cursor_checkpoint=selected_checkpoint
                 db.session.commit()
                 return decision
         db.session.commit()
@@ -273,6 +278,9 @@ def select_next(slug, storage=None, now=None):
     if not state.active_rotation or not state.active_rotation.enabled:
         raise ValueError('No active clock or rotation')
     decision = _select_rotation(station, state.active_rotation, state, storage, now, {})
+    if decision:
+        decision.programming_signature=selected_signature
+        decision.cursor_checkpoint=selected_checkpoint
     db.session.commit()
     return decision
 

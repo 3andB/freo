@@ -285,7 +285,9 @@ def test_decks_stay_symmetric_and_show_live_and_transition_edges(booth):
         header=driver.find_element(By.CSS_SELECTOR,'.booth-header').rect
         assert abs(header['y']-driver.find_element(By.ID,'dj-booth').rect['y'])<1
         assert a['y']>=header['y']+header['height']
-        assert a['y']-header['y']-header['height']<25
+        bar=driver.find_element(By.ID,'booth-notice').rect
+        assert bar['y']>=header['y']+header['height']
+        assert 0<=a['y']-bar['y']-bar['height']<25
         assert abs(a['height']-b['height'])<1 and abs(a['width']-b['width'])<1
         buttons=[driver.find_element(By.CSS_SELECTOR,f'[data-deck="{deck}"][data-operation="PLAY"]').rect for deck in ('A','B')]
         assert abs((buttons[0]['y']-a['y'])-(buttons[1]['y']-b['y']))<1
@@ -297,7 +299,7 @@ def test_decks_stay_symmetric_and_show_live_and_transition_edges(booth):
         driver.execute_script("const n=document.getElementById('booth-notice');n.hidden=false;n.textContent='Deck command requested'")
         assert driver.find_element(By.ID,'now-drop').rect['y']==a['y']
         assert driver.find_element(By.CSS_SELECTOR,'.meter-rack').rect['y']==meters['y']
-        driver.execute_script("document.getElementById('booth-notice').hidden=true")
+        driver.execute_script("document.getElementById('booth-notice').textContent='Broadcast online'")
         assert driver.execute_script('return document.documentElement.scrollWidth<=document.documentElement.clientWidth')
     driver.set_window_size(1600,1200)
     driver.save_screenshot('/tmp/freo-booth-heading-decks-first.png')

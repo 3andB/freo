@@ -35,7 +35,7 @@ def test_auto_header_capture_flags_music_and_mobile(booth):
         snapshot=LiveQueueSnapshot.query.first();snapshot.current_decision_id=SelectionDecision.query.filter_by(status='started').one().id;db.session.commit()
     WebDriverWait(driver,8).until(lambda d:d.find_element(By.ID,'auto-skip').is_enabled())
     driver.find_element(By.ID,'auto-skip').click()
-    wait_text(driver,'#auto-skip','SKIP REQUESTED')
+    wait_text(driver,'#auto-skip','FADE REQUESTED')
     assert not driver.find_element(By.ID,'auto-skip').is_enabled()
     with app.app_context():
         assert LiveControlCommand.query.filter_by(action='SKIP').count()==1

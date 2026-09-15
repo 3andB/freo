@@ -6,9 +6,24 @@
   const pendingLoads=new Map();
   const text = (id, value) => { const node=document.getElementById(id); if(node) node.textContent=value; };
   const nonce = () => crypto.randomUUID();
-  const notice = (message, error=false) => {
+  let noticeUntil=0;
+  function systemStatus(){
+    if(Date.now()<noticeUntil)return;
     const node=document.getElementById('booth-notice');
-    node.hidden=false; node.textContent=message; node.classList.toggle('error',error);
+    const fault=state?.playout_error || (state?.broadcast?.online===false&&state?.desired_state==='running'?'Broadcast stream is offline':null);
+    const broadcast=state?.broadcast?.online;
+    const listeners=state?.broadcast?.listeners;
+    const messages=[broadcast===true?'Broadcast online · Station stream is available':broadcast===false?'Broadcast offline':'Broadcast status unavailable',
+      state?.mode==='AUTO'?`Auto · ${state.automation==='RUNNING'?'Following schedule':state.automation?.toLowerCase()||'Checking automation'}`:'DJ mode · '+(state?.mixer?.auto_standby?'Auto is on air; decks are ready':state?.current?'Live playback active':'No live deck'),
+      Number.isInteger(listeners)?`${listeners} listener${listeners===1?'':'s'} connected`:'Listener count unavailable'];
+    const message=fault || (!state?'Checking station status…':messages[Math.floor(Date.now()/5000)%messages.length]);
+    if(node.textContent!==message)node.textContent=message;
+    node.classList.toggle('error',!!fault);node.dataset.message='system';
+  }
+  const notice = (message, error=false) => {
+    noticeUntil=Date.now()+15000;
+    const node=document.getElementById('booth-notice');
+    node.dataset.message='action';node.hidden=false; node.textContent=message; node.classList.toggle('error',error);
   };
   let busy=false;
   const post = async (action, data={}) => {
@@ -110,7 +125,26 @@
   assignForm.elements.playback_mode.addEventListener('change',updateCartExplanation);assignForm.elements.duck_percent.addEventListener('input',updateCartExplanation);
   let cartSearchVersion=0;
   document.getElementById('cart-audio-search').addEventListener('input',async event=>{const version=++cartSearchVersion;try{const response=await scope.fetch(root.dataset.songSearchUrl.replace('song-search','cart-search')+'?q='+encodeURIComponent(event.target.value));if(!response.ok)throw new Error();const items=await response.json();if(version!==cartSearchVersion)return;assignForm.elements.identifier.replaceChildren(...items.map(item=>new Option(item.label,item.uuid)));}catch(_){text('cart-assign-error','Audio search is unavailable. Try again.');}});
-  root.querySelectorAll('[data-fire-cart]').forEach(button=>button.addEventListener('click',()=>{const slot=button.closest('[data-role]');post('fire-cart',{role:slot.dataset.role,position:slot.dataset.position,nonce:nonce()});}));
+  let localCart=null,lastCartFailure=null;
+  function paintCarts(){
+    const cart=state?.cart;
+    if(state?.cart_result?.status==='failed'&&lastCartFailure!==state.cart_result.id){lastCartFailure=state.cart_result.id;notice('Cart playback failed. Check the audio and station connection before trying again.',true);}
+    const locked=!!localCart||!state?.observation_fresh||!state?.mixer||!!state?.playout_error||cart?.locked;
+    root.querySelectorAll('[data-role][data-position]').forEach(slot=>{
+      const selected=(cart?.role===slot.dataset.role&&String(cart.position)===slot.dataset.position)||(localCart?.role===slot.dataset.role&&localCart?.position===slot.dataset.position);
+      const connected=state?.observation_fresh&&!state?.playout_error;
+      const playing=selected&&cart?.state==='playing'&&connected;
+      slot.classList.toggle('cart-playing',!!playing);slot.classList.toggle('cart-queued',!!selected&&!playing&&!!locked&&!!connected);
+      const button=slot.querySelector('[data-fire-cart]');
+      if(button){button.disabled=!!locked;button.textContent=playing?'PLAYING':selected&&locked?(connected?'QUEUED…':'CHECKING…'):'PLAY';}
+      slot.querySelector('[data-assign]').disabled=!!locked;
+    });
+  }
+  root.querySelectorAll('[data-fire-cart]').forEach(button=>scope.listen(button,'click',async()=>{
+    if(button.disabled||localCart||busy)return;
+    const slot=button.closest('[data-role]');localCart={role:slot.dataset.role,position:slot.dataset.position};paintCarts();
+    await post('fire-cart',{...localCart,nonce:nonce()});localCart=null;paintCarts();
+  }));
   // Native imaging payloads are separate from the song pointer gesture.
   let imaging=null;
   root.querySelectorAll('[data-kind="imaging"]').forEach(button=>{
@@ -213,7 +247,12 @@
       root.dataset.mode=state.mode;
       root.className=`dj-booth booth-mode-${state.mode.toLowerCase().replace('_','-')}`;
       text('led-detail',state.mixer?.auto_standby?'AUTO ON AIR · DJ READY':state.mode.replace('_',' '));text('live-mode',state.mode);
-      text('live-clock',state.clock||'None');text('auto-clock',state.clock||'No active clock');
+      text('live-clock',state.clock||'None');
+      text('auto-program','Following Auto schedule: '+(state.program||'No active program'));
+      const aired=state.current;
+      text('auto-category',state.playout_error?'Now playing category: Unavailable':aired?.source==='CART'?'Now playing: Cart':aired?.kind==='imaging'?'Now playing: Imaging':aired?.category?'Now playing category: '+aired.category:aired?'Now playing: '+(aired.source==='MANUAL'?'Manual selection':aired.source==='EVENT'?'Timed event':aired.source==='BLOCK'?'Scheduled block':'Uncategorized song'):'Now playing: No confirmed item');
+      text('auto-song',state.playout_error?'Playback connection unavailable':aired?[aired.artist,aired.title].filter(Boolean).join(' — '):'Waiting for playback');
+      systemStatus();
       text('live-transition',state.next_transition||'None');text('live-playout',state.playout_error||'Connected');
       text('live-fallback',state.fallback);text('next-event-name',state.next_event?.name||'None');
       const current=state.mode==='DJ_BOOTH' ? state.mixer?.a : (state.current || (state.playout_error ? state.last_known_current : null)), cue=state.mixer?.b;
@@ -245,7 +284,7 @@
         root.querySelector(`[data-preview-deck="${deck}"]`).disabled=!item||item.kind!=='track';
       }
       root.querySelector('.cue-disc').classList.toggle('playing',!!engine?.b&&engine.b_playing);
-      root.querySelectorAll('[data-fire-cart]').forEach(button=>button.disabled=!engine);
+      paintCarts();
       text('morph-kicker',state.playout_error?'CONNECTION DELAY · LAST OBSERVED':'NOW PLAYING');
       root.querySelectorAll('#spinning-disc,.auto-disc .disc').forEach(disc=>disc.classList.toggle('playing',!!current&&(!state.mixer||state.mixer.a_playing)));
       document.querySelector('.onair-deck').classList.remove('active');
@@ -274,7 +313,7 @@
     }catch(_){
       if(version!==refreshVersion)return;
       text('live-playout','Reconnecting — controls will recover automatically');
-      if(state)state={...state,playout_error:'Connection delayed'};autoControls();
+      if(state)state={...state,playout_error:'Connection delayed'};autoControls();paintCarts();systemStatus();
       text('morph-kicker','CONNECTION DELAY · LAST OBSERVED');programTarget=0;
       root.querySelectorAll('.deck').forEach(panel=>panel.classList.remove('mix-live','is-fading','is-incoming'));
       root.querySelectorAll('.deck-take').forEach(button=>button.classList.remove('is-live','is-incoming'));
@@ -290,8 +329,8 @@
     const current=state?.current;
     const pending=skipRequested===current?.decision_id||(command&&command.expected_decision_id===current?.decision_id&&['pending','sent'].includes(command.status));
     const skip=document.getElementById('auto-skip');
-    skip.disabled=!reliable||!current||state.mode!=='AUTO'||pending;
-    skip.textContent=pending?'SKIP REQUESTED…':'SKIP TO NEXT';
+    skip.disabled=!reliable||!current||state.mode!=='AUTO'||pending||state.cart?.locked;
+    skip.textContent=pending?(command?.status==='sent'?'FADING…':'FADE REQUESTED…'):'SKIP TO NEXT';
     const next=state?.queue?.[0];
     text('auto-next',!reliable?'NEXT: Connection unavailable':state.unknown_queue_items?'NEXT: Queue item unavailable':next?'NEXT: '+[next.artist,next.title].filter(Boolean).join(' — '):'NEXT: Queue is empty');
     document.getElementById('auto-flag').disabled=!reliable||current?.kind!=='track';
@@ -308,5 +347,5 @@
   scope.listen(document,'song-flag-saved',()=>notice('Song flag saved. Review flagged songs in Music.'));
   let polling=false,lastPoll=0;
   scope.interval(()=>{const delay=root.dataset.mode==='DJ_BOOTH'&&!document.hidden?250:2000;if(!polling&&Date.now()-lastPoll>=delay){polling=true;lastPoll=Date.now();refresh().finally(()=>polling=false);}},250);
-  scope.interval(timing,250);refresh();
+  scope.interval(systemStatus,250);scope.interval(timing,250);refresh();
 })();

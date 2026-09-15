@@ -76,3 +76,27 @@ This update is prepared and tested; installing its station configurations and re
 Auto-return validation: isolated recordings verify gradual fades from either DJ deck into scheduled audio. Worker tests cover the stop grace period, preparation, handovers, carts and restart persistence. Chromium verifies both notification paths. Engine queue behavior follows the [Liquidsoap request-source reference](https://www.liquidsoap.info/doc-2.2.5/reference/source-track-processing).
 
 The schedule uses `freo_queue`; Deck A uses `freo_a`; Deck B uses `freo_b`. The 16-field mixer observation adds Auto standby, current identity, and gain while retaining older observation parsing. The worker refills the schedule during DJ standby and only suspends scheduled blocks after a DJ deck takes air.
+
+## Auto and DJ operation status
+
+Auto **Skip to next** requests a three-second fade-out, then advances the Auto queue. The request and the engine callback both verify the expected playback identity; a song change or mode change cancels an obsolete fade. Repeated requests cannot advance additional items. Fading is unavailable while a cart is on air.
+
+Auto shows the active program, the actual on-air item's category, artist and title. The old clock-name label beside Monitor is removed. Imaging, carts and manual selections are labeled explicitly.
+
+The status bar stays visible in Auto and DJ mode. An action message lasts 15 seconds; each new message restarts that period. With no action message it rotates every five seconds between broadcast, operating mode, and station listener count. Observed connection/stream faults take priority over rotation. Listener counts come from the station's Icecast mount, polled by the worker at most once every five seconds; unavailable or stale observations never display a fabricated zero.
+
+### Exclusive carts
+
+Triggering a cart locks every cart playback button on that station. The selected slot pulses blue with **QUEUED…**, then glows red with **PLAYING** once the engine confirms its start. Completion or failure releases the lock. Losing the connection keeps the controls locked until reliable observations return. Locking is enforced on the server across operators and tabs. Other stations remain independent. Slot identity is captured with the playback request, so two slots containing the same audio still highlight correctly.
+
+### Programming edits and the next automatic song
+
+Each automatic selection saves a programming signature and its prior clock/rotation cursor positions. The worker compares committed station configuration every tick, including schedules, clock/rotation slots, category membership, eligible shared songs, imaging groups and block definitions. This covers UI edits, CLI changes and database bulk updates. Normal worker detection is within its two-second polling interval.
+
+When programming changes, a new engine command removes only outdated future automatic requests. It leaves the current source, explicit manual/event requests, DJ decks and carts intact. The worker restores the cancelled selection's cursor checkpoint and refills from current programming. Confirmed playback counts are unaffected by cancelled lookahead. A saved cancellation marker permits recovery after a worker restart. Active clock blocks keep their progress and execution snapshots.
+
+An item already starting when the edit reaches the worker is considered current and continues playing; the following automatic selection uses the change. Explicit manual/event/block playback takes precedence over automatic music. Editing an active block definition applies to future executions, not its already captured items.
+
+### Deployment for this update
+
+Back up the database and apply revision `c48f1d207ab9`. This release also changes the Liquidsoap station template: regenerate and validate every managed station configuration, then restart the station engines and the web/automation services. The worker requires the new `freo_queue.remove` and `freo_mixer.fade_next` commands. Arrange the engine restart as a broadcast maintenance operation; updating Python alone does not install these commands into a running engine.

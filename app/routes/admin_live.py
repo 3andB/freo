@@ -86,7 +86,7 @@ def action(slug, action):
         elif action=='mixer':
             set_mixer(station,current_admin(),request.form.get('control'),request.form.get('value'));message='Mixer change requested.'
         elif action=='fire-cart':
-            fire_cart(station,current_admin(),request.form.get('role'),int(request.form.get('position','0')),request.form.get('nonce'));message='Cart requested. It will play when the cart bus is free.'
+            fire_cart(station,current_admin(),request.form.get('role'),int(request.form.get('position','0')),request.form.get('nonce'));message='Cart queued. All carts are locked until playback finishes.'
         elif action=='play-b':
             play_cue_on_b(station,current_admin(),request.form.get('nonce'));message='Deck B start requested. Move the fader toward B to bring it on air.'
         elif action=='mode':set_mode(station,current_admin(),request.form.get('mode'));message='DJ booth mode changed.'
@@ -136,7 +136,7 @@ def action(slug, action):
             if not expected.isdecimal():
                 raise ValueError('Current item changed; refresh before skipping')
             request_skip(station, current_admin(), int(expected), request.form.get('nonce'))
-            message = 'Skip requested. The worker will verify the current item before advancing.'
+            message = 'Fade requested. The current song will fade out over 3 seconds before advancing.'
         if request.accept_mimetypes.best == 'application/json':
             return jsonify(ok=True, message=message)
         flash(message, 'success')

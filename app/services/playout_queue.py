@@ -26,7 +26,7 @@ def _command(slug, command):
     media_root = re.escape(str(LocalMediaStorage().root))
     music_pattern = rf'(?:freo_queue\.(?:push|insert)|freo_(?:a|b|cart)\.push) annotate:freo_decision=(?P<decision>[1-9][0-9]*)(?:,freo_gain="-?[0-9]{{1,2}}\.[0-9]{{3}} dB")?:{media_root}/(?P<owner>[a-z0-9](?:[a-z0-9-]{{0,62}}[a-z0-9])?)/originals/(?P<key>[0-9a-f]{{32}}\.mp3)'
     imaging_pattern = rf'(?:freo_queue\.(?:push|insert)|freo_(?:a|b|cart)\.push) annotate:freo_decision=[1-9][0-9]*,title="[A-Za-z0-9 ._-]{{1,120}}",artist="[A-Za-z0-9 ._-]{{1,120}}":{media_root}/{re.escape(slug)}/imaging/[0-9a-f]{{32}}\.mp3'
-    if command not in ('freo_queue.queue', 'request.on_air', 'freo_queue.skip', 'freo_queue.flush_and_skip', 'freo_program.rms', 'freo_program.current', 'freo_deck.requests') and not re.fullmatch(r'(?:freo_deck\.(?:take|fade)_[ab](?: (?:[0-9]\.[0-9]{3}|10\.000))?|freo_deck\.(?:pause|clear|future)_[ab]|request.metadata [0-9]+|freo_(?:a|b|cart)\.queue|freo_mixer\.(?:state|fade_a|clear_future|mode (?:AUTO|DJ_BOOTH)|crossfader (?:0\.[0-9]{3}|1\.000)|(?:a_play|b_play) (?:true|false)|cart_mode (?:OVER|TAKEOVER)|duck (?:0\.[0-9]{3}|1\.000)))', command) and not (re.fullmatch(music_pattern, command) or re.fullmatch(imaging_pattern, command)):
+    if command not in ('freo_queue.queue', 'request.on_air', 'freo_queue.skip', 'freo_queue.flush_and_skip', 'freo_program.rms', 'freo_program.current', 'freo_deck.requests') and not re.fullmatch(r'(?:freo_queue\.remove [0-9]+(?: [0-9]+){0,19}|freo_deck\.(?:take|fade)_[ab](?: (?:[0-9]\.[0-9]{3}|10\.000))?|freo_deck\.(?:pause|clear|future)_[ab]|request.metadata [0-9]+|freo_(?:a|b|cart)\.queue|freo_mixer\.(?:state|fade_a|fade_next [1-9][0-9]*|clear_future|mode (?:AUTO|DJ_BOOTH)|crossfader (?:0\.[0-9]{3}|1\.000)|(?:a_play|b_play) (?:true|false)|cart_mode (?:OVER|TAKEOVER)|duck (?:0\.[0-9]{3}|1\.000)))', command) and not (re.fullmatch(music_pattern, command) or re.fullmatch(imaging_pattern, command)):
         raise ValueError('Liquidsoap command is not allowlisted')
     music = re.fullmatch(music_pattern, command)
     if music and music['owner'] != slug:
@@ -233,12 +233,12 @@ def prepare_cart(decision):
     _command(decision.station.slug, f'freo_mixer.duck {decision.duck_percent/100:.3f}')
 
 
-def fade_current(slug):
-    try:
-        mixer_state(slug)
-    except (OSError, RuntimeError, ValueError):
-        return skip_current(slug)
-    return _command(slug, 'freo_mixer.fade_a')
+def fade_current(slug, expected_decision_id=None):
+    if expected_decision_id is None:
+        return _command(slug, 'freo_mixer.fade_a')
+    if type(expected_decision_id) is not int or expected_decision_id<1:
+        raise ValueError('Invalid playback identity')
+    return _command(slug, f'freo_mixer.fade_next {expected_decision_id}')
 
 
 def clear_future(slug):
@@ -254,3 +254,10 @@ def deck_control(slug, deck, action, fade_seconds=None):
             raise ValueError('Invalid fade duration')
         argument = f' {float(fade_seconds):.3f}'
     return _command(slug, f'freo_deck.{action}_{deck.lower()}{argument}')
+
+
+def remove_future(slug, request_ids):
+    if not request_ids or len(request_ids)>20 or any(type(value) is not int or value<0 for value in request_ids):
+        raise ValueError('Invalid future request list')
+    response=_command(slug,'freo_queue.remove '+' '.join(map(str,request_ids)))
+    if response != 'OK':raise RuntimeError('Queue refresh was not acknowledged')

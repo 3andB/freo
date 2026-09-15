@@ -212,7 +212,7 @@ def test_worker_skip_requires_same_observed_request(app, monkeypatch):
     monkeypatch.setattr('app.automation_worker.queued_ids', lambda slug: set())
     monkeypatch.setattr('app.automation_worker.active_ids', lambda slug: {45})
     monkeypatch.setattr('app.automation_worker.reconcile_requests', lambda slug: 0)
-    monkeypatch.setattr('app.automation_worker.skip_current', lambda slug: calls.append(slug))
+    monkeypatch.setattr('app.services.playout_queue.fade_current', lambda slug, expected: calls.append(slug))
     with app.app_context():
         station = Station.query.filter_by(slug='test-station').first()
         user = AdminUser.query.first()
@@ -382,7 +382,7 @@ def test_pending_auto_skip_rejected_after_switch_to_dj(app,monkeypatch):
     monkeypatch.setattr('app.automation_worker.queued_ids',lambda slug:set())
     monkeypatch.setattr('app.automation_worker.active_ids',lambda slug:{45})
     monkeypatch.setattr('app.automation_worker.reconcile_requests',lambda slug:0)
-    monkeypatch.setattr('app.automation_worker.skip_current',lambda slug:pytest.fail('Auto skip must not affect a DJ deck'))
+    monkeypatch.setattr('app.services.playout_queue.fade_current',lambda *args:pytest.fail('Auto skip must not affect a DJ deck'))
     with app.app_context():
         station=Station.query.filter_by(slug='test-station').one();user=AdminUser.query.first()
         current=SelectionDecision.query.filter_by(status='started').one()

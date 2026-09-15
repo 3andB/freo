@@ -299,7 +299,7 @@ def test_auto_skip_advances_once_and_counts_only_engine_starts(app,tmp_path,monk
                 def wait_current(identifier):
                     for _ in range(80):
                         observed=refresh()
-                        if observed['current'] and observed['current']['decision_id']==identifier:return observed
+                        if observed['current'] and observed['current']['decision_id']==identifier and db.session.get(SelectionDecision,identifier).status=='started':return observed
                         time.sleep(.1)
                     pytest.fail('Engine did not advance to expected Auto item')
                 observed=wait_current(rows[0].id)
@@ -307,7 +307,18 @@ def test_auto_skip_advances_once_and_counts_only_engine_starts(app,tmp_path,monk
                 assert play_counts(station.id,'track')[track.id]==baseline+1
                 command=request_skip(station,user,rows[0].id,str(uuid.uuid4()))
                 assert request_skip(station,user,rows[0].id,str(uuid.uuid4())).id==command.id
+                from app.services.playout_queue import program_rms
+                refresh()
+                levels=[]
+                for _ in range(8):
+                    time.sleep(.3);levels.append(program_rms(station.slug))
+                assert levels[0]>0 and levels[-1]<levels[0]*.5,levels
                 observed=wait_current(rows[1].id)
+                # The RMS meter averages a window; allow it to fill with the new song.
+                for _ in range(20):
+                    if program_rms(station.slug)>levels[-1]*2:break
+                    time.sleep(.1)
+                assert program_rms(station.slug)>levels[-1]*2
                 assert command.status=='sent'
                 assert observed['queue'][0]['decision_id']==rows[2].id
                 assert request_skip(station,user,rows[0].id,str(uuid.uuid4())).id==command.id

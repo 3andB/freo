@@ -45,6 +45,14 @@ def program_queue()
       "ERROR unavailable event audio"
     end
   end
+  # Atomic future-only removal preserves the current request and manual/event order.
+  server.register(namespace="freo_queue", "remove", fun (value) -> begin
+    ids = string.split(separator=" ", value)
+    retained = list.filter(fun (r) -> not list.mem(string(request.id(r)), ids), all_requests())
+    set_queue(retained)
+    ignore(source.fetch())
+    "OK"
+  end)
   server.register(namespace="freo_queue", "push", push)
   server.register(namespace="freo_queue", "insert", insert)
   server.register(namespace="freo_queue", "queue", fun (_) -> string.concat(separator=" ", list.map(fun (r) -> string(request.id(r)), all_requests())))
@@ -63,6 +71,7 @@ b_play = ref(false)
 cart_takeover = ref(false)
 duck = ref(0.5)
 schedule_fade_end = ref(0.0)
+schedule_fade_generation = ref(0)
 fade_end = ref(0.0)
 b_fade_end = ref(0.0)
 auto_from = ref(1.0)
@@ -79,7 +88,7 @@ def confirm(metadata)
     file.write(append=true, perms=0o640, __EVENT_FILE__, data=value ^ " " ^ string.float(time()) ^ "\n")
   end
 end
-queue.on_track(fun (_) -> schedule_fade_end := 0.0)
+queue.on_track(fun (_) -> begin schedule_fade_generation := schedule_fade_generation()+1; schedule_fade_end := 0.0 end)
 deck_a.on_track(fun (metadata) -> begin a_decision := decision(metadata); fade_end := 0.0 end)
 deck_b.on_track(fun (metadata) -> begin b_decision := decision(metadata); b_fade_end := 0.0 end)
 cart.on_track(fun (metadata) -> begin cart_decision := decision(metadata); confirm(metadata) end)
@@ -158,6 +167,7 @@ def set_mode(value)
       a_generation := a_generation()+1
       b_generation := b_generation()+1
       fade_end := 0.0; b_fade_end := 0.0
+      schedule_fade_generation := schedule_fade_generation()+1; schedule_fade_end := 0.0
       if value == "DJ_BOOTH" then
         # Auto has its own source: entering the booth never touches its song.
         deck_a.set_queue([]); deck_a.skip(); a_decision := ""
@@ -193,17 +203,27 @@ server.register(namespace="freo_mixer", "duck", fun (value) -> begin
   value = float_of_string(default=-1.0, value)
   if value < 0.0 or value > 1.0 then "ERROR invalid gain" else duck := value; "OK" end
 end)
-server.register(namespace="freo_mixer", "fade_a", fun (_) -> begin
+def fade_auto(expected_decision)
   current = queue.current()
-  expected = if null.defined(current) then request.id(null.get(current)) else -1 end
-  schedule_fade_end := time()+3.0
-  thread.run(delay=3.0, fun () -> begin
-    current = queue.current()
-    if null.defined(current) and request.id(null.get(current)) == expected then queue.skip() end
-    schedule_fade_end := 0.0
-  end)
-  "OK"
-end)
+  if mode() != "AUTO" or null.defined(cart.current()) or not null.defined(current) then "ERROR Auto source unavailable"
+  elsif expected_decision != "" and decision(request.metadata(null.get(current))) != expected_decision then "ERROR current changed"
+  else
+    expected = request.id(null.get(current))
+    schedule_fade_generation := schedule_fade_generation()+1
+    generation = schedule_fade_generation()
+    schedule_fade_end := time()+3.0
+    thread.run(delay=3.0, fun () -> begin
+      current = queue.current()
+      if schedule_fade_generation() == generation then
+        if mode() == "AUTO" and null.defined(current) and request.id(null.get(current)) == expected then queue.skip() end
+        schedule_fade_end := 0.0
+      end
+    end)
+    "OK"
+  end
+end
+server.register(namespace="freo_mixer", "fade_a", fun (_) -> fade_auto(""))
+server.register(namespace="freo_mixer", "fade_next", fade_auto)
 def schedule_fade_gain() = if schedule_fade_end() > 0.0 then max(0.0,min(1.0,(schedule_fade_end()-time())/3.0)) else 1.0 end end
 def fade_gain() = if fade_end() > 0.0 then max(0.0, min(1.0, (fade_end()-time())/max(0.001, a_fade_duration()))) else 1.0 end end
 def b_fade_gain() = if b_fade_end() > 0.0 then max(0.0, min(1.0, (b_fade_end()-time())/max(0.001, b_fade_duration()))) else 1.0 end end

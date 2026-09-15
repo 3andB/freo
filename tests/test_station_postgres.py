@@ -98,3 +98,32 @@ def test_concurrent_flags_keep_one_station_review_and_reject_lost_updates(monkey
         row=SongFlag.query.filter_by(station_id=station_id).one()
         assert row.revision==2
         db.session.remove();db.engine.dispose()
+
+
+def test_concurrent_cart_fire_accepts_only_one_operator(monkeypatch):
+    import uuid
+    from datetime import datetime,timezone
+    from app.models import AdminUser,Track,LiveCartSlot,LiveQueueSnapshot,SelectionDecision
+    from app.services.live_assist import fire_cart
+    monkeypatch.setenv('DATABASE_URL',os.environ['FREO_TEST_POSTGRES_URL'])
+    monkeypatch.setenv('FREO_ENV_FILE','/dev/null');monkeypatch.setenv('SECRET_KEY','test-only')
+    monkeypatch.setattr('app.services.media_storage.LocalMediaStorage.regular_file',lambda *a:'/safe')
+    app=create_app('testing')
+    with app.app_context():
+        song=Track.query.first();station=Station.query.filter_by(id=song.station_id).one();station.desired_state='running'
+        station_id=station.id;user_id=AdminUser.query.first().id
+        db.session.add(LiveQueueSnapshot(station_id=station_id,observed_at=datetime.now(timezone.utc),queued_decision_ids=[],unknown_count=0,mixer={'mode':'AUTO','cart_id':None}))
+        for pos in (1,2):db.session.add(LiveCartSlot(station_id=station_id,role='HOT',position=pos,track_id=song.id))
+        db.session.commit()
+    barrier=Barrier(2)
+    def fire(pos):
+        with app.app_context():
+            station=db.session.get(Station,station_id);user=db.session.get(AdminUser,user_id)
+            barrier.wait(timeout=10)
+            try:fire_cart(station,user,'HOT',pos,str(uuid.uuid4()));return True
+            except ValueError as error:
+                db.session.rollback();assert 'already queued' in str(error);return False
+    with ThreadPoolExecutor(max_workers=2) as pool:assert sum(pool.map(fire,(1,2)))==1
+    with app.app_context():
+        assert SelectionDecision.query.filter_by(station_id=station_id,playback_bus='CART').count()==1
+        db.session.remove();db.engine.dispose()

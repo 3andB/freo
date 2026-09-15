@@ -25,6 +25,7 @@ class EventReader:
         self.dj_has_played = set()
         self.dj_stopped_since = {}
         self.auto_return_until = {}
+        self.programming_signatures = {}
 
     def collect(self, slug):
         path = EVENT_ROOT / slug / 'events.log'
@@ -126,7 +127,8 @@ def reconcile_requests(slug):
             continue
         if row.socket_identity != identity or row.liquidsoap_request_id not in live:
             row.status = 'failed'
-            row.reason = 'playout_restarted' if row.socket_identity != identity else 'request_not_started'
+            if row.reason != 'programming_refresh_pending':
+                row.reason = 'playout_restarted' if row.socket_identity != identity else 'request_not_started'
             changed += 1
     if changed:
         for row in rows:
@@ -301,9 +303,9 @@ def process_manual(station, reader):
                     station.automation.crossfader = 0.0
                     station.automation.deck_a_playing = True
             else:
-                if command.action == 'FADE':
+                if command.action in ('FADE','SKIP'):
                     from app.services.playout_queue import fade_current
-                    fade_current(slug)
+                    fade_current(slug,current.id)
                 else:
                     skip_current(slug)
                 if current.block_item_execution and current.block_item_execution.state == 'STARTED':
@@ -369,6 +371,9 @@ def observe_queue(station, error_code=None):
     if snapshot is None:
         snapshot = LiveQueueSnapshot(station_id=station.id, observed_at=datetime.now(timezone.utc), queued_decision_ids=[])
         db.session.add(snapshot)
+    from app.services.broadcast_status import observation
+    snapshot.broadcast_online,snapshot.listeners=observation(station.slug)
+    snapshot.broadcast_observed_at=datetime.now(timezone.utc)
     snapshot.error_code = error_code
     if error_code:
         snapshot.program_rms = None
@@ -618,6 +623,12 @@ def tick(reader, target_depth=2):
                     occurrence.state='MISSED';occurrence.failure_reason='dj_control'
                 state.worker_heartbeat_at=now;state.observed_queue_depth=queue_depth(slug)
                 db.session.commit();observe_queue(state.station);continue
+            from app.services.programming_refresh import signature,refresh
+            current_signature=signature(state.station)
+            if reader.programming_signatures.get(slug)!=current_signature:
+                reader.starved_until.pop(slug,None)
+            refresh(state.station,reader,current_signature)
+            reader.programming_signatures[slug]=current_signature
             # Hard timed events must not skip the outgoing DJ source mid-fade.
             returning=time.monotonic()<reader.auto_return_until.get(slug,0)
             event_seconds = None if returning else process_timed_events(state.station, reader)
@@ -633,15 +644,6 @@ def tick(reader, target_depth=2):
                 observe_queue(state.station)
                 continue
             programming = resolve(state.station)
-            from app.models import ClockState
-            prior_clock = db.session.get(ClockState, state.station_id)
-            next_key = programming.occurrence_key if programming.clock else f'default:{state.default_clock_id}' if state.default_clock_id else None
-            if prior_clock and prior_clock.occurrence_key and prior_clock.occurrence_key != next_key and automatic_future_only(state.station):
-                from app.services.playout_queue import clear_future
-                try:
-                    clear_future(slug)
-                except (OSError, RuntimeError, ValueError):
-                    pass
             has_clock = bool(programming.clock or usable_clock(state.default_clock, state.station_id))
             has_rotation = bool(state.active_rotation and state.active_rotation.enabled and any(slot.enabled for slot in state.active_rotation.slots))
             if not has_clock and not has_rotation:

@@ -58,7 +58,17 @@ def return_to_schedule(station, user=None, reason='Returning to the schedule wit
     return state
 
 
-def queue_playable(station, user, kind, identifier, nonce, *, bus='A', cart_mode='OVER', duck_percent=50):
+def pending_cart(station):
+    snapshot=db.session.get(LiveQueueSnapshot,station.id)
+    pending=SelectionDecision.status.in_(('selected','submitting','queued'))
+    if snapshot:
+        pending=db.or_(pending,db.and_(SelectionDecision.status=='started',SelectionDecision.started_at>snapshot.observed_at))
+    return SelectionDecision.query.filter_by(station_id=station.id,playback_bus='CART').filter(pending).order_by(SelectionDecision.id).first()
+
+
+def queue_playable(station, user, kind, identifier, nonce, *, bus='A', cart_mode='OVER', duck_percent=50, cart_role=None, cart_position=None):
+    from app.services.stations import allocation_lock
+    allocation_lock()
     nonce = _nonce(nonce)
     if bus not in ('A','B','CART'):
         raise ValueError('Invalid broadcast destination')
@@ -71,9 +81,13 @@ def queue_playable(station, user, kind, identifier, nonce, *, bus='A', cart_mode
     db.session.query(Station.id).filter_by(id=station.id).with_for_update().first()
     existing = SelectionDecision.query.filter_by(idempotency_key=nonce).first()
     if existing:
-        if existing.station_id == station.id and existing.admin_user_id == user.id and existing.selection_method == f'manual_{kind}' and existing.playback_bus == bus and (existing.track and existing.track.uuid == identifier or existing.imaging_asset and existing.imaging_asset.uuid == identifier):
+        if existing.station_id == station.id and existing.admin_user_id == user.id and existing.selection_method == f'manual_{kind}' and existing.playback_bus == bus and existing.cart_role == cart_role and existing.cart_position == cart_position and (existing.track and existing.track.uuid == identifier or existing.imaging_asset and existing.imaging_asset.uuid == identifier):
             return existing
         raise ValueError('Operation token was already used')
+    if bus == 'CART':
+        observed = require_mixer(station)
+        if observed.get('cart_id') or pending_cart(station):
+            raise ValueError('A cart is already queued or playing. Wait until it finishes.')
     if not station.enabled or station.desired_state != 'running':
         raise ValueError('Station is not running')
     if kind == 'track':
@@ -101,7 +115,7 @@ def queue_playable(station, user, kind, identifier, nonce, *, bus='A', cart_mode
     row = SelectionDecision(station_id=station.id, track_id=playable.id if kind == 'track' else None,
         imaging_asset_id=playable.id if kind == 'imaging' else None,
         selection_method=f'manual_{kind}', admin_user_id=user.id,
-        idempotency_key=nonce, status='selected', reason='operator_queue_end', playback_bus=bus, cart_mode=cart_mode, duck_percent=duck_percent)
+        idempotency_key=nonce, status='selected', reason='operator_queue_end', playback_bus=bus, cart_mode=cart_mode, duck_percent=duck_percent,cart_role=cart_role,cart_position=cart_position)
     db.session.add(row)
     db.session.flush()
     audit('manual_track_queued' if kind == 'track' else 'manual_imaging_queued',
@@ -124,7 +138,7 @@ def request_skip(station, user, expected_decision_id, nonce):
     if pending:
         return pending
     current = SelectionDecision.query.filter_by(id=expected_decision_id, station_id=station.id, status='started').first()
-    if current is None or not station.enabled or station.desired_state != 'running':
+    if current is None or current.playback_bus == 'CART' or not station.enabled or station.desired_state != 'running':
         raise ValueError('Current item changed; refresh before skipping')
     snapshot = db.session.get(LiveQueueSnapshot, station.id)
     if snapshot and (snapshot.current_decision_id != current.id or snapshot.error_code or
@@ -285,7 +299,7 @@ def fire_cart(station, user, role, position, nonce):
     if not slot or not slot.playable:
         raise ValueError('Assign audio to this cart first')
     return queue_playable(station, user, 'track' if slot.track else 'imaging', slot.playable.uuid, nonce,
-                          bus='CART', cart_mode=slot.playback_mode, duck_percent=slot.duck_percent)
+                          bus='CART', cart_mode=slot.playback_mode, duck_percent=slot.duck_percent,cart_role=role,cart_position=position)
 
 
 def play_cue_on_b(station, user, nonce):
@@ -323,7 +337,7 @@ def request_abort_block(station, user, execution_id):
 
 
 def safe_item(row):
-    source = 'BLOCK' if row.selection_method == 'event_block' else 'EVENT' if row.selection_method == 'timed_event' else 'MANUAL' if row.admin_user_id else 'AUTO'
+    source = 'CART' if row.playback_bus == 'CART' else 'BLOCK' if row.selection_method == 'event_block' else 'EVENT' if row.selection_method == 'timed_event' else 'MANUAL' if row.admin_user_id else 'AUTO'
     if row.track:
         return dict(decision_id=row.id, kind='track', title=row.track.title,
                     artist=row.track.artist,album=row.track.album,category=row.category.name if row.category else None,source=source,
@@ -394,10 +408,21 @@ def status(station):
         snapshot_mixer = None
     deck_command = LiveControlCommand.query.filter_by(station_id=station.id).filter(LiveControlCommand.action.like('DECK_%')).order_by(LiveControlCommand.id.desc()).first()
     skip_command=LiveControlCommand.query.filter_by(station_id=station.id,action='SKIP').order_by(LiveControlCommand.id.desc()).first()
+    cart_pending=pending_cart(station)
+    last_cart=SelectionDecision.query.filter_by(station_id=station.id,playback_bus='CART').order_by(SelectionDecision.id.desc()).first()
+    cart_id=(snapshot_mixer or {}).get('cart_id')
+    cart_row=db.session.get(SelectionDecision,cart_id) if cart_id else cart_pending
+    if cart_row and cart_row.station_id != station.id:cart_row=None
+    broadcast_fresh=bool(snapshot and snapshot.broadcast_observed_at and (datetime.now(timezone.utc)-snapshot.broadcast_observed_at.replace(tzinfo=snapshot.broadcast_observed_at.tzinfo or timezone.utc)).total_seconds()<15)
     mode_notice=AuditEvent.query.filter_by(station_id=station.id,action='live_auto_return').order_by(AuditEvent.id.desc()).first()
     return dict(mode_notice=dict(id=mode_notice.id,message=mode_notice.summary) if mode_notice else None,station=station.slug, automation='HELD' if state and state.hold and not (snapshot_mixer or {}).get('auto_standby') else 'RUNNING' if state and state.enabled else 'DISABLED',mode=state.operator_mode if state else 'AUTO',cue=cue,
         current=current, mixer=snapshot_mixer, deck_command=(dict(id=deck_command.id,status=deck_command.status,deck=deck_command.deck,operation=deck_command.action.removeprefix('DECK_'),error=deck_command.error_code) if deck_command else None), last_known_current=last_known, observation_fresh=reliable, observed_at=snapshot.observed_at.isoformat() if snapshot else None, queue=queue, unknown_queue_items=unknown,
         skip_command=dict(id=skip_command.id,status=skip_command.status,expected_decision_id=skip_command.expected_decision_id,error=skip_command.error_code) if skip_command else None,
+        cart=dict(locked=not reliable or bool(cart_id or cart_pending),decision_id=cart_row.id if cart_row else None,role=cart_row.cart_role if cart_row else None,position=cart_row.cart_position if cart_row else None,state=('playing' if cart_id and cart_row and cart_row.started_at else 'queued') if cart_row else 'idle'),
+        cart_result=dict(id=last_cart.id,status=last_cart.status,error=last_cart.reason) if last_cart else None,
+        broadcast=dict(online=snapshot.broadcast_online if broadcast_fresh else None,listeners=snapshot.listeners if broadcast_fresh else None),
+        desired_state=station.desired_state,
+        program=programming.program.name if programming.program else programming.clock.name if programming.clock else state.default_clock.name if state and state.default_clock else state.active_rotation.name if state and state.active_rotation else None,
         program_rms=snapshot.program_rms if fresh else None,
         fallback='Possible' if not current and not live_error and station.desired_state == 'running' else 'Not observed',
         playout_error=live_error, recent=[safe_item(row) for row in recent],
