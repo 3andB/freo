@@ -130,6 +130,12 @@ def cue_track(station, user, identifier):
     if track is None:
         raise ValueError('Song is unavailable for this station')
     LocalMediaStorage().regular_file(station.slug, track.storage_key)
+    if station.automation.cued_track_id == track.id:
+        return track
+    # Deck B is a real request in Liquidsoap's observed queue. With DJ Booth
+    # refill held, it naturally becomes the next deck when Deck A finishes.
+    queued = queue_playable(station, user, 'track', track.uuid, str(uuid.uuid4()))
+    queued.reason = 'operator_cue'
     station.automation.cued_track_id = track.id
     audit('live_cue_loaded', user_id=user.id, station_id=station.id,
         target_type='track', target_id=track.uuid, summary='Song loaded into cue deck')
@@ -210,7 +216,8 @@ def safe_item(row):
                     duration_ms=row.track.duration_ms, uuid=row.track.uuid,
                     bpm=row.track.bpm, genre=row.track.genre,
                     year=row.track.release_year, loudness_lufs=row.track.loudness_lufs,
-                    album_id=row.track.album_id, bitrate_kbps=row.track.bitrate_kbps)
+                    album_id=row.track.album_id, bitrate_kbps=row.track.bitrate_kbps,
+                    deck='B' if row.reason == 'operator_cue' else 'A')
     if row.imaging_asset:
         asset = row.imaging_asset
         return dict(decision_id=row.id, kind='imaging', title=asset.name,

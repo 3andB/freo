@@ -21,6 +21,7 @@ def test_live_auth_csrf_and_idor(app):
     base = '/admin/stations/test-station/live'
     assert anonymous.get(base).status_code == 302
     assert anonymous.get('/admin/api/stations/test-station/live-status').status_code == 302
+    assert anonymous.get('/admin/api/stations/test-station/song-search?q=test').status_code == 302
     assert anonymous.post(base + '/hold').status_code == 302
     client = admin_client(app)
     assert client.post(base + '/hold').status_code == 400
@@ -64,6 +65,8 @@ def test_cue_deck_and_fade_are_durable_worker_intents(app, monkeypatch):
         track=Track.query.first();current=SelectionDecision.query.filter_by(status='started').first()
         cue_track(station,user,track.uuid)
         assert station.automation.cued_track_id == track.id
+        queued=SelectionDecision.query.filter_by(station_id=station.id,reason='operator_cue').one()
+        assert queued.track_id == track.id and queued.status == 'selected'
         command=request_fade(station,user,current.id,str(uuid.uuid4()))
         assert command.action == 'FADE' and command.status == 'pending'
 

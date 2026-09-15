@@ -57,6 +57,18 @@ def live_status(slug):
     return jsonify(status(station_for_operator(slug)))
 
 
+@admin_live_blueprint.get('/admin/api/stations/<slug>/song-search')
+@admin_required
+def song_search(slug):
+    station=station_for_operator(slug);term=request.args.get('q','').strip()[:100]
+    query=Track.query.filter_by(station_id=station.id,enabled=True,ingest_status='accepted',decommissioned_at=None)
+    if term:
+        pattern='%' + term.replace('\\','\\\\').replace('%','\\%').replace('_','\\_') + '%'
+        query=query.filter(or_(Track.title.ilike(pattern,escape='\\'),Track.artist.ilike(pattern,escape='\\'),Track.album.ilike(pattern,escape='\\')))
+    tracks=query.order_by(Track.artist,Track.title).limit(50).all()
+    return jsonify([{'uuid':x.uuid,'title':x.title,'artist':x.artist,'album':x.album,'bpm':x.bpm,'duration_ms':x.duration_ms} for x in tracks])
+
+
 @admin_live_blueprint.post('/admin/stations/<slug>/live/<action>')
 @admin_required
 def action(slug, action):

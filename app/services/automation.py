@@ -363,6 +363,8 @@ def playback_started(decision_id, slug, now=None):
         return False
     decision.status = 'started'
     decision.started_at = now or datetime.now(timezone.utc)
+    if decision.track_id and decision.station.automation and decision.station.automation.cued_track_id == decision.track_id:
+        decision.station.automation.cued_track_id = None
     from app.services.event_blocks import confirm_item_started
     confirm_item_started(decision, decision.started_at)
     from app.models import TimedEventOccurrence
