@@ -205,8 +205,9 @@ def process_manual(station, reader):
         else:
             row.status = 'selected'
     db.session.commit()
+    takeover_targets=db.session.query(LiveControlCommand.target_decision_id).filter_by(station_id=station.id,status='pending',action='TAKEOVER')
     pending = SelectionDecision.query.filter_by(station_id=station.id, status='selected').filter(
-        SelectionDecision.admin_user_id.isnot(None)).order_by(SelectionDecision.id).all()
+        SelectionDecision.admin_user_id.isnot(None),~SelectionDecision.id.in_(takeover_targets)).order_by(SelectionDecision.id).all()
     for row in pending:
         if queue_depth(slug) >= 20:
             break
@@ -230,6 +231,13 @@ def process_manual(station, reader):
         try:
             if not current or current.socket_identity != identity or current.liquidsoap_request_id not in active_ids(slug):
                 command.status, command.error_code = 'failed', 'current_changed'
+            elif command.action=='TAKEOVER':
+                target=command.target_decision
+                if not target or target.status!='selected':command.status,command.error_code='failed','target_changed'
+                else:
+                    # Persist the in-flight target before the destructive skip.
+                    # A failed submit is terminal so a retry cannot skip a second item.
+                    target.status='submitting';db.session.commit();interrupt_for_event(slug);target.liquidsoap_request_id=push_decision(target);target.socket_identity=identity;target.status='queued';command.status='sent'
             else:
                 skip_current(slug)
                 if current.block_item_execution and current.block_item_execution.state == 'STARTED':
@@ -240,7 +248,15 @@ def process_manual(station, reader):
             db.session.commit()
         except (OSError, RuntimeError, ValueError):
             db.session.rollback()
-            logger.exception('Skip failed station=%s command=%s', slug, command.id)
+            failed = db.session.get(LiveControlCommand, command.id)
+            failed.status = 'failed'
+            failed.error_code = 'takeover_failed' if failed.action == 'TAKEOVER' else 'control_failed'
+            failed.processed_at = datetime.now(timezone.utc)
+            if failed.target_decision and failed.target_decision.status in ('selected', 'submitting'):
+                failed.target_decision.status = 'failed'
+                failed.target_decision.reason = 'manual_takeover_failed'
+            db.session.commit()
+            logger.exception('Live control failed station=%s command=%s', slug, command.id)
             break
 
 

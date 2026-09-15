@@ -304,6 +304,7 @@ class AutomationState(db.Model):
     active_rotation_id = db.Column(db.Integer, db.ForeignKey('rotations.id', ondelete='SET NULL'))
     enabled = db.Column(db.Boolean, nullable=False, default=False)
     hold = db.Column(db.Boolean, nullable=False, default=False)
+    operator_mode = db.Column(db.String(16), nullable=False, default='AUTO')
     next_slot_index = db.Column(db.Integer, nullable=False, default=0)
     track_separation_seconds = db.Column(db.Integer, nullable=False, default=0)
     artist_separation_seconds = db.Column(db.Integer, nullable=False, default=0)
@@ -518,19 +519,28 @@ class SelectionDecision(db.Model):
 class LiveControlCommand(db.Model):
     """Worker-mediated skip only; never a generic socket command table."""
     __tablename__ = 'live_control_commands'
-    __table_args__ = (db.CheckConstraint("status IN ('pending','sent','failed')", name='ck_live_control_status'),)
+    __table_args__ = (db.CheckConstraint("status IN ('pending','sent','failed')", name='ck_live_control_status'),db.CheckConstraint("action IN ('SKIP','TAKEOVER')",name='ck_live_control_action'))
     id = db.Column(db.Integer, primary_key=True)
     station_id = db.Column(db.Integer, db.ForeignKey('stations.id', ondelete='CASCADE'), nullable=False, index=True)
     admin_user_id = db.Column(db.Integer, db.ForeignKey('admin_users.id', ondelete='SET NULL'))
     idempotency_key = db.Column(db.String(36), nullable=False, unique=True)
     expected_decision_id = db.Column(db.Integer, db.ForeignKey('selection_decisions.id', ondelete='SET NULL'))
+    target_decision_id = db.Column(db.Integer, db.ForeignKey('selection_decisions.id', ondelete='SET NULL'))
+    action = db.Column(db.String(12), nullable=False, default='SKIP')
     status = db.Column(db.String(12), nullable=False, default='pending')
     created_at = db.Column(db.DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
     processed_at = db.Column(db.DateTime(timezone=True))
     error_code = db.Column(db.String(40))
     station = db.relationship('Station')
     operator = db.relationship('AdminUser')
-    expected_decision = db.relationship('SelectionDecision')
+    expected_decision = db.relationship('SelectionDecision',foreign_keys=[expected_decision_id])
+    target_decision = db.relationship('SelectionDecision',foreign_keys=[target_decision_id])
+
+
+class LiveCartSlot(db.Model):
+    __tablename__='live_cart_slots'
+    __table_args__=(db.UniqueConstraint('station_id','role','position',name='uq_live_cart_station_role_position'),db.CheckConstraint("role IN ('HOT','ID')",name='ck_live_cart_role'),db.CheckConstraint("(role='HOT' AND position BETWEEN 1 AND 8) OR (role='ID' AND position BETWEEN 1 AND 4)",name='ck_live_cart_position'))
+    id=db.Column(db.Integer,primary_key=True);station_id=db.Column(db.Integer,db.ForeignKey('stations.id',ondelete='CASCADE'),nullable=False,index=True);role=db.Column(db.String(4),nullable=False);position=db.Column(db.Integer,nullable=False);imaging_asset_id=db.Column(db.Integer,db.ForeignKey('imaging_assets.id',ondelete='SET NULL'));label=db.Column(db.String(40),nullable=False,default='');imaging_asset=db.relationship('ImagingAsset');station=db.relationship('Station')
 
 
 class LiveQueueSnapshot(db.Model):

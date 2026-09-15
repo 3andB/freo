@@ -1,62 +1,17 @@
 (() => {
-  const root = document.getElementById('live-strip');
-  if (!root) return;
-  const picker = document.querySelector('.station-picker');
-  if (picker) picker.addEventListener('submit', event => {
-    event.preventDefault();
-    const slug = picker.querySelector('select[name="station"]').value;
-    if (/^[a-z0-9-]{1,64}$/.test(slug)) location.assign(`/admin/stations/${encodeURIComponent(slug)}/live`);
-  });
-  const text = (id, value) => { const el = document.getElementById(id); if (el) el.textContent = value; };
-  const fill = (id, items, empty) => {
-    const list = document.getElementById(id);
-    list.replaceChildren();
-    if (!items.length) { const li = document.createElement('li'); li.className = 'empty-copy'; li.textContent = empty; list.append(li); return; }
-    for (const item of items) {
-      const li = document.createElement('li');
-      const b = document.createElement('b'); b.textContent = item.title;
-      const small = document.createElement('small'); small.textContent = `${item.artist} · ${item.source}${item.started_at ? ' · ' + item.started_at : ''}`;
-      li.append(b, small); list.append(li);
-    }
-  };
-  async function refresh() {
-    try {
-      const response = await fetch(root.dataset.statusUrl, {credentials: 'same-origin', cache: 'no-store'});
-      if (!response.ok) throw new Error('status');
-      const data = await response.json();
-      text('live-mode', data.automation);
-      text('live-clock', data.clock || 'No active clock');
-      text('live-transition', data.next_transition || 'No next transition');
-      text('live-playout', data.playout_error || 'Connected');
-      text('live-fallback', `Fallback: ${data.fallback}`);
-      text('next-event-name', data.next_event?.name || 'None scheduled');
-      const eventDetail = document.getElementById('next-event-detail');
-      eventDetail.dataset.at = data.next_event?.scheduled_for || '';
-      const overrun = data.next_event?.estimated_current_overrun_seconds;
-      eventDetail.textContent = data.next_event ? `${data.next_event.timing_mode} · ${data.next_event.state}${overrun == null ? '' : ` · current estimate ${overrun > 0 ? '+' : ''}${overrun}s`}` : 'Timed events remain active during automation hold.';
-      text('queue-count', String(data.queue.length));
-      const current = document.getElementById('live-current');
-      current.replaceChildren();
-      const title = document.createElement('strong'); title.textContent = data.current?.title || 'No approved request observed on air';
-      const detail = document.createElement('span'); detail.textContent = data.current ? `${data.current.artist} · ${data.current.source}` : 'Generated fallback may be active.';
-      current.append(title, detail);
-      document.getElementById('skip-decision').value = data.current?.decision_id || '';
-      document.querySelector('#skip-form button').disabled = !data.current;
-      fill('live-queue', data.queue, 'Queue is empty.');
-      fill('live-recent', data.recent, 'No confirmed starts yet.');
-    } catch { text('live-playout', 'Status unavailable'); }
-  }
-  function countdown() {
-    const at = document.getElementById('next-event-detail').dataset.at;
-    if (!at) return text('event-countdown', '');
-    const seconds = Math.round((Date.parse(at) - Date.now()) / 1000);
-    const sign = seconds < 0 ? '+' : '';
-    const value = Math.abs(seconds);
-    text('event-countdown', `${sign}${Math.floor(value / 60)}:${String(value % 60).padStart(2, '0')}`);
-  }
-  document.querySelectorAll('.live-results form, .cart-wall form, #skip-form').forEach(form => form.addEventListener('submit', () => {
-    form.querySelector('button').disabled = true;
-  }));
-  setInterval(refresh, 3000);
-  countdown(); setInterval(countdown, 1000);
+  const root=document.getElementById('dj-booth');if(!root)return;let state=null,drag=null;
+  const text=(id,value)=>{const el=document.getElementById(id);if(el)el.textContent=value;};
+  const post=async(url,data)=>{const body=new FormData();body.set('csrf',root.dataset.csrf);for(const [key,value] of Object.entries(data))body.set(key,value);const response=await fetch(url,{method:'POST',body,credentials:'same-origin'});if(!response.ok)throw new Error('control');location.reload();};
+  const queueUrl=root.dataset.takeoverUrl.replace('/takeover','/queue-track');
+  document.querySelectorAll('[draggable=true]').forEach(node=>node.addEventListener('dragstart',()=>drag={kind:node.dataset.kind,id:node.dataset.id}));
+  const next=document.querySelector('.up-next');next.addEventListener('dragover',event=>{if(drag?.kind==='track'){event.preventDefault();next.classList.add('drop-active');}});next.addEventListener('dragleave',()=>next.classList.remove('drop-active'));next.addEventListener('drop',event=>{event.preventDefault();next.classList.remove('drop-active');if(drag?.kind==='track')post(queueUrl,{identifier:drag.id,nonce:crypto.randomUUID()});});
+  const deck=document.getElementById('now-drop');deck.addEventListener('dragover',event=>{if(drag?.kind==='track'&&state?.current){event.preventDefault();deck.classList.add('drop-active');}});deck.addEventListener('dragleave',()=>deck.classList.remove('drop-active'));deck.addEventListener('drop',event=>{event.preventDefault();deck.classList.remove('drop-active');if(drag?.kind==='track'&&state?.current&&confirm('Take over the current song with this track?'))post(root.dataset.takeoverUrl,{identifier:drag.id,expected_decision_id:state.current.decision_id,nonce:crypto.randomUUID()});});
+  document.querySelectorAll('.hot-cart,.id-cart').forEach(slot=>{slot.addEventListener('dragover',event=>{if(drag?.kind==='imaging'){event.preventDefault();slot.classList.add('drop-active');}});slot.addEventListener('dragleave',()=>slot.classList.remove('drop-active'));slot.addEventListener('drop',event=>{event.preventDefault();slot.classList.remove('drop-active');if(drag?.kind==='imaging')post(root.dataset.takeoverUrl.replace('/takeover','/assign-cart'),{identifier:drag.id,role:slot.dataset.role,position:slot.dataset.position});});});
+  document.querySelectorAll('.song-card').forEach(card=>card.addEventListener('dblclick',()=>post(queueUrl,{identifier:card.dataset.id,nonce:crypto.randomUUID()})));
+  const monitor=document.getElementById('booth-monitor'),monitorButton=document.getElementById('monitor-button');let audioContext=null;
+  monitorButton.addEventListener('click',async()=>{if(monitor.paused){await monitor.play();monitorButton.textContent='MUTE MONITOR';if(!audioContext){audioContext=new AudioContext();const source=audioContext.createMediaElementSource(monitor),split=audioContext.createChannelSplitter(2),left=audioContext.createAnalyser(),right=audioContext.createAnalyser(),leftData=new Uint8Array(left.fftSize),rightData=new Uint8Array(right.fftSize);source.connect(split);source.connect(audioContext.destination);split.connect(left,0);split.connect(right,1);const level=(analyser,data)=>{analyser.getByteTimeDomainData(data);return Math.min(1,data.reduce((sum,value)=>sum+Math.abs(value-128),0)/data.length/42);};const meter=()=>{document.getElementById('vu-left').value=level(left,leftData);document.getElementById('vu-right').value=level(right,rightData);requestAnimationFrame(meter);};meter();}}else{monitor.pause();monitorButton.textContent='MONITOR';}});
+  const fill=(id,items,empty)=>{const list=document.getElementById(id);list.replaceChildren();if(!items.length){const li=document.createElement('li');li.className='empty-copy';li.textContent=empty;list.append(li);return;}items.forEach((item,index)=>{const li=document.createElement('li'),number=document.createElement('span'),copy=document.createElement('div'),title=document.createElement('b'),small=document.createElement('small');number.className='queue-index';number.textContent=index+1;title.textContent=item.title;small.textContent=`${item.artist} · ${item.source}`;copy.append(title,small);li.append(number,copy);list.append(li);});};
+  function timing(){const current=state?.current;if(!current?.started_at||!current.duration_ms){text('elapsed','0:00');text('remaining','—:—');document.getElementById('time-progress').style.width='0';return;}const elapsed=Math.max(0,Date.now()-Date.parse(current.started_at)),remaining=Math.max(0,current.duration_ms-elapsed),clock=ms=>`${Math.floor(ms/60000)}:${String(Math.floor(ms/1000)%60).padStart(2,'0')}`;text('elapsed',clock(elapsed));text('remaining',`-${clock(remaining)}`);document.getElementById('time-progress').style.width=`${Math.min(100,elapsed/current.duration_ms*100)}%`;}
+  async function refresh(){try{const response=await fetch(root.dataset.statusUrl,{credentials:'same-origin',cache:'no-store'});if(!response.ok)throw new Error();state=await response.json();text('live-mode',state.mode);text('live-clock',state.clock||'None');text('live-transition',state.next_transition||'None');text('live-playout',state.playout_error||'Connected');text('live-fallback',state.fallback);text('next-event-name',state.next_event?.name||'None');text('current-source',state.current?.source||'FALLBACK');const copy=document.getElementById('live-current');copy.querySelector('h2').textContent=state.current?.title||'Fallback / awaiting confirmation';copy.querySelector('p').textContent=state.current?.artist||'Live broadcast';text('now-album',state.current?.album||state.current?.category||'Live broadcast');text('queue-count',state.queue.length);fill('live-queue',state.queue,'Queue is empty.');document.getElementById('skip-decision').value=state.current?.decision_id||'';document.querySelector('#skip-form button').disabled=!state.current;document.getElementById('spinning-disc').classList.toggle('playing',!!state.current);document.querySelectorAll('.mode-button').forEach(button=>button.classList.toggle('active',button.dataset.mode===state.mode));timing();}catch{text('live-playout','Status unavailable');}}
+  setInterval(timing,500);setInterval(refresh,2000);refresh();
 })();

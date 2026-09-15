@@ -3,7 +3,7 @@ import uuid
 from datetime import datetime, timedelta, timezone
 
 from app.extensions import db
-from app.models import (AutomationState, EventBlock, EventBlockExecution, ImagingAsset, LiveControlCommand, LiveQueueSnapshot,
+from app.models import (AutomationState, EventBlock, EventBlockExecution, ImagingAsset, LiveCartSlot, LiveControlCommand, LiveQueueSnapshot,
                         SelectionDecision, Station, Track)
 from app.services.admin_media import audit
 from app.services.media_storage import LocalMediaStorage
@@ -27,6 +27,15 @@ def set_hold(station, user, held):
           station_id=station.id, target_type='station', target_id=station.slug,
           summary='Automation refill held' if held else 'Automation refill resumed')
     db.session.commit()
+
+def set_mode(station,user,mode):
+    mode=(mode or '').upper()
+    if mode not in ('AUTO','LIVE_ASSIST','LIVE'):raise ValueError('Invalid booth mode')
+    state=db.session.get(AutomationState,station.id)
+    if state is None or not state.enabled or not station.enabled or station.desired_state!='running':raise ValueError('Station automation is unavailable')
+    state.operator_mode=mode;state.hold=mode=='LIVE'
+    audit('live_mode_changed',user_id=user.id,station_id=station.id,target_type='station',target_id=station.slug,summary=f'DJ booth mode changed to {mode}')
+    db.session.commit();return state
 
 
 def queue_playable(station, user, kind, identifier, nonce):
@@ -86,13 +95,51 @@ def request_skip(station, user, expected_decision_id, nonce):
     current = SelectionDecision.query.filter_by(id=expected_decision_id, station_id=station.id, status='started').first()
     if current is None or not station.enabled or station.desired_state != 'running':
         raise ValueError('Current item changed; refresh before skipping')
-    row = LiveControlCommand(station_id=station.id, admin_user_id=user.id,
+    row = LiveControlCommand(station_id=station.id, admin_user_id=user.id,action='SKIP',
         idempotency_key=nonce, expected_decision_id=current.id, status='pending')
     db.session.add(row)
     audit('manual_skip_requested', user_id=user.id, station_id=station.id,
           target_type='decision', target_id=str(current.id), summary='Operator requested skip of current item')
     db.session.commit()
     return row
+
+def request_takeover(station,user,identifier,expected_decision_id,nonce):
+    nonce=_nonce(nonce);current=SelectionDecision.query.filter_by(id=expected_decision_id,station_id=station.id,status='started').first()
+    if current is None:raise ValueError('Current item changed; refresh before takeover')
+    track=Track.query.filter_by(station_id=station.id,uuid=identifier,enabled=True,ingest_status='accepted',decommissioned_at=None).first()
+    if not track:raise ValueError('Song is unavailable for this station')
+    LocalMediaStorage().regular_file(station.slug,track.storage_key)
+    target=SelectionDecision(station_id=station.id,track_id=track.id,selection_method='manual_track',admin_user_id=user.id,idempotency_key=nonce,status='selected',reason='operator_takeover');db.session.add(target);db.session.flush()
+    command=LiveControlCommand(station_id=station.id,admin_user_id=user.id,idempotency_key=str(uuid.uuid4()),expected_decision_id=current.id,target_decision_id=target.id,action='TAKEOVER',status='pending');db.session.add(command)
+    audit('manual_takeover_requested',user_id=user.id,station_id=station.id,target_type='track',target_id=track.uuid,summary='Operator requested controlled current-song takeover');db.session.commit();return command
+
+
+def assign_cart(station, user, role, position, identifier, label=''):
+    role = (role or '').upper()
+    maximum = 8 if role == 'HOT' else 4 if role == 'ID' else 0
+    if not 1 <= position <= maximum:
+        raise ValueError('Invalid cart position')
+    asset = ImagingAsset.query.filter_by(station_id=station.id, uuid=identifier,
+        enabled=True, ingest_status='accepted', decommissioned_at=None).first()
+    if asset is None:
+        raise ValueError('Cart audio is unavailable')
+    if role == 'ID' and asset.asset_type not in ('STATION_ID', 'SWEEPER', 'LINER', 'JINGLE'):
+        raise ValueError('Station identity positions require an ID, sweeper, liner, or jingle')
+    try:
+        LocalMediaStorage().imaging_file(station.slug, asset.storage_key)
+    except (OSError, ValueError) as error:
+        raise ValueError('Cart audio is unavailable') from error
+    slot = LiveCartSlot.query.filter_by(station_id=station.id, role=role, position=position).first()
+    if slot is None:
+        slot = LiveCartSlot(station_id=station.id, role=role, position=position)
+    slot.imaging_asset_id = asset.id
+    slot.label = (label or '').strip()[:40]
+    db.session.add(slot)
+    audit('live_cart_assigned', user_id=user.id, station_id=station.id,
+        target_type='imaging_asset', target_id=asset.uuid,
+        summary=f'{role} cart {position} assigned')
+    db.session.commit()
+    return slot
 
 def queue_block(station, user, identifier):
     from app.services.event_blocks import block_for, create_execution, active_execution
@@ -115,7 +162,7 @@ def safe_item(row):
     source = 'BLOCK' if row.selection_method == 'event_block' else 'EVENT' if row.selection_method == 'timed_event' else 'MANUAL' if row.admin_user_id else 'AUTO'
     if row.track:
         return dict(decision_id=row.id, kind='track', title=row.track.title,
-                    artist=row.track.artist, source=source,
+                    artist=row.track.artist,album=row.track.album,category=row.category.name if row.category else None,source=source,
                     started_at=row.started_at.isoformat() if row.started_at else None,
                     duration_ms=row.track.duration_ms)
     if row.imaging_asset:
@@ -154,7 +201,7 @@ def status(station):
         scheduled = next_event.scheduled_for_utc.replace(tzinfo=next_event.scheduled_for_utc.tzinfo or timezone.utc)
         overrun_seconds = round((estimated_end - scheduled).total_seconds())
     active_block=EventBlockExecution.query.filter_by(station_id=station.id).filter(EventBlockExecution.state.in_(('PENDING','QUEUED','STARTED'))).first()
-    return dict(station=station.slug, automation='HELD' if state and state.hold else 'RUNNING' if state and state.enabled else 'DISABLED',
+    return dict(station=station.slug, automation='HELD' if state and state.hold else 'RUNNING' if state and state.enabled else 'DISABLED',mode=state.operator_mode if state else 'AUTO',
         current=current, queue=queue, unknown_queue_items=unknown,
         fallback='Possible' if not current and not live_error and station.desired_state == 'running' else 'Not observed',
         playout_error=live_error, recent=[safe_item(row) for row in recent],

@@ -4,8 +4,8 @@ import uuid
 import pytest
 
 from app.extensions import db
-from app.models import AdminUser, AuditEvent, AutomationState, LiveQueueSnapshot, SelectionDecision, Station, Track
-from app.services.live_assist import queue_playable, request_skip, set_hold
+from app.models import AdminUser, AuditEvent, AutomationState, ImagingAsset,LiveCartSlot,LiveQueueSnapshot, SelectionDecision, Station, Track
+from app.services.live_assist import assign_cart,queue_playable,request_skip,request_takeover,set_hold,set_mode
 from app.services.playout_queue import _command
 from tests.test_web import app as app_fixture, admin_client
 
@@ -46,6 +46,30 @@ def test_hold_resume_and_audit(app):
     with app.app_context():
         assert AutomationState.query.first().hold is False
         assert AuditEvent.query.filter_by(action='automation_resumed').count() == 1
+
+
+def test_three_booth_modes_have_explicit_hold_semantics(app):
+    with app.app_context():
+        station=Station.query.filter_by(slug='test-station').first();user=AdminUser.query.first()
+        set_mode(station,user,'LIVE_ASSIST');assert station.automation.operator_mode=='LIVE_ASSIST' and not station.automation.hold
+        set_mode(station,user,'LIVE');assert station.automation.operator_mode=='LIVE' and station.automation.hold
+        set_mode(station,user,'AUTO');assert station.automation.operator_mode=='AUTO' and not station.automation.hold
+        with pytest.raises(ValueError):set_mode(station,user,'ENGINEERING')
+
+
+def test_takeover_intent_and_cart_assignment_are_station_scoped(app,monkeypatch):
+    monkeypatch.setattr('app.services.media_storage.LocalMediaStorage.regular_file',lambda *args:'/safe')
+    monkeypatch.setattr('app.services.media_storage.LocalMediaStorage.imaging_file',lambda *args:'/safe')
+    with app.app_context():
+        station=Station.query.filter_by(slug='test-station').first();user=AdminUser.query.first();current=SelectionDecision.query.filter_by(status='started').first();track=Track.query.first()
+        command=request_takeover(station,user,track.uuid,current.id,str(uuid.uuid4()))
+        assert command.action=='TAKEOVER' and command.target_decision.track_id==track.id and command.target_decision.status=='selected'
+        asset=ImagingAsset(station_id=station.id,uuid=str(uuid.uuid4()),name='Legal ID',cart_code='ID-1',asset_type='STATION_ID',original_filename='id.mp3',storage_key='c'*32+'.mp3',media_type='mp3',duration_ms=3000,sample_rate_hz=44100,channels=2,file_size_bytes=100,checksum_sha256='c'*64,enabled=True,ingest_status='accepted');db.session.add(asset);db.session.commit()
+        slot=assign_cart(station,user,'ID',1,asset.uuid,'Legal');assert slot.imaging_asset_id==asset.id
+    client=admin_client(app);base='/admin/stations/test-station/live'
+    assert client.post(base+'/mode',data={'csrf':'test-admin-csrf-token','mode':'LIVE_ASSIST'}).status_code==302
+    assert client.post(base+'/assign-cart',data={'csrf':'test-admin-csrf-token','role':'HOT','position':'1','identifier':'foreign'}).status_code==302
+    with app.app_context():assert LiveCartSlot.query.count()==1
 
 
 def test_manual_request_idempotency_station_scope_and_limit(app, monkeypatch):
@@ -102,7 +126,10 @@ def test_live_page_and_status_use_sanitized_worker_snapshot(app, monkeypatch):
     client = admin_client(app)
     page = client.get('/admin/stations/test-station/live')
     assert page.status_code == 200
-    assert b'Live Assist' in page.data and b'Verified Test Track' in page.data
+    assert b'DJ Booth' in page.data and b'NOW PLAYING' in page.data and b'Verified Test Track' in page.data
+    assert page.data.count(b'data-role="HOT"') == 8
+    assert page.data.count(b'data-role="ID"') == 4
+    assert b'STATUS / ENGINEERING' in page.data
     payload = client.get('/admin/api/stations/test-station/live-status')
     assert payload.status_code == 200
     assert payload.json['current']['title'] == 'Verified Test Track'
@@ -172,6 +199,33 @@ def test_worker_skip_requires_same_observed_request(app, monkeypatch):
         stale = request_skip(station, user, current.id, str(uuid.uuid4()))
         process_manual(station, EventReader())
         assert stale.status == 'failed' and stale.error_code == 'current_changed'
+        assert calls == ['test-station']
+
+
+def test_worker_takeover_is_one_shot_and_queues_approved_target(app, monkeypatch):
+    from app.automation_worker import EventReader, process_manual
+    calls = []
+    monkeypatch.setattr('app.services.media_storage.LocalMediaStorage.regular_file', lambda *args: '/safe')
+    monkeypatch.setattr('app.automation_worker.socket_identity', lambda slug: 'socket-1')
+    monkeypatch.setattr('app.automation_worker.queued_ids', lambda slug: set())
+    monkeypatch.setattr('app.automation_worker.active_ids', lambda slug: {45})
+    monkeypatch.setattr('app.automation_worker.reconcile_requests', lambda slug: 0)
+    monkeypatch.setattr('app.automation_worker.interrupt_for_event', lambda slug: calls.append(slug))
+    monkeypatch.setattr('app.automation_worker.push_decision', lambda decision: 52)
+    with app.app_context():
+        station = Station.query.filter_by(slug='test-station').first()
+        current = SelectionDecision.query.filter_by(status='started').first()
+        current.socket_identity = 'socket-1'
+        current.liquidsoap_request_id = 45
+        db.session.commit()
+        command = request_takeover(station, AdminUser.query.first(), Track.query.first().uuid,
+            current.id, str(uuid.uuid4()))
+        target_id = command.target_decision_id
+        process_manual(station, EventReader())
+        target = db.session.get(SelectionDecision, target_id)
+        assert command.status == 'sent' and target.status == 'queued'
+        assert target.liquidsoap_request_id == 52 and calls == ['test-station']
+        process_manual(station, EventReader())
         assert calls == ['test-station']
 
 
