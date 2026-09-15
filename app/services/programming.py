@@ -82,7 +82,7 @@ def set_slot_enabled(slug, kind, resource_slug, position, enabled):
     slot.enabled = bool(enabled)
     target = slot.category if kind == 'rotation' or slot.slot_type == 'CATEGORY' else (
         slot.rotation if slot.slot_type == 'ROTATION' else
-        slot.imaging_asset if slot.slot_type == 'CART' else slot.imaging_group)
+        slot.imaging_asset if slot.slot_type == 'CART' else slot.imaging_group if slot.slot_type == 'IMAGING_GROUP' else slot.event_block)
     if enabled and (target is None or not target.enabled):
         db.session.rollback()
         raise ValueError('Slot target is disabled')

@@ -255,6 +255,10 @@ def select_next(slug, storage=None, now=None):
                 decision = _select_imaging(station, clock_slot.imaging_asset, None, storage, now, context)
             elif clock_slot.slot_type == 'IMAGING_GROUP':
                 decision = _select_imaging(station, None, clock_slot.imaging_group, storage, now, context)
+            elif clock_slot.slot_type == 'EVENT_BLOCK' and clock_slot.event_block and clock_slot.event_block.station_id == station.id:
+                from app.services.event_blocks import create_execution
+                create_execution(clock_slot.event_block, 'CLOCK', clock_slot=clock_slot)
+                decision = None
             else:
                 decision = None
                 db.session.add(SelectionDecision(station_id=station.id, selected_at=now, status='failed',
@@ -359,6 +363,8 @@ def playback_started(decision_id, slug, now=None):
         return False
     decision.status = 'started'
     decision.started_at = now or datetime.now(timezone.utc)
+    from app.services.event_blocks import confirm_item_started
+    confirm_item_started(decision, decision.started_at)
     from app.models import TimedEventOccurrence
     occurrence = TimedEventOccurrence.query.filter_by(selection_decision_id=decision.id).first()
     if occurrence and occurrence.state != 'STARTED':

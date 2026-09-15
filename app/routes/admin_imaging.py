@@ -6,7 +6,7 @@ from flask import Blueprint, abort, current_app, flash, redirect, render_templat
 from sqlalchemy import or_
 
 from app.extensions import db
-from app.models import ClockSlot, ImagingAsset, ImagingGroup, IMAGING_TYPES, MediaIngestJob, SelectionDecision
+from app.models import ClockSlot, EventBlockItem, ImagingAsset, ImagingGroup, IMAGING_TYPES, MediaIngestJob, SelectionDecision
 from app.routes.web import admin_stations, station_or_404
 from app.services.admin_auth import admin_required, current_admin, media_mutation_required, require_csrf
 from app.services.admin_media import audit, stage_upload
@@ -164,7 +164,7 @@ def detail(slug, identifier):
     queued = SelectionDecision.query.filter(SelectionDecision.station_id == station.id,
         SelectionDecision.imaging_asset_id == asset.id, SelectionDecision.status.in_(('selected','queued'))).count()
     return render_template('admin/imaging_asset.html', **context(station, asset=asset, groups=groups,
-        history=history, queued=queued, referenced=ClockSlot.query.filter_by(imaging_asset_id=asset.id).count(), types=IMAGING_TYPES))
+        history=history, queued=queued, referenced=ClockSlot.query.filter_by(imaging_asset_id=asset.id).count()+EventBlockItem.query.filter_by(imaging_asset_id=asset.id).count(), types=IMAGING_TYPES))
 
 
 @admin_imaging_blueprint.post('/admin/stations/<slug>/imaging/<identifier>/<operation>')

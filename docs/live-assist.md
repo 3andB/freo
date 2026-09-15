@@ -11,3 +11,7 @@ The worker records sanitized queue decision IDs and observation time in PostgreS
 Phase 11 adds the next timed event, mode, durable state, and client-side countdown. Timed events remain active during automation hold. Manual audio is protected from HARD interruption; operators should use the countdown when inserting long items near an event. Event timing is executed from server UTC, never the browser clock.
 
 Recovery: confirm station and worker health via `/health/automation`, inspect recent audit and confirmed history, then resume from Live Assist when appropriate. The root CLI remains available for station maintenance. Phase 10 does not provide microphone ingest, source switching, cue bus, overlap, editable queue positions, or hard-timed events.
+
+## Ordered blocks
+
+Live Assist can Queue Block and shows active snapshot progress. Automation Hold does not freeze a running block. Abort Block is a distinct operator intent processed by the worker before ordinary programming resumes.

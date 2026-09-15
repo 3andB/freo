@@ -63,8 +63,14 @@ def add_clock_slot(slug, clock_slug, slot_type, target):
         if not asset:
             raise ValueError('Imaging group has no eligible assets')
         target_fields = {'imaging_group_id': group.id}
+    elif kind == 'EVENT_BLOCK':
+        from app.services.event_blocks import block_for, validate_block
+        block = block_for(slug, target)
+        if not block.enabled or validate_block(block):
+            raise ValueError('Event block is disabled or invalid')
+        target_fields = {'event_block_id': block.id}
     else:
-        raise ValueError('Supported clock slot types: ROTATION, CATEGORY, CART, IMAGING_GROUP')
+        raise ValueError('Supported clock slot types: ROTATION, CATEGORY, CART, IMAGING_GROUP, EVENT_BLOCK')
     position = max((slot.position for slot in clock.slots), default=0) + 1
     slot = ClockSlot(clock_id=clock.id, position=position, slot_type=kind, **target_fields)
     db.session.add(slot)
@@ -135,7 +141,8 @@ def validate_clock(clock):
         raise ValueError('Clock has no enabled slots')
     for slot in slots:
         target = {'ROTATION': slot.rotation, 'CATEGORY': slot.category,
-                  'CART': slot.imaging_asset, 'IMAGING_GROUP': slot.imaging_group}.get(slot.slot_type)
+                  'CART': slot.imaging_asset, 'IMAGING_GROUP': slot.imaging_group,
+                  'EVENT_BLOCK': slot.event_block}.get(slot.slot_type)
         if target is None or target.station_id != clock.station_id or not target.enabled:
             raise ValueError(f'Clock slot {slot.position} has an unavailable or cross-station target')
         if slot.slot_type == 'ROTATION':
@@ -150,6 +157,10 @@ def validate_clock(clock):
             asset, _, _ = choose_group(target, clock.station_id)
             if not asset:
                 raise ValueError(f'Clock slot {slot.position} has an empty imaging group')
+        elif slot.slot_type == 'EVENT_BLOCK':
+            from app.services.event_blocks import validate_block
+            if validate_block(target):
+                raise ValueError(f'Clock slot {slot.position} has an invalid event block')
     return slots
 
 
@@ -223,6 +234,11 @@ def preview_clock(slug, clock_slug, count=10, storage=None, at=None):
     for _ in range(count):
         slot = slots[clock_index % len(slots)]
         clock_index += 1
+        if slot.slot_type == 'EVENT_BLOCK':
+            output.append({'clock_slot': slot.position, 'type': slot.slot_type,
+                           'event_block': slot.event_block.slug, 'name': slot.event_block.name,
+                           'duration_ms': slot.event_block.duration_ms})
+            continue
         if slot.slot_type in ('CART', 'IMAGING_GROUP'):
             from app.services.imaging import choose_group, eligible_asset
             if slot.slot_type == 'CART':

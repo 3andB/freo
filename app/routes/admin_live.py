@@ -5,10 +5,10 @@ from flask import Blueprint, abort, flash, jsonify, redirect, render_template, r
 from sqlalchemy import or_
 
 from app.extensions import db
-from app.models import ImagingAsset, Track
+from app.models import EventBlock, ImagingAsset, Track
 from app.routes.web import admin_stations, station_or_404
 from app.services.admin_auth import admin_required, can_control_playout, current_admin, require_csrf
-from app.services.live_assist import queue_playable, request_skip, set_hold, status
+from app.services.live_assist import queue_block, queue_playable, request_abort_block, request_skip, set_hold, status
 
 admin_live_blueprint = Blueprint('admin_live', __name__)
 
@@ -39,6 +39,7 @@ def page(slug):
     return render_template('admin/live.html', stations=admin_stations(), selected=station,
         page='live', live=status(station), tracks=tracks.order_by(Track.title).limit(30).all(),
         imaging=imaging.order_by(ImagingAsset.asset_type, ImagingAsset.cart_code, ImagingAsset.name).limit(60).all(),
+        blocks=EventBlock.query.filter_by(station_id=station.id,enabled=True).order_by(EventBlock.name).all(),
         search=search, live_nonce=str(uuid.uuid4()), uuid4=lambda: str(uuid.uuid4()))
 
 
@@ -53,7 +54,7 @@ def live_status(slug):
 def action(slug, action):
     station = station_for_operator(slug)
     require_csrf()
-    if action not in ('hold', 'resume', 'queue-track', 'queue-imaging', 'skip'):
+    if action not in ('hold', 'resume', 'queue-track', 'queue-imaging', 'queue-block', 'abort-block', 'skip'):
         abort(404)
     try:
         if action in ('hold', 'resume'):
@@ -63,6 +64,10 @@ def action(slug, action):
             kind = action.removeprefix('queue-')
             queue_playable(station, current_admin(), kind, request.form.get('identifier'), request.form.get('nonce'))
             message = 'Queued at the end of the real playout queue.'
+        elif action == 'queue-block':
+            queue_block(station,current_admin(),request.form.get('identifier')); message='Ordered block queued; automation will not enter between its items.'
+        elif action == 'abort-block':
+            request_abort_block(station,current_admin(),int(request.form.get('execution_id','0'))); message='Block abort requested; the worker will clear its remaining sequence.'
         else:
             expected = request.form.get('expected_decision_id', '')
             if not expected.isdecimal():

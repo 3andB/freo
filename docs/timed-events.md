@@ -17,3 +17,7 @@ The worker order is playback reconciliation, manual intent, timed-event preparat
 An occurrence is `STARTED` only from Liquidsoap’s confirmed `on_track` event. Timing offset is confirmed start minus scheduled UTC time. Completion is not fabricated because the current integration has no authoritative completion signal. A timed Track start affects future track/artist separation; timed imaging affects imaging recurrence. Worker restart uses durable occurrence state and uniqueness. A queued request invalidated by a Liquidsoap restart becomes failed during normal reconciliation.
 
 Use Admin → Events for definitions, validation warnings, upcoming occurrences, and execution results. Live Assist shows the next event with a browser-only countdown; server UTC controls execution. Recovery CLI includes `flask event list`, `show`, `create`, `enable`, `disable`, `validate`, `occurrences`, and `preview`. No filesystem path, public mutation API, external stream, stopset, time-fit music, fade-to-time, or frame-accurate promise is provided.
+
+## Block content
+
+An event may target an enabled validated EventBlock. Its timing mode, tolerance, priority, and missed policy govern the confirmed start of item one. Internal failures then follow the block and item failure policies.

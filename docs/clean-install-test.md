@@ -50,3 +50,7 @@ Log in, open a running station's Live Assist page, confirm real Now/Next/Recent,
 ## Phase 11 timed-event additions
 
 Create an exact generated imaging event through Admin → Events and preview its occurrence. Test HARD within a predeclared tolerance against interruptible automated music, SOFT without skip, NON_INTERRUPTING against protected content, SKIP miss, PLAY_LATE, same-time priority, worker restart, and Liquidsoap failure reconciliation. Confirm a real `on_track` start and offset, unchanged clock/rotation cursors, separation/recurrence effects, the Live Assist countdown, DST spring shift and fall single occurrence, CSRF/IDOR, both streams, and no new port. Remove or disable test events and restore normal programming. Do not claim public installability before the separate fresh-VM run.
+
+## Phase 12 block checks
+
+Create a disabled stopset, add approved imaging and track items, reorder, validate, and enable it. Schedule it from a timed event and confirm contiguous starts with no automatic music between items. Repeat from an EVENT_BLOCK clock slot and Live Assist Queue Block. Restart the worker mid-block and verify the durable snapshot continues once. Exercise skip-failed and abort policies, history, stream continuity, CSRF, and cross-station rejection.

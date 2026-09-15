@@ -22,3 +22,7 @@ Phase 9 extends the existing clock selector with exact CART and IMAGING_GROUP re
 Phase 10 adds a persisted automation hold that prevents refill without stopping Liquidsoap or Icecast. Manual browser requests are committed as decisions, pushed by the worker, and counted in real queue depth. Confirmed manual starts enter separation and imaging recurrence history. The worker observes actual Liquidsoap request IDs for the admin queue display. See [Live Assist](live-assist.md).
 
 Phase 11 adds timed-event work before normal refill. Content is prepared 60 seconds ahead; HARD and SOFT events reduce lookahead in the last 20 seconds. A permitted HARD event uses the fixed worker-only flush/skip adapter against automated music or fallback. Manual and imaging requests remain protected. Event decisions never advance programming cursors. See [timed events](timed-events.md).
+
+## Block priority
+
+Active block executions take refill priority over clocks and rotations. The worker queues snapshot items in order and maps requests to item executions. Timed-event blocks leave clock and rotation cursors unchanged; an EVENT_BLOCK clock slot consumes one clock position when it creates the execution.

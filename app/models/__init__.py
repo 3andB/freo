@@ -133,7 +133,7 @@ imaging_group_assets = db.Table(
 )
 
 
-IMAGING_TYPES = ('CART', 'STATION_ID', 'SWEEPER', 'LINER', 'PROMO', 'JINGLE', 'GENERIC')
+IMAGING_TYPES = ('CART', 'STATION_ID', 'SWEEPER', 'LINER', 'PROMO', 'JINGLE', 'COMMERCIAL', 'GENERIC')
 
 
 class ImagingAsset(db.Model):
@@ -141,7 +141,7 @@ class ImagingAsset(db.Model):
     __table_args__ = (
         db.UniqueConstraint('station_id', 'checksum_sha256', name='uq_imaging_station_checksum'),
         db.UniqueConstraint('station_id', 'cart_code', name='uq_imaging_station_cart_code'),
-        db.CheckConstraint("asset_type IN ('CART','STATION_ID','SWEEPER','LINER','PROMO','JINGLE','GENERIC')", name='ck_imaging_asset_type'),
+        db.CheckConstraint("asset_type IN ('CART','STATION_ID','SWEEPER','LINER','PROMO','JINGLE','COMMERCIAL','GENERIC')", name='ck_imaging_asset_type'),
         db.CheckConstraint("ingest_status IN ('accepted','rejected')", name='ck_imaging_ingest_status'),
         db.CheckConstraint('duration_ms > 0 AND file_size_bytes > 0', name='ck_imaging_positive_size'),
     )
@@ -264,15 +264,55 @@ class Clock(db.Model):
     slots = db.relationship('ClockSlot', back_populates='clock', order_by='ClockSlot.position', cascade='all, delete-orphan')
 
 
+class EventBlock(db.Model):
+    __tablename__ = 'event_blocks'
+    __table_args__ = (db.UniqueConstraint('station_id', 'slug', name='uq_event_block_station_slug'),
+        db.CheckConstraint("block_type IN ('GENERIC','STOPSET','NEWS','LEGAL_ID','PROMO_BLOCK','SPECIAL')", name='ck_event_block_type'),
+        db.CheckConstraint("failure_policy IN ('SKIP_FAILED_ITEM','ABORT_BLOCK')", name='ck_event_block_failure_policy'))
+    id = db.Column(db.Integer, primary_key=True)
+    station_id = db.Column(db.Integer, db.ForeignKey('stations.id', ondelete='CASCADE'), nullable=False, index=True)
+    name = db.Column(db.String(120), nullable=False); slug = db.Column(db.String(64), nullable=False)
+    description = db.Column(db.String(500), nullable=False, default='')
+    block_type = db.Column(db.String(20), nullable=False, default='GENERIC')
+    enabled = db.Column(db.Boolean, nullable=False, default=False)
+    failure_policy = db.Column(db.String(20), nullable=False, default='ABORT_BLOCK')
+    created_at = db.Column(db.DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+    updated_at = db.Column(db.DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    station = db.relationship('Station', backref='event_blocks')
+    items = db.relationship('EventBlockItem', back_populates='block', order_by='EventBlockItem.position', cascade='all, delete-orphan')
+    @property
+    def duration_ms(self):
+        return sum((i.track or i.imaging_asset).duration_ms for i in self.items if i.enabled and (i.track or i.imaging_asset))
+
+
+class EventBlockItem(db.Model):
+    __tablename__ = 'event_block_items'
+    __table_args__ = (db.UniqueConstraint('event_block_id', 'position', name='uq_event_block_item_position'),
+        db.CheckConstraint('position > 0', name='ck_event_block_item_position'),
+        db.CheckConstraint("item_type IN ('TRACK','IMAGING_ASSET')", name='ck_event_block_item_type'),
+        db.CheckConstraint("failure_policy IS NULL OR failure_policy IN ('SKIP_FAILED_ITEM','ABORT_BLOCK')", name='ck_event_block_item_failure_policy'),
+        db.CheckConstraint("(item_type='TRACK' AND track_id IS NOT NULL AND imaging_asset_id IS NULL) OR (item_type='IMAGING_ASSET' AND imaging_asset_id IS NOT NULL AND track_id IS NULL)", name='ck_event_block_item_target'))
+    id = db.Column(db.Integer, primary_key=True)
+    event_block_id = db.Column(db.Integer, db.ForeignKey('event_blocks.id', ondelete='CASCADE'), nullable=False, index=True)
+    position = db.Column(db.Integer, nullable=False); item_type = db.Column(db.String(20), nullable=False)
+    track_id = db.Column(db.Integer, db.ForeignKey('tracks.id', ondelete='RESTRICT'))
+    imaging_asset_id = db.Column(db.Integer, db.ForeignKey('imaging_assets.id', ondelete='RESTRICT'))
+    enabled = db.Column(db.Boolean, nullable=False, default=True); label = db.Column(db.String(120)); failure_policy = db.Column(db.String(20))
+    created_at = db.Column(db.DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+    updated_at = db.Column(db.DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    block = db.relationship('EventBlock', back_populates='items'); track = db.relationship('Track'); imaging_asset = db.relationship('ImagingAsset')
+
+
 class ClockSlot(db.Model):
     __tablename__ = 'clock_slots'
     __table_args__ = (
         db.UniqueConstraint('clock_id', 'position', name='uq_clock_slot_position'),
         db.CheckConstraint('position > 0', name='ck_clock_slot_position'),
-        db.CheckConstraint("(slot_type = 'ROTATION' AND rotation_id IS NOT NULL AND category_id IS NULL AND imaging_asset_id IS NULL AND imaging_group_id IS NULL) OR "
-                           "(slot_type = 'CATEGORY' AND category_id IS NOT NULL AND rotation_id IS NULL AND imaging_asset_id IS NULL AND imaging_group_id IS NULL) OR "
-                           "(slot_type = 'CART' AND imaging_asset_id IS NOT NULL AND rotation_id IS NULL AND category_id IS NULL AND imaging_group_id IS NULL) OR "
-                           "(slot_type = 'IMAGING_GROUP' AND imaging_group_id IS NOT NULL AND rotation_id IS NULL AND category_id IS NULL AND imaging_asset_id IS NULL)", name='ck_clock_slot_target'),
+        db.CheckConstraint("(slot_type = 'ROTATION' AND rotation_id IS NOT NULL AND category_id IS NULL AND imaging_asset_id IS NULL AND imaging_group_id IS NULL AND event_block_id IS NULL) OR "
+                           "(slot_type = 'CATEGORY' AND category_id IS NOT NULL AND rotation_id IS NULL AND imaging_asset_id IS NULL AND imaging_group_id IS NULL AND event_block_id IS NULL) OR "
+                           "(slot_type = 'CART' AND imaging_asset_id IS NOT NULL AND rotation_id IS NULL AND category_id IS NULL AND imaging_group_id IS NULL AND event_block_id IS NULL) OR "
+                           "(slot_type = 'IMAGING_GROUP' AND imaging_group_id IS NOT NULL AND rotation_id IS NULL AND category_id IS NULL AND imaging_asset_id IS NULL AND event_block_id IS NULL) OR "
+                           "(slot_type = 'EVENT_BLOCK' AND event_block_id IS NOT NULL AND rotation_id IS NULL AND category_id IS NULL AND imaging_asset_id IS NULL AND imaging_group_id IS NULL)", name='ck_clock_slot_target'),
     )
     id = db.Column(db.Integer, primary_key=True)
     clock_id = db.Column(db.Integer, db.ForeignKey('clocks.id', ondelete='CASCADE'), nullable=False, index=True)
@@ -282,6 +322,7 @@ class ClockSlot(db.Model):
     category_id = db.Column(db.Integer, db.ForeignKey('media_categories.id', ondelete='RESTRICT'))
     imaging_asset_id = db.Column(db.Integer, db.ForeignKey('imaging_assets.id', ondelete='RESTRICT'))
     imaging_group_id = db.Column(db.Integer, db.ForeignKey('imaging_groups.id', ondelete='RESTRICT'))
+    event_block_id = db.Column(db.Integer, db.ForeignKey('event_blocks.id', ondelete='RESTRICT'))
     enabled = db.Column(db.Boolean, nullable=False, default=True)
     label = db.Column(db.String(120))
     clock = db.relationship('Clock', back_populates='slots')
@@ -289,6 +330,7 @@ class ClockSlot(db.Model):
     category = db.relationship('MediaCategory')
     imaging_asset = db.relationship('ImagingAsset')
     imaging_group = db.relationship('ImagingGroup')
+    event_block = db.relationship('EventBlock')
 
 
 class ScheduleAssignment(db.Model):
@@ -402,10 +444,10 @@ class TimedEvent(db.Model):
     __table_args__ = (
         db.CheckConstraint("timing_mode IN ('SOFT','HARD','NON_INTERRUPTING')", name='ck_timed_event_mode'),
         db.CheckConstraint("recurrence_type IN ('ONE_TIME','WEEKLY')", name='ck_timed_event_recurrence'),
-        db.CheckConstraint("content_type IN ('TRACK','IMAGING_ASSET')", name='ck_timed_event_content_type'),
+        db.CheckConstraint("content_type IN ('TRACK','IMAGING_ASSET','EVENT_BLOCK')", name='ck_timed_event_content_type'),
         db.CheckConstraint("missed_policy IN ('SKIP','PLAY_LATE')", name='ck_timed_event_missed'),
         db.CheckConstraint("interrupt_policy IN ('NEVER','MUSIC_ONLY')", name='ck_timed_event_interrupt'),
-        db.CheckConstraint("(content_type='TRACK' AND track_id IS NOT NULL AND imaging_asset_id IS NULL) OR (content_type='IMAGING_ASSET' AND imaging_asset_id IS NOT NULL AND track_id IS NULL)", name='ck_timed_event_content'),
+        db.CheckConstraint("(content_type='TRACK' AND track_id IS NOT NULL AND imaging_asset_id IS NULL AND event_block_id IS NULL) OR (content_type='IMAGING_ASSET' AND imaging_asset_id IS NOT NULL AND track_id IS NULL AND event_block_id IS NULL) OR (content_type='EVENT_BLOCK' AND event_block_id IS NOT NULL AND track_id IS NULL AND imaging_asset_id IS NULL)", name='ck_timed_event_content'),
         db.CheckConstraint("(recurrence_type='ONE_TIME' AND scheduled_at_utc IS NOT NULL AND weekday IS NULL AND local_time IS NULL) OR (recurrence_type='WEEKLY' AND scheduled_at_utc IS NULL AND weekday BETWEEN 0 AND 6 AND local_time IS NOT NULL)", name='ck_timed_event_schedule'),
         db.CheckConstraint('early_tolerance_seconds BETWEEN 0 AND 3600 AND late_tolerance_seconds BETWEEN 1 AND 86400', name='ck_timed_event_window'),
     )
@@ -419,6 +461,7 @@ class TimedEvent(db.Model):
     content_type = db.Column(db.String(20), nullable=False)
     track_id = db.Column(db.Integer, db.ForeignKey('tracks.id', ondelete='RESTRICT'))
     imaging_asset_id = db.Column(db.Integer, db.ForeignKey('imaging_assets.id', ondelete='RESTRICT'))
+    event_block_id = db.Column(db.Integer, db.ForeignKey('event_blocks.id', ondelete='RESTRICT'))
     recurrence_type = db.Column(db.String(12), nullable=False)
     scheduled_at_utc = db.Column(db.DateTime(timezone=True))
     weekday = db.Column(db.Integer)
@@ -433,6 +476,7 @@ class TimedEvent(db.Model):
     station = db.relationship('Station')
     track = db.relationship('Track')
     imaging_asset = db.relationship('ImagingAsset')
+    event_block = db.relationship('EventBlock')
     occurrences = db.relationship('TimedEventOccurrence', back_populates='event', cascade='all, delete-orphan')
 
 
@@ -468,6 +512,46 @@ class TimedEventOccurrence(db.Model):
         started = self.started_at.replace(tzinfo=self.started_at.tzinfo or timezone.utc)
         scheduled = self.scheduled_for_utc.replace(tzinfo=self.scheduled_for_utc.tzinfo or timezone.utc)
         return (started - scheduled).total_seconds()
+
+
+class EventBlockExecution(db.Model):
+    __tablename__ = 'event_block_executions'
+    __table_args__ = (db.CheckConstraint("state IN ('PENDING','QUEUED','STARTED','COMPLETED','ABORTED','FAILED','CANCELLED')", name='ck_block_execution_state'),
+        db.CheckConstraint("source IN ('TIMED_EVENT','CLOCK','MANUAL')", name='ck_block_execution_source'))
+    id = db.Column(db.Integer, primary_key=True)
+    station_id = db.Column(db.Integer, db.ForeignKey('stations.id', ondelete='CASCADE'), nullable=False, index=True)
+    event_block_id = db.Column(db.Integer, db.ForeignKey('event_blocks.id', ondelete='RESTRICT'), nullable=False)
+    timed_event_occurrence_id = db.Column(db.Integer, db.ForeignKey('timed_event_occurrences.id', ondelete='SET NULL'), unique=True)
+    clock_slot_id = db.Column(db.Integer, db.ForeignKey('clock_slots.id', ondelete='SET NULL'))
+    admin_user_id = db.Column(db.Integer, db.ForeignKey('admin_users.id', ondelete='SET NULL'))
+    source = db.Column(db.String(16), nullable=False); state = db.Column(db.String(12), nullable=False, default='PENDING', index=True)
+    started_at = db.Column(db.DateTime(timezone=True)); completed_at = db.Column(db.DateTime(timezone=True)); aborted_at = db.Column(db.DateTime(timezone=True))
+    failure_reason = db.Column(db.String(80)); abort_requested = db.Column(db.Boolean, nullable=False, default=False); created_at = db.Column(db.DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+    updated_at = db.Column(db.DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    station = db.relationship('Station'); block = db.relationship('EventBlock'); clock_slot = db.relationship('ClockSlot'); operator = db.relationship('AdminUser')
+    timed_event_occurrence = db.relationship('TimedEventOccurrence', backref=db.backref('block_execution', uselist=False))
+    items = db.relationship('EventBlockItemExecution', back_populates='execution', order_by='EventBlockItemExecution.position', cascade='all, delete-orphan')
+
+
+class EventBlockItemExecution(db.Model):
+    __tablename__ = 'event_block_item_executions'
+    __table_args__ = (db.UniqueConstraint('block_execution_id', 'position', name='uq_block_item_execution_position'),
+        db.CheckConstraint("state IN ('PENDING','QUEUED','STARTED','COMPLETED','SKIPPED','FAILED')", name='ck_block_item_execution_state'),
+        db.CheckConstraint("item_type IN ('TRACK','IMAGING_ASSET')", name='ck_block_item_execution_type'),
+        db.CheckConstraint("failure_policy IN ('SKIP_FAILED_ITEM','ABORT_BLOCK')", name='ck_block_item_execution_policy'),
+        db.CheckConstraint("(item_type='TRACK' AND track_id IS NOT NULL AND imaging_asset_id IS NULL) OR (item_type='IMAGING_ASSET' AND imaging_asset_id IS NOT NULL AND track_id IS NULL)", name='ck_block_item_execution_target'))
+    id = db.Column(db.Integer, primary_key=True)
+    block_execution_id = db.Column(db.Integer, db.ForeignKey('event_block_executions.id', ondelete='CASCADE'), nullable=False, index=True)
+    event_block_item_id = db.Column(db.Integer, db.ForeignKey('event_block_items.id', ondelete='SET NULL'))
+    position = db.Column(db.Integer, nullable=False); item_type = db.Column(db.String(20), nullable=False)
+    track_id = db.Column(db.Integer, db.ForeignKey('tracks.id', ondelete='RESTRICT')); imaging_asset_id = db.Column(db.Integer, db.ForeignKey('imaging_assets.id', ondelete='RESTRICT'))
+    label = db.Column(db.String(120)); failure_policy = db.Column(db.String(20), nullable=False); state = db.Column(db.String(12), nullable=False, default='PENDING')
+    selection_decision_id = db.Column(db.Integer, db.ForeignKey('selection_decisions.id', ondelete='SET NULL'), unique=True)
+    queued_at = db.Column(db.DateTime(timezone=True)); started_at = db.Column(db.DateTime(timezone=True)); completed_at = db.Column(db.DateTime(timezone=True)); failed_at = db.Column(db.DateTime(timezone=True))
+    failure_reason = db.Column(db.String(80)); created_at = db.Column(db.DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc)); updated_at = db.Column(db.DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    execution = db.relationship('EventBlockExecution', back_populates='items'); definition_item = db.relationship('EventBlockItem')
+    track = db.relationship('Track'); imaging_asset = db.relationship('ImagingAsset')
+    selection_decision = db.relationship('SelectionDecision', backref=db.backref('block_item_execution', uselist=False))
 
 
 class AutomationHeartbeat(db.Model):

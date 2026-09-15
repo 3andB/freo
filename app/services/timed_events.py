@@ -6,14 +6,14 @@ from zoneinfo import ZoneInfo
 from sqlalchemy.exc import IntegrityError
 
 from app.extensions import db
-from app.models import ImagingAsset, SelectionDecision, TimedEvent, TimedEventOccurrence, Track
+from app.models import EventBlock, ImagingAsset, SelectionDecision, TimedEvent, TimedEventOccurrence, Track
 from app.services.media_storage import LocalMediaStorage
 from app.services.schedule import _wall_to_utc, utc_instant, validate_timezone
 from app.services.stations import get_station
 
 MODES = ('SOFT', 'HARD', 'NON_INTERRUPTING')
 RECURRENCES = ('ONE_TIME', 'WEEKLY')
-CONTENTS = ('TRACK', 'IMAGING_ASSET')
+CONTENTS = ('TRACK', 'IMAGING_ASSET', 'EVENT_BLOCK')
 MISSED = ('SKIP', 'PLAY_LATE')
 INTERRUPTS = ('NEVER', 'MUSIC_ONLY')
 
@@ -40,6 +40,8 @@ def _target(station, content_type, identifier):
         row = Track.query.filter_by(station_id=station.id, uuid=identifier).first()
     elif content_type == 'IMAGING_ASSET':
         row = ImagingAsset.query.filter_by(station_id=station.id, uuid=identifier).first()
+    elif content_type == 'EVENT_BLOCK':
+        row = EventBlock.query.filter_by(station_id=station.id, slug=identifier).first()
     else:
         raise ValueError('Unsupported event content type')
     if row is None:
@@ -99,6 +101,7 @@ def save_event(slug, *, identifier=None, name, description='', timing_mode, recu
     row.timing_mode, row.recurrence_type, row.content_type = timing_mode, recurrence_type, content_type
     row.track_id = target.id if content_type == 'TRACK' else None
     row.imaging_asset_id = target.id if content_type == 'IMAGING_ASSET' else None
+    row.event_block_id = target.id if content_type == 'EVENT_BLOCK' else None
     row.scheduled_at_utc, row.weekday, row.local_time = scheduled, day, at
     row.early_tolerance_seconds, row.late_tolerance_seconds = early, late
     row.missed_policy, row.interrupt_policy, row.priority = missed_policy, interrupt_policy, priority
@@ -161,6 +164,11 @@ def generate_occurrences(station, now=None, horizon_hours=192):
 
 
 def validate_content(event, storage=None):
+    if event.event_block:
+        from app.services.event_blocks import validate_block
+        if not event.event_block.enabled or validate_block(event.event_block):
+            raise ValueError('Event block is disabled or invalid')
+        return event.event_block
     playable = event.track or event.imaging_asset
     if playable is None or playable.station_id != event.station_id or not playable.enabled or playable.ingest_status != 'accepted' or playable.decommissioned_at:
         raise ValueError('Event content is disabled or unavailable')
@@ -175,6 +183,10 @@ def validate_content(event, storage=None):
 def prepare_decision(occurrence, now=None):
     now = utc_instant(now)
     playable = validate_content(occurrence.event)
+    if occurrence.event.event_block:
+        occurrence.state = 'READY'
+        db.session.commit()
+        return playable
     decision = SelectionDecision(station_id=occurrence.station_id,
         track_id=playable.id if occurrence.event.track else None,
         imaging_asset_id=playable.id if occurrence.event.imaging_asset else None,
@@ -197,7 +209,7 @@ def upcoming(station, now=None, limit=20):
 
 
 def conflict_warnings(event):
-    duration = (event.track or event.imaging_asset).duration_ms / 1000
+    duration = (event.track or event.imaging_asset or event.event_block).duration_ms / 1000
     warnings = []
     if duration > event.late_tolerance_seconds:
         warnings.append('Content duration exceeds the late tolerance window.')

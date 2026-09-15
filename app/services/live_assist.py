@@ -3,7 +3,7 @@ import uuid
 from datetime import datetime, timedelta, timezone
 
 from app.extensions import db
-from app.models import (AutomationState, ImagingAsset, LiveControlCommand, LiveQueueSnapshot,
+from app.models import (AutomationState, EventBlock, EventBlockExecution, ImagingAsset, LiveControlCommand, LiveQueueSnapshot,
                         SelectionDecision, Station, Track)
 from app.services.admin_media import audit
 from app.services.media_storage import LocalMediaStorage
@@ -94,9 +94,25 @@ def request_skip(station, user, expected_decision_id, nonce):
     db.session.commit()
     return row
 
+def queue_block(station, user, identifier):
+    from app.services.event_blocks import block_for, create_execution, active_execution
+    if active_execution(station.id): raise ValueError('A block is already active')
+    try: block=block_for(station.slug,identifier)
+    except ValueError as error: raise ValueError('Block is unavailable for this station') from error
+    execution=create_execution(block,'MANUAL',admin_user_id=user.id)
+    audit('event_block_queued',user_id=user.id,station_id=station.id,target_type='event_block',target_id=block.slug,summary='Operator queued ordered block')
+    db.session.commit(); return execution
+
+def request_abort_block(station, user, execution_id):
+    execution=EventBlockExecution.query.filter_by(id=execution_id,station_id=station.id).filter(EventBlockExecution.state.in_(('PENDING','QUEUED','STARTED'))).first()
+    if execution is None: raise ValueError('Active block changed; refresh first')
+    execution.abort_requested=True
+    audit('event_block_abort_requested',user_id=user.id,station_id=station.id,target_type='event_block_execution',target_id=str(execution.id),summary='Operator requested block abort')
+    db.session.commit(); return execution
+
 
 def safe_item(row):
-    source = 'EVENT' if row.selection_method == 'timed_event' else 'MANUAL' if row.admin_user_id else 'AUTO'
+    source = 'BLOCK' if row.selection_method == 'event_block' else 'EVENT' if row.selection_method == 'timed_event' else 'MANUAL' if row.admin_user_id else 'AUTO'
     if row.track:
         return dict(decision_id=row.id, kind='track', title=row.track.title,
                     artist=row.track.artist, source=source,
@@ -137,6 +153,7 @@ def status(station):
         estimated_end = datetime.fromisoformat(current['started_at']) + timedelta(milliseconds=current['duration_ms'])
         scheduled = next_event.scheduled_for_utc.replace(tzinfo=next_event.scheduled_for_utc.tzinfo or timezone.utc)
         overrun_seconds = round((estimated_end - scheduled).total_seconds())
+    active_block=EventBlockExecution.query.filter_by(station_id=station.id).filter(EventBlockExecution.state.in_(('PENDING','QUEUED','STARTED'))).first()
     return dict(station=station.slug, automation='HELD' if state and state.hold else 'RUNNING' if state and state.enabled else 'DISABLED',
         current=current, queue=queue, unknown_queue_items=unknown,
         fallback='Possible' if not current and not live_error and station.desired_state == 'running' else 'Not observed',
@@ -144,6 +161,8 @@ def status(station):
         clock=programming.clock.name if programming.clock else None,
         next_transition=programming.next_transition.isoformat() if programming.next_transition else None,
         local_time=programming.local_time.isoformat(), timed_events='ACTIVE',
+        active_block=(dict(id=active_block.id,name=active_block.block.name,state=active_block.state,
+            source=active_block.source,completed_items=len([i for i in active_block.items if i.state in ('COMPLETED','SKIPPED')]),total_items=len(active_block.items)) if active_block else None),
         next_event=(dict(id=next_event.id, name=next_event.event.name,
             timing_mode=next_event.event.timing_mode, state=next_event.state,
             scheduled_for=next_event.scheduled_for_utc.isoformat(), estimated_current_overrun_seconds=overrun_seconds) if next_event else None))

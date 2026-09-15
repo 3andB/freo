@@ -61,3 +61,7 @@ The Flask `freo` identity can write only a private upload staging directory. A g
 Phase 10 Live Assist stores station hold state, idempotent manual selection decisions, skip intents, and a sanitized worker-observed queue snapshot. The existing automation worker validates and pushes approved media and issues the single allowlisted skip command. The web process remains unable to access Liquidsoap sockets. See [Live Assist](live-assist.md).
 
 Phase 11 keeps `TimedEvent` definitions separate from clock state and materializes bounded, unique `TimedEventOccurrence` rows. The existing worker prepares verified approved content, reduces lookahead, enforces timing/interrupt policy, and links a `timed_event` selection decision to the occurrence. Only Liquidsoap `on_track` confirmation marks it started. See [timed events](timed-events.md).
+
+## Ordered event blocks
+
+EventBlock definitions and immutable EventBlockExecution snapshots add bounded ordered sequences above Track and ImagingAsset. TimedEvent answers when a block starts; the block answers what plays in order. PostgreSQL state lets the existing worker own an active block and suppress normal refill until completion or abort. No new daemon or public port is introduced.

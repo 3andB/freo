@@ -23,7 +23,9 @@ from .routes.admin_programming import admin_programming_blueprint
 from .routes.admin_imaging import admin_imaging_blueprint
 from .routes.admin_live import admin_live_blueprint
 from .routes.admin_events import admin_events_blueprint
+from .routes.admin_blocks import admin_blocks_blueprint
 from .event_cli import event_cli
+from .block_cli import block_cli
 from .imaging_cli import imaging_cli
 
 
@@ -63,7 +65,9 @@ def create_app(config_name=None):
     app.register_blueprint(admin_imaging_blueprint)
     app.register_blueprint(admin_live_blueprint)
     app.register_blueprint(admin_events_blueprint)
+    app.register_blueprint(admin_blocks_blueprint)
     app.register_blueprint(event_cli, cli_group=None)
+    app.register_blueprint(block_cli, cli_group=None)
     app.register_blueprint(imaging_cli, cli_group=None)
     try:
         upload_limit = int(os.environ.get('MAX_MEDIA_UPLOAD_BYTES', 128 * 1024 * 1024))

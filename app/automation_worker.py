@@ -8,7 +8,7 @@ import math
 
 from app import create_app
 from app.extensions import db
-from app.models import AutomationHeartbeat, AutomationState, LiveControlCommand, LiveQueueSnapshot, SelectionDecision, Station, TimedEventOccurrence
+from app.models import AutomationHeartbeat, AutomationState, EventBlockExecution, EventBlockItemExecution, LiveControlCommand, LiveQueueSnapshot, SelectionDecision, Station, TimedEventOccurrence
 from app.services.automation import playback_started, select_next
 from app.services.playout_queue import push_decision, queue_depth, queued_ids, queued_order, active_ids, socket_identity, request_decision_id, skip_current, interrupt_for_event
 from app.services.schedule import resolve, usable_clock
@@ -76,7 +76,10 @@ def refill_station(slug, reader, target_depth=2):
     while depth < target_depth:
         decision = select_next(slug)
         if decision is None:
-            reader.starved_until[slug] = time.monotonic() + 30
+            block = EventBlockExecution.query.join(EventBlockExecution.station).filter(
+                Station.slug == slug, EventBlockExecution.state.in_(('PENDING','QUEUED','STARTED'))).first()
+            if block is None:
+                reader.starved_until[slug] = time.monotonic() + 30
             break
         try:
             request_id = push_decision(decision)
@@ -127,6 +130,61 @@ def reconcile_requests(slug):
     return changed
 
 
+def process_block(station, reader, now=None):
+    """Own a station queue while one durable block snapshot is active."""
+    from app.services.event_blocks import active_execution, prepare_next
+    now = now or datetime.now(timezone.utc)
+    execution = active_execution(station.id)
+    if execution is None:
+        return False
+    reader.collect(station.slug); reconcile_requests(station.slug)
+    if execution.abort_requested:
+        interrupt_for_event(station.slug)
+        for item in execution.items:
+            if item.state in ('PENDING','QUEUED'): item.state='SKIPPED'; item.failure_reason='operator_abort'
+        execution.state='ABORTED'; execution.aborted_at=now; execution.failure_reason='operator_abort'; db.session.commit()
+        return False
+    # Translate request loss into item policy rather than allowing automation
+    # to slip between block items.
+    for item in execution.items:
+        if item.state == 'QUEUED' and item.selection_decision and item.selection_decision.status == 'failed':
+            item.state, item.failed_at, item.failure_reason = 'FAILED', now, item.selection_decision.reason
+            if item.failure_policy == 'ABORT_BLOCK':
+                execution.state, execution.failure_reason = 'FAILED', item.failure_reason
+    if execution.state == 'FAILED':
+        db.session.commit(); return False
+    started = next((i for i in reversed(execution.items) if i.state == 'STARTED'), None)
+    pending = next((i for i in execution.items if i.state == 'PENDING'), None)
+    queued = next((i for i in execution.items if i.state == 'QUEUED'), None)
+    if not started and not pending and not queued:
+        execution.state='COMPLETED'; execution.completed_at=now; db.session.commit(); return False
+    if pending and not queued:
+        item = prepare_next(execution, now)
+        if item:
+            decision = item.selection_decision; decision.status = 'submitting'; db.session.commit()
+            try:
+                request_id = push_decision(decision)
+                decision.status = 'queued'; decision.liquidsoap_request_id = request_id; decision.socket_identity = socket_identity(station.slug)
+                item.state = 'QUEUED'; item.queued_at = now
+                if execution.state == 'PENDING': execution.state = 'QUEUED'
+                if execution.timed_event_occurrence and execution.timed_event_occurrence.state == 'READY':
+                    execution.timed_event_occurrence.state = 'QUEUED'; execution.timed_event_occurrence.queued_at = now
+                db.session.commit()
+            except (OSError, RuntimeError, ValueError):
+                decision.status='failed'; decision.reason='block_queue_failed'; item.state='FAILED'; item.failed_at=now; item.failure_reason='queue_failed'
+                if item.failure_policy == 'ABORT_BLOCK': execution.state='FAILED'; execution.failure_reason='queue_failed'
+                db.session.commit()
+    # Final item completion is inferred only after its known duration elapsed
+    # and Liquidsoap no longer reports its exact request as active.
+    if started and not pending and not queued and started == execution.items[-1]:
+        duration_ms = (started.track or started.imaging_asset).duration_ms
+        began = started.started_at.replace(tzinfo=started.started_at.tzinfo or timezone.utc)
+        active = active_ids(station.slug)
+        if now >= began + timedelta(milliseconds=max(0, duration_ms-500)) and started.selection_decision.liquidsoap_request_id not in active:
+            started.state='COMPLETED'; started.completed_at=now; execution.state='COMPLETED'; execution.completed_at=now; db.session.commit(); return False
+    return execution.state in ('PENDING','QUEUED','STARTED')
+
+
 def process_manual(station, reader):
     slug = station.slug
     reader.collect(slug)
@@ -172,6 +230,9 @@ def process_manual(station, reader):
                 command.status, command.error_code = 'failed', 'current_changed'
             else:
                 skip_current(slug)
+                if current.block_item_execution and current.block_item_execution.state == 'STARTED':
+                    current.block_item_execution.state = 'SKIPPED'
+                    current.block_item_execution.failure_reason = 'operator_skip'
                 command.status = 'sent'
             command.processed_at = datetime.now(timezone.utc)
             db.session.commit()
@@ -235,9 +296,15 @@ def process_timed_events(station, reader, now=None):
         db.session.commit()
     generate_occurrences(station, now)
     rows = upcoming(station, now, 20)
+    from app.services.event_blocks import active_execution
+    if active_execution(station.id):
+        future=[row for row in rows if row.state in ('PENDING','READY')]
+        return min(((row.scheduled_for_utc.replace(tzinfo=row.scheduled_for_utc.tzinfo or timezone.utc)-now).total_seconds() for row in future),default=None)
     for candidate in rows:
         occurrence = TimedEventOccurrence.query.filter_by(id=candidate.id).with_for_update().first()
         if occurrence is None or occurrence.state not in ('PENDING','READY','QUEUED'):
+            continue
+        if occurrence.block_execution and occurrence.block_execution.state in ('PENDING','QUEUED','STARTED','COMPLETED'):
             continue
         event = occurrence.event
         deadline = occurrence.deadline_at_utc.replace(tzinfo=occurrence.deadline_at_utc.tzinfo or timezone.utc)
@@ -265,7 +332,7 @@ def process_timed_events(station, reader, now=None):
             continue
         # One event owns the real queue at a time. Same-time collisions were
         # ordered by priority; lower-priority events wait for policy handling.
-        if TimedEventOccurrence.query.filter_by(station_id=station.id, state='QUEUED').first():
+        if TimedEventOccurrence.query.filter_by(station_id=station.id, state='QUEUED').filter(TimedEventOccurrence.id != occurrence.id).first():
             continue
         due = now >= scheduled if event.timing_mode != 'SOFT' else now >= occurrence.eligible_at_utc.replace(tzinfo=occurrence.eligible_at_utc.tzinfo or timezone.utc)
         if not due:
@@ -281,7 +348,12 @@ def process_timed_events(station, reader, now=None):
             logger.info('Timed event hard interruption station=%s occurrence=%s current_decision=%s', station.slug, occurrence.id, current.id if current else None)
             # Old queued automation was deliberately removed and is reconciled
             # on the next pass; the timed event is now the sole next request.
-            _queue_event(occurrence, station.slug, now)
+            if event.event_block:
+                from app.services.event_blocks import create_execution
+                create_execution(event.event_block, 'TIMED_EVENT', occurrence=occurrence)
+                occurrence.state='READY'; db.session.commit()
+            else:
+                _queue_event(occurrence, station.slug, now)
             break
         elif queue_depth(station.slug) == 0:
             # SOFT and NON_INTERRUPTING never cut current content. SOFT may use
@@ -291,7 +363,12 @@ def process_timed_events(station, reader, now=None):
             expected_end = started + timedelta(milliseconds=duration_ms)
             if current and expected_end > deadline:
                 continue
-            _queue_event(occurrence, station.slug, now)
+            if event.event_block:
+                from app.services.event_blocks import create_execution
+                create_execution(event.event_block, 'TIMED_EVENT', occurrence=occurrence)
+                occurrence.state='READY'; db.session.commit()
+            else:
+                _queue_event(occurrence, station.slug, now)
             break
     future = [row for row in rows if row.state in ('PENDING','READY') and row.event.timing_mode != 'NON_INTERRUPTING']
     return min(((row.scheduled_for_utc.replace(tzinfo=row.scheduled_for_utc.tzinfo or timezone.utc)-now).total_seconds()
@@ -310,6 +387,11 @@ def tick(reader, target_depth=2):
         try:
             process_manual(state.station, reader)
             event_seconds = process_timed_events(state.station, reader)
+            block_active = process_block(state.station, reader)
+            if block_active:
+                state.worker_heartbeat_at = datetime.now(timezone.utc)
+                state.observed_queue_depth = queue_depth(slug)
+                db.session.commit(); observe_queue(state.station); continue
             if not state.enabled or state.hold:
                 state.worker_heartbeat_at = datetime.now(timezone.utc)
                 state.observed_queue_depth = queue_depth(slug)

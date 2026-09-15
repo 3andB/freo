@@ -6,7 +6,7 @@ from zoneinfo import ZoneInfo
 from flask import Blueprint, abort, flash, redirect, render_template, request, url_for
 
 from app.extensions import db
-from app.models import AuditEvent, ImagingAsset, TimedEvent, TimedEventOccurrence, Track
+from app.models import AuditEvent, EventBlock, ImagingAsset, TimedEvent, TimedEventOccurrence, Track
 from app.routes.web import admin_stations, station_or_404
 from app.services.admin_auth import admin_required, can_manage_events, current_admin, require_csrf
 from app.services.admin_media import audit
@@ -49,7 +49,7 @@ def create(slug):
         except ValueError as error:
             db.session.rollback(); flash(str(error), 'error')
     return render_template('admin/event_form.html', **context(station, event=None,
-        tracks=_tracks(station), imaging=_imaging(station), modes=MODES, recurrences=RECURRENCES,
+        tracks=_tracks(station), imaging=_imaging(station), blocks=_blocks(station), modes=MODES, recurrences=RECURRENCES,
         missed=MISSED, interrupts=INTERRUPTS))
 
 
@@ -65,6 +65,7 @@ def _save(station, row=None):
 
 def _tracks(station): return Track.query.filter_by(station_id=station.id, enabled=True, ingest_status='accepted', decommissioned_at=None).order_by(Track.title).all()
 def _imaging(station): return ImagingAsset.query.filter_by(station_id=station.id, enabled=True, ingest_status='accepted', decommissioned_at=None).order_by(ImagingAsset.name).all()
+def _blocks(station): return EventBlock.query.filter_by(station_id=station.id, enabled=True).order_by(EventBlock.name).all()
 
 
 @admin_events_blueprint.get('/admin/stations/<slug>/events/<identifier>')
@@ -77,7 +78,7 @@ def detail(slug, identifier):
     event_local = row.scheduled_at_utc.replace(tzinfo=row.scheduled_at_utc.tzinfo or timezone.utc).astimezone(ZoneInfo(station.timezone)) if row.scheduled_at_utc else None
     return render_template('admin/event_detail.html', **context(station, event=row, occurrences=occurrences,
         event_local=event_local,
-        warnings=conflict_warnings(row), tracks=_tracks(station), imaging=_imaging(station), modes=MODES,
+        warnings=conflict_warnings(row), tracks=_tracks(station), imaging=_imaging(station), blocks=_blocks(station), modes=MODES,
         recurrences=RECURRENCES, missed=MISSED, interrupts=INTERRUPTS))
 
 

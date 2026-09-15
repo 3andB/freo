@@ -57,17 +57,18 @@ def preview_events(station, hours):
 @click.option('--time', 'time_value')
 @click.option('--track')
 @click.option('--imaging')
+@click.option('--block')
 @click.option('--late', default=10, type=click.IntRange(1,86400))
 @click.option('--missed', type=click.Choice(['skip','play_late']), default='skip')
 @click.option('--interrupt', type=click.Choice(['never','music_only']), default='never')
 @click.option('--priority', default=100, type=click.IntRange(0,1000))
-def create_event(station, name, mode, at_value, weekly, time_value, track, imaging, late, missed, interrupt, priority):
+def create_event(station, name, mode, at_value, weekly, time_value, track, imaging, block, late, missed, interrupt, priority):
     if bool(at_value) == (weekly is not None): raise click.ClickException('Choose exactly one of --at or --weekly')
-    if bool(track) == bool(imaging): raise click.ClickException('Choose exactly one of --track or --imaging')
+    if sum(bool(value) for value in (track,imaging,block)) != 1: raise click.ClickException('Choose exactly one of --track, --imaging, or --block')
     date, at = (at_value.split('T',1) if at_value and 'T' in at_value else (None, time_value))
     try:
         row = save_event(station, name=name, timing_mode=mode.upper(), recurrence_type='ONE_TIME' if at_value else 'WEEKLY',
-            content_type='TRACK' if track else 'IMAGING_ASSET', content_identifier=track or imaging,
+            content_type='TRACK' if track else 'IMAGING_ASSET' if imaging else 'EVENT_BLOCK', content_identifier=track or imaging or block,
             local_date=date, local_time=at, weekday=weekly, late_tolerance_seconds=late,
             missed_policy=missed.upper(), interrupt_policy=interrupt.upper(), priority=priority)
     except ValueError as error: raise click.ClickException(str(error)) from error

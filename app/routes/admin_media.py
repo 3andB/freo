@@ -234,6 +234,10 @@ def decommission_track(slug, track_uuid):
     track = owned_track(station, track_uuid)
     if request.form.get('confirm') != 'decommission':
         abort(400)
+    from app.models import EventBlockItem
+    if EventBlockItem.query.filter_by(track_id=track.id).count():
+        flash('Remove event block references before decommissioning.','error')
+        return redirect(url_for('admin_media.track_detail',slug=slug,track_uuid=track_uuid),code=303)
     if track.decommissioned_at is None:
         track.decommissioned_at = datetime.now(timezone.utc)
         track.enabled = False
