@@ -186,3 +186,60 @@ def test_auto_return_allows_preparation_and_dj_handover(prepared):
     assert not return_to_auto_if_stopped(station,reader,dict(empty,cart_id=456),now=107)
     assert not return_to_auto_if_stopped(station,reader,empty,now=108)
     assert station.automation.operator_mode=='DJ_BOOTH'
+
+
+def test_scheduled_queue_is_not_shown_on_empty_dj_decks(prepared):
+    station,track,user,snapshot=prepared
+    snapshot.mixer=dict(snapshot.mixer,a_id=None,a_playing=False,auto_id=snapshot.current_decision_id,auto_standby=True,auto_gain=1)
+    scheduled=SelectionDecision(station_id=station.id,track=track,playback_bus='A',status='queued',selection_method='music')
+    db.session.add(scheduled);db.session.commit()
+    observed=status(station)
+    assert observed['mixer']['a'] is None and observed['mixer']['b'] is None
+    assert observed['current'] is not None
+    from app.automation_worker import EventReader,return_to_auto_if_stopped
+    reader=EventReader();reader.dj_has_played.add(station.slug)
+    assert not return_to_auto_if_stopped(station,reader,snapshot.mixer,now=20)
+    assert station.automation.operator_mode=='DJ_BOOTH'
+
+
+def test_manual_deck_a_and_schedule_use_separate_engine_queues(prepared,monkeypatch):
+    from app.services.playout_queue import push_decision
+    station,track,user,snapshot=prepared;calls=[]
+    monkeypatch.setattr('app.services.playout_queue._command',lambda slug,command:calls.append(command) or '1')
+    command=request_deck(station,user,'A','LOAD',track.uuid,str(snapshot.current_decision_id),str(uuid.uuid4()),play_on_load=True)
+    push_decision(command.target_decision)
+    scheduled=SelectionDecision(station_id=station.id,track=track,playback_bus='A',status='selected',selection_method='music')
+    db.session.add(scheduled);db.session.flush();push_decision(scheduled)
+    assert calls[0].startswith('freo_a.push ') and calls[1].startswith('freo_queue.push ')
+
+
+def test_worker_keeps_refilling_schedule_during_dj_standby(prepared,monkeypatch):
+    from app import automation_worker as worker
+    station,track,user,snapshot=prepared;station.automation.hold=True;db.session.commit()
+    mixer=dict(snapshot.mixer,auto_standby=True,auto_id=snapshot.current_decision_id,a_id=None,a_playing=False)
+    calls=[]
+    monkeypatch.setattr('app.services.playout_queue.sync_mixer',lambda _:mixer)
+    monkeypatch.setattr('app.services.playout_queue.mixer_state',lambda _:mixer)
+    monkeypatch.setattr(worker,'heartbeat',lambda:None)
+    monkeypatch.setattr(worker,'process_manual',lambda *args:None)
+    monkeypatch.setattr(worker,'observe_queue',lambda *args:None)
+    monkeypatch.setattr(worker,'queue_depth',lambda *args:0)
+    monkeypatch.setattr(worker,'process_timed_events',lambda *args:None)
+    monkeypatch.setattr(worker,'process_block',lambda *args:False)
+    monkeypatch.setattr(worker,'refill_station',lambda *args:calls.append(args[0]))
+    reader=worker.EventReader();worker.tick(reader)
+    assert calls==[station.slug]
+    mixer.update(auto_standby=False,a_id=snapshot.current_decision_id,a_playing=True)
+    worker.tick(reader)
+    assert calls==[station.slug]
+
+
+def test_auto_standby_engine_observation_is_validated(monkeypatch):
+    from app.services.playout_queue import mixer_state
+    response='DJ_BOOTH|0.|false|false||||0.|0.||1.|0.|0.|true|42|1.'
+    monkeypatch.setattr('app.services.playout_queue._command',lambda *args:response)
+    assert mixer_state('test-station')['auto_standby']
+    assert mixer_state('test-station')['auto_id']==42
+    for response in (response.rsplit('|',1)[0]+'|nan',response.replace('|true|42|','|maybe|42|')):
+        with pytest.raises(RuntimeError,match='Auto source'):
+            mixer_state('test-station')

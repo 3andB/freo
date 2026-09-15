@@ -23,9 +23,9 @@ def _command(slug, command):
     if '\n' in command or '\r' in command or len(command) > 1024:
         raise ValueError('Invalid Liquidsoap command')
     media_root = re.escape(str(LocalMediaStorage().root))
-    music_pattern = rf'(?:freo_queue|freo_b|freo_cart)\.push annotate:freo_decision=[1-9][0-9]*(?:,freo_gain="-?[0-9]{{1,2}}\.[0-9]{{3}} dB")?:{media_root}/{re.escape(slug)}/originals/[0-9a-f]{{32}}\.mp3'
-    imaging_pattern = rf'(?:freo_queue|freo_b|freo_cart)\.push annotate:freo_decision=[1-9][0-9]*,title="[A-Za-z0-9 ._-]{{1,120}}",artist="[A-Za-z0-9 ._-]{{1,120}}":{media_root}/{re.escape(slug)}/imaging/[0-9a-f]{{32}}\.mp3'
-    if command not in ('freo_queue.queue', 'request.on_air', 'freo_queue.skip', 'freo_queue.flush_and_skip', 'freo_program.rms', 'freo_program.current', 'freo_deck.requests') and not re.fullmatch(r'(?:freo_deck\.(?:take|fade)_[ab](?: (?:[0-9]\.[0-9]{3}|10\.000))?|freo_deck\.(?:pause|clear|future)_[ab]|request.metadata [0-9]+|freo_(?:b|cart)\.queue|freo_mixer\.(?:state|fade_a|clear_future|mode (?:AUTO|DJ_BOOTH)|crossfader (?:0\.[0-9]{3}|1\.000)|(?:a_play|b_play) (?:true|false)|cart_mode (?:OVER|TAKEOVER)|duck (?:0\.[0-9]{3}|1\.000)))', command) and not (re.fullmatch(music_pattern, command) or re.fullmatch(imaging_pattern, command)):
+    music_pattern = rf'(?:freo_queue|freo_a|freo_b|freo_cart)\.push annotate:freo_decision=[1-9][0-9]*(?:,freo_gain="-?[0-9]{{1,2}}\.[0-9]{{3}} dB")?:{media_root}/{re.escape(slug)}/originals/[0-9a-f]{{32}}\.mp3'
+    imaging_pattern = rf'(?:freo_queue|freo_a|freo_b|freo_cart)\.push annotate:freo_decision=[1-9][0-9]*,title="[A-Za-z0-9 ._-]{{1,120}}",artist="[A-Za-z0-9 ._-]{{1,120}}":{media_root}/{re.escape(slug)}/imaging/[0-9a-f]{{32}}\.mp3'
+    if command not in ('freo_queue.queue', 'request.on_air', 'freo_queue.skip', 'freo_queue.flush_and_skip', 'freo_program.rms', 'freo_program.current', 'freo_deck.requests') and not re.fullmatch(r'(?:freo_deck\.(?:take|fade)_[ab](?: (?:[0-9]\.[0-9]{3}|10\.000))?|freo_deck\.(?:pause|clear|future)_[ab]|request.metadata [0-9]+|freo_(?:a|b|cart)\.queue|freo_mixer\.(?:state|fade_a|clear_future|mode (?:AUTO|DJ_BOOTH)|crossfader (?:0\.[0-9]{3}|1\.000)|(?:a_play|b_play) (?:true|false)|cart_mode (?:OVER|TAKEOVER)|duck (?:0\.[0-9]{3}|1\.000)))', command) and not (re.fullmatch(music_pattern, command) or re.fullmatch(imaging_pattern, command)):
         raise ValueError('Liquidsoap command is not allowlisted')
     path = SOCKET_ROOT / slug / 'control.sock'
     with socket.socket(socket.AF_UNIX) as connection:
@@ -124,6 +124,8 @@ def push_decision(decision, storage=None):
         path = storage.imaging_file(slug, imaging.storage_key)
     bus = getattr(decision, 'playback_bus', None) or 'A'
     queue_name = {'A':'freo_queue','B':'freo_b','CART':'freo_cart'}.get(bus)
+    if bus=='A' and decision.reason in ('deck_load','deck_repeat'):
+        queue_name='freo_a'
     if not queue_name:
         raise ValueError('Invalid broadcast bus')
     if imaging:
@@ -153,7 +155,7 @@ def program_decision_id(slug):
 def mixer_state(slug):
     import math
     parts = _command(slug, 'freo_mixer.state').split('|')
-    if len(parts) not in (9,13) or parts[0] not in ('AUTO','DJ_BOOTH') or any(value not in ('true','false') for value in parts[2:4]):
+    if len(parts) not in (9,13,16) or parts[0] not in ('AUTO','DJ_BOOTH') or any(value not in ('true','false') for value in parts[2:4]):
         raise RuntimeError('Invalid mixer state')
     numeric = [float(parts[index]) for index in (1,7,8)]
     if not all(math.isfinite(value) for value in numeric) or not 0 <= numeric[0] <= 1:
@@ -161,12 +163,18 @@ def mixer_state(slug):
     if any(value and not REQUEST_ID.fullmatch(value) for value in parts[4:7]):
         raise RuntimeError('Invalid mixer identity')
     transition = {}
-    if len(parts) == 13:
+    if len(parts) >= 13:
         levels = [float(value) for value in parts[10:13]]
         if parts[9] not in ('','A','B') or not all(math.isfinite(value) and 0 <= value <= 1 for value in levels):
             raise RuntimeError('Invalid deck transition')
         transition = dict(incoming=parts[9] or None,progress=levels[0],a_gain=levels[1],b_gain=levels[2])
-    return dict(transition=transition,mode=parts[0],crossfader=numeric[0],a_playing=parts[2]=='true',b_playing=parts[3]=='true',
+    extra={}
+    if len(parts)==16:
+        gain=float(parts[15])
+        if parts[13] not in ('true','false') or (parts[14] and not REQUEST_ID.fullmatch(parts[14])) or not math.isfinite(gain) or not 0<=gain<=1:
+            raise RuntimeError('Invalid Auto source state')
+        extra=dict(auto_standby=parts[13]=='true',auto_id=int(parts[14]) if parts[14] else None,auto_gain=gain)
+    return dict(**extra,transition=transition,mode=parts[0],crossfader=numeric[0],a_playing=parts[2]=='true',b_playing=parts[3]=='true',
                 a_id=int(parts[4]) if parts[4] else None,b_id=int(parts[5]) if parts[5] else None,
                 cart_id=int(parts[6]) if parts[6] else None,a_elapsed=max(0,numeric[1]),b_elapsed=max(0,numeric[2]))
 
@@ -179,7 +187,7 @@ def sync_mixer(station):
 
 
 def channel_queue(slug, bus):
-    name = {'A':'freo_queue','B':'freo_b','CART':'freo_cart'}.get(bus)
+    name = {'A':'freo_a','B':'freo_b','CART':'freo_cart'}.get(bus)
     if not name:
         raise ValueError('Invalid broadcast bus')
     value = _command(slug, name + '.queue')

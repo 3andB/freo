@@ -92,7 +92,7 @@ def test_recorded_crossfade_has_both_tones_and_live_meter(app,tmp_path,monkeypat
                 if (directory/'control.sock').exists():break
                 if proc.poll() is not None:pytest.fail((tmp_path/'crossfade.log').read_text()[-2500:])
                 time.sleep(.2)
-            for deck,key,bus,identifier in [('A','a','freo_queue',1),('B','b','freo_b',2)]:
+            for deck,key,bus,identifier in [('A','a','freo_a',1),('B','b','freo_b',2)]:
                 deck_control('test-station',deck,'clear')
                 _command('test-station',f'{bus}.push annotate:freo_decision={identifier}:{originals/(key*32+".mp3")}')
             time.sleep(1)
@@ -143,7 +143,8 @@ def test_recorded_crossfade_has_both_tones_and_live_meter(app,tmp_path,monkeypat
 
 
 @pytest.mark.parametrize('deck',['A','B'])
-def test_auto_mode_fades_dj_audio_before_scheduled_song(app,tmp_path,monkeypatch,deck):
+@pytest.mark.parametrize('direction',['to_auto','to_dj'])
+def test_auto_and_dj_crossfade(app,tmp_path,monkeypatch,deck,direction):
     import math,wave
     from array import array
     from app.services.playout_queue import _command,deck_control,mixer_state,program_decision_id
@@ -153,7 +154,7 @@ def test_auto_mode_fades_dj_audio_before_scheduled_song(app,tmp_path,monkeypatch
         subprocess.run(['ffmpeg','-v','error','-f','lavfi','-i',f'sine=frequency={hz}:duration=20','-y',str(originals/(key*32+'.mp3'))],check=True)
     monkeypatch.setenv('FREO_MEDIA_ROOT',str(tmp_path/'media'));monkeypatch.setattr('app.services.playout_queue.SOCKET_ROOT',runtime)
     with app.app_context():
-        station=Station.query.filter_by(slug='test-station').one();station.automation.operator_mode='DJ_BOOTH'
+        station=Station.query.filter_by(slug='test-station').one();station.automation.operator_mode='AUTO' if direction=='to_dj' else 'DJ_BOOTH'
         source=render_liquidsoap(station,'a'*64).replace('/run/freo/playout/test-station',str(directory))
     recording=tmp_path/'auto.wav'
     source='settings.init.allow_root := true\n'+source[:source.index('output.icecast(')]+f'output.file(%wav,"{recording}",radio)\n'
@@ -165,18 +166,34 @@ def test_auto_mode_fades_dj_audio_before_scheduled_song(app,tmp_path,monkeypatch
                 if (directory/'control.sock').exists():break
                 if proc.poll() is not None:pytest.fail((tmp_path/'auto.log').read_text()[-2500:])
                 time.sleep(.2)
-            deck_control('test-station',deck,'clear')
-            bus='freo_queue' if deck=='A' else 'freo_b'
-            _command('test-station',f'{bus}.push annotate:freo_decision=1:{originals/("a"*32+".mp3")}')
-            time.sleep(.5);deck_control('test-station',deck,'take',0);time.sleep(1)
-            _command('test-station','freo_mixer.mode AUTO')
-            _command('test-station',f'freo_queue.push annotate:freo_decision=2:{originals/("b"*32+".mp3")}')
+            bus='freo_a' if deck=='A' else 'freo_b'
+            if direction=='to_auto':
+                deck_control('test-station',deck,'clear')
+                _command('test-station',f'{bus}.push annotate:freo_decision=1:{originals/("a"*32+".mp3")}')
+                time.sleep(.5);deck_control('test-station',deck,'take',0);time.sleep(1)
+                _command('test-station','freo_mixer.mode AUTO')
+                _command('test-station',f'freo_queue.push annotate:freo_decision=2:{originals/("b"*32+".mp3")}')
+            else:
+                _command('test-station',f'freo_queue.push annotate:freo_decision=1:{originals/("a"*32+".mp3")}')
+                time.sleep(1)
+                _command('test-station','freo_mixer.mode DJ_BOOTH')
+                time.sleep(1)
+                standby=mixer_state('test-station')
+                assert standby['auto_standby'] and standby['a_id'] is None and standby['b_id'] is None
+                assert program_decision_id('test-station')==1
+                deck_control('test-station',deck,'clear')
+                _command('test-station',f'{bus}.push annotate:freo_decision=2:{originals/("b"*32+".mp3")}')
+                time.sleep(.5)
+                assert program_decision_id('test-station')==1
+                assert not mixer_state('test-station')[deck.lower()+'_playing']
+                deck_control('test-station',deck,'take',3)
             time.sleep(.8)
             assert program_decision_id('test-station')==1
             assert mixer_state('test-station')[deck.lower()+'_playing']
             time.sleep(4)
             assert program_decision_id('test-station')==2
-            assert mixer_state('test-station')['mode']=='AUTO'
+            assert mixer_state('test-station')['mode']==('AUTO' if direction=='to_auto' else 'DJ_BOOTH')
+            if direction=='to_dj':assert mixer_state('test-station')['auto_gain']==0
         finally:
             proc.terminate()
             try:proc.wait(timeout=5)
@@ -194,6 +211,5 @@ def test_auto_mode_fades_dj_audio_before_scheduled_song(app,tmp_path,monkeypatch
     outgoing=max(a for a,b in levels);incoming=max(b for a,b in levels)
     assert outgoing>100 and incoming>100
     ratios=[(a/outgoing,b/incoming) for a,b in levels]
-    assert sum(.1<a<.9 and b<.05 for a,b in ratios)>=15
-    assert sum(a<.05 and .1<b<.9 for a,b in ratios)>=4
+    assert sum(.1<a<.9 and .1<b<.9 for a,b in ratios)>=15
     assert sum(a2<a1-.01 for (a1,_),(a2,_) in zip(ratios,ratios[1:]))>=15

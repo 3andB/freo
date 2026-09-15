@@ -212,7 +212,7 @@
       }
       root.dataset.mode=state.mode;
       root.className=`dj-booth booth-mode-${state.mode.toLowerCase().replace('_','-')}`;
-      text('led-detail',state.mode.replace('_',' '));text('live-mode',state.mode);
+      text('led-detail',state.mixer?.auto_standby?'AUTO ON AIR · DJ READY':state.mode.replace('_',' '));text('live-mode',state.mode);
       text('live-clock',state.clock||'None');text('auto-clock',state.clock||'No active clock');
       text('live-transition',state.next_transition||'None');text('live-playout',state.playout_error||'Connected');
       text('live-fallback',state.fallback);text('next-event-name',state.next_event?.name||'None');

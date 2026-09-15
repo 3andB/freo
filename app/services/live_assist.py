@@ -37,7 +37,7 @@ def set_mode(station,user,mode):
         return return_to_schedule(station,user=user)
     if state.operator_mode != mode:
         state.cued_track_id = None
-        state.deck_a_playing, state.deck_b_playing, state.crossfader = True, False, 0.0
+        state.deck_a_playing, state.deck_b_playing, state.crossfader = False, False, 0.0
     state.operator_mode=mode;state.hold=mode=='DJ_BOOTH'
     if mode == 'AUTO':
         state.enabled = True
@@ -45,7 +45,7 @@ def set_mode(station,user,mode):
     db.session.commit();return state
 
 
-def return_to_schedule(station, user=None, reason='Returning to the schedule: DJ audio fades out over 3 seconds, then scheduled music fades in.'):
+def return_to_schedule(station, user=None, reason='Returning to the schedule with a 3-second crossfade.'):
     state=station.automation
     state.operator_mode='AUTO';state.hold=False;state.enabled=True
     state.cued_track_id=None
@@ -381,14 +381,14 @@ def status(station):
         snapshot_mixer = None
     deck_command = LiveControlCommand.query.filter_by(station_id=station.id).filter(LiveControlCommand.action.like('DECK_%')).order_by(LiveControlCommand.id.desc()).first()
     mode_notice=AuditEvent.query.filter_by(station_id=station.id,action='live_auto_return').order_by(AuditEvent.id.desc()).first()
-    return dict(mode_notice=dict(id=mode_notice.id,message=mode_notice.summary) if mode_notice else None,station=station.slug, automation='HELD' if state and state.hold else 'RUNNING' if state and state.enabled else 'DISABLED',mode=state.operator_mode if state else 'AUTO',cue=cue,
+    return dict(mode_notice=dict(id=mode_notice.id,message=mode_notice.summary) if mode_notice else None,station=station.slug, automation='HELD' if state and state.hold and not (snapshot_mixer or {}).get('auto_standby') else 'RUNNING' if state and state.enabled else 'DISABLED',mode=state.operator_mode if state else 'AUTO',cue=cue,
         current=current, mixer=snapshot_mixer, deck_command=(dict(id=deck_command.id,status=deck_command.status,deck=deck_command.deck,operation=deck_command.action.removeprefix('DECK_'),error=deck_command.error_code) if deck_command else None), last_known_current=last_known, observation_fresh=reliable, observed_at=snapshot.observed_at.isoformat() if snapshot else None, queue=queue, unknown_queue_items=unknown,
         program_rms=snapshot.program_rms if fresh else None,
         fallback='Possible' if not current and not live_error and station.desired_state == 'running' else 'Not observed',
         playout_error=live_error, recent=[safe_item(row) for row in recent],
         clock=programming.clock.name if programming.clock else None,
         next_transition=programming.next_transition.isoformat() if programming.next_transition else None,
-        local_time=programming.local_time.isoformat(), timed_events='PAUSED' if state and state.operator_mode == 'DJ_BOOTH' else 'ACTIVE',
+        local_time=programming.local_time.isoformat(), timed_events='PAUSED' if state and state.operator_mode == 'DJ_BOOTH' and not (snapshot_mixer or {}).get('auto_standby') else 'ACTIVE',
         active_block=(dict(id=active_block.id,name=active_block.block.name,state=active_block.state,
             source=active_block.source,completed_items=len([i for i in active_block.items if i.state in ('COMPLETED','SKIPPED')]),total_items=len(active_block.items)) if active_block else None),
         next_event=(dict(id=next_event.id, name=next_event.event.name,
@@ -401,7 +401,10 @@ def deck_item(station, mixer, deck):
     identifier = mixer.get(deck.lower()+'_id')
     row = db.session.get(SelectionDecision, identifier) if identifier else None
     if row is None:
-        row = SelectionDecision.query.filter_by(station_id=station.id, playback_bus=deck, status='queued').order_by(SelectionDecision.id).first()
+        prepared=SelectionDecision.query.filter_by(station_id=station.id, playback_bus=deck, status='queued')
+        if 'auto_standby' in mixer:
+            prepared=prepared.filter(SelectionDecision.reason.in_(('deck_load','deck_repeat')))
+        row=prepared.order_by(SelectionDecision.id).first()
     return row if row and row.station_id == station.id else None
 
 

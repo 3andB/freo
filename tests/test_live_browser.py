@@ -374,7 +374,7 @@ def test_auto_return_popup_for_manual_switch_and_stopped_music(booth):
     wait_text(driver,'#deck-a-state','LIVE')
     driver.find_element(By.CSS_SELECTOR,'[data-mode="AUTO"]').click()
     wait_text(driver,'.freo-dialog h2','Returning to Auto')
-    wait_text(driver,'.freo-dialog p','fades out over 3 seconds')
+    wait_text(driver,'.freo-dialog p','3-second crossfade')
     assert [b.text for b in driver.find_elements(By.CSS_SELECTOR,'.freo-dialog button')]==['OK']
     driver.find_element(By.CSS_SELECTOR,'.freo-dialog button').click()
     driver.find_element(By.CSS_SELECTOR,'[data-mode="DJ_BOOTH"]').click()
@@ -386,3 +386,21 @@ def test_auto_return_popup_for_manual_switch_and_stopped_music(booth):
     driver.refresh()
     WebDriverWait(driver,8).until(lambda d:d.find_element(By.ID,'dj-booth').get_attribute('data-mode')=='AUTO')
     assert not driver.find_elements(By.CSS_SELECTOR,'.freo-dialog[open]')
+
+
+def test_dj_standby_shows_empty_decks_and_auto_on_air(booth):
+    app,driver,base,tmp_path=booth
+    with app.app_context():
+        snapshot=LiveQueueSnapshot.query.first()
+        snapshot.mixer=dict(snapshot.mixer,auto_standby=True,auto_id=snapshot.current_decision_id,auto_gain=1,a_id=None,a_playing=False)
+        db.session.commit()
+    wait_text(driver,'#deck-a-state','EMPTY');wait_text(driver,'#deck-b-state','EMPTY')
+    wait_text(driver,'#led-detail','AUTO ON AIR · DJ READY')
+    wait_text(driver,'#morph-text','Verified Test Track')
+    driver.find_element(By.CSS_SELECTOR,'[data-load-deck="A"]').click()
+    wait_text(driver,'#deck-a-state','LOADING')
+    apply_browser_command(app,'LOAD','A')
+    wait_text(driver,'#deck-a-state','READY')
+    wait_text(driver,'#deck-b-state','EMPTY')
+    wait_text(driver,'#led-detail','AUTO ON AIR · DJ READY')
+    wait_text(driver,'#elapsed','0:0:00')

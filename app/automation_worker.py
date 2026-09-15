@@ -110,7 +110,7 @@ def reconcile_requests(slug):
     live = queued_ids(slug) | active_ids(slug)
     from app.services.playout_queue import channel_queue
     try:
-        live |= set(channel_queue(slug, 'B')) | set(channel_queue(slug, 'CART'))
+        live |= set(channel_queue(slug, 'A')) | set(channel_queue(slug, 'B')) | set(channel_queue(slug, 'CART'))
     except (OSError, RuntimeError, ValueError):
         pass
     rows = SelectionDecision.query.join(SelectionDecision.station).filter(
@@ -203,7 +203,7 @@ def process_manual(station, reader):
     live = queued_ids(slug) | active_ids(slug)
     from app.services.playout_queue import channel_queue
     try:
-        live |= set(channel_queue(slug, 'B')) | set(channel_queue(slug, 'CART'))
+        live |= set(channel_queue(slug, 'A')) | set(channel_queue(slug, 'B')) | set(channel_queue(slug, 'CART'))
     except (OSError, RuntimeError, ValueError):
         pass
     # Recover a push completed just before worker failure using Liquidsoap's
@@ -510,6 +510,9 @@ def return_to_auto_if_stopped(station, reader, mixer, now=None):
     if station.automation.operator_mode != 'DJ_BOOTH' or mixer['mode'] != 'DJ_BOOTH':
         reader.dj_has_played.discard(slug);reader.dj_stopped_since.pop(slug,None)
         return False
+    if mixer.get('auto_standby'):
+        reader.dj_has_played.discard(slug);reader.dj_stopped_since.pop(slug,None)
+        return False
     audible=any(mixer.get(deck+'_playing') and mixer.get(deck+'_id') and
         mixer.get('transition',{}).get(deck+'_gain',1)>0 for deck in ('a','b'))
     if audible:
@@ -559,22 +562,23 @@ def tick(reader, target_depth=2):
                     reader.auto_return_until[slug]=time.monotonic()+4
                 if state.operator_mode != 'DJ_BOOTH':
                     reader.dj_has_played.discard(slug);reader.dj_stopped_since.pop(slug,None)
-                if state.operator_mode == 'DJ_BOOTH' and prior_mixer['mode'] != 'DJ_BOOTH':
-                    for execution in EventBlockExecution.query.filter_by(station_id=state.station_id).filter(EventBlockExecution.state.in_(('PENDING','QUEUED','STARTED'))).all():
-                        execution.state='ABORTED';execution.aborted_at=datetime.now(timezone.utc);execution.failure_reason='dj_control'
-                        for item in execution.items:
-                            if item.state in ('PENDING','QUEUED'):
-                                item.state='SKIPPED';item.failure_reason='dj_control'
-                    db.session.commit()
             except (OSError, RuntimeError, ValueError):
                 pass
             process_manual(state.station, reader)
+            standby=False
             if state.operator_mode == 'DJ_BOOTH':
                 from app.services.playout_queue import mixer_state
+                standby=mixer_state(slug).get('auto_standby',False)
                 if return_to_auto_if_stopped(state.station,reader,mixer_state(slug)):
                     sync_mixer(state.station)
                     reader.auto_return_until[slug]=time.monotonic()+4
-            if state.operator_mode == 'DJ_BOOTH':
+            if state.operator_mode == 'DJ_BOOTH' and not standby:
+                for execution in EventBlockExecution.query.filter_by(station_id=state.station_id).filter(EventBlockExecution.state.in_(('PENDING','QUEUED','STARTED'))).all():
+                    execution.state='ABORTED';execution.aborted_at=datetime.now(timezone.utc);execution.failure_reason='dj_control'
+                    for item in execution.items:
+                        if item.state in ('PENDING','QUEUED'):
+                            item.state='SKIPPED';item.failure_reason='dj_control'
+                db.session.commit()
                 from app.services.timed_events import generate_occurrences
                 now = datetime.now(timezone.utc)
                 generate_occurrences(state.station, now)
@@ -590,7 +594,7 @@ def tick(reader, target_depth=2):
                 state.worker_heartbeat_at = datetime.now(timezone.utc)
                 state.observed_queue_depth = queue_depth(slug)
                 db.session.commit(); observe_queue(state.station); continue
-            if not state.enabled or state.hold:
+            if not state.enabled or (state.hold and not standby):
                 state.worker_heartbeat_at = datetime.now(timezone.utc)
                 state.observed_queue_depth = queue_depth(slug)
                 db.session.commit()
