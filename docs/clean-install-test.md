@@ -54,3 +54,7 @@ Create an exact generated imaging event through Admin → Events and preview its
 ## Phase 12 block checks
 
 Create a disabled stopset, add approved imaging and track items, reorder, validate, and enable it. Schedule it from a timed event and confirm contiguous starts with no automatic music between items. Repeat from an EVENT_BLOCK clock slot and Live Assist Queue Block. Restart the worker mid-block and verify the durable snapshot continues once. Exercise skip-failed and abort policies, history, stream continuity, CSRF, and cross-station rejection.
+
+## Phase 13 traffic checks
+
+Create a COMMERCIAL imaging asset, advertiser, active campaign, creative, weekday/daypart rule, and stopsets with commercial inventory. Generate a draft and verify deterministic distribution, capacity, separation, and unscheduled demand. Finalize explicitly, confirm EventBlock materialization, then verify AIRED only after Liquidsoap confirmation. Export CSV, exercise a missed placement and makegood, test CSRF/IDOR, and confirm both streams remain live.

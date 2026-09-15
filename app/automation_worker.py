@@ -166,6 +166,8 @@ def process_block(station, reader, now=None):
                 request_id = push_decision(decision)
                 decision.status = 'queued'; decision.liquidsoap_request_id = request_id; decision.socket_identity = socket_identity(station.slug)
                 item.state = 'QUEUED'; item.queued_at = now
+                from app.services.traffic import placement_queued
+                placement_queued(item)
                 if execution.state == 'PENDING': execution.state = 'QUEUED'
                 if execution.timed_event_occurrence and execution.timed_event_occurrence.state == 'READY':
                     execution.timed_event_occurrence.state = 'QUEUED'; execution.timed_event_occurrence.queued_at = now

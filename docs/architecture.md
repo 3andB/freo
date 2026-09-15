@@ -65,3 +65,7 @@ Phase 11 keeps `TimedEvent` definitions separate from clock state and materializ
 ## Ordered event blocks
 
 EventBlock definitions and immutable EventBlockExecution snapshots add bounded ordered sequences above Track and ImagingAsset. TimedEvent answers when a block starts; the block answers what plays in order. PostgreSQL state lets the existing worker own an active block and suppress normal refill until completion or abort. No new daemon or public port is introduced.
+
+## Traffic planning
+
+Traffic definitions and daily logs remain a planning layer. Finalization materializes exact EventBlocks and TimedEvents; the existing worker and Liquidsoap path remain authoritative. Placement snapshots retain business display context, while only block-item playback confirmation records delivery.

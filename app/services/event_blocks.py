@@ -134,3 +134,5 @@ def confirm_item_started(decision, now):
     if execution.state!='STARTED': execution.state='STARTED'; execution.started_at=now
     occurrence=execution.timed_event_occurrence
     if occurrence and occurrence.state!='STARTED': occurrence.state='STARTED'; occurrence.started_at=now; occurrence.failure_reason=None
+    from app.services.traffic import reconcile_placement
+    reconcile_placement(item)

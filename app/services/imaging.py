@@ -107,11 +107,13 @@ def set_group_enabled(group, enabled, *, commit=True):
 
 
 def decommission_asset(asset, *, active_request_ids=(), commit=True):
-    from app.models import ClockSlot, EventBlockItem
+    from app.models import ClockSlot, CommercialCreative, EventBlockItem
     if ClockSlot.query.filter_by(imaging_asset_id=asset.id).count():
         raise ValueError('Remove clock references before decommissioning')
     if EventBlockItem.query.filter_by(imaging_asset_id=asset.id).count():
         raise ValueError('Remove event block references before decommissioning')
+    if CommercialCreative.query.filter_by(imaging_asset_id=asset.id).count():
+        raise ValueError('Commercial creative history prevents decommissioning')
     pending = SelectionDecision.query.filter(SelectionDecision.imaging_asset_id == asset.id,
         SelectionDecision.status.in_(('selected','queued'))).count()
     if pending:

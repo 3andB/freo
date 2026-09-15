@@ -61,6 +61,10 @@ def can_manage_events(user, station):
     """Timed events are programming mutations, kept as an explicit boundary."""
     return can_manage_programming(user, station)
 
+def can_manage_traffic(user, station):
+    """Separate traffic boundary for a future traffic-manager role."""
+    return can_manage_programming(user, station)
+
 
 def programming_mutation_required(view):
     @admin_required
