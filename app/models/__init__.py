@@ -68,6 +68,12 @@ class Station(db.Model):
     deleted_at = db.Column(db.DateTime(timezone=True), index=True)
     lifecycle_state = db.Column(db.String(24), nullable=False, default='ready', server_default='ready')
     lifecycle_error = db.Column(db.String(500), nullable=False, default='', server_default='')
+    city = db.Column(db.String(120), nullable=False, default='', server_default='')
+    region = db.Column(db.String(120), nullable=False, default='', server_default='')
+    contact_email = db.Column(db.String(254), nullable=False, default='', server_default='')
+    phone = db.Column(db.String(40), nullable=False, default='', server_default='')
+    publish_contact = db.Column(db.Boolean, nullable=False, default=False, server_default=db.false())
+    logo = db.relationship('StationLogo', uselist=False, cascade='all, delete-orphan')
     stream = db.relationship('StreamMount', back_populates='station', uselist=False, cascade='all, delete-orphan')
 
 
@@ -775,3 +781,25 @@ class ScheduleProgram(db.Model):
     clock = db.relationship('Clock')
     station = db.relationship('Station')
     __table_args__ = (db.CheckConstraint('weekday BETWEEN 0 AND 6 AND start_minute BETWEEN 0 AND 1439 AND end_minute BETWEEN 1 AND 2880 AND end_minute > start_minute AND end_minute - start_minute <= 1440', name='ck_program_window'),)
+
+
+class StationLogo(db.Model):
+    __tablename__ = 'station_logos'
+    station_id = db.Column(db.Integer, db.ForeignKey('stations.id', ondelete='CASCADE'), primary_key=True)
+    image = db.deferred(db.Column(db.LargeBinary, nullable=False))
+    thumbnail = db.deferred(db.Column(db.LargeBinary, nullable=False))
+    version = db.Column(db.String(64), nullable=False)
+
+
+class SongFlag(db.Model):
+    __tablename__ = 'song_flags'
+    __table_args__ = (db.UniqueConstraint('station_id', 'track_id', name='uq_song_flag_station_track'),)
+    id = db.Column(db.Integer, primary_key=True)
+    station_id = db.Column(db.Integer, db.ForeignKey('stations.id', ondelete='CASCADE'), nullable=False, index=True)
+    track_id = db.Column(db.Integer, db.ForeignKey('tracks.id', ondelete='CASCADE'), nullable=False)
+    admin_user_id = db.Column(db.Integer, db.ForeignKey('admin_users.id', ondelete='SET NULL'))
+    note = db.Column(db.String(2000), nullable=False, default='')
+    revision = db.Column(db.Integer, nullable=False, default=1)
+    created_at = db.Column(db.DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+    updated_at = db.Column(db.DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+    resolved_at = db.Column(db.DateTime(timezone=True))

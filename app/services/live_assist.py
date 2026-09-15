@@ -112,15 +112,26 @@ def queue_playable(station, user, kind, identifier, nonce, *, bus='A', cart_mode
 
 
 def request_skip(station, user, expected_decision_id, nonce):
+    from app.services.stations import allocation_lock
+    allocation_lock()
     nonce = _nonce(nonce)
     existing = LiveControlCommand.query.filter_by(idempotency_key=nonce).first()
     if existing:
-        if existing.station_id == station.id and existing.admin_user_id == user.id and existing.expected_decision_id == expected_decision_id:
+        if existing.action == 'SKIP' and existing.station_id == station.id and existing.admin_user_id == user.id and existing.expected_decision_id == expected_decision_id:
             return existing
         raise ValueError('Operation token was already used')
+    pending = LiveControlCommand.query.filter_by(station_id=station.id,action='SKIP',expected_decision_id=expected_decision_id).filter(LiveControlCommand.status.in_(('pending','sent'))).first()
+    if pending:
+        return pending
     current = SelectionDecision.query.filter_by(id=expected_decision_id, station_id=station.id, status='started').first()
     if current is None or not station.enabled or station.desired_state != 'running':
         raise ValueError('Current item changed; refresh before skipping')
+    snapshot = db.session.get(LiveQueueSnapshot, station.id)
+    if snapshot and (snapshot.current_decision_id != current.id or snapshot.error_code or
+            (datetime.now(timezone.utc) - snapshot.observed_at.replace(tzinfo=snapshot.observed_at.tzinfo or timezone.utc)).total_seconds() >= 10):
+        raise ValueError('Current item changed or connection is stale; refresh before skipping')
+    if station.automation and station.automation.operator_mode != 'AUTO':
+        raise ValueError('Skip to next is only available in Auto mode')
     row = LiveControlCommand(station_id=station.id, admin_user_id=user.id,action='SKIP',
         idempotency_key=nonce, expected_decision_id=current.id, status='pending')
     db.session.add(row)
@@ -382,9 +393,11 @@ def status(station):
     else:
         snapshot_mixer = None
     deck_command = LiveControlCommand.query.filter_by(station_id=station.id).filter(LiveControlCommand.action.like('DECK_%')).order_by(LiveControlCommand.id.desc()).first()
+    skip_command=LiveControlCommand.query.filter_by(station_id=station.id,action='SKIP').order_by(LiveControlCommand.id.desc()).first()
     mode_notice=AuditEvent.query.filter_by(station_id=station.id,action='live_auto_return').order_by(AuditEvent.id.desc()).first()
     return dict(mode_notice=dict(id=mode_notice.id,message=mode_notice.summary) if mode_notice else None,station=station.slug, automation='HELD' if state and state.hold and not (snapshot_mixer or {}).get('auto_standby') else 'RUNNING' if state and state.enabled else 'DISABLED',mode=state.operator_mode if state else 'AUTO',cue=cue,
         current=current, mixer=snapshot_mixer, deck_command=(dict(id=deck_command.id,status=deck_command.status,deck=deck_command.deck,operation=deck_command.action.removeprefix('DECK_'),error=deck_command.error_code) if deck_command else None), last_known_current=last_known, observation_fresh=reliable, observed_at=snapshot.observed_at.isoformat() if snapshot else None, queue=queue, unknown_queue_items=unknown,
+        skip_command=dict(id=skip_command.id,status=skip_command.status,expected_decision_id=skip_command.expected_decision_id,error=skip_command.error_code) if skip_command else None,
         program_rms=snapshot.program_rms if fresh else None,
         fallback='Possible' if not current and not live_error and station.desired_state == 'running' else 'Not observed',
         playout_error=live_error, recent=[safe_item(row) for row in recent],

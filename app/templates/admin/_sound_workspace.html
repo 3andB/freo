@@ -1,7 +1,7 @@
 <section class="sound-workspace" id="sound-room" data-catalog="{{ url_for('sound_room.catalog',slug=selected.slug) }}" data-actions="{{ url_for('sound_room.mutate',slug=selected.slug,action='ACTION') }}" data-csrf="{{ csrf_token() }}">
   <div class="room-message" role="status" aria-live="polite" hidden><span id="room-message-text"></span><button id="room-undo" type="button" hidden>Undo</button></div>
   <aside class="room-destinations studio-panel" aria-label="Categories and tags">
-    <div class="destination-heading"><span class="eyebrow">YOUR COLLECTION</span><button type="button" id="room-all">All songs</button><button type="button" id="room-unfiled">Uncategorized</button><button type="button" id="room-unfinished">Needs processing <span id="unfinished-count"></span></button></div>
+    <div class="destination-heading"><span class="eyebrow">YOUR COLLECTION</span><button type="button" id="room-all">All songs</button><button type="button" id="room-flagged">💬 Flagged songs <span id="flagged-count"></span></button><button type="button" id="room-resolved">Resolved flags</button><button type="button" id="room-unfiled">Uncategorized</button><button type="button" id="room-unfinished">Needs processing <span id="unfinished-count"></span></button></div>
     <header><h2>Categories</h2><button type="button" data-create="category" aria-label="Create category">＋</button></header><div id="room-categories"></div>
     <header><h2>Tags</h2><button type="button" data-create="tag" aria-label="Create tag">＋</button></header><div id="room-tags"></div>
     <p class="room-hint">Drop songs onto a category or tag. Select songs and use Apply for the same result.</p>

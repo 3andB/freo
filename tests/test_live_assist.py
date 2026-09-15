@@ -223,7 +223,11 @@ def test_worker_skip_requires_same_observed_request(app, monkeypatch):
         command = request_skip(station, user, current.id, str(uuid.uuid4()))
         process_manual(station, EventReader())
         assert command.status == 'sent' and calls == ['test-station']
-        current.liquidsoap_request_id = 46
+        # A second click with a new token cannot repeat a sent skip.
+        assert request_skip(station,user,current.id,str(uuid.uuid4())).id == command.id
+        current = SelectionDecision(station_id=station.id,track_id=current.track_id,status='started',
+            started_at=current.started_at,socket_identity='socket-1',liquidsoap_request_id=46)
+        db.session.add(current)
         db.session.commit()
         stale = request_skip(station, user, current.id, str(uuid.uuid4()))
         process_manual(station, EventReader())
@@ -370,3 +374,20 @@ def test_dj_control_does_not_require_automation_enabled(app):
         db.session.commit()
         set_mode(station, AdminUser.query.first(), 'DJ_BOOTH')
         assert station.automation.hold and station.automation.operator_mode == 'DJ_BOOTH'
+
+
+def test_pending_auto_skip_rejected_after_switch_to_dj(app,monkeypatch):
+    from app.automation_worker import EventReader,process_manual
+    monkeypatch.setattr('app.automation_worker.socket_identity',lambda slug:'socket-1')
+    monkeypatch.setattr('app.automation_worker.queued_ids',lambda slug:set())
+    monkeypatch.setattr('app.automation_worker.active_ids',lambda slug:{45})
+    monkeypatch.setattr('app.automation_worker.reconcile_requests',lambda slug:0)
+    monkeypatch.setattr('app.automation_worker.skip_current',lambda slug:pytest.fail('Auto skip must not affect a DJ deck'))
+    with app.app_context():
+        station=Station.query.filter_by(slug='test-station').one();user=AdminUser.query.first()
+        current=SelectionDecision.query.filter_by(status='started').one()
+        current.socket_identity='socket-1';current.liquidsoap_request_id=45;db.session.commit()
+        command=request_skip(station,user,current.id,str(uuid.uuid4()))
+        station.automation.operator_mode='DJ_BOOTH';db.session.commit()
+        process_manual(station,EventReader())
+        assert command.status=='failed' and command.error_code=='current_changed'

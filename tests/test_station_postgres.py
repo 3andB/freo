@@ -70,3 +70,31 @@ def test_migration_preserves_existing_station_and_limit_serializes_empty_databas
         process_station(pending)
         assert pending.lifecycle_state == 'ready'
         db.session.remove();db.engine.dispose()
+
+
+def test_concurrent_flags_keep_one_station_review_and_reject_lost_updates(monkeypatch):
+    from app.models import AdminUser, Track, SongFlag
+    monkeypatch.setenv('DATABASE_URL',os.environ['FREO_TEST_POSTGRES_URL'])
+    monkeypatch.setenv('FREO_ENV_FILE','/dev/null')
+    monkeypatch.setenv('SECRET_KEY','test-only')
+    app=create_app('testing')
+    with app.app_context():
+        station=Station.query.filter_by(deleted_at=None).first()
+        user=AdminUser(email='flag-test@example.test',password_hash='unused',active=True)
+        track=Track(station_id=station.id,uuid='aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',title='Concurrency',artist='Test',original_filename='test.mp3',storage_key='a'*32+'.mp3',media_type='mp3',duration_ms=1000,sample_rate_hz=44100,channels=2,file_size_bytes=100,checksum_sha256='a'*64,enabled=True,ingest_status='accepted')
+        db.session.add_all([user,track]);db.session.commit()
+        user_id=user.id;slug=station.slug;identifier=track.uuid;station_id=station.id
+    for revision in (0,1):
+        barrier=Barrier(2)
+        def flag(index):
+            client=app.test_client()
+            with client.session_transaction() as session:
+                session['admin_user_id']=user_id;session['admin_csrf']='test-csrf'
+            barrier.wait(timeout=10)
+            return client.post(f'/admin/api/stations/{slug}/flags/{identifier}',data={'csrf':'test-csrf','revision':revision,'note':f'Edit {index}'}).status_code
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            assert sorted(pool.map(flag,range(2)))==[200,409]
+    with app.app_context():
+        row=SongFlag.query.filter_by(station_id=station_id).one()
+        assert row.revision==2
+        db.session.remove();db.engine.dispose()

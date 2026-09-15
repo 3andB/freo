@@ -17,13 +17,16 @@ from app.services.analysis_queue import request_analysis
 from app.services.loudness import gain_for
 from app.routes.catalog_editor import cover_url, context_slug
 from app.services.airplay import play_counts
+from app.models import SongFlag
+from app.routes.song_flags import flag_data
 
 sound_room=Blueprint('sound_room',__name__)
 
 
-def song_data(song, plays=None, station=None):
+def song_data(song, plays=None, station=None, flags=None):
     station = station or song.station
     return dict(uuid=song.uuid,title=song.title,artist=song.artist,album=song.album,
+        flag=flag_data(flags.get(song.id) if flags is not None else SongFlag.query.filter_by(station_id=station.id,track_id=song.id).first()),
         play_count=play_counts(station.id, 'track', [song.id]).get(song.id, 0) if plays is None else plays,
         duration_ms=song.duration_ms,enabled=song.enabled,notes=song.notes,
         analysis=song.analysis_status,requested=song.analysis_requested,error=song.analysis_error,
@@ -47,6 +50,12 @@ def catalog(slug):
     station=station_or_404(slug,require_enabled=False)
     base=tracks_for(station.id).filter_by(decommissioned_at=None,ingest_status='accepted')
     query=base
+    flag_filter=request.args.get('flags','')
+    if flag_filter:
+        if flag_filter not in ('open','resolved'):abort(400)
+        flagged=db.session.query(SongFlag.track_id).filter(SongFlag.station_id==station.id)
+        flagged=flagged.filter(SongFlag.resolved_at.is_(None) if flag_filter=='open' else SongFlag.resolved_at.isnot(None))
+        query=query.filter(Track.id.in_(flagged))
     term=request.args.get('q','').strip()[:100]
     if term:
         pattern='%'+term.replace('\\','\\\\').replace('%','\\%').replace('_','\\_')+'%'
@@ -73,7 +82,8 @@ def catalog(slug):
     tag_counts=dict(db.session.query(song_tags.c.tag_id,func.count()).join(Track,Track.id==song_tags.c.track_id).filter(track_scope(station.id),Track.decommissioned_at.is_(None)).group_by(song_tags.c.tag_id).all())
     song_plays = play_counts(station.id, 'track', [x.id for x in songs])
     category_plays = play_counts(station.id, 'category')
-    result=dict(songs=[song_data(x, song_plays.get(x.id, 0), station) for x in songs],total=total,page=page,pages=max(1,(total+49)//50),target_lufs=station.target_lufs,
+    flags={flag.track_id:flag for flag in SongFlag.query.filter(SongFlag.station_id==station.id,SongFlag.track_id.in_([x.id for x in songs])).all()}
+    result=dict(flagged_count=base.filter(Track.id.in_(db.session.query(SongFlag.track_id).filter_by(station_id=station.id,resolved_at=None))).count(),songs=[song_data(x, song_plays.get(x.id, 0), station, flags) for x in songs],total=total,page=page,pages=max(1,(total+49)//50),target_lufs=station.target_lufs,
         categories=[dict(id=x.id,name=x.name,count=category_counts.get(x.id,0),play_count=category_plays.get(x.id,0),enabled=x.enabled,description=x.description) for x in MediaCategory.query.filter_by(station_id=station.id).order_by(MediaCategory.name)],
         tags=[dict(id=x.id,name=x.name,color=x.color,description=x.description,count=tag_counts.get(x.id,0)) for x in MusicTag.query.filter_by(station_id=station.id).order_by(MusicTag.name)],
         unfinished=base.filter(Track.analysis_status!='complete').count())

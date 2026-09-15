@@ -259,3 +259,64 @@ def test_soft_insert_preserves_current_song_and_all_future_requests(app,tmp_path
             proc.terminate()
             try:proc.wait(timeout=5)
             except subprocess.TimeoutExpired:proc.kill();proc.wait()
+
+
+def test_auto_skip_advances_once_and_counts_only_engine_starts(app,tmp_path,monkeypatch):
+    """Real Auto queue, worker skip, observer ordering and confirmed airplay."""
+    from app.services.playout_queue import push_decision, socket_identity
+    from app.services.live_assist import request_skip
+    from app.services.airplay import play_counts
+    media=tmp_path/'media';runtime=tmp_path/'runtime';directory=runtime/'test-station';directory.mkdir(parents=True)
+    originals=media/'test-station'/'originals';originals.mkdir(parents=True)
+    key='a'*32+'.mp3'
+    subprocess.run(['ffmpeg','-v','error','-f','lavfi','-i','sine=frequency=440:duration=30','-y',str(originals/key)],check=True)
+    monkeypatch.setenv('FREO_MEDIA_ROOT',str(media))
+    monkeypatch.setattr('app.services.playout_queue.SOCKET_ROOT',runtime)
+    monkeypatch.setattr('app.automation_worker.EVENT_ROOT',runtime)
+    with app.app_context():
+        station=Station.query.filter_by(slug='test-station').one();track=Track.query.first();track.storage_key=key;track.duration_ms=30000
+        category=track.categories[0];user=AdminUser.query.first();db.session.commit()
+        baseline=play_counts(station.id,'track')[track.id]
+        category_baseline=play_counts(station.id,'category')[category.id]
+        source=render_liquidsoap(station,'a'*64).replace('/run/freo/playout/test-station',str(directory))
+        source='settings.init.allow_root := true\n'+source[:source.index('output.icecast(')]+f'output.file(%wav, "{tmp_path}/audio.wav", radio)\n'
+        config=tmp_path/'auto.liq';config.write_text(source)
+        with (tmp_path/'auto.log').open('w') as log:
+            proc=subprocess.Popen(['liquidsoap',str(config)],stdout=log,stderr=log)
+            try:
+                for _ in range(300):
+                    if (directory/'control.sock').exists():break
+                    if proc.poll() is not None:pytest.fail((tmp_path/'auto.log').read_text()[-2000:])
+                    time.sleep(.2)
+                rows=[]
+                for _ in range(3):
+                    row=SelectionDecision(station_id=station.id,track_id=track.id,category_id=category.id,status='selected')
+                    db.session.add(row);db.session.commit()
+                    row.liquidsoap_request_id=push_decision(row);row.socket_identity=socket_identity(station.slug);row.status='queued';db.session.commit();rows.append(row)
+                reader=EventReader()
+                def refresh():
+                    process_manual(station,reader);observe_queue(station);return status(station)
+                def wait_current(identifier):
+                    for _ in range(80):
+                        observed=refresh()
+                        if observed['current'] and observed['current']['decision_id']==identifier:return observed
+                        time.sleep(.1)
+                    pytest.fail('Engine did not advance to expected Auto item')
+                observed=wait_current(rows[0].id)
+                assert [item['decision_id'] for item in observed['queue']]==[row.id for row in rows[1:]]
+                assert play_counts(station.id,'track')[track.id]==baseline+1
+                command=request_skip(station,user,rows[0].id,str(uuid.uuid4()))
+                assert request_skip(station,user,rows[0].id,str(uuid.uuid4())).id==command.id
+                observed=wait_current(rows[1].id)
+                assert command.status=='sent'
+                assert observed['queue'][0]['decision_id']==rows[2].id
+                assert request_skip(station,user,rows[0].id,str(uuid.uuid4())).id==command.id
+                refresh();time.sleep(.2);observed=refresh()
+                assert observed['current']['decision_id']==rows[1].id
+                assert play_counts(station.id,'track')[track.id]==baseline+2
+                assert play_counts(station.id,'category')[category.id]==category_baseline+2
+                assert rows[2].status=='queued'
+            finally:
+                proc.terminate()
+                try:proc.wait(timeout=5)
+                except subprocess.TimeoutExpired:proc.kill();proc.wait()

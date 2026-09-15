@@ -277,6 +277,8 @@ def process_manual(station, reader):
                     valid = (not mixer['a_id'] and not queued_ids(slug)) if idle_start else (current is not None and current.socket_identity == identity and mixer['a_id'] == current.id)
                 except (OSError, RuntimeError, ValueError):
                     pass
+            if command.action == 'SKIP' and station.automation.operator_mode != 'AUTO':
+                valid = False
             if not valid:
                 command.status, command.error_code = 'failed', 'current_changed'
                 if command.target_decision and command.target_decision.status == 'selected':

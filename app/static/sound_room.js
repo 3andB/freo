@@ -39,7 +39,10 @@
   function setFilter(next,title){if(notesDirty){message('Save or discard your edits before changing collections.',true);return;}filter=next;page=1;$('collection-title').textContent=title;load();}
   function destinations(){
     for(const [kind,items] of [['category',data.categories],['tag',data.tags]]){
-      const list=$(kind==='category'?'room-categories':'room-tags');list.replaceChildren();
+      const list=$(kind==='category'?'room-categories':'room-tags');
+      const signature=JSON.stringify([items,filter[kind]]);
+      if(list.dataset.render===signature)continue;
+      list.dataset.render=signature;list.replaceChildren();
       if(!items.length)list.append(el('p',`Create your first ${kind}.`,'room-hint'));
       items.forEach(item=>{
         const row=el('div',undefined,'destination-row');Object.assign(row.dataset,{dropKind:kind,dropTarget:item.id});
@@ -54,7 +57,7 @@
         list.append(row);
       });
     }
-    $('unfinished-count').textContent=data.unfinished;
+    $('unfinished-count').textContent=data.unfinished;$('flagged-count').textContent=data.flagged_count;
   }
   const rowsSignature=()=>JSON.stringify([data.songs,data.tags,data.categories,data.page,data.total,editingCategory]);
   function rows(){
@@ -67,6 +70,7 @@
       const copy=el('div',undefined,'song-row-copy');copy.append(el('b',song.title),el('span',song.artist),el('small',`${song.album||'Single'} · ${duration(song.duration_ms)} · ${song.play_count} plays`));
       copy.append(FreoMusicToggles.create(song,data,root.dataset));
       const status=el('div',undefined,'song-row-status');status.append(el('span',song.analysis==='pending'?(song.requested?'Queued':'Waiting'):song.analysis),el('small',song.lufs===null?'LUFS pending':`${song.lufs.toFixed(1)} LUFS`));
+      status.append(button(song.flag?(song.flag.resolved?'💬 Resolved':'💬 Flagged'):'💬 Flag',()=>window.FreoSongFlags.open(song),'song-flag-button'));
       if(!song.enabled)status.append(el('small','Needs review'));
       const menu=el('details',undefined,'song-menu'),summary=el('summary','⋯');summary.setAttribute('aria-label',`Song menu: ${song.title}`);menu.append(summary);
       const link=el('a','Edit song');link.href=song.detail;menu.append(link,button('Process song',()=>process([song.uuid])),button('Permanently delete',()=>deleteSong(song),'delete-song'));
@@ -90,8 +94,9 @@
     panel.append(art,el('span','SELECTED SONG','eyebrow'));
     const heading=el('div',undefined,'inspector-heading');heading.append(preview(song),el('h2',song.title));panel.append(heading,el('p',song.artist,'inspector-artist'));
     const link=el('a','Edit song ↗','inspector-link');link.href=song.detail;panel.append(link);
+    panel.append(button(song.flag?'💬 Review flag':'💬 Flag song',()=>window.FreoSongFlags.open(song),'song-flag-button'));
     const metrics=el('div',undefined,'inspector-metrics');
-    for(const [name,value] of [['Loudness',song.lufs===null?'Not measured':`${song.lufs.toFixed(1)} LUFS`],['Playback gain',`${song.gain.db} dB`],['Target',`${song.gain.target} LUFS`],['Status',song.gain.status]]){const cell=el('div');cell.append(el('small',name),el('b',value));metrics.append(cell);}panel.append(metrics);
+    for(const [name,value] of [['Confirmed plays',song.play_count],['Loudness',song.lufs===null?'Not measured':`${song.lufs.toFixed(1)} LUFS`],['Playback gain',`${song.gain.db} dB`],['Target',`${song.gain.target} LUFS`],['Status',song.gain.status]]){const cell=el('div');cell.append(el('small',name),el('b',value));metrics.append(cell);}panel.append(metrics);
     const processing=button(song.analysis==='processing'?'Processing…':song.requested?'Queued for processing':'Process song',()=>process([song.uuid]),'process-song');processing.disabled=song.analysis==='processing'||song.requested;panel.append(processing);
     if(song.error)panel.append(el('p',song.error,'room-hint'));
     for(const [kind,ids,items] of [['category',song.categories,data.categories],['tag',song.tags,data.tags]]){
@@ -119,7 +124,7 @@
     const save=el('button','Save category');save.type='submit';form.append(nameLabel,descriptionLabel,enabledLabel,save);
     form.addEventListener('input',()=>{notesDirty=true;});
     form.addEventListener('submit',async event=>{event.preventDefault();if(await post('edit-category',{id:item.id,name:name.value,description:description.value,enabled:enabled.checked})){notesDirty=false;load();}});
-    panel.append(form,button('Discard changes',()=>{notesDirty=false;delete $('song-inspector').dataset.render;load();}),el('h3',`${item.count} songs`),el('p','Add and remove songs using the controls in the song list. Drag selected songs here or onto this category in the sidebar.','room-hint'));
+    panel.append(form,button('Discard changes',()=>{notesDirty=false;delete $('song-inspector').dataset.render;load();}),el('h3',`${item.count} songs · ${item.play_count} plays`),el('p','Add and remove songs using the controls in the song list. Drag selected songs here or onto this category in the sidebar.','room-hint'));
     panel.dataset.dropKind='category';panel.dataset.dropTarget=item.id;
     panel.append(button('Browse songs to add',()=>{filter={};page=1;$('collection-title').textContent=`Add songs to ${item.name}`;load();}),button('View category songs',()=>setFilter({category:item.id},item.name)));
   }
@@ -140,7 +145,7 @@
     if(FreoMusicToggles.pending)return;
     const attempt=++version;const params=new URLSearchParams({...filter,page});
     const form=$('room-search');for(const key of ['q','analysis','enabled'])if(form.elements[key].value)params.set(key,form.elements[key].value);
-    try{const response=await scope.fetch(root.dataset.catalog+'?'+params,{cache:'no-store'});if(!response.ok||!response.headers.get('content-type')?.includes('application/json'))throw Error();const next=await response.json();if(attempt!==version||FreoMusicToggles.pending)return;data=next;destinations();rows();if(editingCategory&&!notesDirty){const category=data.categories.find(x=>x.id===editingCategory);if(category)categoryInspector(category);}else if(active&&!notesDirty)await inspect(active);}
+    try{const response=await scope.fetch(root.dataset.catalog+'?'+params,{cache:'no-store'});if(!response.ok||!response.headers.get('content-type')?.includes('application/json'))throw Error();const next=await response.json();if(attempt!==version||FreoMusicToggles.pending||drag)return;data=next;destinations();rows();if(editingCategory&&!notesDirty){const category=data.categories.find(x=>x.id===editingCategory);if(category)categoryInspector(category);}else if(active&&!notesDirty)await inspect(active);}
     catch(_){message('Music could not load. Check your connection or refresh to sign in again.',true);}
   }
   async function process(ids){if(!ids.length)return;const result=await post('process',{songs:ids});if(result)load();}
@@ -153,6 +158,9 @@
   for(const name of ['analysis','enabled'])$('room-search').elements[name].addEventListener('change',()=>{page=1;load();});
   $('room-all').addEventListener('click',()=>{for(const key of ['q','analysis','enabled'])$('room-search').elements[key].value='';editingCategory=null;setFilter({},'All songs');});
   $('room-unfiled').addEventListener('click',()=>setFilter({uncategorized:1},'Uncategorized'));
+  $('room-flagged').addEventListener('click',()=>setFilter({flags:'open'},'Flagged songs'));
+  $('room-resolved').addEventListener('click',()=>setFilter({flags:'resolved'},'Resolved flags'));
+  scope.listen(document,'song-flag-saved',()=>load());
   $('room-unfinished').addEventListener('click',()=>{$('room-search').elements.analysis.value='unfinished';setFilter({},'Needs processing');});
   $('room-select-all').addEventListener('change',event=>{data.songs.forEach(song=>event.target.checked?selected.add(song.uuid):selected.delete(song.uuid));selection();});
   $('room-clear-selection').addEventListener('click',()=>{selected.clear();selection();});
@@ -193,5 +201,5 @@
     if(!await FreoDialog.confirm({title:`Delete “${song.title}”?`,message:'The audio will be deleted and the song removed from Music. Past play history remains. This cannot be undone.',confirmLabel:'Delete song'}))return;
     if(await post('delete',{songs:[song.uuid],confirm:song.uuid})){selected.delete(song.uuid);if(active===song.uuid){active=null;notesDirty=false;$('song-inspector').replaceChildren(el('p','Deletion queued.','room-empty'));}load();}
   }
-  load();scope.interval(()=>{if(!drag&&!busy&&!document.hidden&&!root.querySelector('dialog[open]')&&!root.querySelector('.song-menu[open]'))load();},10000);
+  load();scope.interval(()=>{if(!drag&&!busy&&!document.hidden&&!document.querySelector('dialog[open]')&&!root.querySelector('.song-menu[open]'))load();},10000);
 })();

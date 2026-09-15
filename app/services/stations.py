@@ -62,6 +62,12 @@ def public_station(station):
         'name': station.name,
         'slug': station.slug,
         'description': station.description,
+        'city': station.city,
+        'region': station.region,
+        'player_path': '/player/' + (station.public_slug or station.slug),
+        'logo_path': '/station-assets/' + station.slug + '/logo.png?v=' + station.logo.version if station.logo else None,
+        'contact_email': station.contact_email if station.publish_contact else None,
+        'phone': station.phone if station.publish_contact else None,
         'enabled': station.enabled,
         'desired_state': station.desired_state,
         'lifecycle_state': station.lifecycle_state,
@@ -71,7 +77,7 @@ def public_station(station):
     }
 
 
-def update_station(station, *, name, description, public_slug, timezone_name, user):
+def update_station(station, *, name, description, public_slug, timezone_name, user, commit=True):
     from app.models import StationAlias
     from app.services.schedule import validate_timezone
     from app.services.programming import clean_text
@@ -92,7 +98,8 @@ def update_station(station, *, name, description, public_slug, timezone_name, us
     station.public_slug, station.timezone = public_slug, timezone_name
     audit('station_details_updated', user_id=user.id, station_id=station.id, target_type='station', target_id=station.slug,
           summary='Station details and public URL updated; previous URLs retained')
-    db.session.commit()
+    if commit:
+        db.session.commit()
     return station
 
 

@@ -1,0 +1,24 @@
+{% extends 'admin/base.html' %}
+{% block title %}{{ selected.name }} · Station settings{% endblock %}
+{% block admin_content %}
+<section class="admin-card station-settings"><h1>Station settings</h1><p>Manage {{ selected.name }}’s identity and public listening page.</p>
+{% if error %}<p class="admin-notice error" role="alert">{{ error }}</p>{% endif %}
+{% set values = request.form if request.method == 'POST' else selected %}
+<form method="post" action="{{ url_for('station_settings.page',slug=selected.slug) }}" enctype="multipart/form-data">
+<input type="hidden" name="csrf" value="{{ csrf_token() }}">
+<label>Station name<input name="name" value="{{ values.name }}" required maxlength="120"></label>
+<div class="settings-columns"><label>City<input name="city" value="{{ values.city }}" maxlength="120"></label><label>State / region<input name="region" value="{{ values.region }}" maxlength="120"></label></div>
+<div class="settings-columns"><label>Contact email<input type="email" name="contact_email" value="{{ values.contact_email }}" maxlength="254"></label><label>Phone<input type="tel" name="phone" value="{{ values.phone }}" maxlength="40"></label></div>
+<label><input type="checkbox" name="publish_contact" value="yes" {% if values.publish_contact %}checked{% endif %}> Publish contact email and phone on the station’s public page</label>
+<label>Station description<textarea name="description" maxlength="500" rows="4">{{ values.description }}</textarea></label>
+<label>Timezone<input name="timezone" value="{{ values.timezone }}" required maxlength="64" placeholder="Australia/Perth"></label>
+<h2>Station logo</h2>
+{% if selected.logo %}<img class="station-logo settings-logo" src="{{ url_for('station_settings.logo',slug=selected.slug,v=selected.logo.version) }}" alt="Current station logo"><label><input type="checkbox" name="remove_logo" value="yes"> Remove logo</label>{% endif %}
+<label>Upload or replace logo<input name="logo" type="file" accept="image/jpeg,image/png,image/webp"></label><p class="quiet">JPEG, PNG or WebP, up to 10 MB and 3000 × 3000 pixels. A square (1:1) logo is recommended.</p>
+<h2>Station URL</h2><label>Public URL name<input name="public_slug" value="{{ values.public_slug or selected.slug }}" required maxlength="64" pattern="[a-z0-9][a-z0-9-]*"></label><p class="quiet">Use lowercase letters, numbers and hyphens. Previous URLs continue to work.</p>
+<label>Public listening page<input id="station-public-url" readonly value="{{ public_url }}"></label>
+<p><button type="button" id="copy-station-url">Copy URL</button> <a href="{{ url_for('web.player',slug=selected.public_slug or selected.slug) }}">Open station ↗</a><span id="copy-url-status" role="status"></span></p>
+<button class="admin-primary" type="submit">Save station settings</button>
+</form></section>
+{% endblock %}
+{% block scripts %}{{ super() }}<script defer src="{{ url_for('static',filename='station_settings.js') }}"></script>{% endblock %}

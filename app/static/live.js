@@ -260,7 +260,7 @@
       text('fact-category',current?.category||'NO CATEGORY');
       text('fact-bpm',current?.bpm?`${Math.round(current.bpm)} BPM`:'BPM —');text('fact-year',current?.year||'YEAR —');
       text('fact-lufs',Number.isFinite(current?.loudness_lufs)?`${current.loudness_lufs.toFixed(1)} LUFS`:'LUFS —');
-      text('queue-count',state.queue.length);fillQueue(state.queue);
+      text('queue-count',state.queue.length);fillQueue(state.queue);autoControls();
       root.querySelectorAll('.current-decision').forEach(input=>input.value=current?.decision_id||'');
       root.querySelectorAll('.current-control button').forEach(button=>button.disabled=!state.current||!!state.playout_error);
       root.querySelectorAll('.mode-button').forEach(button=>button.classList.toggle('active',button.dataset.mode===state.mode));
@@ -274,7 +274,7 @@
     }catch(_){
       if(version!==refreshVersion)return;
       text('live-playout','Reconnecting — controls will recover automatically');
-      if(state)state={...state,playout_error:'Connection delayed'};
+      if(state)state={...state,playout_error:'Connection delayed'};autoControls();
       text('morph-kicker','CONNECTION DELAY · LAST OBSERVED');programTarget=0;
       root.querySelectorAll('.deck').forEach(panel=>panel.classList.remove('mix-live','is-fading','is-incoming'));
       root.querySelectorAll('.deck-take').forEach(button=>button.classList.remove('is-live','is-incoming'));
@@ -282,6 +282,30 @@
 
     }
   }
+  let skipRequested=null,skipFailureSeen=null;
+  function autoControls(){
+    const reliable=state?.observation_fresh&&!state?.playout_error;
+    const command=state?.skip_command;
+    if(command?.status==='failed'&&command.id!==skipFailureSeen){skipFailureSeen=command.id;notice(command.error||'Skip failed; refresh and try again.',true);skipRequested=null;}
+    const current=state?.current;
+    const pending=skipRequested===current?.decision_id||(command&&command.expected_decision_id===current?.decision_id&&['pending','sent'].includes(command.status));
+    const skip=document.getElementById('auto-skip');
+    skip.disabled=!reliable||!current||state.mode!=='AUTO'||pending;
+    skip.textContent=pending?'SKIP REQUESTED…':'SKIP TO NEXT';
+    const next=state?.queue?.[0];
+    text('auto-next',!reliable?'NEXT: Connection unavailable':state.unknown_queue_items?'NEXT: Queue item unavailable':next?'NEXT: '+[next.artist,next.title].filter(Boolean).join(' — '):'NEXT: Queue is empty');
+    document.getElementById('auto-flag').disabled=!reliable||current?.kind!=='track';
+  }
+  scope.listen(document.getElementById('auto-skip'),'click',async()=>{
+    const decision=state?.current?.decision_id;if(!decision||document.getElementById('auto-skip').disabled)return;
+    skipRequested=decision;autoControls();
+    if(!await post('skip',{expected_decision_id:decision,nonce:nonce()}))skipRequested=null;
+    autoControls();
+  });
+  scope.listen(document.getElementById('auto-flag'),'click',()=>{
+    if(state?.current?.kind==='track'&&!state.playout_error)window.FreoSongFlags.open({...state.current});
+  });
+  scope.listen(document,'song-flag-saved',()=>notice('Song flag saved. Review flagged songs in Music.'));
   let polling=false,lastPoll=0;
   scope.interval(()=>{const delay=root.dataset.mode==='DJ_BOOTH'&&!document.hidden?250:2000;if(!polling&&Date.now()-lastPoll>=delay){polling=true;lastPoll=Date.now();refresh().finally(()=>polling=false);}},250);
   scope.interval(timing,250);refresh();
