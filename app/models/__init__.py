@@ -88,6 +88,52 @@ class StreamMount(db.Model):
         return '/stream/' + self.station.slug
 
 
+class Artist(db.Model):
+    __tablename__ = 'artists'
+    __table_args__ = (db.UniqueConstraint('station_id', 'normalized_name', name='uq_artist_station_name'),)
+    id = db.Column(db.Integer, primary_key=True)
+    station_id = db.Column(db.Integer, db.ForeignKey('stations.id', ondelete='CASCADE'), nullable=False, index=True)
+    name = db.Column(db.String(200), nullable=False)
+    normalized_name = db.Column(db.String(200), nullable=False)
+    created_at = db.Column(db.DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+    updated_at = db.Column(db.DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    station = db.relationship('Station')
+
+
+class Album(db.Model):
+    __tablename__ = 'albums'
+    __table_args__ = (db.UniqueConstraint('station_id', 'artist_id', 'normalized_title', name='uq_album_station_artist_title'),)
+    id = db.Column(db.Integer, primary_key=True)
+    station_id = db.Column(db.Integer, db.ForeignKey('stations.id', ondelete='CASCADE'), nullable=False, index=True)
+    artist_id = db.Column(db.Integer, db.ForeignKey('artists.id', ondelete='RESTRICT'), nullable=False, index=True)
+    title = db.Column(db.String(200), nullable=False)
+    normalized_title = db.Column(db.String(200), nullable=False)
+    album_artist = db.Column(db.String(200), nullable=False, default='')
+    release_year = db.Column(db.Integer)
+    genre = db.Column(db.String(100), nullable=False, default='')
+    artwork_key = db.Column(db.String(50))
+    created_at = db.Column(db.DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+    updated_at = db.Column(db.DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    station = db.relationship('Station')
+    artist = db.relationship('Artist', backref='albums')
+
+
+song_tags = db.Table(
+    'song_tags',
+    db.Column('track_id', db.Integer, db.ForeignKey('tracks.id', ondelete='CASCADE'), primary_key=True),
+    db.Column('tag_id', db.Integer, db.ForeignKey('music_tags.id', ondelete='CASCADE'), primary_key=True),
+)
+
+
+class MusicTag(db.Model):
+    __tablename__ = 'music_tags'
+    __table_args__ = (db.UniqueConstraint('station_id', 'slug', name='uq_music_tag_station_slug'),)
+    id = db.Column(db.Integer, primary_key=True)
+    station_id = db.Column(db.Integer, db.ForeignKey('stations.id', ondelete='CASCADE'), nullable=False, index=True)
+    name = db.Column(db.String(80), nullable=False)
+    slug = db.Column(db.String(80), nullable=False)
+
+
 class Track(db.Model):
     __tablename__ = 'tracks'
     __table_args__ = (
@@ -102,6 +148,23 @@ class Track(db.Model):
     title = db.Column(db.String(200), nullable=False)
     artist = db.Column(db.String(200), nullable=False)
     album = db.Column(db.String(200), nullable=False, default='')
+    artist_id = db.Column(db.Integer, db.ForeignKey('artists.id', ondelete='RESTRICT'), index=True)
+    album_id = db.Column(db.Integer, db.ForeignKey('albums.id', ondelete='SET NULL'), index=True)
+    album_artist = db.Column(db.String(200), nullable=False, default='')
+    track_number = db.Column(db.Integer)
+    disc_number = db.Column(db.Integer)
+    release_year = db.Column(db.Integer)
+    genre = db.Column(db.String(100), nullable=False, default='')
+    isrc = db.Column(db.String(20), nullable=False, default='')
+    artwork_key = db.Column(db.String(50))
+    bpm = db.Column(db.Float)
+    loudness_lufs = db.Column(db.Float)
+    true_peak_db = db.Column(db.Float)
+    cue_in_ms = db.Column(db.Integer)
+    cue_out_ms = db.Column(db.Integer)
+    segue_ms = db.Column(db.Integer)
+    analysis_status = db.Column(db.String(16), nullable=False, default='pending')
+    scheduling_restrictions = db.Column(db.JSON, nullable=False, default=dict)
     original_filename = db.Column(db.String(255), nullable=False)
     storage_key = db.Column(db.String(50), nullable=False)
     media_type = db.Column(db.String(12), nullable=False)
@@ -117,6 +180,9 @@ class Track(db.Model):
     created_at = db.Column(db.DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
     updated_at = db.Column(db.DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
     station = db.relationship('Station', backref=db.backref('tracks', lazy='dynamic'))
+    catalog_artist = db.relationship('Artist', backref='songs')
+    catalog_album = db.relationship('Album', backref='songs')
+    tags = db.relationship('MusicTag', secondary=song_tags, backref='songs')
 
 
 track_categories = db.Table(

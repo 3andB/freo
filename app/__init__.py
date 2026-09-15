@@ -79,8 +79,15 @@ def create_app(config_name=None):
         raise RuntimeError('MAX_MEDIA_UPLOAD_BYTES must be an integer') from error
     if not 1024 * 1024 <= upload_limit <= 128 * 1024 * 1024:
         raise RuntimeError('MAX_MEDIA_UPLOAD_BYTES must be between 1 MiB and 128 MiB')
+    try:
+        batch_limit=int(os.environ.get('MAX_MEDIA_BATCH_BYTES',512*1024*1024))
+    except ValueError as error:
+        raise RuntimeError('MAX_MEDIA_BATCH_BYTES must be an integer') from error
+    if batch_limit<upload_limit or batch_limit>1024*1024*1024:
+        raise RuntimeError('MAX_MEDIA_BATCH_BYTES must be between the file limit and 1 GiB')
     app.config.update(SESSION_COOKIE_HTTPONLY=True, SESSION_COOKIE_SAMESITE='Lax',
                       SESSION_COOKIE_SECURE=name == 'production', PERMANENT_SESSION_LIFETIME=3600,
                       MAX_MEDIA_UPLOAD_BYTES=upload_limit,
-                      MAX_CONTENT_LENGTH=upload_limit + 1024 * 1024)
+                      MAX_MEDIA_BATCH_BYTES=batch_limit,
+                      MAX_CONTENT_LENGTH=batch_limit + 1024 * 1024)
     return app

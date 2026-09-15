@@ -6,6 +6,7 @@ import stat
 
 MEDIA_ROOT = Path('/var/lib/freo/media')
 KEY_PATTERN = re.compile(r'^[0-9a-f]{32}\.(mp3|flac|wav|ogg)$')
+ARTWORK_PATTERN = re.compile(r'^[0-9a-f]{32}\.jpg$')
 
 
 class LocalMediaStorage:
@@ -22,6 +23,18 @@ class LocalMediaStorage:
 
     def imaging_path(self, slug, key):
         return self._media_path(slug, key, 'imaging')
+
+    def artwork_path(self, slug, key):
+        if not isinstance(key,str) or not ARTWORK_PATTERN.fullmatch(key): raise ValueError('Invalid artwork key')
+        station=self.station_dir(slug);parent=station/'artwork';path=parent/key
+        if self.root.is_symlink() or station.is_symlink() or parent.is_symlink() or path.is_symlink(): raise ValueError('Symlink artwork is forbidden')
+        if not path.resolve().is_relative_to(parent.resolve()): raise ValueError('Artwork path escapes station')
+        return path
+
+    def artwork_file(self,slug,key):
+        path=self.artwork_path(slug,key)
+        if not stat.S_ISREG(path.lstat().st_mode): raise ValueError('Artwork is not a regular file')
+        return path
 
     def _media_path(self, slug, key, directory):
         if not isinstance(key, str) or not KEY_PATTERN.fullmatch(key):

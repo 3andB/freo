@@ -23,7 +23,7 @@
       {% if selected %}<a href="{{ url_for('admin_blocks.list_page', slug=selected.slug) }}" {% if page == 'blocks' %}aria-current="page"{% endif %}>Blocks</a>{% endif %}
       {% if selected %}<a href="{{ url_for('admin_traffic.page', slug=selected.slug) }}" {% if page == 'traffic' %}aria-current="page"{% endif %}>Traffic</a>{% endif %}
       <span class="admin-nav-label">PROGRAMMING</span>
-      <a href="{{ url_for('web.admin_section', section='media') }}{{ suffix }}" {% if page == 'media' %}aria-current="page"{% endif %}>Media</a>
+      <a href="{{ url_for('web.admin_section', section='media') }}{{ suffix }}" {% if page == 'media' %}aria-current="page"{% endif %}>Music</a>
       {% if selected %}<a href="{{ url_for('admin_imaging.library', slug=selected.slug) }}" {% if page == 'imaging' %}aria-current="page"{% endif %}>Imaging</a>{% endif %}
       <a href="{{ url_for('admin_programming.list_page', slug=selected.slug, section='categories') if selected else url_for('web.admin_section', section='categories') }}" {% if page == 'categories' %}aria-current="page"{% endif %}>Categories</a>
       <a href="{{ url_for('admin_programming.list_page', slug=selected.slug, section='rotations') if selected else url_for('web.admin_section', section='rotations') }}" {% if page == 'rotations' %}aria-current="page"{% endif %}>Rotations</a>

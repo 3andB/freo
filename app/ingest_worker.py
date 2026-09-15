@@ -80,6 +80,9 @@ def process_one():
                                       enabled=False, update_playlist=False)
             job.status = 'duplicate' if duplicate else 'accepted'
             job.track_id = track.id
+            if not duplicate:
+                from app.services.audio_analysis import analyze_song,extract_artwork
+                extract_artwork(track);analyze_song(track)
             audit('media_ingest_accepted', user_id=job.admin_user_id, station_id=job.station_id,
                   target_id=track.uuid, summary='Existing file reused' if duplicate else 'Audio validated and accepted disabled')
     except MediaValidationError as error:

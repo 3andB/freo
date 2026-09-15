@@ -2,11 +2,11 @@
 import uuid
 from datetime import datetime, timezone
 
-from flask import Blueprint, abort, current_app, flash, redirect, render_template, request, url_for
+from flask import Blueprint, abort, current_app, flash, redirect, render_template, request, send_file, url_for
 from sqlalchemy import or_
 
 from app.extensions import db
-from app.models import AuditEvent, MediaCategory, MediaIngestJob, SelectionDecision, Track
+from app.models import Album,Artist,AuditEvent,MediaCategory,MediaIngestJob,SelectionDecision,Track
 from app.services.admin_auth import admin_required, current_admin, media_mutation_required
 from app.services.admin_media import audit, stage_upload, track_for_station
 from app.services.automation import assign_track
@@ -36,6 +36,8 @@ def media_url(station):
 @admin_required
 def library(slug):
     station = station_or_404(slug, require_enabled=False)
+    view=request.args.get('view','songs')
+    if view not in ('artists','albums','songs'): abort(400)
     query = Track.query.filter_by(station_id=station.id)
     search = request.args.get('q', '').strip()[:100]
     if search:
@@ -81,9 +83,33 @@ def library(slug):
     tracks = query.order_by(sorts[sort], Track.id).offset((page - 1) * 50).limit(50).all()
     jobs = (MediaIngestJob.query.filter_by(station_id=station.id, kind='ingest')
             .order_by(MediaIngestJob.created_at.desc()).limit(5).all())
-    return render_template('admin/media.html', **page_context(station, tracks=tracks, total=total,
+    return render_template('admin/media.html', **page_context(station, tracks=tracks, total=total,view=view,
                            page_number=page, pages=max(1, (total + 49) // 50), jobs=jobs,
+                           artists=Artist.query.filter_by(station_id=station.id).order_by(Artist.name).all(),
+                           albums=Album.query.filter_by(station_id=station.id).order_by(Album.title).all(),
                            categories=MediaCategory.query.filter_by(station_id=station.id).order_by(MediaCategory.name).all()))
+
+@admin_media_blueprint.get('/admin/stations/<slug>/media/artists/<int:artist_id>')
+@admin_required
+def artist_detail(slug,artist_id):
+    station=station_or_404(slug,require_enabled=False);artist=Artist.query.filter_by(id=artist_id,station_id=station.id).first_or_404()
+    return render_template('admin/music_artist.html',**page_context(station,artist=artist))
+
+@admin_media_blueprint.get('/admin/stations/<slug>/media/albums/<int:album_id>')
+@admin_required
+def album_detail(slug,album_id):
+    station=station_or_404(slug,require_enabled=False);album=Album.query.filter_by(id=album_id,station_id=station.id).first_or_404()
+    return render_template('admin/music_album.html',**page_context(station,album=album))
+
+@admin_media_blueprint.get('/admin/stations/<slug>/media/albums/<int:album_id>/artwork')
+@admin_required
+def album_artwork(slug,album_id):
+    station=station_or_404(slug,require_enabled=False);album=Album.query.filter_by(id=album_id,station_id=station.id).first_or_404()
+    if not album.artwork_key: abort(404)
+    from app.services.media_storage import LocalMediaStorage
+    try:path=LocalMediaStorage().artwork_file(station.slug,album.artwork_key)
+    except (OSError,ValueError):abort(404)
+    return send_file(path,mimetype='image/jpeg',conditional=True,max_age=3600)
 
 
 @admin_media_blueprint.route('/admin/stations/<slug>/media/upload', methods=['GET', 'POST'])
@@ -96,16 +122,31 @@ def upload(slug):
     require_csrf()
     if not station.enabled:
         abort(409)
-    file = request.files.get('file')
-    if file is None:
+    files=[f for f in request.files.getlist('files')+request.files.getlist('file') if f and f.filename]
+    if not files:
         flash('Choose an audio file to upload.', 'error')
         return redirect(url_for('admin_media.upload', slug=slug))
-    try:
-        job = stage_upload(station, current_admin(), file)
-    except MediaValidationError as error:
-        flash(str(error), 'error')
-        return redirect(url_for('admin_media.upload', slug=slug))
-    return redirect(url_for('admin_media.job_status', slug=slug, job_id=job.id), code=303)
+    jobs=[];errors=[]
+    for file in files:
+        try: jobs.append(stage_upload(station,current_admin(),file))
+        except MediaValidationError as error: errors.append(f'{file.filename}: {error}')
+    if errors: flash(f'{len(errors)} file(s) rejected before staging. '+errors[0],'error')
+    if not jobs: return redirect(url_for('admin_media.upload',slug=slug))
+    if len(jobs)==1 and len(files)==1:return redirect(url_for('admin_media.job_status',slug=slug,job_id=jobs[0].id),code=303)
+    flash(f'{len(jobs)} song(s) staged for background metadata, artwork, and audio analysis.','success')
+    return redirect(media_url(station),code=303)
+
+@admin_media_blueprint.post('/admin/stations/<slug>/media/bulk-categories')
+@media_mutation_required
+def bulk_categories(slug):
+    station=station_or_404(slug,require_enabled=False);ids=request.form.getlist('track_uuid')
+    if not ids or len(ids)>500: abort(400)
+    songs=Track.query.filter(Track.station_id==station.id,Track.uuid.in_(ids)).all()
+    if len(songs)!=len(set(ids)): abort(404)
+    category=MediaCategory.query.filter_by(station_id=station.id,id=request.form.get('category_id')).first_or_404()
+    from app.services.music_catalog import bulk_categories as apply
+    count=apply(station,songs,category,request.form.get('operation','assign')=='assign')
+    audit('music_bulk_category_updated',user_id=current_admin().id,station_id=station.id,target_type='category',target_id=str(category.id),summary=f'{count} songs updated');db.session.commit();flash(f'{count} songs updated.','success');return redirect(media_url(station),code=303)
 
 
 @admin_media_blueprint.get('/admin/stations/<slug>/media/jobs/<job_id>')
@@ -145,6 +186,9 @@ def edit_track(slug, track_uuid):
         if not title or not artist:
             raise MediaValidationError('Title and artist are required')
         track.title, track.artist, track.album = title, artist, album
+        track.album_artist=normalize(request.form.get('album_artist'),200,'');track.genre=normalize(request.form.get('genre'),100,'');track.isrc=normalize(request.form.get('isrc'),20,'').upper()
+        from app.services.music_catalog import organize_song
+        organize_song(track,{'album_artist':track.album_artist,'genre':track.genre,'isrc':track.isrc,'year':request.form.get('year'),'track':request.form.get('track_number'),'disc':request.form.get('disc_number')})
         audit('media_metadata_updated', user_id=current_admin().id, station_id=station.id,
               target_id=track.uuid, summary='Descriptive metadata updated')
         db.session.commit()

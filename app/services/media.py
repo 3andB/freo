@@ -67,8 +67,9 @@ def _prepare_dirs(storage, slug):
     originals = station_dir / 'originals'
     imaging = station_dir / 'imaging'
     staging = station_dir / 'staging'
+    artwork = station_dir / 'artwork'
     for path, group, mode in ((station_dir, gid, 0o2750), (originals, gid, 0o2750),
-                              (imaging, gid, 0o2750), (staging, gid, 0o2700)):
+                              (imaging, gid, 0o2750), (artwork, gid, 0o2750), (staging, gid, 0o2700)):
         path.mkdir(exist_ok=True)
         if path.is_symlink():
             raise ValueError('Symlink storage directory is forbidden')
@@ -137,6 +138,9 @@ def ingest(slug, source, title=None, artist=None, album=None, storage=None, *,
             enabled=enabled, ingest_status='accepted',
         )
         db.session.add(track)
+        db.session.flush()
+        from app.services.music_catalog import organize_song
+        organize_song(track, tags)
         db.session.commit()
         committed = True
         if update_playlist:

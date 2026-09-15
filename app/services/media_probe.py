@@ -15,7 +15,7 @@ class MediaValidationError(ValueError):
 def probe(path, timeout=30):
     try:
         result = subprocess.run(
-            ['/usr/bin/ffprobe', '-v', 'error', '-show_entries', 'format=format_name,duration,bit_rate:format_tags=title,artist,album:stream=index,codec_type,codec_name,sample_rate,channels', '-of', 'json', str(path)],
+            ['/usr/bin/ffprobe', '-v', 'error', '-show_entries', 'format=format_name,duration,bit_rate:format_tags=title,artist,album,album_artist,track,tracknumber,disc,discnumber,date,year,genre,isrc:stream=index,codec_type,codec_name,sample_rate,channels,disposition', '-of', 'json', str(path)],
             capture_output=True, text=True, timeout=timeout, check=True,
         )
         data = json.loads(result.stdout)
@@ -38,6 +38,7 @@ def probe(path, timeout=30):
             'bitrate_kbps': round(int(fmt.get('bit_rate', 0)) / 1000) or None,
             'sample_rate_hz': sample_rate, 'channels': channels,
             'tags': {str(k).lower(): v for k, v in fmt.get('tags', {}).items()},
+            'has_artwork': any(stream.get('codec_type') == 'video' and stream.get('disposition', {}).get('attached_pic') for stream in data['streams']),
         }
     except (subprocess.TimeoutExpired, subprocess.CalledProcessError, OSError, ValueError, KeyError, StopIteration, TypeError) as error:
         if isinstance(error, MediaValidationError):

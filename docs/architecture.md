@@ -39,9 +39,13 @@ Internet -> Nginx -> Freo Web/API -> PostgreSQL
 
 There is one Icecast backend and one Liquidsoap process/config/socket per managed station. The web app can operate when playout is down. See [stations.md](stations.md) for domain, lifecycle, boot state, security, and future hierarchy. The existing `freo-test` remains a non-database diagnostic fixture.
 
+## Music catalog and station programming
+
+Music identity is `Artist → Album → Song`. Song uses the original Track persistence identity, preserving every proven foreign key in automation and history. Categories, tags, cue/segue values, restrictions, enable state, and airplay history are station-programming overlays on Songs. The ingest worker creates or reuses catalog parents, extracts embedded artwork and extended tags, and performs bounded background audio analysis. Imaging remains a separate non-music domain.
+
 ## Phase 4 media library
 
-Tracks belong to one station. The root-run CLI copies a regular, non-symlink source into private staging, hashes and probes it, then atomically moves an opaque UUID-named file into `/var/lib/freo/media/<slug>/originals`. PostgreSQL stores validated metadata and a per-station unique SHA-256 checksum. Artist and album are text fields for now. Phase 7 adds authenticated web upload through a separate non-root ingest worker using that same trusted service. The web process cannot write approved media or serve raw media. Backups need PostgreSQL, `/etc/freo`, and `/var/lib/freo/media`.
+Songs belong to one station. The root-run CLI copies a regular, non-symlink source into private staging, hashes and probes it, then atomically moves an opaque UUID-named file into `/var/lib/freo/media/<slug>/originals`. PostgreSQL stores validated metadata and a per-station unique SHA-256 checksum. First-class Artist and Album records group Songs without changing stable playback identity. Phase 7 added authenticated web upload through a separate non-root ingest worker using that same trusted service. The web process cannot write approved media or serve raw media. Backups need PostgreSQL, `/etc/freo`, and `/var/lib/freo/media`.
 
 ## Phase 5 automation
 
