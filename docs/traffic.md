@@ -8,6 +8,10 @@ TrafficStopset templates contain fixed imaging and non-playable commercial inven
 
 Only the existing Liquidsoap confirmation callback marks a placement AIRED and records actual UTC start. Failed or skipped item executions reconcile as FAILED or MISSED. The original miss remains intact; a separate placement can reference it as a makegood. Finalized and reconciled logs cannot be regenerated.
 
+The authenticated Traffic workspace supports advertiser contact/reference edits and disable, campaign edits and lifecycle status, creative and rule enable/disable, stopset enable/disable, daily generation, explicit finalization, and CSV export. Opening a draft log exposes placement moves, creative substitutions within the same campaign, and removal. Every draft adjustment repeats capacity, inventory, daypart, separation, campaign-collision, and station ownership checks on the server. Finalized and reconciled views replace those controls with a locked indicator.
+
+The log detail page is also the reconciliation record: it displays station-local scheduled and actual times, immutable advertiser/campaign/creative snapshots, delivery status, failure reason, and makegood linkage. A MISSED or FAILED placement can be scheduled into a separate future draft log. The original historical placement remains unchanged, and the target stopset is fully revalidated before the makegood is accepted.
+
 ```text
 flask traffic generate --station freo-demo --date 2026-09-15
 flask traffic show --station freo-demo --date 2026-09-15

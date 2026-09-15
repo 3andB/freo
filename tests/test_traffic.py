@@ -2,10 +2,10 @@
 from datetime import date,time,datetime,timezone
 import uuid,pytest
 from app.extensions import db
-from app.models import Campaign,ImagingAsset,Station
+from app.models import Campaign,CommercialCreative,ImagingAsset,Station,TrafficLog,TrafficPlacement,TrafficStopset
 from app.services.event_blocks import create_execution,prepare_next
-from app.services.traffic import (add_rule,add_template_item,attach_creative,create_advertiser,create_campaign,
- create_stopset,finalize_log,generate_log)
+from app.services.traffic import (add_rule,add_template_item,attach_creative,cancel_placement,change_placement_creative,
+ create_makegood,create_advertiser,create_campaign,create_stopset,finalize_log,generate_log,move_placement)
 from tests.test_web import app as app_fixture,admin_client
 
 @pytest.fixture
@@ -47,3 +47,36 @@ def test_cross_station_creative_and_admin_security(app,monkeypatch):
     base='/admin/stations/test-station/traffic';anonymous=app.test_client();assert anonymous.get(base).status_code==302 and anonymous.post(base+'/advertiser').status_code==302
     client=admin_client(app);assert client.get(base).status_code==200;assert client.post(base+'/advertiser').status_code==400
     assert client.post(base+'/advertiser',data={'csrf':'test-admin-csrf-token','name':'Web Buyer'}).status_code==303
+
+def test_draft_adjustments_and_finalized_lock(app,monkeypatch):
+    with app.app_context():
+        station,campaign,_,today=setup_traffic(monkeypatch);log,_=generate_log(station.slug,today);placement=log.placements[0]
+        stopsets=TrafficStopset.query.filter_by(station_id=station.id).all();unused=next(s for s in stopsets if s.id not in {p.traffic_stopset_id for p in log.placements})
+        old=placement.traffic_stopset_id;move_placement(placement,unused);db.session.commit();assert placement.traffic_stopset_id==unused.id and placement.traffic_stopset_id!=old
+        asset=ImagingAsset(uuid=str(uuid.uuid4()),station_id=station.id,name='Other Thirty',cart_code='ADV-31',asset_type='COMMERCIAL',original_filename='y.mp3',storage_key='b'*32+'.mp3',media_type='mp3',duration_ms=30000,sample_rate_hz=44100,channels=2,file_size_bytes=100,checksum_sha256='e'*64,enabled=True,ingest_status='accepted');db.session.add(asset);db.session.commit()
+        other=attach_creative(campaign,asset.uuid,'Other 30','AUTO-31');change_placement_creative(placement,other);db.session.commit();assert placement.commercial_creative_id==other.id
+        cancel_placement(placement);db.session.commit();assert placement.status=='CANCELLED'
+        finalize_log(log);assert placement.event_block_item_id is None
+        with pytest.raises(ValueError,match='immutable'):cancel_placement(next(p for p in log.placements if p.status!='CANCELLED'))
+
+def test_makegood_uses_future_draft_without_rewriting_history(app,monkeypatch):
+    from datetime import timedelta
+    with app.app_context():
+        station,campaign,_,today=setup_traffic(monkeypatch);original_log,_=generate_log(station.slug,today);original=original_log.placements[0];original.status='MISSED';original_log.status='RECONCILED'
+        tomorrow=today+timedelta(days=1);campaign.end_date=tomorrow
+        for rule in campaign.rules: rule.weekdays=f'{today.weekday()},{tomorrow.weekday()}'
+        stopsets=TrafficStopset.query.filter_by(station_id=station.id).all()
+        for stop in stopsets: stop.weekdays=f'{today.weekday()},{tomorrow.weekday()}'
+        target=TrafficLog(station_id=station.id,log_date=tomorrow,status='DRAFT');db.session.add(target);db.session.commit()
+        row=create_makegood(original,target,stopsets[0]);db.session.commit()
+        assert row.traffic_log_id==target.id and row.makegood_for_id==original.id and row.is_makegood
+        assert original.status=='MISSED' and original.traffic_log.status=='RECONCILED'
+
+def test_log_detail_lifecycle_and_csv_are_protected(app,monkeypatch):
+    with app.app_context():
+        station,_,_,today=setup_traffic(monkeypatch);log,_=generate_log(station.slug,today);log_date=str(log.log_date)
+    client=admin_client(app);base='/admin/stations/test-station/traffic'
+    page=client.get(f'{base}/logs/{log_date}');assert page.status_code==200 and b'AS-RUN RECONCILIATION' in page.data and b'Edit placement' in page.data
+    csv=client.get(f'{base}/logs/{log_date}/as-run.csv');assert csv.status_code==200 and b'Advertiser,Campaign,Creative' in csv.data and b'/safe' not in csv.data
+    assert app.test_client().get(f'{base}/logs/{log_date}').status_code==302
+    assert client.post(base+'/advertiser-edit').status_code==400

@@ -139,6 +139,7 @@ IMAGING_TYPES = ('CART', 'STATION_ID', 'SWEEPER', 'LINER', 'PROMO', 'JINGLE', 'C
 class ImagingAsset(db.Model):
     __tablename__ = 'imaging_assets'
     __table_args__ = (
+        db.UniqueConstraint('uuid', name='imaging_assets_uuid_key'),
         db.UniqueConstraint('station_id', 'checksum_sha256', name='uq_imaging_station_checksum'),
         db.UniqueConstraint('station_id', 'cart_code', name='uq_imaging_station_cart_code'),
         db.CheckConstraint("asset_type IN ('CART','STATION_ID','SWEEPER','LINER','PROMO','JINGLE','COMMERCIAL','GENERIC')", name='ck_imaging_asset_type'),
@@ -480,6 +481,7 @@ class LiveQueueSnapshot(db.Model):
 class TimedEvent(db.Model):
     __tablename__ = 'timed_events'
     __table_args__ = (
+        db.UniqueConstraint('uuid', name='timed_events_uuid_key'),
         db.CheckConstraint("timing_mode IN ('SOFT','HARD','NON_INTERRUPTING')", name='ck_timed_event_mode'),
         db.CheckConstraint("recurrence_type IN ('ONE_TIME','WEEKLY')", name='ck_timed_event_recurrence'),
         db.CheckConstraint("content_type IN ('TRACK','IMAGING_ASSET','EVENT_BLOCK')", name='ck_timed_event_content_type'),
