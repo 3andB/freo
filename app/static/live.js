@@ -3,6 +3,7 @@
   const root = document.getElementById('dj-booth');
   if (!root) return;
   let state = null;
+  const pendingLoads=new Map();
   const text = (id, value) => { const node=document.getElementById(id); if(node) node.textContent=value; };
   const nonce = () => crypto.randomUUID();
   const notice = (message, error=false) => {
@@ -42,7 +43,12 @@
     const expected=state.mixer[deck.toLowerCase()]?.decision_id;
     if(playing && !await FreoDialog.confirm({title:`Replace and go live on Deck ${deck}?`,message:'This deck is playing. Replace its song and play the dropped song from the beginning?',confirmLabel:'Replace & go live'}))return false;
     if(state.mixer[deck.toLowerCase()]?.decision_id!==expected){notice('This deck changed. Drop the song again.',true);return false;}
-    return deckCommand(deck,'LOAD',id,playing);
+    if(busy||state.deck_command?.status==='pending')return false;
+    pendingLoads.set(deck.toLowerCase(),{expected,uuid:id});
+    paintLoading(deck.toLowerCase());timing();
+    const loaded=await deckCommand(deck,'LOAD',id,playing);
+    if(!loaded){pendingLoads.delete(deck.toLowerCase());await refresh();}
+    return loaded;
   };
   root.querySelectorAll('form[method="post"]').forEach(form=>form.addEventListener('submit',event=>{
     event.preventDefault(); const data=Object.fromEntries(new FormData(form));
@@ -168,18 +174,27 @@
   const animateProgram=()=>{programLevel+=(programTarget-programLevel)*.12;headerSegments.forEach((bar,index)=>bar.classList.toggle('lit',index/headerSegments.length<programLevel));document.getElementById('program-left').value=programLevel;document.getElementById('program-right').value=programLevel;if(cueMonitor.paused){const levels=FreoMonitor.levels();document.getElementById('monitor-left').value=meterLevel(levels[0]);document.getElementById('monitor-right').value=meterLevel(levels[1]);}scope.frame(animateProgram);};animateProgram();
 
   const fillQueue=items=>{const list=document.getElementById('live-queue');list.replaceChildren();if(!items.length){const li=document.createElement('li');li.className='empty-copy';li.textContent='Queue is empty';list.append(li);}items.forEach((item,index)=>{const li=document.createElement('li');li.innerHTML=`<span class="queue-index">${index+1}</span><div><b></b><small></small></div>`;li.querySelector('b').textContent=item.title;li.querySelector('small').textContent=`${item.artist} · ${item.source}`;list.append(li);});};
-  let observedAt=Date.now();
+  const deckClock=ms=>{const seconds=Math.max(0,Math.floor(ms/1000));return `${Math.floor(seconds/3600)}:${Math.floor(seconds/60)%60}:${String(seconds%60).padStart(2,'0')}`;};
+  function paintLoading(key){
+    const panel=document.getElementById(key==='a'?'now-drop':'cue-drop');
+    panel.classList.add('is-loading');panel.classList.remove('mix-live','is-fading','is-incoming');
+    text(`deck-${key}-state`,'LOADING');text(`deck-${key}-message`,'RESETTING DECK · PREPARING SONG');
+    panel.querySelector('h2').textContent='LOADING SONG';panel.querySelector('.now-copy p').textContent='Preparing from 0:0:00';
+    panel.querySelector('.now-copy small').textContent='';panel.querySelectorAll('.track-facts span').forEach(node=>node.textContent='—');text(`deck-${key}-label`,key.toUpperCase());
+    panel.querySelector('.disc').classList.remove('playing');
+    panel.querySelectorAll('[data-operation]').forEach(button=>{button.disabled=true;button.classList.remove('is-live','is-incoming');if(button.dataset.operation==='PLAY')button.textContent='LOADING';});
+  }
   function timing(){
-    const b=state?.mixer?.b,ms=(state?.mixer?.b_elapsed||0)*1000;
-    const clockB=value=>`${Math.floor(value/60000)}:${String(Math.floor(value/1000)%60).padStart(2,'0')}`;
-    text('b-elapsed',clockB(ms));text('b-remaining',b?'-'+clockB(Math.max(0,b.duration_ms-ms)):'—:—');
-    document.getElementById('b-progress').style.width=`${b?Math.min(100,ms/b.duration_ms*100):0}%`;
-    const current=state?.mode==='DJ_BOOTH'?state?.mixer?.a:state?.current;if(!current?.duration_ms)return;
-    const engine=state.mixer;
-    const elapsed=engine ? engine.a_elapsed*1000 : Math.max(0,Date.now()-Date.parse(current.started_at));
-    const fraction=Math.min(1,elapsed/current.duration_ms),clock=ms=>`${Math.floor(ms/60000)}:${String(Math.floor(ms/1000)%60).padStart(2,'0')}`;
-    text('elapsed',clock(elapsed));text('remaining',`-${clock(Math.max(0,current.duration_ms-elapsed))}`);document.getElementById('time-progress').style.width=`${fraction*100}%`;
-    for(const id of ['progress-ring']){const ring=document.getElementById(id);if(ring){const circumference=2*Math.PI*parseFloat(ring.getAttribute('r'));ring.style.strokeDasharray=circumference;ring.style.strokeDashoffset=circumference*(1-fraction);}}
+    for(const key of ['a','b']){
+      const item=state?.mixer?.[key],loading=pendingLoads.has(key);
+      const elapsed=!loading&&item?Math.max(0,state.mixer[key+'_elapsed']||0)*1000:0;
+      const duration=!loading&&item?item.duration_ms:0,fraction=duration?Math.min(1,elapsed/duration):0;
+      text(key==='a'?'elapsed':'b-elapsed',deckClock(elapsed));
+      text(key==='a'?'remaining':'b-remaining',duration?'-'+deckClock(Math.max(0,duration-elapsed)):'—:—:—');
+      document.getElementById(key==='a'?'time-progress':'b-progress').style.width=`${fraction*100}%`;
+      const ring=document.getElementById(key==='a'?'progress-ring':'b-progress-ring'),circumference=2*Math.PI*63;
+      ring.style.strokeDasharray=circumference;ring.style.strokeDashoffset=circumference*(1-fraction);
+    }
   }
   let refreshVersion=0,lastFailedCommand=null;
   async function refresh(){
@@ -189,7 +204,12 @@
       if(!response.ok)throw new Error();
       const next=await response.json();if(version!==refreshVersion)return;
       if(next.playout_error&&!next.mixer&&state?.mixer)next.mixer=state.mixer;
+      const previous=state;
       state=next;
+      if(previous?.mode==='DJ_BOOTH' && state.mode==='AUTO' && state.mixer?.transition?.progress !== undefined){
+        pendingLoads.clear();
+        FreoDialog.notify({title:'Returning to Auto',message:state.mode_notice?.message || 'Returning to the schedule with a fade.'});
+      }
       root.dataset.mode=state.mode;
       root.className=`dj-booth booth-mode-${state.mode.toLowerCase().replace('_','-')}`;
       text('led-detail',state.mode.replace('_',' '));text('live-mode',state.mode);
@@ -203,15 +223,24 @@
       }
       root.querySelectorAll('.cue-picker-button,[data-load-deck]').forEach(button=>button.disabled=pending||!engine||!!state.playout_error);
 
+      for(const [key,load] of pendingLoads){
+        const item=engine?.[key],command=state.deck_command;
+        // Status includes the worker's queued item for a paused deck. The engine's
+        // current id can stay empty until PLAY, so it must not gate READY.
+        if((item&&item.decision_id!==load.expected&&item.uuid===load.uuid)||(command?.deck===key.toUpperCase()&&command.operation==='LOAD'&&command.status==='failed'))pendingLoads.delete(key);
+      }
       for(const deck of ['A','B']){
         const key=deck.toLowerCase(),item=engine?.[key],playing=!!item&&engine?.[key+'_playing'];
         const panel=document.getElementById(deck==='A'?'now-drop':'cue-drop');
-        panel.classList.toggle('mix-live',playing&&!state.playout_error);panel.style.setProperty('--deck-gain',playing?1:0);
-        text(`deck-${key}-state`,state.playout_error?'CONNECTION DELAY':!item?'EMPTY':playing?'LIVE':item.started_at?'PAUSED':'READY');
+        const incoming=engine?.transition?.incoming,fading=!!incoming&&playing&&!state.playout_error;
+        panel.classList.toggle('mix-live',playing&&!state.playout_error);
+        panel.classList.toggle('is-fading',fading);panel.classList.toggle('is-incoming',fading&&incoming===deck);panel.classList.toggle('is-loading',pendingLoads.has(key));
+        text(`deck-${key}-message`,state.playout_error?'CONNECTION DELAY':fading?(incoming===deck?'GOING LIVE':'FADING OUT'):playing?'ON AIR':item?'CUED · READY TO TAKE AIR':'');
+        text(`deck-${key}-state`,state.playout_error?'CONNECTION DELAY':!item?'EMPTY':fading?(incoming===deck?'GOING LIVE':'FADING OUT'):playing?'LIVE':item.started_at?'PAUSED':'READY');
         root.querySelectorAll(`[data-deck="${deck}"][data-operation]`).forEach(button=>{
           const operation=button.dataset.operation;
           button.disabled=pending||!engine||!item||!!state.playout_error||(operation==='PLAY'&&playing)||(['PAUSE','FADE'].includes(operation)&&!playing)||(operation==='REPEAT'&&item?.kind!=='track');
-          if(operation==='PLAY')button.textContent=item?.started_at?'RESUME / TAKE AIR':'PLAY / TAKE AIR';
+          if(operation==='PLAY'){button.textContent=fading&&incoming===deck?'GOING LIVE':playing?'LIVE':item?.started_at?'RESUME / TAKE AIR':'PLAY / TAKE AIR';button.classList.toggle('is-live',playing&&!state.playout_error);button.classList.toggle('is-incoming',fading&&incoming===deck);}
         });
         root.querySelector(`[data-preview-deck="${deck}"]`).disabled=!item||item.kind!=='track';
       }
@@ -219,14 +248,14 @@
       root.querySelectorAll('[data-fire-cart]').forEach(button=>button.disabled=!engine);
       text('morph-kicker',state.playout_error?'CONNECTION DELAY · LAST OBSERVED':'NOW PLAYING');
       root.querySelectorAll('#spinning-disc,.auto-disc .disc').forEach(disc=>disc.classList.toggle('playing',!!current&&(!state.mixer||state.mixer.a_playing)));
-      document.querySelector('.onair-deck').classList.toggle('active',!!current);
-      text('deck-a-label',current?(state.mixer&&!state.mixer.a_playing?(current.started_at?'PAUSED':'READY'):'A'):'A');text('deck-b-label',state.mixer?.b?(state.mixer.b_playing?'B':(state.mixer.b.started_at?'PAUSED':'READY')):'B');
+      document.querySelector('.onair-deck').classList.remove('active');
+      text('deck-a-label','A');text('deck-b-label','B');
       programTarget=state.playout_error?0:meterLevel(state.program_rms);
       text('program-meter-label',Number.isFinite(state.program_rms)&&!state.playout_error?'PROGRAM / LIVE':'PROGRAM / NO SIGNAL DATA');
       const onAir=state.current || (state.playout_error?state.last_known_current:null);
       text('morph-text',onAir?.title||(state.playout_error?'Reconnecting to station':'Silence · no live deck')); document.getElementById('morph-text').title=onAir?.title||'';document.querySelector('#live-current h2').title=current?.title||'';document.getElementById('cue-title').title=cue?.title||'';text('morph-artist',onAir?.artist||'');
-      document.querySelector('#live-current h2').textContent=current?.title||(state.playout_error?'Reconnecting to station':'No song on air');
-      document.querySelector('#live-current p').textContent=current?.artist||'Live broadcast';
+      document.querySelector('#live-current h2').textContent=current?.title||(state.playout_error?'Reconnecting to station':'NOTHING LOADED');
+      document.querySelector('#live-current p').textContent=current?.artist||'';
       text('now-album',current?.album||'');
       text('fact-category',current?.category||'NO CATEGORY');
       text('fact-bpm',current?.bpm?`${Math.round(current.bpm)} BPM`:'BPM —');text('fact-year',current?.year||'YEAR —');
@@ -236,19 +265,24 @@
       root.querySelectorAll('.current-control button').forEach(button=>button.disabled=!state.current||!!state.playout_error);
       root.querySelectorAll('.mode-button').forEach(button=>button.classList.toggle('active',button.dataset.mode===state.mode));
       document.querySelector('.cue-deck').classList.toggle('cue-empty',!cue);
-      text('cue-title',cue?.title||'NOTHING LOADED');text('cue-artist',cue?.artist||'Drop a song here or choose Load Song');
-      text('cue-album',cue?.album||'Prepare your next song on this deck');document.getElementById('cue-warning').hidden=!!cue;
+      text('cue-title',cue?.title||'NOTHING LOADED');text('cue-artist',cue?.artist||'');
+      text('cue-album',cue?.album||'');document.getElementById('cue-warning').hidden=!!cue;
       if(previewDeck&&!engine?.[previewDeck.toLowerCase()]&&!cueMonitor.paused){cueMonitor.pause();resetPreview();}
-      if(!current){for(const id of ['progress-ring']){const ring=document.getElementById(id);ring.style.strokeDashoffset=2*Math.PI*parseFloat(ring.getAttribute('r'));}text('elapsed','0:00');text('remaining','—:—');document.getElementById('time-progress').style.width='0%';}
+      for(const [field,value] of [['category',cue?.category||'NO CATEGORY'],['bpm',cue?.bpm?`${Math.round(cue.bpm)} BPM`:'BPM —'],['year',cue?.year||'YEAR —'],['lufs',Number.isFinite(cue?.loudness_lufs)?`${cue.loudness_lufs.toFixed(1)} LUFS`:'LUFS —']])text('b-fact-'+field,value);
+      for(const key of pendingLoads.keys())paintLoading(key);
       timing();
     }catch(_){
       if(version!==refreshVersion)return;
       text('live-playout','Reconnecting — controls will recover automatically');
       if(state)state={...state,playout_error:'Connection delayed'};
       text('morph-kicker','CONNECTION DELAY · LAST OBSERVED');programTarget=0;
+      root.querySelectorAll('.deck').forEach(panel=>panel.classList.remove('mix-live','is-fading','is-incoming'));
+      root.querySelectorAll('.deck-take').forEach(button=>button.classList.remove('is-live','is-incoming'));
       root.querySelectorAll('[data-operation]').forEach(button=>button.disabled=true);
 
     }
   }
-  scope.interval(timing,500);scope.interval(refresh,2000);refresh();
+  let polling=false,lastPoll=0;
+  scope.interval(()=>{const delay=root.dataset.mode==='DJ_BOOTH'&&!document.hidden?250:2000;if(!polling&&Date.now()-lastPoll>=delay){polling=true;lastPoll=Date.now();refresh().finally(()=>polling=false);}},250);
+  scope.interval(timing,250);refresh();
 })();

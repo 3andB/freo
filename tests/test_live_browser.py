@@ -261,3 +261,128 @@ def test_program_and_persistent_monitor_meters(booth):
     WebDriverWait(driver,10).until(lambda d:d.execute_script("return document.getElementById('monitor-left').value>.3 && document.getElementById('monitor-right').value>.3"))
     driver.find_element(By.CSS_SELECTOR,'.master-monitor button').click()
     WebDriverWait(driver,8).until(lambda d:d.execute_script("return document.getElementById('monitor-left').value===0 && document.getElementById('monitor-right').value===0"))
+
+
+def test_decks_stay_symmetric_and_show_live_and_transition_edges(booth):
+    app,driver,base,tmp_path=booth
+    wait_text(driver,'[data-deck="A"][data-operation="PLAY"]','LIVE')
+    live=driver.find_element(By.CSS_SELECTOR,'[data-deck="A"][data-operation="PLAY"]')
+    assert live.value_of_css_property('opacity')=='1'
+    assert driver.find_element(By.ID,'cue-artist').text==''
+    assert driver.find_element(By.ID,'cue-album').text==''
+    assert driver.find_element(By.ID,'deck-b-message').text==''
+    with app.app_context():
+        track=Track.query.first();track.title='An exceptionally long title that wraps onto multiple lines and still keeps both decks aligned'
+        cue=SelectionDecision(station_id=track.station_id,track=track,playback_bus='B',status='queued',selection_method='manual_track')
+        db.session.add(cue);db.session.flush()
+        snapshot=LiveQueueSnapshot.query.first();snapshot.mixer=dict(snapshot.mixer,b_id=cue.id,b_playing=False,b_elapsed=11)
+        db.session.commit();cue_id=cue.id
+    wait_text(driver,'#deck-b-state','READY');wait_text(driver,'#b-elapsed','0:0:00')
+    for width in (1600,1100,820,390):
+        driver.set_window_size(width,1200)
+        a=driver.find_element(By.ID,'now-drop').rect;b=driver.find_element(By.ID,'cue-drop').rect
+        header=driver.find_element(By.CSS_SELECTOR,'.booth-header').rect
+        assert abs(header['y']-driver.find_element(By.ID,'dj-booth').rect['y'])<1
+        assert a['y']>=header['y']+header['height']
+        assert a['y']-header['y']-header['height']<25
+        assert abs(a['height']-b['height'])<1 and abs(a['width']-b['width'])<1
+        buttons=[driver.find_element(By.CSS_SELECTOR,f'[data-deck="{deck}"][data-operation="PLAY"]').rect for deck in ('A','B')]
+        assert abs((buttons[0]['y']-a['y'])-(buttons[1]['y']-b['y']))<1
+        if width>650:assert abs(buttons[0]['y']-buttons[1]['y'])<1
+        fade=driver.find_element(By.CSS_SELECTOR,'.deck-transition').rect
+        assert fade['y']>=max(a['y']+a['height'],b['y']+b['height'])
+        meters=driver.find_element(By.CSS_SELECTOR,'.meter-rack').rect
+        assert meters['y']>=fade['y']+fade['height']
+        driver.execute_script("const n=document.getElementById('booth-notice');n.hidden=false;n.textContent='Deck command requested'")
+        assert driver.find_element(By.ID,'now-drop').rect['y']==a['y']
+        assert driver.find_element(By.CSS_SELECTOR,'.meter-rack').rect['y']==meters['y']
+        driver.execute_script("document.getElementById('booth-notice').hidden=true")
+        assert driver.execute_script('return document.documentElement.scrollWidth<=document.documentElement.clientWidth')
+    driver.set_window_size(1600,1200)
+    driver.save_screenshot('/tmp/freo-booth-heading-decks-first.png')
+    driver.find_element(By.CSS_SELECTOR,'.deck-workspace').screenshot('/tmp/freo-decks-ready.png')
+    with app.app_context():
+        cue=db.session.get(SelectionDecision,cue_id);cue.status='started';cue.started_at=datetime.now(timezone.utc)
+        snapshot=LiveQueueSnapshot.query.first();snapshot.mixer=dict(snapshot.mixer,b_playing=True,transition=dict(incoming='B',progress=.4,a_gain=.6,b_gain=.4));db.session.commit()
+    wait_text(driver,'[data-deck="B"][data-operation="PLAY"]','GOING LIVE')
+    assert driver.execute_script("return getComputedStyle(document.getElementById('cue-drop'),'::before').animationName==='deck-fade-ice'")
+    assert 'is-incoming' in driver.find_element(By.ID,'cue-drop').get_attribute('class')
+    assert 'is-incoming' not in driver.find_element(By.ID,'now-drop').get_attribute('class')
+    driver.find_element(By.CSS_SELECTOR,'.deck-workspace').screenshot('/tmp/freo-decks-fading.png')
+    with app.app_context():
+        snapshot=LiveQueueSnapshot.query.first();snapshot.mixer=dict(snapshot.mixer,a_playing=False,transition=dict(incoming=None,progress=1,a_gain=0,b_gain=1));db.session.commit()
+    WebDriverWait(driver,8).until(lambda d:d.find_element(By.CSS_SELECTOR,'[data-deck="B"][data-operation="PLAY"]').text=='LIVE')
+    assert driver.execute_script("return getComputedStyle(document.getElementById('cue-drop'),'::before').animationName==='deck-live-fire'")
+    driver.find_element(By.CSS_SELECTOR,'.deck-workspace').screenshot('/tmp/freo-decks-live.png')
+    driver.execute_cdp_cmd('Emulation.setEmulatedMedia',{'features':[{'name':'prefers-reduced-motion','value':'reduce'}]})
+    assert driver.execute_script("return getComputedStyle(document.getElementById('cue-drop'),'::before').animationName==='none'")
+
+
+def test_drop_resets_position_before_worker_observation(booth):
+    app,driver,base,tmp_path=booth
+    with app.app_context():
+        snapshot=LiveQueueSnapshot.query.first();snapshot.mixer=dict(snapshot.mixer,a_playing=False,a_elapsed=5);db.session.commit()
+    wait_text(driver,'#deck-a-state','PAUSED');wait_text(driver,'#elapsed','0:0:05')
+    artwork=driver.find_element(By.CSS_SELECTOR,'.song-art');deck=driver.find_element(By.ID,'now-drop')
+    ActionChains(driver).move_to_element(artwork).click_and_hold().move_to_element(deck).pause(.2).release().perform()
+    wait_text(driver,'#deck-a-state','LOADING');wait_text(driver,'#elapsed','0:0:00')
+    assert not driver.find_elements(By.CSS_SELECTOR,'.freo-dialog[open]')
+    apply_browser_command(app,'LOAD','A')
+    # The fixture deliberately retains the previous engine elapsed value.
+    wait_text(driver,'#deck-a-state','READY');wait_text(driver,'#elapsed','0:0:00')
+    assert driver.find_element(By.ID,'time-progress').value_of_css_property('width')=='0px'
+
+
+@pytest.mark.parametrize('deck', ['A', 'B'])
+def test_paused_load_completes_before_engine_reports_current_id(booth, deck):
+    app,driver,base,tmp_path=booth
+    key=deck.lower()
+    with app.app_context():
+        snapshot=LiveQueueSnapshot.query.first()
+        snapshot.mixer=dict(snapshot.mixer, **{key+'_playing':False})
+        db.session.commit()
+    wait_text(driver,f'#deck-{key}-state','PAUSED' if deck=='A' else 'EMPTY')
+    driver.find_element(By.CSS_SELECTOR,f'[data-load-deck="{deck}"]').click()
+    wait_text(driver,f'#deck-{key}-state','LOADING')
+    with app.app_context():
+        command=LiveControlCommand.query.filter_by(status='pending').one()
+        assert command.deck==deck and not command.play_on_load
+        target=command.target_decision;target.status='queued'
+        target.socket_identity='test';target.liquidsoap_request_id=target.id
+        command.status='sent';command.processed_at=datetime.now(timezone.utc)
+        snapshot=LiveQueueSnapshot.query.first()
+        snapshot.mixer=dict(snapshot.mixer, **{key+'_id':None,key+'_elapsed':147.24,key+'_playing':False})
+        db.session.commit()
+    wait_text(driver,f'#deck-{key}-state','READY')
+    wait_text(driver,'#elapsed' if deck=='A' else '#b-elapsed','0:0:00')
+    play=driver.find_element(By.CSS_SELECTOR,f'[data-deck="{deck}"][data-operation="PLAY"]')
+    assert play.is_enabled() and play.text=='PLAY / TAKE AIR'
+    play.click()
+    wait_text(driver,'#booth-notice','Deck command requested')
+    with app.app_context():
+        command=LiveControlCommand.query.filter_by(status='pending').one()
+        assert command.deck==deck and command.action=='DECK_PLAY'
+
+
+def test_auto_return_popup_for_manual_switch_and_stopped_music(booth):
+    from app.services.live_assist import return_to_schedule
+    app,driver,base,tmp_path=booth
+    with app.app_context():
+        snapshot=LiveQueueSnapshot.query.first()
+        snapshot.mixer=dict(snapshot.mixer,transition=dict(incoming=None,progress=1,a_gain=1,b_gain=0))
+        db.session.commit()
+    wait_text(driver,'#deck-a-state','LIVE')
+    driver.find_element(By.CSS_SELECTOR,'[data-mode="AUTO"]').click()
+    wait_text(driver,'.freo-dialog h2','Returning to Auto')
+    wait_text(driver,'.freo-dialog p','fades out over 3 seconds')
+    assert [b.text for b in driver.find_elements(By.CSS_SELECTOR,'.freo-dialog button')]==['OK']
+    driver.find_element(By.CSS_SELECTOR,'.freo-dialog button').click()
+    driver.find_element(By.CSS_SELECTOR,'[data-mode="DJ_BOOTH"]').click()
+    WebDriverWait(driver,8).until(lambda d:d.find_element(By.ID,'dj-booth').get_attribute('data-mode')=='DJ_BOOTH')
+    with app.app_context():
+        return_to_schedule(Station.query.filter_by(slug='test-station').one(),reason='DJ music stopped. Returning to the schedule in Auto mode.')
+    wait_text(driver,'.freo-dialog p','DJ music stopped')
+    driver.find_element(By.CSS_SELECTOR,'.freo-dialog button').click()
+    driver.refresh()
+    WebDriverWait(driver,8).until(lambda d:d.find_element(By.ID,'dj-booth').get_attribute('data-mode')=='AUTO')
+    assert not driver.find_elements(By.CSS_SELECTOR,'.freo-dialog[open]')

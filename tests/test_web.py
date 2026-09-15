@@ -14,8 +14,10 @@ from app.models import (AdminUser, AutomationState, Clock, ClockSlot, MediaCateg
 
 
 @pytest.fixture
-def app(monkeypatch):
-    monkeypatch.setenv('DATABASE_URL', 'sqlite:///:memory:')
+def app(monkeypatch, request, tmp_path):
+    # Browser requests and fixture observations need separate SQL connections.
+    database = f'sqlite:///{tmp_path}/browser.sqlite' if 'booth' in request.fixturenames else 'sqlite:///:memory:'
+    monkeypatch.setenv('DATABASE_URL', database)
     monkeypatch.setenv('SECRET_KEY', 'test-only')
     application = create_app('testing')
     with application.app_context():

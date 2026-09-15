@@ -19,6 +19,8 @@ cart_takeover = ref(false)
 duck = ref(0.5)
 fade_end = ref(0.0)
 b_fade_end = ref(0.0)
+auto_return_end = ref(0.0)
+auto_fade_in_start = ref(0.0)
 a_generation = ref(0)
 b_generation = ref(0)
 a_decision = ref("")
@@ -89,23 +91,57 @@ def take_deck(deck, value)
     "OK"
   end
 end
+def auto_gain()
+  if auto_return_end() > 0.0 then max(0.0, min(1.0, (auto_return_end()-time())/3.0))
+  elsif auto_fade_in_start() > 0.0 then max(0.0, min(1.0, time()-auto_fade_in_start()))
+  else 1.0 end
+end
 def set_mode(value)
   if value != "AUTO" and value != "DJ_BOOTH" then
     "ERROR invalid mode"
   else
     if value != mode() then
+      # Keep outgoing sources and their current gains alive until fade-out ends.
+      gain_a = if a_play() then a_mix()*auto_gain() else 0.0 end
+      gain_b = if b_play() then b_mix()*auto_gain() else 0.0 end
       cancel_transition()
+      generation = transition_generation()
       a_generation := a_generation()+1
       b_generation := b_generation()+1
       fade_end := 0.0
       b_fade_end := 0.0
+      auto_return_end := 0.0
+      auto_fade_in_start := 0.0
+      outgoing_a = queue.current()
+      outgoing_a_id = if null.defined(outgoing_a) then request.id(null.get(outgoing_a)) else -1 end
+      duration = if (a_play() and queue.is_ready()) or (b_play() and deck_b.is_ready()) then 3.0 else 0.0 end
       queue.set_queue([])
       deck_b.set_queue([])
-      deck_b.skip()
-      b_play := false
-      a_play := true
-      if value == "AUTO" then queue.skip() end
-      mode := value
+      if value == "AUTO" then
+        a_to := gain_a
+        b_to := gain_b
+        auto_return_end := time()+duration
+        mode := value
+        # The worker can prepare the current schedule while DJ audio fades out.
+        thread.run(delay=duration, {
+          if transition_generation() == generation and mode() == "AUTO" then
+            current = queue.current()
+            if null.defined(current) and request.id(null.get(current)) == outgoing_a_id then queue.skip() end
+            deck_b.skip()
+            b_play := false
+            a_play := true
+            a_to := 1.0
+            b_to := 0.0
+            auto_fade_in_start := time()
+            auto_return_end := 0.0
+          end
+        })
+      else
+        deck_b.skip()
+        b_play := false
+        a_play := true
+        mode := value
+      end
     end
     "OK"
   end
@@ -203,10 +239,11 @@ def main_gain() = if cart.is_ready() and not cart_takeover() then 1.0-duck() els
 music_a = amplify(override="freo_gain", 1.0, queue)
 music_b = amplify(override="freo_gain", 1.0, deck_b)
 music_a = mksafe(switch(track_sensitive=false, [({a_play() and main_active()}, music_a)]))
-music_b = mksafe(switch(track_sensitive=false, [({mode() == "DJ_BOOTH" and b_play() and main_active()}, music_b)]))
-music_a = amplify({fade_gain() * a_mix() * main_gain()}, music_a)
-music_b = amplify({b_fade_gain() * b_mix() * main_gain()}, music_b)
-backup = mksafe(switch(track_sensitive=false, [({mode() == "AUTO" and not queue.is_ready() and main_active()}, tone)]))
+music_b = mksafe(switch(track_sensitive=false, [({(mode() == "DJ_BOOTH" or auto_return_end() > 0.0) and b_play() and main_active()}, music_b)]))
+music_a = amplify({fade_gain() * a_mix() * main_gain() * auto_gain()}, music_a)
+music_b = amplify({b_fade_gain() * b_mix() * main_gain() * auto_gain()}, music_b)
+backup = mksafe(switch(track_sensitive=false, [({mode() == "AUTO" and auto_return_end() == 0.0 and not queue.is_ready() and main_active()}, tone)]))
+backup = amplify({auto_gain()}, backup)
 radio = add(normalize=false, [music_a, music_b, mksafe(cart), backup])
 radio = limit(attack=1.0, release=100.0, threshold=-1.5, ratio=100.0, gain=0.0, radio)
 def current_a()
@@ -226,12 +263,14 @@ server.register(namespace="freo_deck", "requests", fun (_) -> string.concat(sepa
 server.register(namespace="freo_program", "current", fun (_) ->
   if current_cart() != "" then current_cart()
   elsif mode() == "DJ_BOOTH" and a_play() and a_to() > b_to() and current_a() != "" then current_a()
-  elsif mode() == "DJ_BOOTH" and b_play() and current_b() != "" then current_b()
+  elsif (mode() == "DJ_BOOTH" or auto_return_end() > 0.0) and b_play() and current_b() != "" then current_b()
   elsif a_play()  and current_a() != "" then current_a()
   elsif mode() == "DJ_BOOTH"  and b_play() then current_b()
   else "" end)
 server.register(namespace="freo_mixer", "state", fun (_) ->
-  mode() ^ "|" ^ "0." ^ "|" ^ string(a_play()) ^ "|" ^ string(b_play()) ^ "|" ^ current_a() ^ "|" ^ current_b() ^ "|" ^ current_cart() ^ "|" ^ string.float(queue.elapsed()) ^ "|" ^ string.float(deck_b.elapsed()))
+  mode() ^ "|" ^ "0." ^ "|" ^ string(a_play()) ^ "|" ^ string(b_play()) ^ "|" ^ current_a() ^ "|" ^ current_b() ^ "|" ^ current_cart() ^ "|" ^ string.float(if current_a() == "" then 0.0 else queue.elapsed() end) ^ "|" ^ string.float(if current_b() == "" then 0.0 else deck_b.elapsed() end) ^ "|" ^
+  (if transition_duration() > 0.0 and transition_fraction() < 1.0 then if a_to() > b_to() then "A" else "B" end else "" end) ^ "|" ^
+  string.float(transition_fraction()) ^ "|" ^ string.float(a_mix()*fade_gain()) ^ "|" ^ string.float(b_mix()*b_fade_gain()))
 # Prepared decks have not aired. Confirm only while playing.
 a_confirmed = ref("")
 b_confirmed = ref("")

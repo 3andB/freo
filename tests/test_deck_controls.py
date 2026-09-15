@@ -132,3 +132,57 @@ def test_fade_adapter_forwards_bounded_duration(monkeypatch,duration):
     monkeypatch.setattr('app.services.playout_queue._command',lambda *args:calls.append(args))
     deck_control('test-station','B','take',duration)
     assert calls==[('test-station',f'freo_deck.take_b {duration:.3f}')]
+
+
+def test_prepared_or_empty_deck_does_not_inherit_elapsed(prepared):
+    station,track,user,snapshot=prepared
+    target=SelectionDecision(station_id=station.id,track=track,playback_bus='B',status='queued',selection_method='manual_track')
+    db.session.add(target);db.session.flush()
+    for identifier in (None,target.id):
+        snapshot.mixer=dict(snapshot.mixer,b_id=identifier,b_playing=False,b_elapsed=75)
+        db.session.commit()
+        observed=status(station)
+        assert observed['mixer']['b']['decision_id']==target.id
+        assert observed['mixer']['b_elapsed']==0
+
+
+def test_mixer_transition_telemetry_is_validated(monkeypatch):
+    from app.services.playout_queue import mixer_state
+    monkeypatch.setattr('app.services.playout_queue._command',lambda *args:'DJ_BOOTH|0.|true|true|1|2||4.|1.|B|0.5|0.5|0.5')
+    assert mixer_state('test-station')['transition']==dict(incoming='B',progress=.5,a_gain=.5,b_gain=.5)
+    for suffix in ('C|0.5|0.5|0.5','B|nan|0.5|0.5','B|0.5|2|0'):
+        monkeypatch.setattr('app.services.playout_queue._command',lambda *args:'DJ_BOOTH|0.|true|true|1|2||4.|1.|'+suffix)
+        with pytest.raises(RuntimeError,match='transition'):mixer_state('test-station')
+
+
+def test_dj_stopping_returns_to_schedule_after_grace(prepared):
+    from app.automation_worker import EventReader,return_to_auto_if_stopped
+    from app.models import AuditEvent
+    station,track,user,snapshot=prepared
+    reader=EventReader();playing=dict(snapshot.mixer)
+    assert not return_to_auto_if_stopped(station,reader,playing,now=1)
+    # A worker restart must not disable stop detection for the current session.
+    reader=EventReader()
+    stopped=dict(playing,a_id=None,a_playing=False,b_id=None,b_playing=False)
+    assert not return_to_auto_if_stopped(station,reader,stopped,now=2)
+    assert not return_to_auto_if_stopped(station,reader,stopped,now=3)
+    assert return_to_auto_if_stopped(station,reader,stopped,now=4)
+    assert station.automation.operator_mode=='AUTO' and station.automation.enabled and not station.automation.hold
+    assert 'DJ music stopped' in status(station)['mode_notice']['message']
+    assert not return_to_auto_if_stopped(station,reader,stopped,now=8)
+    assert AuditEvent.query.filter_by(action='live_auto_return').count()==1
+
+
+def test_auto_return_allows_preparation_and_dj_handover(prepared):
+    from app.automation_worker import EventReader,return_to_auto_if_stopped
+    station,track,user,snapshot=prepared
+    reader=EventReader();empty=dict(snapshot.mixer,a_id=None,a_playing=False)
+    for now in (1,10,100):assert not return_to_auto_if_stopped(station,reader,empty,now=now)
+    assert not return_to_auto_if_stopped(station,reader,snapshot.mixer,now=101)
+    assert not return_to_auto_if_stopped(station,reader,empty,now=102)
+    playing_b=dict(empty,b_id=123,b_playing=True)
+    assert not return_to_auto_if_stopped(station,reader,playing_b,now=103)
+    assert not return_to_auto_if_stopped(station,reader,empty,now=104)
+    assert not return_to_auto_if_stopped(station,reader,dict(empty,cart_id=456),now=107)
+    assert not return_to_auto_if_stopped(station,reader,empty,now=108)
+    assert station.automation.operator_mode=='DJ_BOOTH'

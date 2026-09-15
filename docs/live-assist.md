@@ -19,7 +19,7 @@ Both decks provide the same controls:
 
 The shared Fade Length slider selects 0–10 seconds for Take Air and Fade Out (default 3 seconds, remembered in this browser). Zero switches immediately. Take Air occupies its own full-width row. Both decks play during a crossfade; the outgoing deck pauses when it completes. A newer Take Air cancels the previous completion timer.
 
-Prepared songs are READY, playing decks LIVE, and interrupted/paused decks PAUSED. Empty Deck B flashes gently. Timers use engine position, including pauses and cart interruptions. Playing neither deck deliberately produces silence in DJ mode. Taking DJ control preserves AUTO's current song on A and clears automated lookahead. Returning to AUTO resumes the current schedule.
+Prepared songs are READY, playing decks LIVE, and interrupted/paused decks PAUSED. Empty Deck B flashes gently. Timers use engine position, including pauses and cart interruptions. After DJ audio has aired, two seconds with neither deck playing returns the station to AUTO. Carts and pending deck commands defer this check. Empty decks before the first DJ playback remain available for preparation. Stop detection survives worker restarts. Taking DJ control preserves AUTO's current song on A and clears automated lookahead. Returning to AUTO fades outgoing DJ audio down over three seconds, then fades current-schedule audio up over one second. Already-stopped DJ audio does not incur another three-second wait. Manual and automatic returns show an informational OK popup. The worker refills the schedule during the fade and defers hard timed interruptions until it completes.
 
 MASTER MONITOR remains in the shared header, survives internal navigation, and must be reactivated after a preview. Listening volume and cart ducking remain adjustable; they are separate from deck transport.
 
@@ -62,3 +62,15 @@ Migration `c39fa204bb17` adds the selected fade duration and confirmed play-on-l
 Applied migration `c39fa204bb17`, validated and installed both station configurations, and restarted the web, automation, ingest, and running Freo Demo playout services. Freo Demo retained DJ mode with empty decks after restart; Freo Demo Two remained stopped in AUTO. HTTP health/readiness and radio checks passed, the stream delivered MP3 bytes, and worker observations were fresh with no playout error. All four restarted services were active. Zero program RMS is expected until a deck is played.
 
 Verified pre-update database and configuration backup: `/var/backups/freo/deck-transitions-20260915T134020Z`. Validation included 146 non-browser regression tests (two filesystem ACL cases passed outside the sandbox), five focused browser workflows, real-worker playback, recorded crossfades in both directions, and migration upgrade/downgrade/re-upgrade checks.
+
+## Symmetrical decks and observed lighting
+
+Deck A and Deck B now use one shared template with matching fixed row dimensions. Metadata and empty/loading messages cannot shift their full-width Take Air buttons. The deck pair is the first panel in DJ Booth, above the broadcast header and notices. Fade Length sits immediately below the pair. Empty decks show only NOTHING LOADED, with blank reserved artist/album/message rows to preserve the same spacing as loaded decks. A fully playing deck has a red LIVE button and a smooth orange/white/red/yellow perimeter glow. During a crossfade, both edges pulse blue/white; the incoming deck is brighter and labeled GOING LIVE, while the outgoing deck is labeled FADING OUT. Reduced-motion mode keeps static state colors.
+
+The engine reports the incoming deck, transition progress, and gain envelopes. The adapter accepts both the previous nine-field observation and the new thirteen-field observation during rollout. DJ worker and visible-browser observations use a 250 ms cadence; AUTO retains the slower cadence.
+
+A dropped replacement immediately shows LOADING and `0:0:00`, clearing its previous track metadata and progress while preparation is pending. It becomes READY when the engine reports the replacement's request identity. Empty and never-played prepared decks cannot inherit an old elapsed reading; clearing an engine deck also reports zero elapsed. Replacing a previously played deck is covered by the real-engine test.
+
+This update is prepared and tested; installing its station configurations and restarting services is pending rollout approval.
+
+Auto-return validation: isolated recordings verify gradual fades from either DJ deck into scheduled audio. Worker tests cover the stop grace period, preparation, handovers, carts and restart persistence. Chromium verifies both notification paths. Engine queue behavior follows the [Liquidsoap request-source reference](https://www.liquidsoap.info/doc-2.2.5/reference/source-track-processing).

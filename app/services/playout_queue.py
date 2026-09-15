@@ -153,14 +153,20 @@ def program_decision_id(slug):
 def mixer_state(slug):
     import math
     parts = _command(slug, 'freo_mixer.state').split('|')
-    if len(parts) != 9 or parts[0] not in ('AUTO','DJ_BOOTH') or any(value not in ('true','false') for value in parts[2:4]):
+    if len(parts) not in (9,13) or parts[0] not in ('AUTO','DJ_BOOTH') or any(value not in ('true','false') for value in parts[2:4]):
         raise RuntimeError('Invalid mixer state')
     numeric = [float(parts[index]) for index in (1,7,8)]
     if not all(math.isfinite(value) for value in numeric) or not 0 <= numeric[0] <= 1:
         raise RuntimeError('Invalid mixer levels')
     if any(value and not REQUEST_ID.fullmatch(value) for value in parts[4:7]):
         raise RuntimeError('Invalid mixer identity')
-    return dict(mode=parts[0],crossfader=numeric[0],a_playing=parts[2]=='true',b_playing=parts[3]=='true',
+    transition = {}
+    if len(parts) == 13:
+        levels = [float(value) for value in parts[10:13]]
+        if parts[9] not in ('','A','B') or not all(math.isfinite(value) and 0 <= value <= 1 for value in levels):
+            raise RuntimeError('Invalid deck transition')
+        transition = dict(incoming=parts[9] or None,progress=levels[0],a_gain=levels[1],b_gain=levels[2])
+    return dict(transition=transition,mode=parts[0],crossfader=numeric[0],a_playing=parts[2]=='true',b_playing=parts[3]=='true',
                 a_id=int(parts[4]) if parts[4] else None,b_id=int(parts[5]) if parts[5] else None,
                 cart_id=int(parts[6]) if parts[6] else None,a_elapsed=max(0,numeric[1]),b_elapsed=max(0,numeric[2]))
 

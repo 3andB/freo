@@ -8,7 +8,7 @@ import math
 
 from app import create_app
 from app.extensions import db
-from app.models import AutomationHeartbeat, AutomationState, EventBlockExecution, EventBlockItemExecution, LiveControlCommand, LiveQueueSnapshot, SelectionDecision, Station, TimedEventOccurrence
+from app.models import AuditEvent, AutomationHeartbeat, AutomationState, EventBlockExecution, EventBlockItemExecution, LiveControlCommand, LiveQueueSnapshot, SelectionDecision, Station, TimedEventOccurrence
 from app.services.automation import playback_started, select_next
 from app.services.playout_queue import push_decision, queue_depth, queued_ids, queued_order, active_ids, socket_identity, request_decision_id, skip_current, interrupt_for_event
 from app.services.schedule import resolve, usable_clock
@@ -22,6 +22,9 @@ class EventReader:
         self.offsets = {}
         self.starved_until = {}
         self.unavailable_until = {}
+        self.dj_has_played = set()
+        self.dj_stopped_since = {}
+        self.auto_return_until = {}
 
     def collect(self, slug):
         path = EVENT_ROOT / slug / 'events.log'
@@ -501,6 +504,44 @@ def process_timed_events(station, reader, now=None):
                 for row in future), default=None)
 
 
+def return_to_auto_if_stopped(station, reader, mixer, now=None):
+    """Return after aired DJ music stops, never from a missing engine response."""
+    slug=station.slug
+    if station.automation.operator_mode != 'DJ_BOOTH' or mixer['mode'] != 'DJ_BOOTH':
+        reader.dj_has_played.discard(slug);reader.dj_stopped_since.pop(slug,None)
+        return False
+    audible=any(mixer.get(deck+'_playing') and mixer.get(deck+'_id') and
+        mixer.get('transition',{}).get(deck+'_gain',1)>0 for deck in ('a','b'))
+    if audible:
+        if slug not in reader.dj_has_played:
+            from app.services.admin_media import audit
+            audit('live_dj_audio_started',station_id=station.id,target_type='station',target_id=slug,
+                  summary='DJ audio observed; automatic return armed')
+            db.session.commit()
+        reader.dj_has_played.add(slug);reader.dj_stopped_since.pop(slug,None)
+        return False
+    if slug not in reader.dj_has_played:
+        # Keep stop detection armed across worker restarts, scoped to this DJ session.
+        entered=AuditEvent.query.filter_by(station_id=station.id,action='live_mode_changed').order_by(AuditEvent.id.desc()).first()
+        armed=AuditEvent.query.filter_by(station_id=station.id,action='live_dj_audio_started').order_by(AuditEvent.id.desc()).first()
+        played=bool(entered and SelectionDecision.query.filter(SelectionDecision.station_id==station.id,
+            SelectionDecision.started_at>=entered.created_at,SelectionDecision.playback_bus.in_(('A','B'))).first())
+        if not ((armed and (not entered or armed.id>entered.id)) or played):
+            return False
+        reader.dj_has_played.add(slug)
+    if mixer.get('cart_id') or LiveControlCommand.query.filter_by(station_id=station.id,status='pending').first():
+        reader.dj_stopped_since.pop(slug,None)
+        return False
+    now=time.monotonic() if now is None else now
+    since=reader.dj_stopped_since.setdefault(slug,now)
+    if now-since < 2:
+        return False
+    from app.services.live_assist import return_to_schedule
+    return_to_schedule(station, reason='DJ music stopped. Returning to the schedule in Auto mode.')
+    reader.dj_has_played.discard(slug);reader.dj_stopped_since.pop(slug,None)
+    return True
+
+
 def tick(reader, target_depth=2):
     heartbeat()
     states = AutomationState.query.all()
@@ -514,6 +555,10 @@ def tick(reader, target_depth=2):
             from app.services.playout_queue import sync_mixer
             try:
                 prior_mixer = sync_mixer(state.station)
+                if state.operator_mode == 'AUTO' and prior_mixer['mode'] == 'DJ_BOOTH':
+                    reader.auto_return_until[slug]=time.monotonic()+4
+                if state.operator_mode != 'DJ_BOOTH':
+                    reader.dj_has_played.discard(slug);reader.dj_stopped_since.pop(slug,None)
                 if state.operator_mode == 'DJ_BOOTH' and prior_mixer['mode'] != 'DJ_BOOTH':
                     for execution in EventBlockExecution.query.filter_by(station_id=state.station_id).filter(EventBlockExecution.state.in_(('PENDING','QUEUED','STARTED'))).all():
                         execution.state='ABORTED';execution.aborted_at=datetime.now(timezone.utc);execution.failure_reason='dj_control'
@@ -525,6 +570,11 @@ def tick(reader, target_depth=2):
                 pass
             process_manual(state.station, reader)
             if state.operator_mode == 'DJ_BOOTH':
+                from app.services.playout_queue import mixer_state
+                if return_to_auto_if_stopped(state.station,reader,mixer_state(slug)):
+                    sync_mixer(state.station)
+                    reader.auto_return_until[slug]=time.monotonic()+4
+            if state.operator_mode == 'DJ_BOOTH':
                 from app.services.timed_events import generate_occurrences
                 now = datetime.now(timezone.utc)
                 generate_occurrences(state.station, now)
@@ -532,8 +582,10 @@ def tick(reader, target_depth=2):
                     occurrence.state='MISSED';occurrence.failure_reason='dj_control'
                 state.worker_heartbeat_at=now;state.observed_queue_depth=queue_depth(slug)
                 db.session.commit();observe_queue(state.station);continue
-            event_seconds = process_timed_events(state.station, reader)
-            block_active = process_block(state.station, reader)
+            # Hard timed events must not skip the outgoing DJ source mid-fade.
+            returning=time.monotonic()<reader.auto_return_until.get(slug,0)
+            event_seconds = None if returning else process_timed_events(state.station, reader)
+            block_active = False if returning else process_block(state.station, reader)
             if block_active:
                 state.worker_heartbeat_at = datetime.now(timezone.utc)
                 state.observed_queue_depth = queue_depth(slug)
@@ -573,6 +625,7 @@ def tick(reader, target_depth=2):
             observe_queue(state.station)
         except OSError as error:
             db.session.rollback()
+            reader.dj_stopped_since.pop(slug,None)
             reader.unavailable_until[slug] = time.monotonic() + 5
             logger.warning('Playout temporarily unavailable for station=%s: %s', slug, type(error).__name__)
             observe_queue(state.station, 'playout_unavailable')
@@ -602,7 +655,8 @@ def main():
                     nearest = (due.scheduled_for_utc.replace(tzinfo=due.scheduled_for_utc.tzinfo or timezone.utc)-datetime.now(timezone.utc)).total_seconds()
             except Exception:
                 db.session.rollback()
-            time.sleep(.25 if nearest is not None and -5 <= nearest <= 5 else 2)
+            dj_active = db.session.query(AutomationState.station_id).join(Station).filter(AutomationState.operator_mode=='DJ_BOOTH',Station.enabled.is_(True),Station.desired_state=='running').first() is not None
+            time.sleep(.25 if dj_active or (nearest is not None and -5 <= nearest <= 5) else 2)
 
 
 if __name__ == '__main__':

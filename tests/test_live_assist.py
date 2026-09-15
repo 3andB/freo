@@ -156,7 +156,7 @@ def test_live_page_and_status_use_sanitized_worker_snapshot(app, monkeypatch):
     assert page.data.count(b'data-role="HOT"') == 8
     assert page.data.count(b'data-role="ID"') == 4
     assert page.data.count(b'data-assign') >= 12
-    assert b'DECK B' in page.data and b'NOTHING CUED' in page.data
+    assert b'DECK B' in page.data and b'NOTHING LOADED' in page.data
     assert b'PROGRAM / LIVE' in page.data and b'>MONITOR<' in page.data
     assert b'STATUS / ENGINEERING' in page.data
     payload = client.get('/admin/api/stations/test-station/live-status')

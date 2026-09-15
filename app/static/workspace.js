@@ -25,7 +25,8 @@
   window.FreoPage = makeScope();
 
   window.FreoDialog = {
-    confirm({title = 'Confirm change', message, confirmLabel = 'Continue'}) {
+    notify(options) {return this.confirm({...options,confirmLabel:"OK",notification:true});},
+    confirm({title = 'Confirm change', message, confirmLabel = 'Continue', notification = false}) {
       return new Promise(resolve => {
         const dialog = document.createElement('dialog'); dialog.className = 'freo-dialog';
         const heading = document.createElement('h2'); heading.textContent = title;
@@ -38,7 +39,7 @@
         const finish = value => {dialog.close(); dialog.remove(); previous?.focus(); resolve(value);};
         cancel.addEventListener('click', () => finish(false)); accept.addEventListener('click', () => finish(true));
         dialog.addEventListener('cancel', event => {event.preventDefault(); finish(false);});
-        actions.append(cancel, accept); dialog.append(heading, copy, actions); document.body.append(dialog); dialog.showModal(); cancel.focus();
+        if(!notification)actions.append(cancel);actions.append(accept); dialog.append(heading, copy, actions); document.body.append(dialog); dialog.showModal(); (notification ? accept : cancel).focus();
       });
     }
   };

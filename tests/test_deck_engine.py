@@ -53,6 +53,9 @@ def test_actual_worker_load_play_pause_repeat_clear_and_mode(app,tmp_path,monkey
                     assert db.session.get(SelectionDecision,identifier).status=='started'
                     observed,_=action(deck,'PAUSE');elapsed=observed['mixer'][deck.lower()+'_elapsed'];time.sleep(.3)
                     assert abs(refresh()['mixer'][deck.lower()+'_elapsed']-elapsed)<.1
+                    observed,replacement=action(deck,'LOAD');identifier=replacement.target_decision_id
+                    assert observed['mixer'][deck.lower()+'_elapsed']==0
+                    time.sleep(.2);assert refresh()['mixer'][deck.lower()+'_elapsed']==0
                     observed,_=action(deck,'PLAY');assert observed['current']['decision_id']==identifier
                 observed,command=action('B','REPEAT');repeat=command.target_decision_id
                 time.sleep(4);observed=refresh()
@@ -97,6 +100,7 @@ def test_recorded_crossfade_has_both_tones_and_live_meter(app,tmp_path,monkeypat
             assert 0 < program_rms('test-station') < 1
             deck_control('test-station','B','take',2);time.sleep(.6)
             state=mixer_state('test-station');assert state['a_playing'] and state['b_playing']
+            assert state['transition']['incoming']=='B' and 0<state['transition']['progress']<1
             time.sleep(1.8)
             state=mixer_state('test-station');assert not state['a_playing'] and state['b_playing']
             deck_control('test-station','A','take',2);time.sleep(2.4)
@@ -136,3 +140,60 @@ def test_recorded_crossfade_has_both_tones_and_live_meter(app,tmp_path,monkeypat
     # During a ramp, several consecutive windows must move gradually both ways.
     assert sum(a2<a1-.015 and b2>b1+.015 for (a1,b1),(a2,b2) in zip(ratios,ratios[1:]))>=10
     assert sum(a2>a1+.015 and b2<b1-.015 for (a1,b1),(a2,b2) in zip(ratios,ratios[1:]))>=10
+
+
+@pytest.mark.parametrize('deck',['A','B'])
+def test_auto_mode_fades_dj_audio_before_scheduled_song(app,tmp_path,monkeypatch,deck):
+    import math,wave
+    from array import array
+    from app.services.playout_queue import _command,deck_control,mixer_state,program_decision_id
+    runtime=tmp_path/'runtime';directory=runtime/'test-station';directory.mkdir(parents=True)
+    originals=tmp_path/'media'/'test-station'/'originals';originals.mkdir(parents=True)
+    for key,hz in [('a',440),('b',880)]:
+        subprocess.run(['ffmpeg','-v','error','-f','lavfi','-i',f'sine=frequency={hz}:duration=20','-y',str(originals/(key*32+'.mp3'))],check=True)
+    monkeypatch.setenv('FREO_MEDIA_ROOT',str(tmp_path/'media'));monkeypatch.setattr('app.services.playout_queue.SOCKET_ROOT',runtime)
+    with app.app_context():
+        station=Station.query.filter_by(slug='test-station').one();station.automation.operator_mode='DJ_BOOTH'
+        source=render_liquidsoap(station,'a'*64).replace('/run/freo/playout/test-station',str(directory))
+    recording=tmp_path/'auto.wav'
+    source='settings.init.allow_root := true\n'+source[:source.index('output.icecast(')]+f'output.file(%wav,"{recording}",radio)\n'
+    config=tmp_path/'auto.liq';config.write_text(source)
+    with (tmp_path/'auto.log').open('w') as log:
+        proc=subprocess.Popen(['liquidsoap',str(config)],stdout=log,stderr=log)
+        try:
+            for _ in range(300):
+                if (directory/'control.sock').exists():break
+                if proc.poll() is not None:pytest.fail((tmp_path/'auto.log').read_text()[-2500:])
+                time.sleep(.2)
+            deck_control('test-station',deck,'clear')
+            bus='freo_queue' if deck=='A' else 'freo_b'
+            _command('test-station',f'{bus}.push annotate:freo_decision=1:{originals/("a"*32+".mp3")}')
+            time.sleep(.5);deck_control('test-station',deck,'take',0);time.sleep(1)
+            _command('test-station','freo_mixer.mode AUTO')
+            _command('test-station',f'freo_queue.push annotate:freo_decision=2:{originals/("b"*32+".mp3")}')
+            time.sleep(.8)
+            assert program_decision_id('test-station')==1
+            assert mixer_state('test-station')[deck.lower()+'_playing']
+            time.sleep(4)
+            assert program_decision_id('test-station')==2
+            assert mixer_state('test-station')['mode']=='AUTO'
+        finally:
+            proc.terminate()
+            try:proc.wait(timeout=5)
+            except subprocess.TimeoutExpired:proc.kill();proc.wait()
+    with wave.open(str(recording),'rb') as wav:
+        rate=wav.getframerate();channels=wav.getnchannels();data=array('h',wav.readframes(wav.getnframes()))
+    mono=data[::channels];size=rate//10;levels=[]
+    for start in range(0,len(mono)-size,size):
+        window=mono[start:start+size:4];pair=[]
+        for hz in (440,880):
+            real=sum(v*math.cos(2*math.pi*hz*4*i/rate) for i,v in enumerate(window))
+            imag=sum(v*math.sin(2*math.pi*hz*4*i/rate) for i,v in enumerate(window))
+            pair.append(math.hypot(real,imag)*2/len(window))
+        levels.append(pair)
+    outgoing=max(a for a,b in levels);incoming=max(b for a,b in levels)
+    assert outgoing>100 and incoming>100
+    ratios=[(a/outgoing,b/incoming) for a,b in levels]
+    assert sum(.1<a<.9 and b<.05 for a,b in ratios)>=15
+    assert sum(a<.05 and .1<b<.9 for a,b in ratios)>=4
+    assert sum(a2<a1-.01 for (a1,_),(a2,_) in zip(ratios,ratios[1:]))>=15

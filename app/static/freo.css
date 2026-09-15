@@ -235,3 +235,34 @@ html{scroll-behavior:auto}.admin-primary{display:inline-flex;align-items:center;
 .horizontal-vu meter::-moz-meter-bar{background:#b9e79b}
 @media(min-width:1500px){.booth-mode-dj-booth .lower-stage{grid-row:3/5}.booth-mode-dj-booth:has(.booth-notice:not([hidden])) .lower-stage{grid-row:4/6}}
 @media(max-width:700px){.deck-transition{grid-template-columns:auto minmax(80px,1fr)}.deck-transition small{grid-column:1/-1}}
+
+/* A single row contract keeps both DJ decks aligned in every state. */
+.deck-workspace{display:grid;gap:18px;min-width:0}.booth-mode-auto .deck-workspace{display:none}
+.deck-workspace .deck-stage{align-items:stretch;gap:22px;padding:3px}
+.deck-workspace .deck{display:grid;grid-template-rows:26px 170px 106px 32px 44px 142px 24px;gap:8px;padding:20px;border:1px solid #424b5a;border-radius:20px;background:radial-gradient(ellipse at 50% 20%,#28313f55,transparent 60%),#141921;overflow:visible;isolation:isolate;animation:none}
+.deck-workspace .deck::before{content:"";position:absolute;inset:-2px;border:2px solid transparent;border-radius:22px;pointer-events:none;z-index:2}
+.deck-workspace .deck-status{height:26px}.deck-workspace .platter{width:140px;height:140px;margin:15px auto}.deck-workspace .disc{width:140px;height:140px;background:repeating-radial-gradient(circle,#343c49 0 1px,#10151d 2px 5px);border-color:#394350;box-shadow:0 12px 26px #0008,inset 0 0 18px #0009}
+.deck-workspace .disc-label{background:radial-gradient(circle at 35% 30%,#52708d,#253443);color:#ecf4ff;font-size:21px;border:1px solid #75899a;box-shadow:0 0 18px #9bcfff16}
+.deck-workspace .now-copy{min-height:0;height:106px;display:grid;grid-template-rows:52px 22px 18px;gap:5px;align-content:start}
+.deck-workspace .now-copy h2{font-size:clamp(18px,1.8vw,25px);line-height:26px;margin:0;-webkit-line-clamp:2}.deck-workspace .now-copy p,.deck-workspace .now-copy small{margin:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:20px}.deck-workspace .now-copy p{font-size:13px}.deck-workspace .now-copy small{font-size:11px}
+.deck-workspace .track-facts{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:5px;align-items:center;margin:0;height:32px}.deck-workspace .track-facts span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding:6px 3px;font-size:9px}
+.deck-workspace .time-row{grid-template-columns:62px minmax(0,1fr) 68px;margin:0;height:44px;gap:8px;font-size:11px;font-variant-numeric:tabular-nums}.deck-workspace .time-track{height:4px;border-radius:3px;overflow:hidden}
+.deck-workspace .transport-row{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));grid-template-rows:54px 36px 36px;gap:8px;margin:0;align-content:start}
+.dj-booth .deck-workspace .transport-row .transport{width:100%;height:100%;margin:0;padding:5px;justify-content:center;align-items:center;font-size:10px;white-space:nowrap;border-radius:8px}
+.dj-booth .deck-workspace .transport-row .deck-take{grid-column:1/-1;grid-row:1;order:0;font-size:12px;letter-spacing:.06em;background:#b9e79b;color:#182313}
+.dj-booth .deck-workspace .deck-take.is-live:disabled{opacity:1;background:linear-gradient(120deg,#ce243d,#ef4938);border-color:#ff9c76;color:#fff;box-shadow:0 0 22px #ef493833;cursor:default;font-size:17px;letter-spacing:.2em}
+.dj-booth .deck-workspace .deck-take.is-incoming:disabled{opacity:1;background:linear-gradient(120deg,#2061c1,#4caaff);border-color:#cfedff;color:#fff;box-shadow:0 0 22px #61c1ff55;letter-spacing:.08em;font-size:12px}
+.deck-workspace .deck-message{height:24px;font-size:9px;letter-spacing:.12em;color:#91a0b3;display:flex;align-items:center;justify-content:center;overflow:hidden;white-space:nowrap}
+.deck-workspace .deck.mix-live{border-color:#ff9365;box-shadow:inset 0 0 65px #ed622214}.deck-workspace .deck.mix-live::before{animation:deck-live-fire 3.6s ease-in-out infinite}.deck-workspace .deck.mix-live .source-chip{color:#fff0dc;background:#963b2533}
+.deck-workspace .deck.is-fading::before{animation:deck-fade-ice 1.6s ease-in-out infinite;opacity:.5}.deck-workspace .deck.is-incoming::before{opacity:1}.deck-workspace .deck.is-fading .source-chip{color:#d5eeff;background:#2868b54d}.deck-workspace .deck.is-incoming .deck-message{color:#b6e5ff}
+.deck-workspace .deck.is-loading{border-color:#74a4d5}.deck-workspace .deck.is-loading .deck-message{color:#b6d8fb}
+@keyframes deck-live-fire{0%,100%{border-color:#ff8c38;box-shadow:0 0 13px #ff7b4555,inset 0 0 13px #ff7b4522}25%{border-color:#ffeed5;box-shadow:0 0 21px #ffbe7477,inset 0 0 16px #ffca8622}50%{border-color:#ff455c;box-shadow:0 0 18px #ff435e66,inset 0 0 15px #ff435e22}75%{border-color:#ffd66e;box-shadow:0 0 24px #ffaa4666,inset 0 0 16px #ffd86e22}}
+@keyframes deck-fade-ice{0%,100%{border-color:#448bff;box-shadow:0 0 18px #438bff77,inset 0 0 14px #438bff22}50%{border-color:#effaff;box-shadow:0 0 30px #89d8ffaa,inset 0 0 18px #b4e7ff33}}
+/* Keep the heading and decks ahead of meters, including while notices are visible. */
+.booth-mode-dj-booth > .booth-header{grid-column:1/-1;grid-row:1}
+.booth-mode-dj-booth > .deck-workspace{grid-column:1;grid-row:2}
+.booth-mode-dj-booth > .meter-rack{grid-column:1;grid-row:3}
+.booth-mode-dj-booth > .booth-notice{grid-column:1/-1;grid-row:4}
+@media(min-width:1500px){.booth-mode-dj-booth .lower-stage,.booth-mode-dj-booth:has(.booth-notice:not([hidden])) .lower-stage{grid-column:2;grid-row:2/4}}
+@media(max-width:650px){.deck-workspace .deck-stage{gap:22px}.deck-workspace .deck{padding:18px}.deck-workspace .now-copy h2{font-size:22px}}
+@media(prefers-reduced-motion:reduce){.deck-workspace .disc,.deck-workspace .deck::before{animation:none!important}.deck-workspace .deck.mix-live::before{border-color:#ffa75c;box-shadow:0 0 18px #ff6b4455}.deck-workspace .deck.is-fading::before{border-color:#c6edff;box-shadow:0 0 18px #6dcaff66}}

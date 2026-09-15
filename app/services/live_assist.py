@@ -3,7 +3,7 @@ import uuid
 from datetime import datetime, timedelta, timezone
 
 from app.extensions import db
-from app.models import (AutomationState, EventBlock, EventBlockExecution, ImagingAsset, LiveCartSlot, LiveControlCommand, LiveQueueSnapshot,
+from app.models import (AuditEvent, AutomationState, EventBlock, EventBlockExecution, ImagingAsset, LiveCartSlot, LiveControlCommand, LiveQueueSnapshot,
                         SelectionDecision, Station, Track)
 from app.services.admin_media import audit
 from app.services.media_storage import LocalMediaStorage
@@ -33,6 +33,8 @@ def set_mode(station,user,mode):
     if mode not in ('AUTO','DJ_BOOTH'):raise ValueError('Invalid booth mode')
     state=db.session.get(AutomationState,station.id)
     if state is None or not station.enabled or station.desired_state!='running':raise ValueError('Station playout is unavailable')
+    if state.operator_mode != mode and mode == 'AUTO':
+        return return_to_schedule(station,user=user)
     if state.operator_mode != mode:
         state.cued_track_id = None
         state.deck_a_playing, state.deck_b_playing, state.crossfader = True, False, 0.0
@@ -41,6 +43,17 @@ def set_mode(station,user,mode):
         state.enabled = True
     audit('live_mode_changed',user_id=user.id,station_id=station.id,target_type='station',target_id=station.slug,summary=f'DJ booth mode changed to {mode}')
     db.session.commit();return state
+
+
+def return_to_schedule(station, user=None, reason='Returning to the schedule: DJ audio fades out over 3 seconds, then scheduled music fades in.'):
+    state=station.automation
+    state.operator_mode='AUTO';state.hold=False;state.enabled=True
+    state.cued_track_id=None
+    state.deck_a_playing=True;state.deck_b_playing=False;state.crossfader=0.0
+    audit('live_auto_return',user_id=user.id if user else None,station_id=station.id,
+          target_type='station',target_id=station.slug,summary=reason)
+    db.session.commit()
+    return state
 
 
 def queue_playable(station, user, kind, identifier, nonce, *, bus='A', cart_mode='OVER', duck_percent=50):
@@ -357,13 +370,18 @@ def status(station):
         for deck in ('a','b','cart'):
             row = deck_item(station,mixer,deck.upper()) if deck in ('a','b') else (db.session.get(SelectionDecision, mixer.get(deck+'_id')) if mixer.get(deck+'_id') else None)
             mixer[deck] = safe_item(row) if row and row.station_id == station.id else None
-            if deck in ('a','b') and row and not mixer.get(deck+'_id'):
-                mixer[deck+'_playing'] = False
+            if deck in ('a','b'):
+                if not row or not mixer.get(deck+'_id'):
+                    mixer[deck+'_playing'] = False
+                    mixer[deck+'_elapsed'] = 0
+                elif not row.started_at and not mixer.get(deck+'_playing'):
+                    mixer[deck+'_elapsed'] = 0
         snapshot_mixer = mixer
     else:
         snapshot_mixer = None
     deck_command = LiveControlCommand.query.filter_by(station_id=station.id).filter(LiveControlCommand.action.like('DECK_%')).order_by(LiveControlCommand.id.desc()).first()
-    return dict(station=station.slug, automation='HELD' if state and state.hold else 'RUNNING' if state and state.enabled else 'DISABLED',mode=state.operator_mode if state else 'AUTO',cue=cue,
+    mode_notice=AuditEvent.query.filter_by(station_id=station.id,action='live_auto_return').order_by(AuditEvent.id.desc()).first()
+    return dict(mode_notice=dict(id=mode_notice.id,message=mode_notice.summary) if mode_notice else None,station=station.slug, automation='HELD' if state and state.hold else 'RUNNING' if state and state.enabled else 'DISABLED',mode=state.operator_mode if state else 'AUTO',cue=cue,
         current=current, mixer=snapshot_mixer, deck_command=(dict(id=deck_command.id,status=deck_command.status,deck=deck_command.deck,operation=deck_command.action.removeprefix('DECK_'),error=deck_command.error_code) if deck_command else None), last_known_current=last_known, observation_fresh=reliable, observed_at=snapshot.observed_at.isoformat() if snapshot else None, queue=queue, unknown_queue_items=unknown,
         program_rms=snapshot.program_rms if fresh else None,
         fallback='Possible' if not current and not live_error and station.desired_state == 'running' else 'Not observed',
