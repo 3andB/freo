@@ -17,6 +17,9 @@ def record_track(metadata)
 end
 queue = source.on_track(queue, record_track)
 radio = fallback(track_sensitive=false, [queue, tone])
+# A short broadcast transition applies to natural changes and the fixed
+# worker-only fade/advance operation. Browsers never receive socket access.
+radio = mksafe(crossfade(duration=3.0, radio))
 output.icecast(
   %mp3(bitrate=64),
   host="127.0.0.1",

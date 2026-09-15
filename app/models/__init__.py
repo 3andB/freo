@@ -305,6 +305,7 @@ class AutomationState(db.Model):
     enabled = db.Column(db.Boolean, nullable=False, default=False)
     hold = db.Column(db.Boolean, nullable=False, default=False)
     operator_mode = db.Column(db.String(16), nullable=False, default='AUTO')
+    cued_track_id = db.Column(db.Integer, db.ForeignKey('tracks.id', ondelete='SET NULL'))
     next_slot_index = db.Column(db.Integer, nullable=False, default=0)
     track_separation_seconds = db.Column(db.Integer, nullable=False, default=0)
     artist_separation_seconds = db.Column(db.Integer, nullable=False, default=0)
@@ -315,6 +316,7 @@ class AutomationState(db.Model):
     station = db.relationship('Station', backref=db.backref('automation', uselist=False))
     active_rotation = db.relationship('Rotation')
     default_clock = db.relationship('Clock', foreign_keys=[default_clock_id])
+    cued_track = db.relationship('Track', foreign_keys=[cued_track_id])
 
 
 class Clock(db.Model):
@@ -519,7 +521,7 @@ class SelectionDecision(db.Model):
 class LiveControlCommand(db.Model):
     """Worker-mediated skip only; never a generic socket command table."""
     __tablename__ = 'live_control_commands'
-    __table_args__ = (db.CheckConstraint("status IN ('pending','sent','failed')", name='ck_live_control_status'),db.CheckConstraint("action IN ('SKIP','TAKEOVER')",name='ck_live_control_action'))
+    __table_args__ = (db.CheckConstraint("status IN ('pending','sent','failed')", name='ck_live_control_status'),db.CheckConstraint("action IN ('SKIP','TAKEOVER','FADE')",name='ck_live_control_action'))
     id = db.Column(db.Integer, primary_key=True)
     station_id = db.Column(db.Integer, db.ForeignKey('stations.id', ondelete='CASCADE'), nullable=False, index=True)
     admin_user_id = db.Column(db.Integer, db.ForeignKey('admin_users.id', ondelete='SET NULL'))

@@ -103,6 +103,49 @@ def request_skip(station, user, expected_decision_id, nonce):
     db.session.commit()
     return row
 
+
+def request_fade(station, user, expected_decision_id, nonce):
+    nonce = _nonce(nonce)
+    current = SelectionDecision.query.filter_by(id=expected_decision_id,
+        station_id=station.id, status='started').first()
+    if current is None:
+        raise ValueError('Current item changed; refresh before fading')
+    existing = LiveControlCommand.query.filter_by(idempotency_key=nonce).first()
+    if existing:
+        return existing
+    row = LiveControlCommand(station_id=station.id, admin_user_id=user.id,
+        action='FADE', idempotency_key=nonce, expected_decision_id=current.id,
+        status='pending')
+    db.session.add(row)
+    audit('manual_fade_requested', user_id=user.id, station_id=station.id,
+        target_type='decision', target_id=str(current.id),
+        summary='Operator requested fixed three-second fade and advance')
+    db.session.commit()
+    return row
+
+
+def cue_track(station, user, identifier):
+    track = Track.query.filter_by(station_id=station.id, uuid=identifier,
+        enabled=True, ingest_status='accepted', decommissioned_at=None).first()
+    if track is None:
+        raise ValueError('Song is unavailable for this station')
+    LocalMediaStorage().regular_file(station.slug, track.storage_key)
+    station.automation.cued_track_id = track.id
+    audit('live_cue_loaded', user_id=user.id, station_id=station.id,
+        target_type='track', target_id=track.uuid, summary='Song loaded into cue deck')
+    db.session.commit()
+    return track
+
+
+def clear_cue(station, user):
+    state = station.automation
+    if state.cued_track:
+        audit('live_cue_cleared', user_id=user.id, station_id=station.id,
+            target_type='track', target_id=state.cued_track.uuid,
+            summary='Cue deck cleared')
+    state.cued_track_id = None
+    db.session.commit()
+
 def request_takeover(station,user,identifier,expected_decision_id,nonce):
     nonce=_nonce(nonce);current=SelectionDecision.query.filter_by(id=expected_decision_id,station_id=station.id,status='started').first()
     if current is None:raise ValueError('Current item changed; refresh before takeover')
@@ -164,7 +207,10 @@ def safe_item(row):
         return dict(decision_id=row.id, kind='track', title=row.track.title,
                     artist=row.track.artist,album=row.track.album,category=row.category.name if row.category else None,source=source,
                     started_at=row.started_at.isoformat() if row.started_at else None,
-                    duration_ms=row.track.duration_ms)
+                    duration_ms=row.track.duration_ms, uuid=row.track.uuid,
+                    bpm=row.track.bpm, genre=row.track.genre,
+                    year=row.track.release_year, loudness_lufs=row.track.loudness_lufs,
+                    album_id=row.track.album_id, bitrate_kbps=row.track.bitrate_kbps)
     if row.imaging_asset:
         asset = row.imaging_asset
         return dict(decision_id=row.id, kind='imaging', title=asset.name,
@@ -201,7 +247,13 @@ def status(station):
         scheduled = next_event.scheduled_for_utc.replace(tzinfo=next_event.scheduled_for_utc.tzinfo or timezone.utc)
         overrun_seconds = round((estimated_end - scheduled).total_seconds())
     active_block=EventBlockExecution.query.filter_by(station_id=station.id).filter(EventBlockExecution.state.in_(('PENDING','QUEUED','STARTED'))).first()
-    return dict(station=station.slug, automation='HELD' if state and state.hold else 'RUNNING' if state and state.enabled else 'DISABLED',mode=state.operator_mode if state else 'AUTO',
+    cue = safe_item(SelectionDecision(station_id=station.id, track=state.cued_track,
+        selection_method='manual_track')) if state and state.cued_track else None
+    if cue:
+        cue['uuid'] = state.cued_track.uuid
+        cue['bpm'] = state.cued_track.bpm
+        cue['album_id'] = state.cued_track.album_id
+    return dict(station=station.slug, automation='HELD' if state and state.hold else 'RUNNING' if state and state.enabled else 'DISABLED',mode=state.operator_mode if state else 'AUTO',cue=cue,
         current=current, queue=queue, unknown_queue_items=unknown,
         fallback='Possible' if not current and not live_error and station.desired_state == 'running' else 'Not observed',
         playout_error=live_error, recent=[safe_item(row) for row in recent],

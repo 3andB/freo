@@ -8,7 +8,9 @@ from app.extensions import db
 from app.models import EventBlock, ImagingAsset, LiveCartSlot, MediaCategory, Track
 from app.routes.web import admin_stations, station_or_404
 from app.services.admin_auth import admin_required, can_control_playout, current_admin, require_csrf
-from app.services.live_assist import assign_cart, queue_block, queue_playable, request_abort_block, request_skip,request_takeover,set_hold,set_mode,status
+from app.services.live_assist import (assign_cart, clear_cue, cue_track, queue_block,
+    queue_playable, request_abort_block, request_fade, request_skip,
+    request_takeover, set_hold, set_mode, status)
 
 admin_live_blueprint = Blueprint('admin_live', __name__)
 
@@ -60,7 +62,7 @@ def live_status(slug):
 def action(slug, action):
     station = station_for_operator(slug)
     require_csrf()
-    if action not in ('hold', 'resume','mode','takeover','assign-cart','queue-track', 'queue-imaging', 'queue-block', 'abort-block', 'skip'):
+    if action not in ('hold', 'resume','mode','takeover','fade','cue','clear-cue','start-cue','repeat','assign-cart','queue-track', 'queue-imaging', 'queue-block', 'abort-block', 'skip'):
         abort(404)
     try:
         if action=='mode':set_mode(station,current_admin(),request.form.get('mode'));message='DJ booth mode changed.'
@@ -68,6 +70,22 @@ def action(slug, action):
             expected=request.form.get('expected_decision_id','')
             if not expected.isdecimal():raise ValueError('Current item changed; refresh before takeover')
             request_takeover(station,current_admin(),request.form.get('identifier'),int(expected),request.form.get('nonce'));message='Controlled takeover requested.'
+        elif action == 'fade':
+            expected=request.form.get('expected_decision_id','')
+            if not expected.isdecimal():raise ValueError('Current item changed; refresh before fading')
+            request_fade(station,current_admin(),int(expected),request.form.get('nonce'));message='Three-second fade and advance requested.'
+        elif action == 'cue':
+            cue_track(station,current_admin(),request.form.get('identifier'));message='Song loaded into the cue deck.'
+        elif action == 'clear-cue':
+            clear_cue(station,current_admin());message='Cue deck cleared.'
+        elif action == 'start-cue':
+            current=status(station).get('current');track=station.automation.cued_track
+            if not current or not track:raise ValueError('A current and cued song are required')
+            request_takeover(station,current_admin(),track.uuid,current['decision_id'],request.form.get('nonce'));clear_cue(station,current_admin());message='Crossfade to cue requested.'
+        elif action == 'repeat':
+            current=status(station).get('current')
+            if not current or current.get('kind')!='track':raise ValueError('No song is currently playing')
+            queue_playable(station,current_admin(),'track',current['uuid'],request.form.get('nonce'));message='One repeat queued at the end of the real queue.'
         elif action=='assign-cart':
             assign_cart(station, current_admin(), request.form.get('role'),
                 int(request.form.get('position', '0')), request.form.get('identifier'),

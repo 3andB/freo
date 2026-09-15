@@ -18,7 +18,7 @@
     <nav class="admin-nav" aria-label="Operations">
       <a href="{{ url_for('web.admin_home') }}{{ suffix }}" {% if page == 'overview' %}aria-current="page"{% endif %}>Overview</a>
       <a href="{{ url_for('web.admin_station_list') }}" {% if page == 'stations' %}aria-current="page"{% endif %}>Stations</a>
-      {% if selected %}<a href="{{ url_for('admin_live.page', slug=selected.slug) }}" {% if page == 'live' %}aria-current="page"{% endif %}>Live Assist</a>{% endif %}
+      {% if selected %}<a href="{{ url_for('admin_live.page', slug=selected.slug) }}" {% if page == 'live' %}aria-current="page"{% endif %}>DJ Booth</a>{% endif %}
       {% if selected %}<a href="{{ url_for('admin_events.list_page', slug=selected.slug) }}" {% if page == 'events' %}aria-current="page"{% endif %}>Events</a>{% endif %}
       {% if selected %}<a href="{{ url_for('admin_blocks.list_page', slug=selected.slug) }}" {% if page == 'blocks' %}aria-current="page"{% endif %}>Blocks</a>{% endif %}
       {% if selected %}<a href="{{ url_for('admin_traffic.page', slug=selected.slug) }}" {% if page == 'traffic' %}aria-current="page"{% endif %}>Traffic</a>{% endif %}

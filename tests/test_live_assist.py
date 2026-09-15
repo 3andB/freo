@@ -5,7 +5,8 @@ import pytest
 
 from app.extensions import db
 from app.models import AdminUser, AuditEvent, AutomationState, ImagingAsset,LiveCartSlot,LiveQueueSnapshot, SelectionDecision, Station, Track
-from app.services.live_assist import assign_cart,queue_playable,request_skip,request_takeover,set_hold,set_mode
+from app.services.live_assist import (assign_cart, cue_track, queue_playable,
+    request_fade, request_skip, request_takeover, set_hold, set_mode)
 from app.services.playout_queue import _command
 from tests.test_web import app as app_fixture, admin_client
 
@@ -55,6 +56,17 @@ def test_three_booth_modes_have_explicit_hold_semantics(app):
         set_mode(station,user,'LIVE');assert station.automation.operator_mode=='LIVE' and station.automation.hold
         set_mode(station,user,'AUTO');assert station.automation.operator_mode=='AUTO' and not station.automation.hold
         with pytest.raises(ValueError):set_mode(station,user,'ENGINEERING')
+
+
+def test_cue_deck_and_fade_are_durable_worker_intents(app, monkeypatch):
+    monkeypatch.setattr('app.services.media_storage.LocalMediaStorage.regular_file',lambda *args:'/safe')
+    with app.app_context():
+        station=Station.query.filter_by(slug='test-station').first();user=AdminUser.query.first()
+        track=Track.query.first();current=SelectionDecision.query.filter_by(status='started').first()
+        cue_track(station,user,track.uuid)
+        assert station.automation.cued_track_id == track.id
+        command=request_fade(station,user,current.id,str(uuid.uuid4()))
+        assert command.action == 'FADE' and command.status == 'pending'
 
 
 def test_takeover_intent_and_cart_assignment_are_station_scoped(app,monkeypatch):
@@ -129,6 +141,9 @@ def test_live_page_and_status_use_sanitized_worker_snapshot(app, monkeypatch):
     assert b'DJ Booth' in page.data and b'NOW PLAYING' in page.data and b'Verified Test Track' in page.data
     assert page.data.count(b'data-role="HOT"') == 8
     assert page.data.count(b'data-role="ID"') == 4
+    assert page.data.count(b'data-assign') >= 12
+    assert b'DECK B' in page.data and b'NOTHING CUED' in page.data
+    assert b'PROGRAM / LIVE' in page.data and b'CUE / MONITOR' in page.data
     assert b'STATUS / ENGINEERING' in page.data
     payload = client.get('/admin/api/stations/test-station/live-status')
     assert payload.status_code == 200
