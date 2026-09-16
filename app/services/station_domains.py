@@ -113,7 +113,7 @@ def preferred_url(station):
 
 
 def route_public_host():
-    endpoints = {'web.homepage', 'web.stations', 'web.player', 'web.listen_alias', 'station_settings.logo'}
+    endpoints = {'web.homepage', 'web.stations', 'web.player', 'web.listen_alias', 'station_settings.logo', 'player_experience.asset', 'player_experience.public_state', 'player_experience.public_schedule', 'player_experience.feedback', 'player_experience.artwork'}
     if request.endpoint not in endpoints:
         return None
     try:

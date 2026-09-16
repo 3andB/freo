@@ -1,0 +1,11 @@
+[Unit]
+Description=Refresh public radio schedules every minute
+
+[Timer]
+OnBootSec=60
+OnUnitActiveSec=60
+AccuracySec=5
+Unit=freo-public-schedules.service
+
+[Install]
+WantedBy=timers.target

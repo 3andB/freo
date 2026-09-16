@@ -201,7 +201,9 @@ def track_detail(slug, track_uuid):
               .order_by(SelectionDecision.started_at.desc()).limit(5).all())
     from app.services.airplay import play_counts
     count = play_counts(station.id, 'track', [track.id]).get(track.id, 0)
+    from app.services.player import vote_stats, EMPTY_STATS
     return render_template('admin/media_track.html', **page_context(station, track=track,
+                           votes=vote_stats(station.id,[track.id]).get(track.id,EMPTY_STATS),
                            categories=categories, starts=starts, play_count=count, **classification_context(station)))
 
 

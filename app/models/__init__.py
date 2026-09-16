@@ -879,3 +879,61 @@ class PlaylistCursor(db.Model):
     clock_slot_id = db.Column(db.Integer, db.ForeignKey('clock_slots.id', ondelete='CASCADE'), nullable=False)
     occurrence_key = db.Column(db.String(120), nullable=False)
     state = db.Column(db.JSON, nullable=False, default=dict)
+
+
+class StationPlayerSettings(db.Model):
+    __tablename__ = 'station_player_settings'
+    station_id = db.Column(db.Integer, db.ForeignKey('stations.id', ondelete='CASCADE'), primary_key=True)
+    config = db.Column(db.JSON, nullable=False, default=dict)
+    revision = db.Column(db.Integer, nullable=False, default=1)
+    station = db.relationship('Station', backref=db.backref('player_settings', uselist=False, cascade='all, delete-orphan'))
+
+
+class StationPlayerAsset(db.Model):
+    __tablename__ = 'station_player_assets'
+    id = db.Column(db.Integer, primary_key=True)
+    station_id = db.Column(db.Integer, db.ForeignKey('stations.id', ondelete='CASCADE'), nullable=False)
+    kind = db.Column(db.String(24), nullable=False)
+    image = db.deferred(db.Column(db.LargeBinary, nullable=False))
+    version = db.Column(db.String(64), nullable=False)
+    __table_args__ = (db.UniqueConstraint('station_id', 'kind', name='uq_player_asset'),)
+
+
+class PublicScheduleRevision(db.Model):
+    __tablename__ = 'public_schedule_revisions'
+    id = db.Column(db.Integer, primary_key=True)
+    station_id = db.Column(db.Integer, db.ForeignKey('stations.id', ondelete='CASCADE'), nullable=False, index=True)
+    entries = db.Column(db.JSON, nullable=False)
+    config_revision = db.Column(db.Integer, nullable=False)
+    start_date = db.Column(db.Date, nullable=False)
+    end_date = db.Column(db.Date, nullable=False)
+    created_at = db.Column(db.DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+
+
+class ListenerVote(db.Model):
+    __tablename__ = 'listener_votes'
+    id = db.Column(db.Integer, primary_key=True)
+    station_id = db.Column(db.Integer, db.ForeignKey('stations.id', ondelete='CASCADE'), nullable=False, index=True)
+    track_id = db.Column(db.Integer, db.ForeignKey('tracks.id', ondelete='CASCADE'), nullable=False)
+    listener_key = db.Column(db.String(64), nullable=False)
+    value = db.Column(db.Integer, nullable=False)
+    decision_id = db.Column(db.Integer, nullable=False)
+    comment = db.Column(db.String(500), nullable=False, default='')
+    review_state = db.Column(db.String(12), nullable=False, default='new')
+    excluded = db.Column(db.Boolean, nullable=False, default=False)
+    revision = db.Column(db.Integer, nullable=False, default=1)
+    updated_at = db.Column(db.DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+    track = db.relationship('Track')
+    __table_args__ = (db.UniqueConstraint('station_id', 'track_id', 'listener_key', name='uq_listener_song_vote'),
+                     db.CheckConstraint('value IN (-1,0,1)', name='ck_listener_vote_value'))
+
+
+class ListenerFeedbackEvent(db.Model):
+    __tablename__ = 'listener_feedback_events'
+    id = db.Column(db.Integer, primary_key=True)
+    station_id = db.Column(db.Integer, db.ForeignKey('stations.id', ondelete='CASCADE'), nullable=False, index=True)
+    listener_key = db.Column(db.String(64), nullable=False, index=True)
+    track_id = db.Column(db.Integer, nullable=False)
+    action = db.Column(db.String(40), nullable=False)
+    value = db.Column(db.Integer, nullable=False)
+    created_at = db.Column(db.DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc), index=True)

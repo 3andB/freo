@@ -26,9 +26,12 @@ from app.models import Playlist, PlaylistItem
 sound_room=Blueprint('sound_room',__name__)
 
 
-def song_data(song, plays=None, station=None, flags=None):
+def song_data(song, plays=None, station=None, flags=None, ratings=None):
     station = station or song.station
+    from app.services.player import vote_stats, EMPTY_STATS
+    rating=(ratings if ratings is not None else vote_stats(station.id,[song.id])).get(song.id,EMPTY_STATS)
     return dict(uuid=song.uuid,title=song.title,artist=song.artist,album=song.album,
+        votes=rating, feedback_url=url_for('player_experience.inbox',slug=station.slug,track=song.uuid),
         flag=flag_data(flags.get(song.id) if flags is not None else SongFlag.query.filter_by(station_id=station.id,track_id=song.id).first()),
         play_count=play_counts(station.id, 'track', [song.id]).get(song.id, 0) if plays is None else plays,
         duration_ms=song.duration_ms,enabled=song.enabled,notes=song.notes,
@@ -91,7 +94,9 @@ def catalog(slug):
     song_plays = play_counts(station.id, 'track', [x.id for x in songs])
     category_plays = play_counts(station.id, 'category')
     flags={flag.track_id:flag for flag in SongFlag.query.filter(SongFlag.station_id==station.id,SongFlag.track_id.in_([x.id for x in songs])).all()}
-    result=dict(flagged_count=base.filter(Track.id.in_(db.session.query(SongFlag.track_id).filter_by(station_id=station.id,resolved_at=None))).count(),songs=[song_data(x, song_plays.get(x.id, 0), station, flags) for x in songs],total=total,page=page,pages=max(1,(total+49)//50),target_lufs=station.target_lufs,
+    from app.services.player import vote_stats
+    ratings=vote_stats(station.id,[x.id for x in songs])
+    result=dict(flagged_count=base.filter(Track.id.in_(db.session.query(SongFlag.track_id).filter_by(station_id=station.id,resolved_at=None))).count(),songs=[song_data(x, song_plays.get(x.id, 0), station, flags, ratings) for x in songs],total=total,page=page,pages=max(1,(total+49)//50),target_lufs=station.target_lufs,
         playlists=[playlist_service.summary(row) for row in playlist_service.listing(station.id)],
         categories=[dict(id=x.id,name=x.name,count=category_counts.get(x.id,0),play_count=category_plays.get(x.id,0),enabled=x.enabled,description=x.description) for x in MediaCategory.query.filter_by(station_id=station.id).order_by(MediaCategory.name)],
         tags=[dict(id=x.id,name=x.name,color=x.color,description=x.description,count=tag_counts.get(x.id,0)) for x in MusicTag.query.filter_by(station_id=station.id).order_by(MusicTag.name)],

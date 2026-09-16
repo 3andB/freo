@@ -140,7 +140,7 @@ install -m 0644 "$unit_src" "$unit_dst"
 systemctl daemon-reload
 systemctl enable --now freo.service
 systemctl restart freo.service
-for service in icecast2 freo-playout freo-playout@ freo-automation freo-ingest freo-provision; do
+for service in icecast2 freo-playout freo-playout@ freo-automation freo-ingest freo-provision freo-public-schedules; do
   unit_src="$source_dir/deploy/systemd/$service.service"
   unit_dst="/etc/systemd/system/$service.service"
   if [[ -f $unit_dst ]] && ! cmp -s "$unit_src" "$unit_dst"; then
@@ -155,6 +155,9 @@ if [[ ${FREO_ENABLE_DIAGNOSTIC:-0} == 1 ]]; then
 fi
 systemctl enable --now freo-automation.service
 systemctl enable --now freo-ingest.service
+install -m 0644 "$source_dir/deploy/systemd/freo-public-schedules.timer" /etc/systemd/system/freo-public-schedules.timer
+systemctl daemon-reload
+systemctl enable --now freo-public-schedules.timer
 systemctl reload icecast2.service
 install -m 0644 "$source_dir/deploy/nginx/stream-location.conf" /etc/nginx/snippets/freo-stream.conf
 install -m 0644 "$source_dir/deploy/nginx/admin-upload.conf" /etc/nginx/snippets/freo-admin-upload.conf

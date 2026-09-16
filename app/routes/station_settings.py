@@ -17,7 +17,7 @@ from app.services.station_domains import preferred_url
 station_settings = Blueprint('station_settings', __name__)
 
 
-def decode_logo(upload):
+def decode_logo(upload, output_limit=None):
     raw = upload.read(10 * 1024 * 1024 + 1)
     if len(raw) > 10 * 1024 * 1024:
         raise ValueError('Logo must be at most 10 MB')
@@ -34,7 +34,8 @@ def decode_logo(upload):
             if not (1 <= stream['width'] <= 3000 and 1 <= stream['height'] <= 3000):
                 raise ValueError('Logo dimensions must be at most 3000 × 3000 pixels')
             images = []
-            for name, scale in [('original',[]),('thumbnail',['-vf',"scale=w='min(512,iw)':h='min(512,ih)':force_original_aspect_ratio=decrease"])]:
+            original_scale=['-vf',f"scale=w='min({output_limit},iw)':h='min({output_limit},ih)':force_original_aspect_ratio=decrease"] if output_limit else []
+            for name, scale in [('original',original_scale),('thumbnail',['-vf',"scale=w='min(512,iw)':h='min(512,ih)':force_original_aspect_ratio=decrease"])]:
                 target = Path(folder) / (name + '.png')
                 subprocess.run(['ffmpeg','-v','error','-threads','1','-i',str(source),'-frames:v','1',
                     '-map_metadata','-1',*scale,'-threads','1',str(target)],capture_output=True,check=True,timeout=20)

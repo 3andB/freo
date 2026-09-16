@@ -79,6 +79,8 @@ def create_app(config_name=None):
     from .routes.station_settings import station_settings
     from .routes.song_flags import song_flags
     app.register_blueprint(station_settings)
+    from .routes.player_experience import player_experience
+    app.register_blueprint(player_experience, cli_group=None)
     from .routes.station_domains import station_domains
     from .services.station_domains import route_public_host
     app.register_blueprint(station_domains)

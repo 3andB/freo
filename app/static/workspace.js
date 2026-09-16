@@ -206,7 +206,7 @@
     if (invalid) {event.preventDefault(); invalid.focus(); let error = form.querySelector('.form-error'); if (!error) {error = document.createElement('p'); error.className = 'form-error admin-notice error'; error.setAttribute('role', 'alert'); form.prepend(error);} error.textContent = `${invalid.labels?.[0]?.textContent?.trim() || 'Field'}: ${invalid.validationMessage}`; return;}
     const url = new URL(event.submitter?.hasAttribute('formaction') ? event.submitter.formAction : form.action);
     if (/\/(login|logout)$/.test(url.pathname)) {stop();return;}
-    if (!isPage(url) || form.target) return;
+    if (!isPage(url) || form.target || event.submitter?.formTarget) return;
     event.preventDefault();
     if (url.pathname.endsWith('/logout')) stop();
     if (form.dataset.confirm && !await FreoDialog.confirm({title:'Confirm change',message:form.dataset.confirm,confirmLabel:event.submitter?.textContent.trim() || 'Continue'})) return;

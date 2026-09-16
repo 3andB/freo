@@ -12,7 +12,7 @@
 <label><input type="checkbox" name="publish_contact" value="yes" {% if values.publish_contact %}checked{% endif %}> Publish contact email and phone on the station’s public page</label>
 <label>Station description<textarea name="description" maxlength="500" rows="4">{{ values.description }}</textarea></label>
 <label>Timezone<input name="timezone" value="{{ values.timezone }}" required maxlength="64" placeholder="Australia/Perth"></label>
-<h2>Station logo</h2>
+<p><a href="{{ url_for('player_experience.settings',slug=selected.slug) }}">Customize player, cover artwork, messages, social links, ads & listener votes →</a></p><h2>Station logo</h2>
 {% if selected.logo %}<img class="station-logo settings-logo" src="{{ url_for('station_settings.logo',slug=selected.slug,v=selected.logo.version) }}" alt="Current station logo"><label><input type="checkbox" name="remove_logo" value="yes"> Remove logo</label>{% endif %}
 <label>Upload or replace logo<input name="logo" type="file" accept="image/jpeg,image/png,image/webp"></label><p class="quiet">JPEG, PNG or WebP, up to 10 MB and 3000 × 3000 pixels. A square (1:1) logo is recommended.</p>
 <h2>Station URL</h2><label>Public URL name<input name="public_slug" value="{{ values.public_slug or selected.slug }}" required maxlength="64" pattern="[a-z0-9][a-z0-9-]*"></label><p class="quiet">Use lowercase letters, numbers and hyphens. Previous URLs continue to work.</p>

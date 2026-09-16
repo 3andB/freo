@@ -189,3 +189,33 @@ def test_domain_constraints_concurrent_claims_and_primary_changes(monkeypatch):
         assert StationDomain.query.count() == 0
         db.session.remove()
         db.engine.dispose()
+
+
+def test_listener_vote_concurrency_and_publication_migration(monkeypatch):
+    import uuid
+    from datetime import datetime, timezone
+    from app.models import StationPlayerSettings, ListenerVote, SelectionDecision, Track
+    from app.services.player import DEFAULTS
+    monkeypatch.setenv('DATABASE_URL',os.environ['FREO_TEST_POSTGRES_URL'])
+    monkeypatch.setenv('FREO_ENV_FILE','/dev/null');monkeypatch.setenv('SECRET_KEY','test-only')
+    app=create_app('testing')
+    with app.app_context():
+        station=Station.query.filter_by(deleted_at=None).first();slug=station.slug;station_id=station.id
+        row=StationPlayerSettings(station_id=station.id,revision=1,config=dict(DEFAULTS,voting_enabled=True,comments_enabled=True))
+        song=Track(station_id=station.id,uuid=str(uuid.uuid4()),title='Listener race',artist='Test',
+            original_filename='test.mp3',storage_key='c'*32+'.mp3',media_type='mp3',duration_ms=1000,
+            sample_rate_hz=44100,channels=2,file_size_bytes=100,checksum_sha256='c'*64,enabled=True,ingest_status='accepted')
+        db.session.add_all([row,song]);db.session.flush()
+        decision=SelectionDecision(station_id=station.id,track_id=song.id,status='started',started_at=datetime.now(timezone.utc))
+        db.session.add(decision);db.session.commit();identifier=decision.id
+    barrier=Barrier(2)
+    def cast(value):
+        client=app.test_client()
+        with client.session_transaction() as state:state['listener_key']='c'*64;state['listener_csrf']='listener-test'
+        barrier.wait(timeout=10)
+        return client.post(f'/api/stations/{slug}/feedback/{identifier}',json=dict(value=value,revision=0),headers={'X-Listener-CSRF':'listener-test'}).status_code
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        assert sorted(pool.map(cast,(-1,1)))==[200,409]
+    with app.app_context():
+        assert ListenerVote.query.filter_by(station_id=station_id).count()==1
+        db.session.remove();db.engine.dispose()

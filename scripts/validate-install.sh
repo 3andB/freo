@@ -17,6 +17,8 @@ test -f "$install_dir/.env"
 test -f /etc/systemd/system/freo-playout@.service
 test -f /etc/systemd/system/freo-automation.service
 test -f /etc/systemd/system/freo-ingest.service
+test -f /etc/systemd/system/freo-public-schedules.service
+systemctl is-active --quiet freo-public-schedules.timer
 id freo-automation >/dev/null
 id freo-ingest >/dev/null
 if id -nG freo-ingest | tr ' ' '\n' | grep -qx freo-playout; then

@@ -69,7 +69,7 @@
       const row=el('article',undefined,'room-song');row.dataset.song=song.uuid;row.tabIndex=0;row.classList.toggle('inspecting',active===song.uuid);
       const check=el('input');check.type='checkbox';check.setAttribute('aria-label',`Select ${song.title}`);check.addEventListener('change',()=>{check.checked?selected.add(song.uuid):selected.delete(song.uuid);selection();});
       const handle=el('span','⠿','song-drag');handle.title='Drag song to a category or tag';handle.setAttribute('aria-hidden','true');
-      const copy=el('div',undefined,'song-row-copy');copy.append(el('b',song.title),el('span',song.artist),el('small',`${song.album||'Single'} · ${duration(song.duration_ms)} · ${song.play_count} plays`));
+      const copy=el('div',undefined,'song-row-copy');copy.append(el('b',song.title),el('span',song.artist),el('small',`${song.album||'Single'} · ${duration(song.duration_ms)} · ${song.play_count} plays · ↑ ${song.votes?.up||0} ↓ ${song.votes?.down||0}`));
       copy.append(FreoMusicToggles.create(song,data,root.dataset));
       const status=el('div',undefined,'song-row-status');status.append(el('span',song.analysis==='pending'?(song.requested?'Queued':'Waiting'):song.analysis),el('small',song.lufs===null?'LUFS pending':`${song.lufs.toFixed(1)} LUFS`));
       status.append(button(song.flag?(song.flag.resolved?'💬 Resolved':'💬 Flagged'):'💬 Flag',()=>window.FreoSongFlags.open(song),'song-flag-button'));
@@ -98,7 +98,7 @@
     const link=el('a','Edit song ↗','inspector-link');link.href=song.detail;panel.append(link);
     panel.append(button(song.flag?'💬 Review flag':'💬 Flag song',()=>window.FreoSongFlags.open(song),'song-flag-button'));
     const metrics=el('div',undefined,'inspector-metrics');
-    for(const [name,value] of [['Confirmed plays',song.play_count],['Loudness',song.lufs===null?'Not measured':`${song.lufs.toFixed(1)} LUFS`],['Playback gain',`${song.gain.db} dB`],['Target',`${song.gain.target} LUFS`],['Status',song.gain.status]]){const cell=el('div');cell.append(el('small',name),el('b',value));metrics.append(cell);}panel.append(metrics);
+    for(const [name,value] of [['Confirmed plays',song.play_count],['Listener votes',`↑ ${song.votes?.up||0} · ↓ ${song.votes?.down||0}`],['Approval',song.votes?.total?`${song.votes.approval}% (${song.votes.total} votes)`:'No votes'],['Net score',song.votes?.net||0],['Loudness',song.lufs===null?'Not measured':`${song.lufs.toFixed(1)} LUFS`],['Playback gain',`${song.gain.db} dB`],['Target',`${song.gain.target} LUFS`],['Status',song.gain.status]]){const cell=el('div');cell.append(el('small',name),el('b',value));metrics.append(cell);}panel.append(metrics);if(song.feedback_url){const feedback=el('a',`${song.votes?.comments||0} listener comments →`,'inspector-link');feedback.href=song.feedback_url;panel.append(feedback);}
     const processing=button(song.analysis==='processing'?'Processing…':song.requested?'Queued for processing':'Process song',()=>process([song.uuid]),'process-song');processing.disabled=song.analysis==='processing'||song.requested;panel.append(processing);
     if(song.error)panel.append(el('p',song.error,'room-hint'));
     for(const [kind,ids,items] of [['playlist',song.playlists,data.playlists],['category',song.categories,data.categories],['tag',song.tags,data.tags]]){

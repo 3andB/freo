@@ -23,6 +23,7 @@
       <a href="{{ url_for('web.admin_station_list') }}" {% if page == 'stations' %}aria-current="page"{% endif %}>Stations</a>
       {% if selected %}<a href="{{ url_for('admin_live.page', slug=selected.slug) }}" {% if page == 'live' %}aria-current="page"{% endif %}>DJ Booth</a>{% endif %}
       {% if selected %}<a href="{{ url_for('station_settings.page',slug=selected.slug) }}" {% if page == 'settings' %}aria-current="page"{% endif %}>Station settings</a>{% endif %}
+      {% if selected %}<a href="{{ url_for('player_experience.settings',slug=selected.slug) }}" {% if page == 'player-settings' %}aria-current="page"{% endif %}>Player settings</a><a href="{{ url_for('player_experience.inbox',slug=selected.slug) }}" {% if page == 'listener-feedback' %}aria-current="page"{% endif %}>Listener feedback</a>{% endif %}
       <span class="admin-nav-label">PROGRAMMING</span>
       <a href="{{ url_for('web.admin_section', section='media') }}{{ suffix }}" {% if page == 'media' %}aria-current="page"{% endif %}>Music</a>
       <a href="{{ url_for('admin_programming.list_page', slug=selected.slug, section='categories') if selected else url_for('web.admin_section', section='categories') }}" {% if page == 'categories' %}aria-current="page"{% endif %}>Categories</a>
