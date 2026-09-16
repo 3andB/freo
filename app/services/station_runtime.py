@@ -110,6 +110,8 @@ def render_liquidsoap(station, password):
     slug = validate_slug(station.slug)
     frequency = 300 + zlib.crc32(slug.encode()) % 300
     values = {
+        '__MIC_ENABLED__': 'true' if os.environ.get('FREO_LIVE_MIC') == '1' else 'false',
+        '__MIC_INPUT__': (f'input.http(id="freo_mic_input", max_buffer=0.25, poll_delay=0.5, timeout=2.0, format="wav", int_args=[("probesize",4096),("analyzeduration",0)], {{"http://127.0.0.1:8091/audio/{slug}?token=" ^ mic_token()}})' if os.environ.get('FREO_LIVE_MIC') == '1' else 'blank()'),
         '__CONTROL_SOCKET__': json.dumps(f'/run/freo/playout/{slug}/control.sock'),
         '__PLAYLIST__': json.dumps(f'/var/lib/freo/playlists/{slug}.m3u'),
         '__EVENT_FILE__': json.dumps(f'/run/freo/playout/{slug}/events.log'),

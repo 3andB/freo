@@ -297,20 +297,84 @@ server.register(namespace="freo_deck", "future_b", fun (_) -> begin
     "OK"
   end
 end)
-def main_active() = not (cart_takeover() and cart.is_ready()) end
+# Browser audio is drained even while off air so speech never queues for later.
+mic_token = ref("")
+mic_input = __MIC_INPUT__
+mic_phase = ref("OFF AIR")
+mic_lease = ref(0.0)
+mic_start = ref(0.0)
+mic_duration = ref(3.0)
+mic_return_level = ref(0.0)
+mic_return_voice = ref(0.0)
+def mic_ready() = __MIC_ENABLED__ and mic_input.is_ready() end
+def mic_progress() = min(1.0, max(0.0, (time()-mic_start())/max(0.001,mic_duration()))) end
+def mic_program_gain()
+  if mic_phase() == "FADING" then 1.0-mic_progress()
+  elsif mic_phase() == "LIVE" then 0.0
+  elsif mic_phase() == "RETURNING" then 1.0-mic_return_level()*(1.0-mic_progress())
+  else 1.0 end
+end
+def mic_gain()
+  if mic_phase() == "LIVE" then min(1.0,max(0.0,(time()-mic_start())/0.02))
+  elsif mic_phase() == "RETURNING" then mic_return_voice()*(1.0-mic_progress())
+  else 0.0 end
+end
+def mic_active() = mic_phase() == "FADING" or mic_phase() == "LIVE" or mic_phase() == "RETURNING" end
+server.register(namespace="freo_mic", "state", fun (_) -> mic_token() ^ "|" ^ mic_phase() ^ "|" ^ string(mic_ready() and not cart.is_ready()))
+server.register(namespace="freo_mic", "prepare", fun (token) -> begin
+  if mic_active() then "ERROR microphone already live" else
+    mic_token := token; mic_phase := "READY"; mic_lease := time()+6.0; "OK"
+  end
+end)
+server.register(namespace="freo_mic", "lease", fun (token) -> begin
+  if token != mic_token() then "ERROR stale microphone" else mic_lease := time()+6.0; "OK" end
+end)
+server.register(namespace="freo_mic", "take", fun (value) -> begin
+  fields = string.split(separator=" ", value)
+  token = list.nth(default="", fields, 0)
+  duration = float_of_string(default=-1.0,list.nth(default="", fields, 1))
+  if token != mic_token() or mic_phase() != "READY" or not mic_ready() or cart.is_ready() or time() > mic_lease() then "ERROR microphone not ready"
+  elsif not (duration >= 0.0 and duration <= 10.0) then "ERROR invalid fade"
+  else mic_duration := duration; mic_start := time(); mic_phase := "FADING"; "OK" end
+end)
+server.register(namespace="freo_mic", "end", fun (value) -> begin
+  fields = string.split(separator=" ", value)
+  token = list.nth(default="", fields, 0)
+  duration = float_of_string(default=-1.0,list.nth(default="", fields, 1))
+  if token != mic_token() or not mic_active() then "ERROR stale microphone"
+  elsif not (duration >= 0.0 and duration <= 10.0) then "ERROR invalid fade"
+  else
+    mic_return_voice := mic_gain()
+    mic_return_level := 1.0-mic_program_gain()
+    mic_duration := duration; mic_start := time(); mic_phase := "RETURNING"; "OK"
+  end
+end)
+thread.run(every=0.05, {
+  if mic_active() and (time() > mic_lease() or not mic_ready()) then
+    mic_phase := "FAILED"
+    ignore(set_mode("AUTO"))
+  elsif mic_phase() == "FADING" and (mic_duration() == 0.0 or mic_progress() >= 1.0) then
+    mic_phase := "LIVE"; mic_start := time()
+  elsif mic_phase() == "RETURNING" and (mic_duration() == 0.0 or mic_progress() >= 1.0) then
+    mic_phase := "READY"
+  end
+})
+
+def main_active() = mic_program_gain() > 0.0 and not (cart_takeover() and cart.is_ready()) end
 def main_gain() = if cart.is_ready() and not cart_takeover() then 1.0-duck() else 1.0 end end
 music_a = amplify(override="freo_gain", 1.0, deck_a)
 music_b = amplify(override="freo_gain", 1.0, deck_b)
 music_a = mksafe(switch(track_sensitive=false, [({a_play() and main_active()}, music_a)]))
 music_b = mksafe(switch(track_sensitive=false, [({b_play() and main_active()}, music_b)]))
-music_a = amplify({fade_gain() * a_mix() * main_gain()}, music_a)
-music_b = amplify({b_fade_gain() * b_mix() * main_gain()}, music_b)
+music_a = amplify({fade_gain() * a_mix() * main_gain() * mic_program_gain()}, music_a)
+music_b = amplify({b_fade_gain() * b_mix() * main_gain() * mic_program_gain()}, music_b)
 music_auto = amplify(override="freo_gain", 1.0, queue)
 music_auto = mksafe(switch(track_sensitive=false, [({auto_play() and main_active()}, music_auto)]))
-music_auto = amplify({auto_mix()*main_gain()*schedule_fade_gain()}, music_auto)
+music_auto = amplify({auto_mix()*main_gain()*schedule_fade_gain()*mic_program_gain()}, music_auto)
 backup = mksafe(switch(track_sensitive=false, [({auto_play() and not queue.is_ready() and main_active()}, tone)]))
-backup = amplify({auto_mix()*main_gain()}, backup)
-radio = add(normalize=false, [music_auto, music_a, music_b, mksafe(cart), backup])
+backup = amplify({auto_mix()*main_gain()*mic_program_gain()}, backup)
+mic_audio = amplify({if cart_takeover() and cart.is_ready() then 0.0 else mic_gain()*main_gain() end}, mksafe(mic_input))
+radio = add(normalize=false, [music_auto, music_a, music_b, mksafe(cart), backup, mic_audio])
 radio = limit(attack=1.0, release=100.0, threshold=-1.5, ratio=100.0, gain=0.0, radio)
 def current_auto()
   r = queue.current()
@@ -332,6 +396,7 @@ end
 server.register(namespace="freo_deck", "requests", fun (_) -> string.concat(separator=" ", list.map(fun (r) -> string(request.id(r)), list.filter_map(fun (r) -> r, [queue.current(), deck_a.current(), deck_b.current(), cart.current()]))))
 server.register(namespace="freo_program", "current", fun (_) ->
   if current_cart() != "" then current_cart()
+  elsif mic_phase() == "LIVE" then ""
   elsif auto_play() and auto_mix() >= max(a_mix(), b_mix()) and current_auto() != "" then current_auto()
   elsif mode() == "DJ_BOOTH" and a_play() and a_to() > b_to() and current_a() != "" then current_a()
   elsif b_play() and current_b() != "" then current_b()

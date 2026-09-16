@@ -89,6 +89,8 @@ def create_app(config_name=None):
     app.register_blueprint(admin_programming_blueprint)
     app.register_blueprint(admin_imaging_blueprint)
     app.register_blueprint(admin_live_blueprint)
+    from .routes.live_mic import live_mic
+    app.register_blueprint(live_mic)
     app.register_blueprint(admin_calendar)
     app.register_blueprint(admin_events_blueprint)
     app.register_blueprint(admin_blocks_blueprint)

@@ -83,5 +83,5 @@ def test_settings_navigation_and_persistence(booth):
     driver.find_element(By.LINK_TEXT,'Stations').click()
     wait_text(driver,'.admin-station-grid','Harbour Radio')
     driver.get(base+'/player/harbour-radio')
-    wait_text(driver,'.station-identity','Music by the sea')
+    wait_text(driver,'.radio-description','Music by the sea')
     assert 'private@example.test' not in driver.page_source

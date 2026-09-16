@@ -1,0 +1,22 @@
+<section class="mic-console console-panel" aria-labelledby="mic-heading" data-enabled="{{ 'true' if mic_enabled else 'false' }}" data-mic-url="{{ url_for('live_mic.control',slug=selected.slug,action='ACTION') }}">
+  <header><div><span class="eyebrow">USB MICROPHONE / DIGITAL MIXER</span><h2 id="mic-heading">Live Mic</h2></div><strong id="mic-state" role="status" aria-live="polite">OFF AIR</strong></header>
+  <div class="mic-controls">
+    <div class="mic-input-panel">
+      <label for="mic-device">AUDIO INPUT</label><select id="mic-device"><option value="">Default microphone / USB mixer</option></select>
+      <button type="button" class="transport" id="mic-connect">CONNECT / TEST MIC</button>
+      <label for="mic-gain">MIC GAIN <output id="mic-gain-value">0 dB</output></label><input id="mic-gain" type="range" min="-24" max="12" step="1" value="0">
+      <label for="mic-level">INPUT LEVEL <span id="mic-clip"></span></label><meter id="mic-level" min="0" max="1" value="0"></meter>
+      <button type="button" class="transport" id="mic-mute" aria-pressed="false" disabled>MUTE MIC</button>
+      <small>Set the USB device’s input level first. Software gain cannot repair an already clipped input. Use the mixer’s main stereo USB output.</small>
+    </div>
+    <div class="mic-air-panel">
+      <label for="mic-fade">FADE LENGTH <output id="mic-fade-value">3 s</output></label><input id="mic-fade" type="range" min="0" max="10" step="0.5" value="3">
+      <button type="button" id="mic-go" disabled>GO LIVE</button>
+      <button type="button" class="transport" id="mic-end" disabled>END LIVE / RETURN</button>
+      <button type="button" class="transport" id="mic-disconnect" disabled>DISCONNECT INPUT</button>
+      <button type="button" class="transport" data-monitor-toggle>MONITOR · USE HEADPHONES</button>
+      <p id="mic-message" role="status">The current feed keeps playing until you press GO LIVE. Connect your input to check its level off air.</p>
+      <small>Keep this page open while broadcasting. END LIVE fades back to the interrupted feed. If the input disconnects, the station returns to AUTO.</small>
+    </div>
+  </div>
+</section>

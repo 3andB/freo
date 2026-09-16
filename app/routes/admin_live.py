@@ -43,8 +43,9 @@ def page(slug):
         tracks = tracks.filter(or_(Track.title.ilike(pattern, escape='\\'), Track.artist.ilike(pattern, escape='\\'), Track.album.ilike(pattern, escape='\\')))
         imaging = imaging.filter(or_(ImagingAsset.name.ilike(pattern, escape='\\'), ImagingAsset.cart_code.ilike(pattern, escape='\\')))
     slots=LiveCartSlot.query.filter_by(station_id=station.id).all()
+    from app.services.live_mic import enabled as mic_enabled
     return render_template('admin/live.html', stations=admin_stations(), selected=station,
-        page='live', live=status(station), tracks=tracks.order_by(Track.title).limit(30).all(),
+        page='live', mic_enabled=mic_enabled(), live=status(station), tracks=tracks.order_by(Track.title).limit(30).all(),
         imaging=imaging.order_by(ImagingAsset.asset_type, ImagingAsset.cart_code, ImagingAsset.name).limit(60).all(),
         blocks=EventBlock.query.filter_by(station_id=station.id,enabled=True).order_by(EventBlock.name).all(),
         categories=MediaCategory.query.filter_by(station_id=station.id,enabled=True).order_by(MediaCategory.name).all(),
@@ -80,6 +81,12 @@ def action(slug, action):
     try:
         if action in ('mixer','play-b','takeover','fade','cue','clear-cue','start-cue','repeat','skip') and station.automation and station.automation.operator_mode == 'DJ_BOOTH':
             raise ValueError('The deck controls have changed. Refresh the page to use the deck buttons.')
+        if action in ('deck','mode','mixer','play-b','takeover','fade','skip','start-cue'):
+            from app.services.live_mic import enabled, gateway
+            if enabled():
+                mic = gateway(slug, 'status')
+                if (mic.get('desired') == 'LIVE' and mic.get('phase') != 'FAILED') or mic.get('phase') in ('FADING','LIVE','RETURNING'):
+                    raise ValueError('End the live microphone broadcast before changing the program source.')
         if action=='deck':
             request_deck(station,current_admin(),request.form.get('deck'),request.form.get('operation'),request.form.get('identifier'),request.form.get('expected_decision_id',''),request.form.get('nonce'),fade_seconds=request.form.get('fade_seconds',3),play_on_load=request.form.get('play_on_load','false')=='true')
             message='Deck command requested. The deck display updates when the station applies it.'

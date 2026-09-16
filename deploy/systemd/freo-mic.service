@@ -1,0 +1,22 @@
+[Unit]
+Description=Freo live microphone WebRTC gateway
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=freo
+Group=freo
+WorkingDirectory=/opt/freo
+EnvironmentFile=/opt/freo/.env
+ExecStart=/opt/freo/venv/bin/python -m app.mic_gateway
+Restart=on-failure
+RestartSec=2
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

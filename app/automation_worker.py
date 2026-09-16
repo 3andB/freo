@@ -593,7 +593,10 @@ def tick(reader, target_depth=2):
             continue
         try:
             from app.services.playout_queue import sync_mixer
+            mic_active = False
             try:
+                from app.services.live_mic import sync_live_mic
+                mic_active = sync_live_mic(state.station)
                 prior_mixer = sync_mixer(state.station)
                 if state.operator_mode == 'AUTO' and prior_mixer['mode'] == 'DJ_BOOTH':
                     reader.auto_return_until[slug]=time.monotonic()+4
@@ -602,6 +605,11 @@ def tick(reader, target_depth=2):
             except (OSError, RuntimeError, ValueError):
                 pass
             process_manual(state.station, reader)
+            if mic_active:
+                state.worker_heartbeat_at = datetime.now(timezone.utc)
+                db.session.commit()
+                observe_queue(state.station)
+                continue
             standby=False
             if state.operator_mode == 'DJ_BOOTH':
                 from app.services.playout_queue import mixer_state

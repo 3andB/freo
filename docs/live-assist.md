@@ -100,3 +100,11 @@ An item already starting when the edit reaches the worker is considered current 
 ### Deployment for this update
 
 Back up the database and apply revision `c48f1d207ab9`. This release also changes the Liquidsoap station template: regenerate and validate every managed station configuration, then restart the station engines and the web/automation services. The worker requires the new `freo_queue.remove` and `freo_mixer.fade_next` commands. Arrange the engine restart as a broadcast maintenance operation; updating Python alone does not install these commands into a running engine.
+
+## Live microphone
+
+The third **LIVE MIC** board captures a browser-connected microphone or USB mixer,
+with software gain, meters, mute, and the same carts and station IDs. Opening the
+board leaves the current feed playing; only **GO LIVE** fades it out and opens the
+mic. See [LIVE MIC setup and behavior](live-mic.md) for the optional audio gateway,
+activation steps, return behavior, and connection recovery.

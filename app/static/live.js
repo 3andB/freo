@@ -67,6 +67,7 @@
   };
   root.querySelectorAll('form[method="post"]').forEach(form=>form.addEventListener('submit',event=>{
     event.preventDefault(); const data=Object.fromEntries(new FormData(form));
+    if (data.mode) { root.dataset.board=data.mode; window.dispatchEvent(new CustomEvent('freo-board-change')); if(root.dataset.micActive==='true') return; }
     if('nonce' in data)data.nonce=nonce();
     post(new URL(form.action).pathname.split('/').pop(),data);
   }));
@@ -121,7 +122,7 @@
   root.querySelectorAll('[data-assign]').forEach(button=>button.addEventListener('click',()=>openAssign(button.closest('[data-role]'))));
   root.querySelectorAll('[data-open-assign]').forEach(button=>button.addEventListener('click',()=>openAssign(button.closest('section').querySelector('[data-role]'))));
   assignForm.addEventListener('submit',async event=>{event.preventDefault();const ok=await post('assign-cart',Object.fromEntries(new FormData(assignForm)));if(ok)dialog.close();else document.getElementById('cart-assign-error').textContent=document.getElementById('booth-notice').textContent;});
-  function updateCartExplanation(){const over=assignForm.elements.playback_mode.value==='OVER',reduction=Number(assignForm.elements.duck_percent.value);text('cart-duck-value',`${reduction}%`);document.getElementById('cart-duck-setting').hidden=!over;text('cart-mode-explanation',over?`Music keeps playing at ${100-reduction}% of its previous volume while this cart plays, then returns to normal.`:'The main audio pauses. The cart plays by itself, then the interrupted audio resumes from the same position.');}
+  function updateCartExplanation(){const over=assignForm.elements.playback_mode.value==='OVER',reduction=Number(assignForm.elements.duck_percent.value);text('cart-duck-value',`${reduction}%`);document.getElementById('cart-duck-setting').hidden=!over;text('cart-mode-explanation',over?`The program (music or live mic) plays at ${100-reduction}% of its previous volume while this cart plays, then returns to normal.`:'The cart plays by itself. Music pauses and resumes from the same position; a live mic is muted for the cart, then reopened.');}
   assignForm.elements.playback_mode.addEventListener('change',updateCartExplanation);assignForm.elements.duck_percent.addEventListener('input',updateCartExplanation);
   let cartSearchVersion=0;
   document.getElementById('cart-audio-search').addEventListener('input',async event=>{const version=++cartSearchVersion;try{const response=await scope.fetch(root.dataset.songSearchUrl.replace('song-search','cart-search')+'?q='+encodeURIComponent(event.target.value));if(!response.ok)throw new Error();const items=await response.json();if(version!==cartSearchVersion)return;assignForm.elements.identifier.replaceChildren(...items.map(item=>new Option(item.label,item.uuid)));}catch(_){text('cart-assign-error','Audio search is unavailable. Try again.');}});
@@ -245,7 +246,8 @@
         FreoDialog.notify({title:'Returning to Auto',message:state.mode_notice?.message || 'Returning to the schedule with a fade.'});
       }
       root.dataset.mode=state.mode;
-      root.className=`dj-booth booth-mode-${state.mode.toLowerCase().replace('_','-')}`;
+      const board=root.dataset.micActive==='true'&&['AUTO','DJ_BOOTH'].includes(root.dataset.board)?root.dataset.board:state.mode;
+      root.className=`dj-booth booth-mode-${board.toLowerCase().replace('_','-')}`;
       text('led-detail',state.mixer?.auto_standby?'AUTO ON AIR · DJ READY':state.mode.replace('_',' '));text('live-mode',state.mode);
       text('live-clock',state.clock||'None');
       text('auto-program','Following Auto schedule: '+(state.program||'No active program'));
@@ -302,7 +304,7 @@
       text('queue-count',state.queue.length);fillQueue(state.queue);autoControls();
       root.querySelectorAll('.current-decision').forEach(input=>input.value=current?.decision_id||'');
       root.querySelectorAll('.current-control button').forEach(button=>button.disabled=!state.current||!!state.playout_error);
-      root.querySelectorAll('.mode-button').forEach(button=>button.classList.toggle('active',button.dataset.mode===state.mode));
+      root.querySelectorAll('.mode-button').forEach(button=>button.classList.toggle('active',button.dataset.mode===(root.dataset.board==='LIVE_MIC'? 'LIVE_MIC':board)));
       document.querySelector('.cue-deck').classList.toggle('cue-empty',!cue);
       text('cue-title',cue?.title||'NOTHING LOADED');text('cue-artist',cue?.artist||'');
       text('cue-album',cue?.album||'');document.getElementById('cue-warning').hidden=!!cue;
@@ -310,6 +312,7 @@
       for(const [field,value] of [['category',cue?.category||'NO CATEGORY'],['bpm',cue?.bpm?`${Math.round(cue.bpm)} BPM`:'BPM —'],['year',cue?.year||'YEAR —'],['lufs',Number.isFinite(cue?.loudness_lufs)?`${cue.loudness_lufs.toFixed(1)} LUFS`:'LUFS —']])text('b-fact-'+field,value);
       for(const key of pendingLoads.keys())paintLoading(key);
       timing();
+      window.dispatchEvent(new CustomEvent('freo-booth-refreshed'));
     }catch(_){
       if(version!==refreshVersion)return;
       text('live-playout','Reconnecting — controls will recover automatically');
