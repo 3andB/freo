@@ -8,7 +8,14 @@
 <form method="post" action="{{ url_for('station_settings.page',slug=selected.slug) }}" enctype="multipart/form-data">
 <input type="hidden" name="csrf" value="{{ csrf_token() }}">
 <label>Station name<input name="name" value="{{ values.name }}" required maxlength="120"></label>
-<div class="settings-columns"><label>City<input name="city" value="{{ values.city }}" maxlength="120"></label><label>State / region<input name="region" value="{{ values.region }}" maxlength="120"></label></div>
+<div class="settings-columns"><label>City<input name="city" value="{{ values.city }}" maxlength="120"></label><label>State / province / region<input name="region" value="{{ values.region }}" maxlength="120"></label></div>
+<label>Country code<input name="country" value="{{ values.country }}" maxlength="2" pattern="[A-Za-z]{2}" placeholder="AU"></label>
+<p class="quiet">City, region and country only; no street address is needed.</p>
+<p>Freo Station UUID: <code>{{ selected.freo_station_id }}</code></p>
+<label>Genre<input name="genre" value="{{ values.genre }}" maxlength="100"></label>
+<label>Directory categories (comma-separated)<input name="directory_categories" value="{{ request.form.directory_categories if request.method == 'POST' else selected.directory_categories|join(', ') }}" maxlength="2020"></label>
+<label><input type="checkbox" name="directory_opt_in" value="yes" {% if values.directory_opt_in %}checked{% endif %}> Opt in to the Freo station directory</label>
+<p><a href="{{ url_for('central_api.settings') }}">Installation registration and manager email</a></p>
 <div class="settings-columns"><label>Contact email<input type="email" name="contact_email" value="{{ values.contact_email }}" maxlength="254"></label><label>Phone<input type="tel" name="phone" value="{{ values.phone }}" maxlength="40"></label></div>
 <label><input type="checkbox" name="publish_contact" value="yes" {% if values.publish_contact %}checked{% endif %}> Publish contact email and phone on the station’s public page</label>
 <label>Station description<textarea name="description" maxlength="500" rows="4">{{ values.description }}</textarea></label>

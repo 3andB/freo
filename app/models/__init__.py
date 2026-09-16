@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+from uuid import uuid4
 
 from sqlalchemy import event, select, text, inspect
 from app.services import copyright as copyright_ids
@@ -57,6 +58,11 @@ class Station(db.Model):
     __tablename__ = 'stations'
     __table_args__ = (db.CheckConstraint("desired_state IN ('stopped','running')", name='ck_stations_desired_state'),)
     id = db.Column(db.Integer, primary_key=True)
+    freo_station_id = db.Column(db.String(36), nullable=False, unique=True, default=lambda: str(uuid4()))
+    country = db.Column(db.String(2), nullable=False, default='', server_default='')
+    genre = db.Column(db.String(100), nullable=False, default='', server_default='')
+    directory_categories = db.Column(db.JSON, nullable=False, default=list, server_default='[]')
+    directory_opt_in = db.Column(db.Boolean, nullable=False, default=False, server_default=db.false())
     name = db.Column(db.String(120), nullable=False)
     slug = db.Column(db.String(64), nullable=False, unique=True, index=True)
     description = db.Column(db.String(500), nullable=False, default='')
@@ -990,3 +996,40 @@ def assign_freo_track_id(mapper, connection, target):
 def preserve_freo_track_id(mapper, connection, target):
     if inspect(target).attrs.freo_track_id.history.has_changes():
         raise ValueError('Freo Track IDs are permanent')
+
+
+@event.listens_for(Station, 'before_update')
+def permanent_station_identity(mapper, connection, station):
+    if inspect(station).attrs.freo_station_id.history.has_changes():
+        raise ValueError('Freo Station UUID cannot be changed')
+
+
+class CentralInstallation(db.Model):
+    """Private local configuration; credentials live only in the worker's 0600 file."""
+    __tablename__ = 'central_installation'
+    __table_args__ = (db.CheckConstraint('id = 1', name='ck_central_installation_singleton'),)
+    id = db.Column(db.Integer, primary_key=True, default=1)
+    manager_email = db.Column(db.String(254), nullable=False, default='')
+    installation_id = db.Column(db.String(36))
+    registration_state = db.Column(db.String(24), nullable=False, default='unconfigured')
+    license_cache = db.Column(db.JSON)
+    state = db.Column(db.JSON, nullable=False, default=dict)
+    last_error = db.Column(db.String(64), nullable=False, default='')
+
+
+class CentralStationState(db.Model):
+    __tablename__ = 'central_station_state'
+    station_id = db.Column(db.Integer, db.ForeignKey('stations.id', ondelete='CASCADE'), primary_key=True)
+    last_sample = db.Column(db.JSON)
+    synced_digest = db.Column(db.String(64))
+
+
+class CentralHourlyMetric(db.Model):
+    __tablename__ = 'central_hourly_metrics'
+    station_id = db.Column(db.Integer, db.ForeignKey('stations.id', ondelete='CASCADE'), primary_key=True)
+    period_start = db.Column(db.BigInteger, primary_key=True, index=True)
+    observed_seconds = db.Column(db.Float, nullable=False, default=0)
+    listener_seconds = db.Column(db.Float, nullable=False, default=0)
+    peak_listeners = db.Column(db.BigInteger, nullable=False, default=0)
+    snapshot = db.Column(db.JSON, nullable=False, default=dict)
+    sent = db.Column(db.Boolean, nullable=False, default=False)

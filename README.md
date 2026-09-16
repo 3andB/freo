@@ -1,5 +1,7 @@
 # Freo
 
+[Central API integration](docs/central-api-integration-plan.md) covers installation registration, permanent station UUIDs, aggregate hourly reports, cached licensing, setup and recovery.
+
 [Copyright identification and DMCA reporting](docs/copyright-and-dmca.md) documents permanent public Track IDs, optional ISRC metadata, private copyright reports, admin review, and upgrade instructions.
 
 [Player settings and listener feedback](docs/player-and-listener-experience.md) add station messages, cover art, social links, published Day/Week/Month schedules, top/bottom ad slots, and song votes with private comments. The public player uses a responsive DJ-inspired record design.

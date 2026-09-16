@@ -21,7 +21,7 @@
           <span class="directory-art-shade" aria-hidden="true"></span><span class="directory-station-number" aria-hidden="true">FREO / {{ '%02d'|format(loop.index) }}</span><span class="directory-play" aria-hidden="true">▶</span>
         </div>
         <div class="directory-card-copy">
-          <div class="directory-identity">{% if station.id in covers and station.logo %}<img src="{{ url_for('station_settings.logo', slug=station.slug, v=station.logo.version) }}" alt="" width="44" height="44" loading="lazy">{% endif %}<div><p class="directory-location">{{ [station.city,station.region]|select|join(', ') or 'Independent radio' }}</p><h3 id="station-title-{{ station.id }}">{{ station.name }}</h3></div></div>
+          <div class="directory-identity">{% if station.id in covers and station.logo %}<img src="{{ url_for('station_settings.logo', slug=station.slug, v=station.logo.version) }}" alt="" width="44" height="44" loading="lazy">{% endif %}<div><p class="directory-location">{{ [station.city,station.region,station.country]|select|join(', ') or 'Independent radio' }}</p><h3 id="station-title-{{ station.id }}">{{ station.name }}</h3></div></div>
           <p class="directory-description">{{ station.description or 'A fresh perspective. A different soundtrack. Make yourself at home.' }}</p>
           <div class="directory-card-footer"><span>Open player <span aria-hidden="true">↗</span></span><span class="directory-channel-label">YOUR NEXT GOOD LISTEN</span></div>
         </div>

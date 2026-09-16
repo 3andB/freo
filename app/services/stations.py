@@ -31,6 +31,8 @@ def create_station(name, slug, description='', *, pending=False, timezone_name='
     limit = current_app.config['FREO_MAX_STATIONS']
     if limit and active_stations().count() >= limit:
         raise ValueError(f'This installation allows a maximum of {limit} stations')
+    from app.services.central_api.licensing import check_expansion
+    check_expansion()
     station = Station(timezone=timezone_name, lifecycle_state='pending_create' if pending else 'ready', name=name, slug=slug, description=description, enabled=True, desired_state='stopped')
     station.stream = StreamMount(format='mp3', bitrate=64, enabled=True)
     db.session.add(station)
@@ -53,6 +55,9 @@ def set_enabled(station, enabled):
     db.session.refresh(station)
     if station.deleted_at or station.lifecycle_state in ('pending_delete', 'delete_failed'):
         raise ValueError('Station is being deleted')
+    if enabled and not station.enabled:
+        from app.services.central_api.licensing import check_expansion
+        check_expansion()
     station.enabled = bool(enabled)
     if not enabled:
         station.desired_state = 'stopped'
@@ -66,6 +71,7 @@ def public_station(station):
         'description': station.description,
         'city': station.city,
         'region': station.region,
+        'country': station.country,
         'player_path': '/player/' + (station.public_slug or station.slug),
         'logo_path': '/station-assets/' + station.slug + '/logo.png?v=' + station.logo.version if station.logo else None,
         'contact_email': station.contact_email if station.publish_contact else None,

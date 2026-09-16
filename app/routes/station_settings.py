@@ -56,9 +56,15 @@ def page(slug):
         require_csrf()
         try:
             fields = {key:clean_text(request.form.get(key,''),limit) for key,limit in
-                      [('city',120),('region',120),('contact_email',254),('phone',40)]}
+                      [('city',120),('region',120),('country',2),('genre',100),('contact_email',254),('phone',40)]}
             if fields['contact_email'] and not re.fullmatch(r'[^\s@]+@[^\s@]+\.[^\s@]+', fields['contact_email']):
                 raise ValueError('Enter a valid contact email')
+            fields['country'] = fields['country'].upper()
+            if fields['country'] and not re.fullmatch(r'[A-Z]{2}', fields['country']):
+                raise ValueError('Use a two-letter country code, such as AU, US or GB')
+            categories = [clean_text(value,100,True) for value in request.form.get('directory_categories','').split(',') if value.strip()]
+            if len(categories) > 20:
+                raise ValueError('Use at most 20 directory categories')
             upload = request.files.get('logo')
             images = decode_logo(upload) if upload and upload.filename else None
             if images and request.form.get('remove_logo'):
@@ -67,6 +73,8 @@ def page(slug):
                 public_slug=request.form.get('public_slug',''),timezone_name=request.form.get('timezone','UTC'),user=current_admin(),commit=False)
             for key,value in fields.items():
                 setattr(station,key,value)
+            station.directory_categories = list(dict.fromkeys(categories))
+            station.directory_opt_in = request.form.get('directory_opt_in') == 'yes'
             station.publish_contact = request.form.get('publish_contact') == 'yes'
             if images:
                 station.logo = station.logo or StationLogo(station_id=station.id)

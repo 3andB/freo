@@ -140,7 +140,7 @@ install -m 0644 "$unit_src" "$unit_dst"
 systemctl daemon-reload
 systemctl enable --now freo.service
 systemctl restart freo.service
-for service in icecast2 freo-playout freo-playout@ freo-automation freo-ingest freo-provision freo-public-schedules; do
+for service in icecast2 freo-playout freo-playout@ freo-automation freo-ingest freo-provision freo-public-schedules freo-central-api; do
   unit_src="$source_dir/deploy/systemd/$service.service"
   unit_dst="/etc/systemd/system/$service.service"
   if [[ -f $unit_dst ]] && ! cmp -s "$unit_src" "$unit_dst"; then
@@ -155,6 +155,12 @@ if [[ ${FREO_ENABLE_DIAGNOSTIC:-0} == 1 ]]; then
 fi
 systemctl enable --now freo-automation.service
 systemctl enable --now freo-ingest.service
+install -d -o root -g root -m 0755 /etc/freo
+freo_release=$(git -C "$source_dir" rev-parse --short HEAD 2>/dev/null || printf '%s' "${FREO_VERSION:-development}")
+printf '%s\n' "$freo_release" > /etc/freo/release
+chmod 0644 /etc/freo/release
+systemctl enable freo-central-api.service
+systemctl restart freo-central-api.service
 install -m 0644 "$source_dir/deploy/systemd/freo-public-schedules.timer" /etc/systemd/system/freo-public-schedules.timer
 systemctl daemon-reload
 systemctl enable --now freo-public-schedules.timer
@@ -214,3 +220,5 @@ for attempt in {1..30}; do
 done
 fi
 "$source_dir/scripts/validate-install.sh"
+
+printf 'Complete registration in Admin → Installation with the station manager email.\n'

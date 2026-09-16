@@ -1,0 +1,27 @@
+[Unit]
+Description=Freo installation registration and aggregate reporting
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=freo-automation
+Group=freo-automation
+SupplementaryGroups=freo
+WorkingDirectory=/opt/freo
+EnvironmentFile=/opt/freo/.env
+ExecStart=/opt/freo/venv/bin/flask --app app:create_app central-api run
+Restart=on-failure
+RestartSec=60
+StateDirectory=freo/central-api
+StateDirectoryMode=0700
+ReadWritePaths=/var/lib/freo/central-api
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+UMask=0077
+Nice=10
+
+[Install]
+WantedBy=multi-user.target

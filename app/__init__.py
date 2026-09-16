@@ -41,7 +41,7 @@ def create_app(config_name=None):
         raise ValueError("FLASK_ENV must be development, production, or testing")
     app = Flask(__name__)
     app.config.from_object(configs[name])
-    for key in ("SECRET_KEY", "PUBLIC_BASE_URL", "FREO_DOMAIN", "FREO_INSTALLATION_HOSTS", "FREO_DOMAIN_TARGET_HOST", "FREO_DOMAIN_TARGET_IPS", "FREO_MEDIA_ROOT", "LOG_LEVEL"):
+    for key in ("SECRET_KEY", "PUBLIC_BASE_URL", "FREO_DOMAIN", "FREO_INSTALLATION_HOSTS", "FREO_DOMAIN_TARGET_HOST", "FREO_DOMAIN_TARGET_IPS", "FREO_MEDIA_ROOT", "LOG_LEVEL", "FREO_API_URL", "FREO_API_STATE_DIR", "FREO_VERSION", "FREO_INSTALL_TYPE"):
         if key in os.environ:
             app.config[key] = os.environ[key]
     try:
@@ -71,6 +71,8 @@ def create_app(config_name=None):
     app.register_blueprint(web_blueprint)
     from .routes.dmca import dmca
     app.register_blueprint(dmca)
+    from .routes.central_api import central_api
+    app.register_blueprint(central_api, cli_group=None)
     app.register_blueprint(admin_cli, cli_group=None)
     from .routes.catalog_editor import catalog_editor
     app.register_blueprint(catalog_editor)

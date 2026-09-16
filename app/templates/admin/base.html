@@ -40,6 +40,7 @@
         <a href="{{ url_for('admin_programming.list_page',slug=selected.slug,section='schedule') }}" {% if page == 'schedule' %}aria-current="page"{% endif %}>Defaults</a>
       </details>
       {% endif %}
+      <a href="{{ url_for('central_api.settings') }}" {% if page == 'installation' %}aria-current="page"{% endif %}>Installation</a>
       <span class="admin-nav-label">OBSERVATION</span>
       <a href="{{ url_for('web.admin_section', section='history') }}{{ suffix }}" {% if page == 'history' %}aria-current="page"{% endif %}>History</a>
       <a href="{{ url_for('web.admin_section', section='system') }}{{ suffix }}" {% if page == 'system' %}aria-current="page"{% endif %}>System</a>

@@ -1,0 +1,29 @@
+{% extends 'admin/base.html' %}
+{% block title %}Installation · Freo{% endblock %}
+{% block admin_content %}
+<section class="admin-card"><h1>Freo installation</h1>
+<p>Register this installation for station identity, hourly aggregate reporting and licensing. Reports contain listener counts and library totals. Listener identities, IP addresses and music metadata are never sent.</p>
+<p>Status: <strong>{{ installation.registration_state|replace('_', ' ') }}</strong></p>
+{% if error %}<p class="admin-notice error" role="alert">{{ error }}</p>{% endif %}
+{% if installation.last_error %}<p class="admin-notice error">Connection needs attention: {{ installation.last_error }}. Existing broadcasts remain available.</p>{% endif %}
+{% if installation.installation_id %}
+<p>Installation ID: <code>{{ installation.installation_id }}</code></p>
+<p>Manager email: {{ installation.manager_email }}. Contact Freo to change the registered account email.</p>
+{% if cache %}<p>Plan: {{ cache.entitlement.plan }} · Status: {{ cache.entitlement.status }} · Enabled channel limit: {{ cache.entitlement.channel_limit }}</p>
+<p>Last server verification: {{ cache.entitlement.server_time }}. Grace through {{ cache.entitlement.grace_until }}.</p>
+{% if grace_elapsed %}<p>Grace has elapsed. Verify the license before enabling additional stations. Existing broadcasts remain available.</p>{% elif using_grace %}<p>Using the cached entitlement during its grace period. Existing broadcasts remain available.</p>{% endif %}
+{% if server_now is none %}<p>Local clock needs verification before enabling additional stations.</p>{% endif %}
+{% else %}<p>Waiting for license verification. Existing configured stations remain available.</p>{% endif %}
+<form method="post"><input type="hidden" name="csrf" value="{{ csrf_token() }}"><input type="hidden" name="action" value="retry_connection"><button type="submit">Retry connection</button></form>
+{% elif installation.registration_state in ['unconfigured','registration_uncertain'] %}
+<form method="post"><input type="hidden" name="csrf" value="{{ csrf_token() }}">
+<label>Station manager email<input type="email" name="manager_email" value="{{ installation.manager_email }}" required maxlength="254"></label>
+<p>This email is sent once during registration for account purposes.</p>
+{% if installation.registration_state == 'registration_uncertain' %}
+<p>A registration request may have reached Freo without saving its response. Contact Freo to recover it if possible.</p>
+<label><input type="checkbox" name="acknowledge_retry" value="yes" required> I understand retrying may create a second installation identity.</label>
+{% endif %}
+<button type="submit">{{ 'Retry registration' if installation.registration_state == 'registration_uncertain' else 'Register installation' }}</button></form>
+{% else %}<p>Registration is queued for the background reporter.</p>{% endif %}
+</section>
+{% endblock %}
