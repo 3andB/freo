@@ -37,6 +37,8 @@ def create_station(name, slug, description='', *, pending=False, timezone_name='
     db.session.flush()
     from app.services.music_tags import seed_starter_tags
     seed_starter_tags(station.id)
+    from app.services.playlists import seed_playlists
+    seed_playlists(station.id)
     db.session.commit()
     return station
 

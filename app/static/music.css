@@ -40,3 +40,29 @@ button.music-toggle:focus-visible{outline:2px solid #e6b972;outline-offset:3px}
 #media-upload-form :is(button,input,select),#media-editor :is(button,input,select){scroll-margin-block:180px}
 html:has(#music-player:not([hidden])){scroll-padding-bottom:150px}
 .admin-page .form-card button.music-toggle,.admin-page .import-card button.music-toggle{border-radius:999px;padding:.3rem .65rem;min-height:34px;background:transparent;color:inherit;font-size:.72rem}.admin-page .form-card button.music-toggle[aria-pressed=true],.admin-page .import-card button.music-toggle[aria-pressed=true]{background:#b9e79b;color:#183322}
+
+/* Playlist V1: the same studio panels and music controls as the library. */
+.playlist-layout{display:grid;grid-template-columns:260px minmax(0,1fr);gap:24px;align-items:start}
+.playlist-sidebar,.playlist-editor{padding:24px}.playlist-sidebar header,.playlist-toolbar,.playlist-fields{display:flex;gap:16px;justify-content:space-between;align-items:center;flex-wrap:wrap}
+.playlist-sidebar h2{font-size:1.1rem}.playlist-choice{display:block;width:100%;text-align:left;margin:10px 0;padding:14px;border-radius:14px}.playlist-choice small{display:block;margin-top:5px;opacity:.7}.playlist-choice[aria-current]{border-color:var(--accent,#b9e79b);background:rgba(185,231,155,.12)}
+.playlist-fields label{flex:1;min-width:180px}.playlist-editor label{display:flex;flex-direction:column;gap:6px}.playlist-editor textarea{width:100%;box-sizing:border-box}.playlist-toolbar{margin:20px 0}.playlist-toolbar p{font-size:.85rem;opacity:.7;margin:5px 0}.playlist-toolbar h2{margin:0;font-size:1.2rem}
+.playlist-song{display:flex;align-items:center;gap:12px;padding:14px 0;border-bottom:1px solid rgba(128,128,128,.2)}.playlist-song-copy{flex:1;min-width:0}.playlist-song-copy b,.playlist-song-copy small{display:block;overflow-wrap:anywhere}.playlist-song-copy small{opacity:.7;margin-top:4px}.playlist-grip{cursor:grab;padding:8px}.playlist-song.drop-active{outline:2px solid #b9e79b}.playlist-notice{min-height:30px;margin-bottom:12px}.playlist-result{display:flex;align-items:center;gap:12px;padding:10px 0}.playlist-result span{flex:1}#playlist-results{max-height:38vh;overflow:auto}#playlist-source-form{display:grid;gap:12px}#playlist-add-dialog{max-width:650px;width:calc(100% - 40px)}
+@media(max-width:850px){.playlist-layout{grid-template-columns:1fr}.playlist-sidebar{padding:16px}#playlist-list{display:flex;gap:12px;overflow:auto}.playlist-choice{min-width:180px}.playlist-editor{padding:16px}.playlist-song{gap:7px;flex-wrap:wrap}.playlist-song-copy{min-width:45%}}
+#playlist-workspace{--accent:#b9e79b;--edge:#343b46;--muted:#a4adbb;color:#eef0f4}
+#playlist-workspace *{box-sizing:border-box;min-width:0}
+#playlist-workspace button,#playlist-workspace input,#playlist-workspace select,#playlist-workspace textarea{font:inherit}
+#playlist-workspace button:not(.preview-button){border:1px solid #424c59;border-radius:8px;background:#282f39;color:#dbe2eb;padding:9px 12px;font-size:13px;cursor:pointer}
+#playlist-workspace button:hover{border-color:#8caa78}#playlist-workspace button:disabled{opacity:.4;cursor:default}
+#playlist-workspace :focus-visible{outline:2px solid #b9e79b;outline-offset:3px}
+#playlist-workspace input:not([type=checkbox]),#playlist-workspace select,#playlist-workspace textarea{border:1px solid #424c59;border-radius:8px;background:#11161d;color:#eef0f4;padding:11px;width:100%;font-size:14px}
+#playlist-workspace input[type=checkbox]{accent-color:#b9e79b;width:16px;height:16px;flex-shrink:0}
+#playlist-workspace label{font-size:12px;color:#a4adbb}#playlist-form{display:grid;gap:16px}#playlist-form .inline-actions{display:flex;gap:12px;align-items:center}
+#playlist-workspace #playlist-add,#playlist-workspace #playlist-form button[type=submit]{background:#b9e79b;border-color:#b9e79b;color:#172111;font-weight:600}
+#playlist-workspace .playlist-choice{padding:14px;background:#202630}#playlist-workspace .playlist-choice[aria-current]{border-color:#b9e79b;background:#303d2b;color:#d1efbd}
+#playlist-workspace .playlist-sidebar header,#playlist-workspace .playlist-toolbar{padding:0}#playlist-list{margin:18px 0 24px}
+#playlist-workspace .playlist-song button:not(.preview-button){padding:7px 9px;font-size:12px}#playlist-workspace #playlist-delete{color:#e6aaa4;background:transparent}
+#playlist-workspace .playlist-grip{min-width:26px}#playlist-workspace #playlist-save-state{color:#a4adbb;font-size:12px}#playlist-workspace .playlist-notice{color:#d1efbd;font-size:13px}
+#playlist-add-dialog label{display:grid;gap:7px}#playlist-song-search{display:flex;align-items:end;gap:12px;margin:20px 0}#playlist-song-search label{flex:1}
+.destination-row a.destination-name{font-size:12px;color:#dbe2eb;text-decoration:none;cursor:pointer}
+/* Scroll destinations above the preview dock, including long playlist lists. */
+@media(min-width:601px){.room-destinations{overflow-y:auto;overscroll-behavior:contain}}

@@ -6,7 +6,9 @@
   const initial=new URLSearchParams(location.search);active=initial.get('song');
   const el=(tag,text,cls)=>{const node=document.createElement(tag);if(text!==undefined)node.textContent=text;if(cls)node.className=cls;return node;};
   const button=(text,fn,cls)=>{const node=el('button',text,cls);node.type='button';node.addEventListener('click',fn);return node;};
-  const message=(text,error=false)=>{const node=root.querySelector('.room-message');node.hidden=false;node.classList.toggle('error',error);$('room-message-text').textContent=text;};
+  function fitDestinations(){const sidebar=root.querySelector('.room-destinations');sidebar.style.maxHeight=innerWidth>600?Math.max(200,innerHeight-sidebar.getBoundingClientRect().top-110)+'px':'';}
+  scope.listen(window,'resize',fitDestinations);scope.listen(window,'scroll',fitDestinations,{passive:true});scope.frame(fitDestinations);
+  const message=(text,error=false)=>{const node=root.querySelector('.room-message');node.hidden=false;node.classList.toggle('error',error);$('room-message-text').textContent=text;fitDestinations();};
   async function post(action,payload){
     if(busy){message('Finishing the previous change…');return null;}
     busy=true;root.setAttribute('aria-busy','true');
@@ -38,8 +40,8 @@
   }
   function setFilter(next,title){if(notesDirty){message('Save or discard your edits before changing collections.',true);return;}filter=next;page=1;$('collection-title').textContent=title;load();}
   function destinations(){
-    for(const [kind,items] of [['category',data.categories],['tag',data.tags]]){
-      const list=$(kind==='category'?'room-categories':'room-tags');
+    for(const [kind,items] of [['playlist',data.playlists],['category',data.categories],['tag',data.tags]]){
+      const list=$(kind==='playlist'?'room-playlists':kind==='category'?'room-categories':'room-tags');
       const signature=JSON.stringify([items,filter[kind]]);
       if(list.dataset.render===signature)continue;
       list.dataset.render=signature;list.replaceChildren();
@@ -49,7 +51,7 @@
         if(kind==='tag'){
           const handle=el('span','⠿','tag-drag');handle.title='Drag this tag onto a song';handle.setAttribute('aria-hidden','true');Object.assign(handle.dataset,{tag:item.id});row.append(handle);row.style.setProperty('--tag-color',item.color);
         }
-        const name=button(item.name,()=>{if(kind==='category')openCategory(item);else{editingCategory=null;setFilter({[kind]:item.id},item.name);}},'destination-name');name.append(el('small',`${item.count}${kind==='category'?` songs · ${item.play_count} plays`:''}${item.enabled===false?' · disabled':''}`));
+        const name=kind==='playlist'?el('a',item.name,'destination-name'):button(item.name,()=>{if(kind==='category')openCategory(item);else{editingCategory=null;setFilter({[kind]:item.id},item.name);}},'destination-name');if(kind==='playlist')name.href=root.dataset.playlists+'?playlist='+item.id;name.append(el('small',`${item.count}${kind==='category'?` songs · ${item.play_count} plays`:''}${item.enabled===false?' · disabled':''}`));
         if(String(filter[kind])===String(item.id))name.setAttribute('aria-current','true');
         const apply=button('Apply',()=>assign(kind,item.id,[...selected]),'destination-apply');apply.dataset.apply='';apply.title=`Apply ${item.name} to selected songs`;
         row.append(name,apply);
@@ -59,7 +61,7 @@
     }
     $('unfinished-count').textContent=data.unfinished;$('flagged-count').textContent=data.flagged_count;
   }
-  const rowsSignature=()=>JSON.stringify([data.songs,data.tags,data.categories,data.page,data.total,editingCategory]);
+  const rowsSignature=()=>JSON.stringify([data.songs,data.tags,data.categories,data.playlists,data.page,data.total,editingCategory]);
   function rows(){
     const list=$('room-songs'),signature=rowsSignature();if(list.dataset.render===signature){selection();window.FreoPreview?.sync();return;}list.dataset.render=signature;list.replaceChildren();
     if(!data.songs.length)list.append(el('p','No songs match. Try another filter or import some music.','room-empty'));
@@ -99,8 +101,8 @@
     for(const [name,value] of [['Confirmed plays',song.play_count],['Loudness',song.lufs===null?'Not measured':`${song.lufs.toFixed(1)} LUFS`],['Playback gain',`${song.gain.db} dB`],['Target',`${song.gain.target} LUFS`],['Status',song.gain.status]]){const cell=el('div');cell.append(el('small',name),el('b',value));metrics.append(cell);}panel.append(metrics);
     const processing=button(song.analysis==='processing'?'Processing…':song.requested?'Queued for processing':'Process song',()=>process([song.uuid]),'process-song');processing.disabled=song.analysis==='processing'||song.requested;panel.append(processing);
     if(song.error)panel.append(el('p',song.error,'room-hint'));
-    for(const [kind,ids,items] of [['category',song.categories,data.categories],['tag',song.tags,data.tags]]){
-      panel.append(el('h3',kind==='category'?'Categories':'Tags'));
+    for(const [kind,ids,items] of [['playlist',song.playlists,data.playlists],['category',song.categories,data.categories],['tag',song.tags,data.tags]]){
+      panel.append(el('h3',kind==='playlist'?'Playlists':kind==='category'?'Categories':'Tags'));
       const chips=el('div',undefined,'inspector-chips');ids.forEach(id=>{const item=items.find(x=>x.id===id);if(!item)return;const chip=button(`${item.name} ×`,()=>assign(kind,id,[song.uuid],'remove'),'song-chip');if(kind==='tag')chip.style.setProperty('--tag-color',item.color);chip.setAttribute('aria-label',`Remove ${item.name} from ${song.title}`);chips.append(chip);});panel.append(chips);
       const select=el('select');select.setAttribute('aria-label',`Add ${kind}`);select.append(new Option(`Add ${kind}…`,''));items.filter(x=>!ids.includes(x.id)).forEach(x=>select.append(new Option(x.name,x.id)));select.addEventListener('change',()=>{if(select.value)assign(kind,Number(select.value),[song.uuid]);});panel.append(select);
     }
@@ -128,10 +130,11 @@
     panel.dataset.dropKind='category';panel.dataset.dropTarget=item.id;
     panel.append(button('Browse songs to add',()=>{filter={};page=1;$('collection-title').textContent=`Add songs to ${item.name}`;load();}),button('View category songs',()=>setFilter({category:item.id},item.name)));
   }
+  scope.listen(document,'music-assignment',event=>{if(event.detail.kind!=='playlist')return;message(event.detail.message);if(event.detail.undo){undo=event.detail.undo;$('room-undo').hidden=false;}});
   scope.listen(document,'music-toggle-start',()=>{version++;});
   scope.listen(document,'music-toggle-saved',event=>{
     const {kind,target,songs,assigned,before}=event.detail;
-    const key=kind==='tag'?'tags':'categories';
+    const key=kind==='playlist'?'playlists':kind==='tag'?'tags':'categories';
     for(const song of [...(data?.songs||[]),activeSong].filter(Boolean)){
       if(!songs.includes(song.uuid))continue;
       song[key]=assigned?[...new Set([...song[key],target])]:song[key].filter(id=>id!==target);
@@ -145,7 +148,7 @@
     if(FreoMusicToggles.pending)return;
     const attempt=++version;const params=new URLSearchParams({...filter,page});
     const form=$('room-search');for(const key of ['q','analysis','enabled'])if(form.elements[key].value)params.set(key,form.elements[key].value);
-    try{const response=await scope.fetch(root.dataset.catalog+'?'+params,{cache:'no-store'});if(!response.ok||!response.headers.get('content-type')?.includes('application/json'))throw Error();const next=await response.json();if(attempt!==version||FreoMusicToggles.pending||drag)return;data=next;destinations();rows();if(editingCategory&&!notesDirty){const category=data.categories.find(x=>x.id===editingCategory);if(category)categoryInspector(category);}else if(active&&!notesDirty)await inspect(active);}
+    try{const response=await scope.fetch(root.dataset.catalog+'?'+params,{cache:'no-store'});if(!response.ok||!response.headers.get('content-type')?.includes('application/json'))throw Error();const next=await response.json();if(attempt!==version||FreoMusicToggles.pending||drag)return;data=next;destinations();rows();fitDestinations();if(editingCategory&&!notesDirty){const category=data.categories.find(x=>x.id===editingCategory);if(category)categoryInspector(category);}else if(active&&!notesDirty)await inspect(active);}
     catch(_){message('Music could not load. Check your connection or refresh to sign in again.',true);}
   }
   async function process(ids){if(!ids.length)return;const result=await post('process',{songs:ids});if(result)load();}

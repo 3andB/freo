@@ -94,7 +94,7 @@ def test_event_create_multiday_form_and_navigation(app):
     base = '/admin/stations/test-station'
     page = client.get(base + '/events/create').get_data(as_text=True)
     nav = page.split('aria-label="Operations"')[1].split('</nav>')[0]
-    assert nav.index('>Music<') < nav.index('>Categories<') < nav.index('>Sound Room<') < nav.index('>Scheduling<')
+    assert nav.index('>Music<') < nav.index('>Categories<') < nav.index('>Playlists<') < nav.index('>Scheduling<')
     assert 'value="300"' in page
     with app.app_context():
         track_id = Track.query.first().uuid

@@ -487,11 +487,11 @@ class ClockSlot(db.Model):
     __table_args__ = (
         db.UniqueConstraint('clock_id', 'position', name='uq_clock_slot_position'),
         db.CheckConstraint('position > 0', name='ck_clock_slot_position'),
-        db.CheckConstraint("(slot_type = 'ROTATION' AND rotation_id IS NOT NULL AND category_id IS NULL AND imaging_asset_id IS NULL AND imaging_group_id IS NULL AND event_block_id IS NULL) OR "
+        db.CheckConstraint("((slot_type = 'ROTATION' AND rotation_id IS NOT NULL AND category_id IS NULL AND imaging_asset_id IS NULL AND imaging_group_id IS NULL AND event_block_id IS NULL) OR "
                            "(slot_type = 'CATEGORY' AND category_id IS NOT NULL AND rotation_id IS NULL AND imaging_asset_id IS NULL AND imaging_group_id IS NULL AND event_block_id IS NULL) OR "
                            "(slot_type = 'CART' AND imaging_asset_id IS NOT NULL AND rotation_id IS NULL AND category_id IS NULL AND imaging_group_id IS NULL AND event_block_id IS NULL) OR "
                            "(slot_type = 'IMAGING_GROUP' AND imaging_group_id IS NOT NULL AND rotation_id IS NULL AND category_id IS NULL AND imaging_asset_id IS NULL AND event_block_id IS NULL) OR "
-                           "(slot_type = 'EVENT_BLOCK' AND event_block_id IS NOT NULL AND rotation_id IS NULL AND category_id IS NULL AND imaging_asset_id IS NULL AND imaging_group_id IS NULL)", name='ck_clock_slot_target'),
+                           "(slot_type = 'EVENT_BLOCK' AND event_block_id IS NOT NULL AND rotation_id IS NULL AND category_id IS NULL AND imaging_asset_id IS NULL AND imaging_group_id IS NULL)) AND playlist_id IS NULL OR (slot_type = 'PLAYLIST' AND playlist_id IS NOT NULL AND rotation_id IS NULL AND category_id IS NULL AND imaging_asset_id IS NULL AND imaging_group_id IS NULL AND event_block_id IS NULL)", name='ck_clock_slot_target'),
     )
     id = db.Column(db.Integer, primary_key=True)
     clock_id = db.Column(db.Integer, db.ForeignKey('clocks.id', ondelete='CASCADE'), nullable=False, index=True)
@@ -502,6 +502,8 @@ class ClockSlot(db.Model):
     imaging_asset_id = db.Column(db.Integer, db.ForeignKey('imaging_assets.id', ondelete='RESTRICT'))
     imaging_group_id = db.Column(db.Integer, db.ForeignKey('imaging_groups.id', ondelete='RESTRICT'))
     event_block_id = db.Column(db.Integer, db.ForeignKey('event_blocks.id', ondelete='RESTRICT'))
+    playlist_id = db.Column(db.Integer, db.ForeignKey('playlists.id', ondelete='RESTRICT'))
+    playlist = db.relationship('Playlist')
     enabled = db.Column(db.Boolean, nullable=False, default=True)
     label = db.Column(db.String(120))
     clock = db.relationship('Clock', back_populates='slots')
@@ -835,3 +837,45 @@ class SongFlag(db.Model):
     created_at = db.Column(db.DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
     updated_at = db.Column(db.DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
     resolved_at = db.Column(db.DateTime(timezone=True))
+
+
+class Playlist(db.Model):
+    __tablename__ = 'playlists'
+    __table_args__ = (db.CheckConstraint("mode IN ('STRAIGHT','RANDOM')", name='ck_playlist_mode'),)
+    id = db.Column(db.Integer, primary_key=True)
+    station_id = db.Column(db.Integer, db.ForeignKey('stations.id', ondelete='CASCADE'), nullable=False, index=True)
+    name = db.Column(db.String(120), nullable=False)
+    description = db.Column(db.String(500), nullable=False, default='')
+    mode = db.Column(db.String(12), nullable=False, default='STRAIGHT')
+    revision = db.Column(db.Integer, nullable=False, default=1)
+    deleted_at = db.Column(db.DateTime(timezone=True))
+    station = db.relationship('Station')
+    items = db.relationship('PlaylistItem', order_by='PlaylistItem.position', cascade='all, delete-orphan', back_populates='playlist')
+    tracks = db.relationship('Track', secondary='playlist_items', viewonly=True, backref=db.backref('playlists', viewonly=True))
+
+    @property
+    def enabled(self):
+        return self.deleted_at is None
+
+
+class PlaylistItem(db.Model):
+    __tablename__ = 'playlist_items'
+    __table_args__ = (db.UniqueConstraint('playlist_id', 'track_id', name='uq_playlist_track'),
+                     db.UniqueConstraint('playlist_id', 'position', name='uq_playlist_position'),
+                     db.CheckConstraint('position > 0', name='ck_playlist_position'))
+    id = db.Column(db.Integer, primary_key=True)
+    playlist_id = db.Column(db.Integer, db.ForeignKey('playlists.id', ondelete='CASCADE'), nullable=False, index=True)
+    track_id = db.Column(db.Integer, db.ForeignKey('tracks.id', ondelete='RESTRICT'), nullable=False)
+    position = db.Column(db.Integer, nullable=False)
+    playlist = db.relationship('Playlist', back_populates='items')
+    track = db.relationship('Track')
+
+
+class PlaylistCursor(db.Model):
+    __tablename__ = 'playlist_cursors'
+    __table_args__ = (db.UniqueConstraint('station_id', 'clock_slot_id', name='uq_playlist_cursor_slot'),)
+    id = db.Column(db.Integer, primary_key=True)
+    station_id = db.Column(db.Integer, db.ForeignKey('stations.id', ondelete='CASCADE'), nullable=False, index=True)
+    clock_slot_id = db.Column(db.Integer, db.ForeignKey('clock_slots.id', ondelete='CASCADE'), nullable=False)
+    occurrence_key = db.Column(db.String(120), nullable=False)
+    state = db.Column(db.JSON, nullable=False, default=dict)

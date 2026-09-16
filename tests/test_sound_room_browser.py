@@ -61,7 +61,7 @@ def test_sound_room_processing_and_delete_menu(booth):
     app,driver,base,tmp_path=booth
     with app.app_context():
         station=Station.query.filter_by(slug='test-station').first();station.desired_state='stopped';db.session.commit()
-    driver.get(base+'/admin/stations/test-station/sound-room')
+    driver.get(base+'/admin/stations/test-station/media')
     wait_text(driver,'#room-songs','Verified Test Track')
     driver.find_element(By.CSS_SELECTOR,'.room-song input').click()
     driver.find_element(By.ID,'process-selected').click()

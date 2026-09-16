@@ -6,7 +6,7 @@ import pytest
 from sqlalchemy import text
 from app import create_app
 from app.extensions import db
-from app.models import Station
+from app.models import Station, Playlist
 from app.services.stations import create_station
 
 pytestmark=pytest.mark.skipif(not os.environ.get('FREO_TEST_POSTGRES_URL'),reason='Requires a disposable PostgreSQL database')
@@ -28,6 +28,7 @@ def test_migration_preserves_existing_station_and_limit_serializes_empty_databas
     with app.app_context():
         station=Station.query.one()
         assert station.name=='Existing' and station.lifecycle_state=='ready' and station.deleted_at is None
+        assert [row.name for row in Playlist.query.filter_by(station_id=station.id).order_by(Playlist.id)]==['Playlist 1','Playlist 2']
     result=runner.invoke(args=['db','downgrade','f61c20d9a843'])
     assert result.exit_code==0,result.output
     result=runner.invoke(args=['db','upgrade'])
@@ -50,6 +51,7 @@ def test_migration_preserves_existing_station_and_limit_serializes_empty_databas
     assert sum(results)==3
     with app.app_context():
         assert Station.query.count()==3
+        assert Playlist.query.count()==6
         # Slow filesystem/engine provisioning must not hold the allocation lock.
         from app.services import station_runtime as runtime
         from app.services.station_lifecycle import process_station

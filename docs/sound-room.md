@@ -1,6 +1,6 @@
-# Sound Room and Music
+# Music workspace
 
-Sound Room (`/admin/stations/<slug>/sound-room`) and the Songs tab of Music share the listening and organization workspace. Changes use existing station Song, Category, and MusicTag records. Category membership feeds the existing rotations; it does not specify playback order.
+The Songs tab of Music contains the listening and organization workspace. The former Sound Room URL redirects to [Playlists](playlists.md). Changes use existing station Song, Category, and MusicTag records. Category membership feeds the existing rotations; it does not specify playback order.
 
 - Play before a song title starts private preview. The bottom player offers seeking, volume, and normalized/original listening. Only one preview plays at a time, and filters do not interrupt it.
 - Select song checkboxes, then drag a song onto a category/tag or use Apply. A tag's grip can also be dragged onto a song. Touch users drag the grip; the rest of the row permits scrolling. Escape cancels a drag.
@@ -12,7 +12,7 @@ Sound Room (`/admin/stations/<slug>/sound-room`) and the Songs tab of Music shar
 
 The ingest worker processes explicit analysis requests first, then ingest jobs, then the unfinished accepted-song backlog, one at a time. ffmpeg runs at lower priority with a bounded timeout. Failure retries back off, stop after three attempts, and can be retried explicitly. Restart recovery restores interrupted work. Analysis validates finite LUFS/true-peak measurements and preserves manually entered cue points and notes. It does not enable songs.
 
-Stations default to −16 LUFS. Sound Room can set the target between −30 and −12 LUFS. `gain_for` derives a fixed gain from measured integrated LUFS and limits boosts by the measured true peak (−1.5 dBTP ceiling) and a 12 dB maximum boost. Songs unable to reach the target are labeled Peak limited or Gain limited. Unanalyzed songs use unity gain and show Needs analysis. Originals are never rewritten.
+Stations default to −16 LUFS. Music can set the target between −30 and −12 LUFS. `gain_for` derives a fixed gain from measured integrated LUFS and limits boosts by the measured true peak (−1.5 dBTP ceiling) and a 12 dB maximum boost. Songs unable to reach the target are labeled Peak limited or Gain limited. Unanalyzed songs use unity gain and show Needs analysis. Originals are never rewritten.
 
 The automation worker adds a bounded `freo_gain` annotation to music requests. Liquidsoap applies this gain before crossfading and a zero-makeup output limiter reduces overlap peaks. New targets affect newly queued songs, not already submitted requests. Browser previews use the same gain policy. This is overall song loudness matching, not constant momentary loudness; lossy encoding and overlapping music can alter final measured peaks. `test_loudness_playout.py` measures actual Liquidsoap output with differently leveled test signals.
 

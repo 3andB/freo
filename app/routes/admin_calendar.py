@@ -8,6 +8,7 @@ from app.routes.web import admin_stations, station_or_404
 from app.services.admin_auth import admin_required, current_admin, require_csrf
 from app.services.admin_media import audit
 from app.services.calendar import calendar_days, create_program
+from app.services.playlists import listing as playlist_listing
 from app.services.schedule import resolve
 
 admin_calendar = Blueprint('admin_calendar', __name__)
@@ -30,6 +31,7 @@ def page(slug):
     return render_template('admin/calendar.html',page='calendar',selected=station,stations=admin_stations(),
         days=calendar_days(station, first, 1 if view=='day' else 7),view=view,day=day,
         previous=first-timedelta(days=1 if view=='day' else 7),following=first+timedelta(days=1 if view=='day' else 7),
+        playlists=playlist_listing(station.id),
         categories=MediaCategory.query.filter_by(station_id=station.id,enabled=True).order_by(MediaCategory.name).all(),
         clocks=Clock.query.filter_by(station_id=station.id,enabled=True).order_by(Clock.name).all(),
         rotations=Rotation.query.filter_by(station_id=station.id,enabled=True).order_by(Rotation.name).all(),
@@ -53,11 +55,11 @@ def action(slug, action):
                 previous.enabled=False
                 db.session.flush()
             kind=request.form.get('kind','category')
-            if kind not in ('category','clock','rotation'):
-                raise ValueError('Choose a category, show, or rotation')
+            if kind not in ('category','clock','rotation','playlist'):
+                raise ValueError('Choose a category, show, rotation, or playlist')
             rows=create_program(station,name=request.form.get('name'),weekdays=request.form.getlist('weekday'),
                 start=request.form.get('start'),end=request.form.get('end'),on_date=request.form.get('on_date'),
-                **{kind+'_slug':request.form.get(kind)})
+                **{('playlist_id' if kind=='playlist' else kind+'_slug'):request.form.get(kind)})
             summary=f'Published {len(rows)} calendar program block(s)'
         elif action=='remove':
             row=ScheduleProgram.query.filter_by(station_id=station.id,id=request.form.get('id')).first()

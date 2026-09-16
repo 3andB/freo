@@ -74,6 +74,8 @@ def create_app(config_name=None):
     app.register_blueprint(catalog_editor)
     app.register_blueprint(admin_media_blueprint)
     app.register_blueprint(sound_room)
+    from .routes.playlists import playlists
+    app.register_blueprint(playlists)
     from .routes.station_settings import station_settings
     from .routes.song_flags import song_flags
     app.register_blueprint(station_settings)

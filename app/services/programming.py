@@ -85,7 +85,7 @@ def set_slot_enabled(slug, kind, resource_slug, position, enabled):
         raise ValueError('Disable the parent before disabling its final slot')
     slot.enabled = bool(enabled)
     target = slot.category if kind == 'rotation' or slot.slot_type == 'CATEGORY' else (
-        slot.rotation if slot.slot_type == 'ROTATION' else
+        slot.playlist if slot.slot_type == 'PLAYLIST' else slot.rotation if slot.slot_type == 'ROTATION' else
         slot.imaging_asset if slot.slot_type == 'CART' else slot.imaging_group if slot.slot_type == 'IMAGING_GROUP' else slot.event_block)
     if enabled and (target is None or not target.enabled):
         db.session.rollback()
@@ -108,6 +108,10 @@ def candidate_warnings(resource):
     for slot in resource.slots:
         if not slot.enabled:
             continue
+        if getattr(slot, 'playlist', None):
+            from app.services.availability import playable
+            if not slot.playlist.enabled or not any(playable(item.track, resource.station_id) for item in slot.playlist.items):
+                warnings.append(f'{slot.playlist.name}: no playable songs; station fallback will be used')
         categories = ([slot.category] if slot.category else
                       [part.category for part in slot.rotation.slots if part.enabled] if getattr(slot, 'rotation', None) else [])
         for category in categories:

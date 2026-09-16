@@ -47,7 +47,7 @@ def overlap(first, second):
     return False
 
 
-def create_program(station, *, name, weekdays, start, end, category_slug=None, clock_slug=None, rotation_slug=None, on_date=None):
+def create_program(station, *, name, weekdays, start, end, category_slug=None, clock_slug=None, rotation_slug=None, playlist_id=None, on_date=None):
     db.session.query(Station.id).filter_by(id=station.id).with_for_update().first()
     name = clean_text(name, 120, True)
     begin, finish = minute(start), minute(end)
@@ -61,13 +61,25 @@ def create_program(station, *, name, weekdays, start, end, category_slug=None, c
     selected_days = [day.weekday()] if day else sorted({int(value) for value in weekdays})
     if not selected_days or any(value not in range(7) for value in selected_days):
         raise ValueError('Choose at least one weekday')
-    if sum(bool(value) for value in (category_slug, clock_slug, rotation_slug)) != 1:
-        raise ValueError('Choose one category, show template, or rotation')
+    if sum(bool(value) for value in (category_slug, clock_slug, rotation_slug, playlist_id)) != 1:
+        raise ValueError('Choose one category, show template, rotation, or playlist')
     clock = None
-    if clock_slug:
+    if playlist_id:
+        from app.services.playlists import get_playlist
+        from app.services.availability import playable
+        playlist = get_playlist(station.id, playlist_id)
+        if not any(playable(item.track, station.id) for item in playlist.items):
+            raise ValueError('Add an enabled song to this playlist before scheduling it')
+        clock = Clock(station_id=station.id, slug='program-' + uuid.uuid4().hex[:20], name=name, enabled=True,
+                      description='Calendar playlist program')
+        clock.slots.append(ClockSlot(position=1, slot_type='PLAYLIST', playlist=playlist, enabled=True))
+    elif clock_slug:
         clock = Clock.query.filter_by(station_id=station.id, slug=clock_slug).first()
         if not usable_clock(clock, station.id):
             raise ValueError('Choose an enabled show template with playable slots')
+        from app.services.availability import playable
+        if any(slot.enabled and slot.playlist and not any(playable(item.track, station.id) for item in slot.playlist.items) for slot in clock.slots):
+            raise ValueError('Add an enabled song to this playlist before scheduling it')
     else:
         category = MediaCategory.query.filter_by(station_id=station.id, slug=category_slug, enabled=True).first() if category_slug else None
         rotation = Rotation.query.filter_by(station_id=station.id, slug=rotation_slug, enabled=True).first() if rotation_slug else None

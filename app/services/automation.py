@@ -230,13 +230,27 @@ def select_next(slug, storage=None, now=None, programming_signature=None):
     from app.services.schedule import resolve, usable_clock
     programming = resolve(station, now)
     clock = programming.clock or (state.default_clock if usable_clock(state.default_clock, station.id) else None)
+    playlist_fallback = False
+    if clock:
+        slots = [slot for slot in clock.slots if slot.enabled]
+        if slots and all(slot.slot_type == 'PLAYLIST' for slot in slots):
+            from app.services.playlists import playable_tracks
+            if not any(playable_tracks(slot.playlist, station.id, storage) for slot in slots):
+                playlist_fallback = True
+                for slot in slots:
+                    db.session.add(SelectionDecision(station_id=station.id, selected_at=now, status='failed',
+                        selection_method='playlist', reason='empty_or_unavailable_playlist', clock_id=clock.id,
+                        clock_slot_id=slot.id, schedule_occurrence=programming.occurrence_key))
+                fallback = state.default_clock
+                clock = fallback if fallback and fallback.id != clock.id and usable_clock(fallback, station.id) else None
     if clock:
         clock_state = ClockState.query.filter_by(station_id=station.id).with_for_update().first()
         if clock_state is None:
             clock_state = ClockState(station_id=station.id)
             db.session.add(clock_state)
             db.session.flush()
-        occurrence = programming.occurrence_key if programming.clock else f'default:{clock.id}'
+        occurrence = (f'fallback:{programming.occurrence_key}:{clock.id}' if playlist_fallback else
+                      programming.occurrence_key if programming.clock else f'default:{clock.id}')
         if clock_state.clock_id != clock.id or clock_state.occurrence_key != occurrence:
             clock_state.clock_id = clock.id
             clock_state.occurrence_key = occurrence
@@ -252,7 +266,10 @@ def select_next(slug, storage=None, now=None, programming_signature=None):
             context = {'clock_id': clock.id, 'clock_slot_id': clock_slot.id,
                        'schedule_assignment_id': programming.assignment.id if programming.assignment else None,
                        'schedule_occurrence': occurrence}
-            if clock_slot.slot_type == 'CATEGORY' and clock_slot.category and clock_slot.category.station_id == station.id:
+            if clock_slot.slot_type == 'PLAYLIST':
+                from app.services.playlists import select_playlist
+                decision = select_playlist(station, clock_slot, storage, now, context)
+            elif clock_slot.slot_type == 'CATEGORY' and clock_slot.category and clock_slot.category.station_id == station.id:
                 decision = _select_category(station, clock_slot.category, state, storage, now, context)
             elif clock_slot.slot_type == 'ROTATION' and clock_slot.rotation and clock_slot.rotation.station_id == station.id:
                 decision = _select_rotation(station, clock_slot.rotation, state, storage, now, context)
@@ -276,6 +293,9 @@ def select_next(slug, storage=None, now=None, programming_signature=None):
         db.session.commit()
         return None
     if not state.active_rotation or not state.active_rotation.enabled:
+        if playlist_fallback:
+            db.session.commit()
+            return None
         raise ValueError('No active clock or rotation')
     decision = _select_rotation(station, state.active_rotation, state, storage, now, {})
     if decision:

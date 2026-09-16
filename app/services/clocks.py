@@ -147,7 +147,7 @@ def validate_clock(clock):
     for slot in slots:
         target = {'ROTATION': slot.rotation, 'CATEGORY': slot.category,
                   'CART': slot.imaging_asset, 'IMAGING_GROUP': slot.imaging_group,
-                  'EVENT_BLOCK': slot.event_block}.get(slot.slot_type)
+                  'EVENT_BLOCK': slot.event_block, 'PLAYLIST': slot.playlist}.get(slot.slot_type)
         if target is None or target.station_id != clock.station_id or not target.enabled:
             raise ValueError(f'Clock slot {slot.position} has an unavailable or cross-station target')
         if slot.slot_type == 'ROTATION':
@@ -247,10 +247,20 @@ def preview_clock(slug, clock_slug, count=10, storage=None, at=None):
     live_cursor = db.session.get(ClockState, station.id)
     clock_index = live_cursor.next_slot_index if live_cursor and live_cursor.clock_id == clock.id else 0
     rotation_indexes = {}
+    playlist_states = {}
     output = []
     for _ in range(count):
         slot = slots[clock_index % len(slots)]
         clock_index += 1
+        if slot.slot_type == 'PLAYLIST':
+            from app.services.playlists import playable_tracks, advance
+            tracks = playable_tracks(slot.playlist, station.id, storage)
+            track = None
+            if tracks:
+                track, playlist_states[slot.id] = advance(slot.playlist, tracks, playlist_states.get(slot.id, {}))
+            output.append(dict(clock_slot=slot.position, type=slot.slot_type, track=track.uuid if track else None,
+                               artist=track.artist if track else None, candidate_count=len(tracks), relaxation='none'))
+            continue
         if slot.slot_type == 'EVENT_BLOCK':
             output.append({'clock_slot': slot.position, 'type': slot.slot_type,
                            'event_block': slot.event_block.slug, 'name': slot.event_block.name,

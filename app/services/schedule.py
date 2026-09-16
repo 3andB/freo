@@ -53,7 +53,8 @@ def usable_clock(clock, station_id):
         return False
     slots = [slot for slot in clock.slots if slot.enabled]
     return bool(slots) and all(
-        (slot.slot_type == 'CATEGORY' and slot.category and slot.category.enabled and slot.category.station_id == station_id)
+        (slot.slot_type == 'PLAYLIST' and slot.playlist and slot.playlist.enabled and slot.playlist.station_id == station_id)
+        or (slot.slot_type == 'CATEGORY' and slot.category and slot.category.enabled and slot.category.station_id == station_id)
         or (slot.slot_type == 'ROTATION' and slot.rotation and slot.rotation.enabled and slot.rotation.station_id == station_id
             and any(part.enabled for part in slot.rotation.slots))
         or (slot.slot_type == 'CART' and slot.imaging_asset and slot.imaging_asset.station_id == station_id)

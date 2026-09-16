@@ -43,7 +43,8 @@
     pending++;
     document.dispatchEvent(new CustomEvent('music-toggle-start'));
     try {
-      await request(group.dataset, 'assign', payload);
+      const result = await request(group.dataset, 'assign', payload);
+      document.dispatchEvent(new CustomEvent('music-assignment', {detail: {...result, kind: payload.kind}}));
       const before = state.confirmed;
       state.confirmed = assigned;
       document.dispatchEvent(new CustomEvent('music-toggle-saved', {detail: {...payload, assigned, before}}));
@@ -60,9 +61,9 @@
     const group = document.createElement('div');
     group.className = 'music-toggles';
     Object.assign(group.dataset, {song: song.uuid, actions: config.actions, csrf: config.csrf});
-    for (const [kind, items, ids] of [['tag', catalog.tags, song.tags], ['category', catalog.categories, song.categories]]) {
+    for (const [kind, items, ids] of [['playlist', catalog.playlists || [], song.playlists || []], ['tag', catalog.tags, song.tags], ['category', catalog.categories, song.categories]]) {
       const line = document.createElement('div');line.className = 'music-toggle-group';line.setAttribute('role', 'group');
-      const label = kind === 'tag' ? 'Tags' : 'Categories';line.setAttribute('aria-label', label);
+      const label = kind === 'playlist' ? 'Playlists' : kind === 'tag' ? 'Tags' : 'Categories';line.setAttribute('aria-label', label);
       const heading = document.createElement('small');heading.textContent = label;line.append(heading);
       for (const item of items) {
         const button = document.createElement('button');button.type = 'button';button.className = 'music-toggle';

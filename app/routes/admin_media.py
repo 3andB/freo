@@ -392,7 +392,8 @@ def process_track(slug,track_uuid):
 
 
 def classification_context(station):
-    return dict(music_tags=MusicTag.query.filter_by(station_id=station.id).order_by(MusicTag.name).all(),
+    from app.services.playlists import listing
+    return dict(music_playlists=listing(station.id),music_tags=MusicTag.query.filter_by(station_id=station.id).order_by(MusicTag.name).all(),
                 music_categories=MediaCategory.query.filter_by(station_id=station.id).order_by(MediaCategory.name).all())
 
 

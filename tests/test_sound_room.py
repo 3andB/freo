@@ -20,7 +20,7 @@ def action(client,kind,data,slug='test-station'):
 
 def test_sound_room_category_tag_notes_and_undo(app):
     client=admin_client(app)
-    assert client.get('/admin/stations/test-station/sound-room').status_code==200
+    assert client.get('/admin/stations/test-station/sound-room').location.endswith('/playlists')
     assert client.get('/admin/stations/test-station/media').status_code==200
     catalog=client.get('/admin/api/stations/test-station/music').json
     song=catalog['songs'][0];category=catalog['categories'][0]

@@ -4,13 +4,13 @@ import math
 import re
 import uuid
 from datetime import datetime, timezone, timedelta
-from flask import Blueprint, abort, jsonify, render_template, request, url_for
+from flask import Blueprint, abort, jsonify, request, url_for, redirect
 from sqlalchemy import or_, func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import selectinload
 from app.extensions import db
 from app.models import Station, Track, MusicTag, MediaCategory, MusicEdit, song_tags, track_categories
-from app.routes.web import admin_stations, station_or_404
+from app.routes.web import station_or_404
 from app.services.admin_auth import admin_required, current_admin, require_csrf, can_manage_programming
 from app.services.admin_media import audit
 from app.services.analysis_queue import request_analysis
@@ -19,6 +19,9 @@ from app.routes.catalog_editor import cover_url, context_slug
 from app.services.airplay import play_counts
 from app.models import SongFlag
 from app.routes.song_flags import flag_data
+
+from app.services import playlists as playlist_service
+from app.models import Playlist, PlaylistItem
 
 sound_room=Blueprint('sound_room',__name__)
 
@@ -31,6 +34,7 @@ def song_data(song, plays=None, station=None, flags=None):
         duration_ms=song.duration_ms,enabled=song.enabled,notes=song.notes,
         analysis=song.analysis_status,requested=song.analysis_requested,error=song.analysis_error,
         bpm=song.bpm,lufs=song.loudness_lufs,peak=song.true_peak_db,gain=gain_for(song, station),
+        playlists=[x.id for x in song.playlists if x.station_id == station.id and x.enabled],
         categories=[x.id for x in song.categories],tags=[x.id for x in song.tags],
         audition=url_for('admin_media.audition',slug=context_slug(song),track_uuid=song.uuid),
         detail=url_for('admin_media.track_detail',slug=context_slug(song),track_uuid=song.uuid),
@@ -41,7 +45,7 @@ def song_data(song, plays=None, station=None, flags=None):
 @admin_required
 def page(slug):
     station=station_or_404(request.args.get('station',slug),require_enabled=False)
-    return render_template('admin/sound_room.html',selected=station,stations=admin_stations(),page='sound-room')
+    return redirect(url_for('playlists.page', slug=station.slug))
 
 
 @sound_room.get('/admin/api/stations/<slug>/music')
@@ -66,6 +70,10 @@ def catalog(slug):
             if not value.isdecimal():abort(400)
             target=model.query.filter_by(id=int(value),station_id=station.id).first_or_404()
             query=query.filter(relation.any(model.id==target.id))
+    if request.args.get('playlist'):
+        if not request.args['playlist'].isdecimal():abort(400)
+        row=Playlist.query.filter_by(id=int(request.args['playlist']),station_id=station.id,deleted_at=None).first_or_404()
+        query=query.filter(Track.id.in_(db.session.query(PlaylistItem.track_id).filter_by(playlist_id=row.id)))
     analysis=request.args.get('analysis','')
     if analysis=='unfinished':query=query.filter(Track.analysis_status!='complete')
     elif analysis in ('pending','processing','complete','failed'):query=query.filter_by(analysis_status=analysis)
@@ -77,13 +85,14 @@ def catalog(slug):
     try: page=max(1,min(int(request.args.get('page',1)),100000))
     except ValueError:abort(400)
     total=query.count()
-    songs=query.options(selectinload(Track.tags),selectinload(Track.categories),selectinload(Track.station),selectinload(Track.catalog_album)).order_by(Track.artist,Track.title,Track.id).offset((page-1)*50).limit(50).all()
+    songs=query.options(selectinload(Track.playlists),selectinload(Track.tags),selectinload(Track.categories),selectinload(Track.station),selectinload(Track.catalog_album)).order_by(Track.artist,Track.title,Track.id).offset((page-1)*50).limit(50).all()
     category_counts=dict(db.session.query(track_categories.c.category_id,func.count()).join(Track,Track.id==track_categories.c.track_id).filter(track_scope(station.id),Track.decommissioned_at.is_(None)).group_by(track_categories.c.category_id).all())
     tag_counts=dict(db.session.query(song_tags.c.tag_id,func.count()).join(Track,Track.id==song_tags.c.track_id).filter(track_scope(station.id),Track.decommissioned_at.is_(None)).group_by(song_tags.c.tag_id).all())
     song_plays = play_counts(station.id, 'track', [x.id for x in songs])
     category_plays = play_counts(station.id, 'category')
     flags={flag.track_id:flag for flag in SongFlag.query.filter(SongFlag.station_id==station.id,SongFlag.track_id.in_([x.id for x in songs])).all()}
     result=dict(flagged_count=base.filter(Track.id.in_(db.session.query(SongFlag.track_id).filter_by(station_id=station.id,resolved_at=None))).count(),songs=[song_data(x, song_plays.get(x.id, 0), station, flags) for x in songs],total=total,page=page,pages=max(1,(total+49)//50),target_lufs=station.target_lufs,
+        playlists=[playlist_service.summary(row) for row in playlist_service.listing(station.id)],
         categories=[dict(id=x.id,name=x.name,count=category_counts.get(x.id,0),play_count=category_plays.get(x.id,0),enabled=x.enabled,description=x.description) for x in MediaCategory.query.filter_by(station_id=station.id).order_by(MediaCategory.name)],
         tags=[dict(id=x.id,name=x.name,color=x.color,description=x.description,count=tag_counts.get(x.id,0)) for x in MusicTag.query.filter_by(station_id=station.id).order_by(MusicTag.name)],
         unfinished=base.filter(Track.analysis_status!='complete').count())
@@ -128,7 +137,46 @@ def mutate(slug,action):
         if not isinstance(data,dict):raise ValueError('Invalid request')
         db.session.query(Station.id).filter_by(id=station.id).with_for_update().first()
         undo=None
-        if action=='assign':
+        if action in ('create-playlist','edit-playlist','delete-playlist','playlist-source','playlist-remove','playlist-reorder'):
+            if not can_manage_programming(current_admin(),station):abort(403)
+            row=Playlist(station_id=station.id) if action=='create-playlist' else playlist_service.get_playlist(station.id,data.get('id'))
+            if action in ('edit-playlist','playlist-reorder') and data.get('revision')!=row.revision:
+                raise ValueError('This playlist changed elsewhere. Reload it before saving')
+            if action in ('create-playlist','edit-playlist'):
+                name=data.get('name','');description=data.get('description','');mode=data.get('mode','STRAIGHT')
+                if not isinstance(name,str) or not name.strip() or len(name)>120:raise ValueError('Use a name between 1 and 120 characters')
+                if not isinstance(description,str) or len(description)>500:raise ValueError('Description must be under 500 characters')
+                if mode not in ('STRAIGHT','RANDOM'):raise ValueError('Choose Straight or Random')
+                row.name=name.strip();row.description=description.strip();row.mode=mode
+                if action=='edit-playlist':row.revision+=1
+                db.session.add(row);db.session.flush();message='Playlist saved'
+            elif action=='delete-playlist':
+                if data.get('confirm')!=row.id:raise ValueError('Confirm playlist deletion')
+                playlist_service.delete_playlist(row);message='Playlist deleted. Songs remain in Music.'
+            elif action=='playlist-reorder':
+                ids=data.get('songs')
+                if not isinstance(ids,list) or any(not isinstance(x,str) for x in ids):raise ValueError('Supply the complete song order')
+                by_uuid={item.track.uuid:item.track_id for item in row.items}
+                if len(ids)!=len(by_uuid) or set(ids)!=set(by_uuid):raise ValueError('The playlist contents changed. Reload before reordering')
+                playlist_service.replace_order(row,[by_uuid[x] for x in ids]);message='Playlist order saved'
+            else:
+                if action=='playlist-source':
+                    songs=playlist_service.source_songs(station.id,data.get('kind'),data.get('source'))
+                else:
+                    ids=data.get('songs',[])
+                    if not isinstance(ids,list) or any(not isinstance(x,str) for x in ids):raise ValueError('Select songs to remove')
+                    songs=[item.track for item in row.items if item.track.uuid in ids]
+                undo,count=playlist_service.membership(row,songs,'add' if action=='playlist-source' else 'remove',current_admin().id)
+                message=f'{count} song(s) updated · {row.name}'
+        elif action=='assign' and data.get('kind')=='playlist':
+            if not can_manage_programming(current_admin(),station):abort(403)
+            row=playlist_service.get_playlist(station.id,data.get('target'))
+            songs=selected_songs(station,data)
+            # Preserve the order selected in Music.
+            by_uuid={song.uuid:song for song in songs};songs=list(dict.fromkeys(by_uuid[x] for x in data['songs']))
+            undo,count=playlist_service.membership(row,songs,data.get('operation'),current_admin().id)
+            message=f'{count} song(s) updated · {row.name}'
+        elif action=='assign':
             songs=selected_songs(station,data);kind=data.get('kind');target=target_for(station,kind,data.get('target'))
             if data.get('operation') not in ('add','remove'):raise ValueError('Choose add or remove')
             adding=data['operation']=='add';changes=[]
@@ -147,14 +195,17 @@ def mutate(slug,action):
             edit=MusicEdit.query.filter_by(id=data.get('id'),station_id=station.id,admin_user_id=current_admin().id).with_for_update().first()
             if not edit or edit.undone:raise ValueError('This change has already been undone or is unavailable')
             if datetime.now(timezone.utc)-edit.created_at.replace(tzinfo=timezone.utc)>timedelta(hours=1):raise ValueError('Undo expired; adjust the selection directly')
-            target=target_for(station,edit.kind,edit.target_id)
-            songs=selected_songs(station,{'songs':[x['uuid'] for x in edit.changes]});by_id={x.uuid:x for x in songs}
-            for change in edit.changes:
-                collection=by_id[change['uuid']].categories if edit.kind=='category' else by_id[change['uuid']].tags
-                if (target in collection)!=change['after']:raise ValueError('These assignments changed again; review them before editing')
-                if change['before']:collection.append(target)
-                else:collection.remove(target)
-            edit.undone=True;message='Assignment changes undone'
+            if edit.kind=='playlist':
+                playlist_service.undo_edit(edit);message='Playlist changes undone'
+            else:
+                target=target_for(station,edit.kind,edit.target_id)
+                songs=selected_songs(station,{'songs':[x['uuid'] for x in edit.changes]});by_id={x.uuid:x for x in songs}
+                for change in edit.changes:
+                    collection=by_id[change['uuid']].categories if edit.kind=='category' else by_id[change['uuid']].tags
+                    if (target in collection)!=change['after']:raise ValueError('These assignments changed again; review them before editing')
+                    if change['before']:collection.append(target)
+                    else:collection.remove(target)
+                edit.undone=True;message='Assignment changes undone'
         elif action in ('create-tag','edit-tag','create-category'):
             name=str(data.get('name','')).strip()
             if not name or len(name)>80:raise ValueError('Use a name between 1 and 80 characters')
@@ -204,7 +255,7 @@ def mutate(slug,action):
             station.target_lufs=target;message=f'Station target saved: {target:g} LUFS. Applies to newly queued songs.'
         else:abort(404)
         audit('music_'+action.replace('-','_'),user_id=current_admin().id,station_id=station.id,target_type='music',target_id=undo,summary=message)
-        db.session.commit();return jsonify(message=message,undo=undo,tag_id=row.id if action in ('create-tag','edit-tag') else None)
+        db.session.commit();return jsonify(message=message,undo=undo,tag_id=row.id if action in ('create-tag','edit-tag') else None,playlist_id=row.id if action=='create-playlist' else None)
     except (ValueError,TypeError,IntegrityError) as error:
         db.session.rollback()
         return jsonify(message='That name already exists. Choose an existing destination or another name.' if isinstance(error,IntegrityError) else str(error)),409

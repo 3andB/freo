@@ -46,7 +46,7 @@ def test_auto_header_capture_flags_music_and_mobile(booth):
     assert driver.execute_script('return document.documentElement.scrollWidth <= innerWidth + 2')
     driver.save_screenshot('/tmp/freo-auto-mobile.png')
     driver.set_window_size(1600,1200)
-    driver.get(base+'/admin/stations/test-station/sound-room')
+    driver.get(base+'/admin/stations/test-station/media')
     wait_text(driver,'#flagged-count','1')
     driver.find_element(By.ID,'room-flagged').click()
     wait_text(driver,'#collection-title','Flagged songs')

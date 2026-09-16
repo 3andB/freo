@@ -19,11 +19,11 @@ def signature(station,now=None):
     values=[station.timezone,station.target_lufs,programming.occurrence_key,
             state.active_rotation_id,state.default_clock_id,state.track_separation_seconds,state.artist_separation_seconds]
     # Core rows avoid relationship caches and do not load audio/artwork blobs.
-    for model in (m.MediaCategory,m.Rotation,m.Clock,m.ScheduleAssignment,m.ScheduleProgram,m.ImagingAsset,m.ImagingGroup,m.EventBlock,m.TimedEvent):
+    for model in (m.Playlist,m.MediaCategory,m.Rotation,m.Clock,m.ScheduleAssignment,m.ScheduleProgram,m.ImagingAsset,m.ImagingGroup,m.EventBlock,m.TimedEvent):
         table=model.__table__
         columns=[c for c in table.c if c.name not in ('created_at','updated_at')]
         values.append([list(row) for row in db.session.execute(select(*columns).where(table.c.station_id==station.id).order_by(table.c.id))])
-    for model,parent,key in ((m.ClockSlot,m.Clock,'clock_id'),(m.RotationSlot,m.Rotation,'rotation_id')):
+    for model,parent,key in ((m.PlaylistItem,m.Playlist,'playlist_id'),(m.ClockSlot,m.Clock,'clock_id'),(m.RotationSlot,m.Rotation,'rotation_id')):
         table=model.__table__;parent_table=parent.__table__
         values.append([list(row) for row in db.session.execute(select(table).join(parent_table,table.c[key]==parent_table.c.id).where(parent_table.c.station_id==station.id).order_by(table.c.id))])
     # Include category members even when their availability has just been revoked.
@@ -31,6 +31,7 @@ def signature(station,now=None):
     values.append([list(row) for row in db.session.execute(select(members).join(m.MediaCategory,m.MediaCategory.id==members.c.category_id).where(m.MediaCategory.station_id==station.id).order_by(members.c.category_id,members.c.track_id))])
     tracks=db.session.query(m.Track.id,m.Track.enabled,m.Track.decommissioned_at,m.Track.ingest_status,m.Track.storage_key,
         m.Track.artist,m.Track.title,m.Track.duration_ms,m.Track.loudness_lufs,m.Track.true_peak_db).filter(track_scope(station.id),db.or_(
+            m.Track.id.in_(select(m.PlaylistItem.track_id).join(m.Playlist,m.Playlist.id==m.PlaylistItem.playlist_id).where(m.Playlist.station_id==station.id)),
             m.Track.categories.any(m.MediaCategory.station_id==station.id),
             m.Track.id.in_(select(m.EventBlockItem.track_id).join(m.EventBlock,m.EventBlock.id==m.EventBlockItem.event_block_id).where(m.EventBlock.station_id==station.id)),
             m.Track.id.in_(select(m.TimedEvent.track_id).where(m.TimedEvent.station_id==station.id)))).order_by(m.Track.id).all()
@@ -46,6 +47,7 @@ def checkpoint(station):
     clock=db.session.get(m.ClockState,station.id)
     return dict(rotation=state.active_rotation_id,index=state.next_slot_index,
         clock=dict(id=clock.clock_id,occurrence=clock.occurrence_key,index=clock.next_slot_index) if clock else None,
+        playlists={str(row.clock_slot_id):dict(occurrence=row.occurrence_key,state=row.state) for row in m.PlaylistCursor.query.filter_by(station_id=station.id)},
         rotations={str(row.rotation_id):row.next_slot_index for row in m.RotationCursor.query.filter_by(station_id=station.id)})
 
 
@@ -60,6 +62,9 @@ def restore(station,saved):
             clock.next_slot_index=prior['index']
         else:
             clock.next_slot_index=0
+    for row in m.PlaylistCursor.query.filter_by(station_id=station.id):
+        prior=saved.get('playlists',{}).get(str(row.clock_slot_id))
+        row.state=prior['state'] if prior and row.occurrence_key==prior['occurrence'] else {}
     for row in m.RotationCursor.query.filter_by(station_id=station.id):
         row.next_slot_index=saved.get('rotations',{}).get(str(row.rotation_id),0)
 

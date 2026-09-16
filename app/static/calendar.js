@@ -9,8 +9,9 @@
     showKind();dialog.showModal();form.elements.name.focus();
   };
   const showKind=()=>form.querySelectorAll('[data-kind]').forEach(label=>label.hidden=label.dataset.kind!==form.elements.kind.value);
+  showKind();
   form.elements.kind.addEventListener('change',showKind);
-  document.querySelectorAll('[data-edit-program]').forEach(button=>button.addEventListener('click',()=>{const data=button.dataset;open(data.weekday);form.elements.program_id.value=data.id;form.elements.name.value=data.name;form.elements.start.value=data.start;form.elements.end.value=data.end;form.elements.kind.value='clock';form.elements.clock.value=data.clock;form.elements.on_date.value=data.onDate;showKind();}));
+  document.querySelectorAll('[data-edit-program]').forEach(button=>button.addEventListener('click',()=>{const data=button.dataset;open(data.weekday);form.elements.program_id.value=data.id;form.elements.name.value=data.name;form.elements.start.value=data.start;form.elements.end.value=data.end;form.elements.kind.value=data.playlist?'playlist':'clock';form.elements.playlist.value=data.playlist||'';form.elements.clock.value=data.clock;form.elements.on_date.value=data.onDate;showKind();}));
   document.querySelectorAll('[data-new-program]').forEach(button=>button.addEventListener('click',()=>open(button.dataset.day)));
   document.querySelectorAll('[data-category]').forEach(button=>{
     button.addEventListener('click',()=>open(undefined,button.dataset.category,button.dataset.categoryName));
