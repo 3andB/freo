@@ -52,8 +52,18 @@ def homepage():
 
 @web_blueprint.get('/stations')
 def stations():
-    rows = Station.query.filter_by(enabled=True, deleted_at=None).order_by(Station.slug).all()
-    return render_template('stations.html', stations=rows)
+    from sqlalchemy.orm import selectinload
+    from app.models import StationPlayerAsset, StationPlayerSettings
+    rows = (Station.query.filter_by(enabled=True, deleted_at=None)
+            .filter(Station.lifecycle_state.notin_(('pending_delete', 'delete_failed')))
+            .options(selectinload(Station.logo)).order_by(Station.name, Station.id).all())
+    identifiers = [station.id for station in rows]
+    # Fetch image versions here; artwork bytes belong to the asset endpoint.
+    covers = dict(db.session.query(StationPlayerAsset.station_id, StationPlayerAsset.version)
+                  .filter(StationPlayerAsset.station_id.in_(identifiers), StationPlayerAsset.kind == 'cover').all()) if identifiers else {}
+    appearance = dict(db.session.query(StationPlayerSettings.station_id, StationPlayerSettings.config)
+                      .filter(StationPlayerSettings.station_id.in_(identifiers)).all()) if identifiers else {}
+    return render_template('stations.html', stations=rows, covers=covers, appearance=appearance)
 
 
 @web_blueprint.get('/player/<slug>')
