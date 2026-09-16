@@ -173,10 +173,11 @@
       const scripts = [...next.querySelectorAll('script[src]')].map(el => el.src).filter(src => new URL(src).origin === location.origin && !src.includes('/workspace.js'));
       next.querySelectorAll('script').forEach(el => el.remove());
       next.querySelectorAll('link[rel="stylesheet"]').forEach(link => {
-        if (![...document.querySelectorAll('link[rel="stylesheet"]')].some(el => el.href === link.href)) document.head.append(link.cloneNode(true));
+        if (![...document.querySelectorAll('link[rel="stylesheet"]')].some(el => el.href === link.href)) document.head.insertBefore(link.cloneNode(true), document.querySelector('link[href*="/theme.css"]'));
       });
       document.title = next.title; document.body.className = next.body.className;
       document.body.replaceChildren(...next.body.childNodes);
+      window.FreoTheme?.sync();
       if (!options.pop) history.pushState({freo: true, scroll: 0}, '', response.url);
       dirty = false; mount(); prepareForms();
       for (const src of scripts) await new Promise((resolve, reject) => {

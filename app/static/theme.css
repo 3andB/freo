@@ -1,0 +1,99 @@
+/* Miami appearance tokens. Components use roles, never a particular skin. */
+:root {
+  color-scheme: light;
+  --theme-canvas: #f7f8f4;
+  --theme-surface: #ffffff;
+  --theme-raised: #edf4f1;
+  --theme-text: #18343b;
+  --theme-muted: #526b70;
+  --theme-border: #c6d8d5;
+  --theme-accent: #067476;
+  --theme-accent-soft: #dff2ee;
+  --theme-on-accent: #ffffff;
+  --theme-success: #247345;
+  --theme-success-soft: #e4f2e5;
+  --theme-danger: #b03b49;
+  --theme-danger-soft: #fbe8e7;
+  --theme-warning: #87581c;
+  --theme-warning-soft: #fbefdb;
+  --theme-lavender: #745295;
+  --theme-lavender-soft: #eee8f6;
+  --theme-focus: #067476;
+  --theme-hover: #e8f1ee;
+  --theme-shadow-color: #173f3b12;
+  --theme-scrim: #17343b66;
+  --theme-coral: #f5c7bb;
+  --theme-seafoam: #d9eee5;
+}
+:root[data-theme="night"] {
+  color-scheme: dark;
+  --theme-canvas: #101f29;
+  --theme-surface: #172d36;
+  --theme-raised: #203b43;
+  --theme-text: #f1f6f1;
+  --theme-muted: #b0c8c9;
+  --theme-border: #415e65;
+  --theme-accent: #89dfd2;
+  --theme-accent-soft: #24494c;
+  --theme-on-accent: #102e33;
+  --theme-success: #acddb6;
+  --theme-success-soft: #284738;
+  --theme-danger: #ffada9;
+  --theme-danger-soft: #51353e;
+  --theme-warning: #ebcd9b;
+  --theme-warning-soft: #494333;
+  --theme-lavender: #d1bae9;
+  --theme-lavender-soft: #3a354e;
+  --theme-focus: #89dfd2;
+  --theme-hover: #27434b;
+  --theme-shadow-color: #030f1838;
+  --theme-scrim: #030f18aa;
+  --theme-coral: #68444b;
+  --theme-seafoam: #21464b;
+}
+/* Shared navigation control stays available on every public and admin page. */
+.appearance-control {display:inline-flex;align-items:center;gap:8px;flex-shrink:0;font-size:12px;color:var(--theme-muted);white-space:nowrap}
+.appearance-control select {font:inherit;font-weight:600;color:var(--theme-text);background:var(--theme-surface);border:1px solid var(--theme-border);border-radius:999px;padding:8px 28px 8px 12px;min-height:38px;cursor:pointer;min-width:145px;max-width:160px}
+.appearance-control select:focus-visible {outline:3px solid var(--theme-focus);outline-offset:3px}
+html {background:var(--theme-canvas)}
+body {accent-color:var(--theme-accent)}
+::selection {background:var(--theme-accent);color:var(--theme-on-accent)}
+/* Calm coastal atmosphere, with colour concentrated around the edges. */
+.home-hero {background:radial-gradient(ellipse at 90% 15%,var(--theme-coral),transparent 55%),linear-gradient(125deg,var(--theme-seafoam),var(--theme-canvas) 70%);color:var(--theme-text)}
+.home-hero .eyebrow,.hero-lede,.hero-note {color:var(--theme-muted)}
+.hero-window {background:var(--theme-surface)}
+.admin-sidebar {background:linear-gradient(170deg,var(--theme-surface),var(--theme-accent-soft))}
+.admin-card,.studio-card,.station-card,.directory-card {box-shadow:0 8px 28px var(--theme-shadow-color)}
+/* Photo covers and record illustrations retain their materials in either mode. */
+.radio-cover {color:#f5f6f8}
+.radio-cover .radio-kicker {color:#b9f9ce}
+.radio-cover .radio-station-line p,.radio-cover .radio-description {color:#e3e1ea}
+.radio-cover .radio-socials a,.radio-live-label {color:#f5f6f8}
+.radio-experience {--radio-accent:var(--theme-accent);--radio-second:var(--theme-lavender);--radio-third:var(--theme-danger)}
+.radio-experience.palette-sunset {--radio-accent:var(--theme-warning);--radio-second:var(--theme-danger);--radio-third:var(--theme-lavender)}
+.radio-experience.palette-ocean {--radio-accent:var(--theme-accent);--radio-second:var(--theme-lavender);--radio-third:var(--theme-success)}
+.radio-site-header {flex-wrap:wrap;gap:16px}
+.admin-topbar {gap:16px}
+.admin-topbar-end {flex-wrap:wrap}
+.button:not(.secondary),.admin-primary {background:var(--theme-accent);border-color:var(--theme-accent);color:var(--theme-on-accent)}
+input::placeholder,textarea::placeholder {color:var(--theme-muted);opacity:1}
+@media(max-width:850px) {
+  .appearance-control {gap:6px;font-size:11px}
+  .appearance-control select {min-height:40px}
+  .admin-topbar {flex-wrap:wrap;height:auto;min-height:68px;padding-block:12px}
+  .admin-topbar-end {margin-left:auto}
+}
+
+/* Fallback station covers echo the skin; uploaded covers retain a dark scrim. */
+.radio-cover:not(:has(>img)) {background:radial-gradient(ellipse at 85% 10%,var(--theme-coral),transparent 60%),linear-gradient(120deg,var(--theme-seafoam),var(--theme-lavender-soft));color:var(--theme-text)}
+.radio-cover:not(:has(>img)) .cover-shade {background:linear-gradient(0deg,var(--theme-surface),transparent)}
+.radio-cover:not(:has(>img)) :is(.radio-description,.radio-station-line p) {color:var(--theme-muted)}
+.radio-cover:not(:has(>img)) .radio-kicker {color:var(--theme-accent)}
+.radio-transport #play-button {color:var(--theme-on-accent)}
+.directory-card {--card-accent:var(--theme-success);--card-glow:var(--theme-lavender-soft)}
+.directory-card.palette-sunset {--card-accent:var(--theme-warning);--card-glow:var(--theme-danger-soft)}
+.directory-card.palette-ocean {--card-accent:var(--theme-accent);--card-glow:var(--theme-accent-soft)}
+.directory-play,.directory-fallback-record>span {color:var(--theme-on-accent)}
+
+.admin-hero-action .admin-primary,.dialog-actions .admin-primary {background:var(--theme-accent);border-color:var(--theme-accent);color:var(--theme-on-accent)}
+.admin-primary:hover,.admin-hero-action .admin-primary:hover,.dialog-actions .admin-primary:hover {background:var(--theme-accent);filter:brightness(.94)}

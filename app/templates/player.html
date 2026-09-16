@@ -1,8 +1,8 @@
 {% extends 'base.html' %}
 {% block title %}{{ station.name }} — listen live{% endblock %}
 {% block body_class %}player-page{% endblock %}
-{% block head %}<link rel="stylesheet" href="{{ url_for('static',filename='player.css',v='listener-v1') }}">{% endblock %}
-{% block header %}<header class="radio-site-header"><a class="wordmark" href="{{ url_for('web.homepage') }}">freo<span>.world</span></a><nav aria-label="Player navigation"><a href="{{ url_for('web.stations') }}">Discover stations</a><a href="{{ url_for('web.admin_home') if session.get('admin_user_id') else url_for('web.login') }}">Station admin ↗</a></nav></header>{% endblock %}
+{% block head %}<link rel="stylesheet" href="{{ url_for('static',filename='player.css',v='miami-1') }}">{% endblock %}
+{% block header %}<header class="radio-site-header"><a class="wordmark" href="{{ url_for('web.homepage') }}">freo<span>.world</span></a><nav aria-label="Player navigation"><a href="{{ url_for('web.stations') }}">Discover stations</a><a href="{{ url_for('web.admin_home') if session.get('admin_user_id') else url_for('web.login') }}">Station admin ↗</a></nav>{% include '_appearance.html' %}</header>{% endblock %}
 {% block content %}
 {% set context=player_preview if player_preview is defined else player_context(station) %}{% set cfg=context.player_config %}{% set assets=context.player_assets %}
 {% macro ad(prefix) %}{% if cfg[prefix+'_visible'] %}<aside class="radio-ad" aria-label="{{ prefix|replace('_',' ') }} advertisement"><span>Advertisement</span>{% if cfg[prefix+'_url'] %}<a href="{{ cfg[prefix+'_url'] }}" target="_blank" rel="noopener sponsored">{% endif %}<picture>{% if prefix+'_mobile' in assets %}<source media="(max-width: 650px)" srcset="{{ url_for('player_experience.asset',slug=station.slug,kind=prefix+'_mobile',v=assets[prefix+'_mobile']) }}">{% endif %}<img src="{{ url_for('player_experience.asset',slug=station.slug,kind=prefix,v=assets[prefix]) }}" alt="{{ cfg[prefix+'_alt'] }}" width="2000" height="400" {% if prefix=='ad_bottom' %}loading="lazy"{% endif %}></picture>{% if cfg[prefix+'_url'] %}</a>{% endif %}</aside>{% endif %}{% endmacro %}
