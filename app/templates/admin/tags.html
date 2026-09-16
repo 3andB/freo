@@ -5,9 +5,9 @@
 <div class="section-title"><div><span class="eyebrow">PROGRAMMING</span><h1>Tags</h1><p>Create labels for your music. Turn them on or off directly on each song.</p></div><a href="{{ url_for('admin_media.library',slug=selected.slug) }}">Go to Music →</a></div>
 <section id="tag-manager" data-actions="{{ url_for('sound_room.mutate',slug=selected.slug,action='ACTION') }}" data-csrf="{{ csrf_token() }}">
 <p id="tag-status" role="status" aria-live="polite"></p>
-<form class="admin-card tag-editor" id="tag-create"><h2>Create tag</h2><label>Name<input name="name" required maxlength="80"></label><label>Description<textarea name="description" maxlength="500" rows="2"></textarea></label><label>Color<input name="color" type="color" value="#b9e79b"></label><button type="submit">Create tag</button></form>
+<form class="admin-card tag-editor" id="tag-create"><h2>Create tag</h2><label>Name<input name="name" required maxlength="80"></label><label>Description<textarea name="description" maxlength="500" rows="2"></textarea></label><label>Color<input name="color" type="color" value="#b9e79b"></label><button type="submit" class="ui-primary">Create tag</button></form>
 <div id="tag-list" class="tag-list">{% for tag in tags %}
-<form class="admin-card tag-editor" data-tag-id="{{ tag.id }}"><label>Name<input name="name" required maxlength="80" value="{{ tag.name }}"></label><label>Description<textarea name="description" maxlength="500" rows="2">{{ tag.description }}</textarea></label><label>Color<input name="color" type="color" value="{{ tag.color }}"></label><div class="tag-actions"><button type="submit">Save</button><button type="button" data-delete-tag>Delete</button></div></form>
+<form class="admin-card tag-editor" data-tag-id="{{ tag.id }}"><label>Name<input name="name" required maxlength="80" value="{{ tag.name }}"></label><label>Description<textarea name="description" maxlength="500" rows="2">{{ tag.description }}</textarea></label><label>Color<input name="color" type="color" value="{{ tag.color }}"></label><div class="tag-actions"><button type="submit" class="ui-primary">Save</button><button type="button" data-delete-tag class="ui-danger">Delete</button></div></form>
 {% endfor %}</div>
 <p id="tags-empty" {% if tags %}hidden{% endif %}>No tags yet. Create a tag above to get started.</p>
 </section>

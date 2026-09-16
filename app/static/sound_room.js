@@ -6,9 +6,21 @@
   const initial=new URLSearchParams(location.search);active=initial.get('song');
   const el=(tag,text,cls)=>{const node=document.createElement(tag);if(text!==undefined)node.textContent=text;if(cls)node.className=cls;return node;};
   const button=(text,fn,cls)=>{const node=el('button',text,cls);node.type='button';node.addEventListener('click',fn);return node;};
-  function fitDestinations(){const sidebar=root.querySelector('.room-destinations');sidebar.style.maxHeight=innerWidth>600?Math.max(200,innerHeight-sidebar.getBoundingClientRect().top-110)+'px':'';}
-  scope.listen(window,'resize',fitDestinations);scope.listen(window,'scroll',fitDestinations,{passive:true});scope.frame(fitDestinations);
-  const message=(text,error=false)=>{const node=root.querySelector('.room-message');node.hidden=false;node.classList.toggle('error',error);$('room-message-text').textContent=text;fitDestinations();};
+  function fitWorkspace(){
+    const dock=$('music-player'), bottom=dock&&!dock.hidden?dock.getBoundingClientRect().top:innerHeight;
+    const sidebar=root.querySelector('.room-destinations'), songs=$('room-songs');
+    sidebar.style.maxHeight=innerWidth>600?Math.max(200,bottom-sidebar.getBoundingClientRect().top-20)+'px':'';
+    // Keep the scrolling song list above the private preview dock, including
+    // when filters wrap or classification chips make a row taller.
+    songs.style.minHeight='180px';
+    const available=bottom-Math.max(0,songs.getBoundingClientRect().top)-24;
+    songs.style.maxHeight=Math.max(180,Math.min(innerHeight*(innerWidth<=850?.55:.62),available))+'px';
+  }
+  scope.listen(window,'resize',fitWorkspace);scope.listen(window,'scroll',fitWorkspace,{passive:true});scope.frame(fitWorkspace);
+  const layoutObserver=new ResizeObserver(fitWorkspace);
+  [document.querySelector('.admin-topbar'),root.querySelector('.room-search'),root.querySelector('.room-library > header'),$('music-player')].filter(Boolean).forEach(node=>layoutObserver.observe(node));
+  scope.cleanup(()=>layoutObserver.disconnect());
+  const message=(text,error=false)=>{const node=root.querySelector('.room-message');node.hidden=false;node.classList.toggle('error',error);$('room-message-text').textContent=text;fitWorkspace();};
   async function post(action,payload){
     if(busy){message('Finishing the previous change…');return null;}
     busy=true;root.setAttribute('aria-busy','true');
@@ -148,7 +160,7 @@
     if(FreoMusicToggles.pending)return;
     const attempt=++version;const params=new URLSearchParams({...filter,page});
     const form=$('room-search');for(const key of ['q','analysis','enabled'])if(form.elements[key].value)params.set(key,form.elements[key].value);
-    try{const response=await scope.fetch(root.dataset.catalog+'?'+params,{cache:'no-store'});if(!response.ok||!response.headers.get('content-type')?.includes('application/json'))throw Error();const next=await response.json();if(attempt!==version||FreoMusicToggles.pending||drag)return;data=next;destinations();rows();fitDestinations();if(editingCategory&&!notesDirty){const category=data.categories.find(x=>x.id===editingCategory);if(category)categoryInspector(category);}else if(active&&!notesDirty)await inspect(active);}
+    try{const response=await scope.fetch(root.dataset.catalog+'?'+params,{cache:'no-store'});if(!response.ok||!response.headers.get('content-type')?.includes('application/json'))throw Error();const next=await response.json();if(attempt!==version||FreoMusicToggles.pending||drag)return;data=next;destinations();rows();fitWorkspace();if(editingCategory&&!notesDirty){const category=data.categories.find(x=>x.id===editingCategory);if(category)categoryInspector(category);}else if(active&&!notesDirty)await inspect(active);}
     catch(_){message('Music could not load. Check your connection or refresh to sign in again.',true);}
   }
   async function process(ids){if(!ids.length)return;const result=await post('process',{songs:ids});if(result)load();}

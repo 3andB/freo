@@ -1,5 +1,5 @@
 <dialog id="song-flag-dialog" class="song-flag-dialog" data-url="{{ url_for('song_flags.flag',slug=selected.slug,identifier='IDENTIFIER') }}" data-csrf="{{ csrf_token() }}" aria-labelledby="song-flag-title">
 <form method="dialog"><button aria-label="Close song flag">×</button></form>
 <h2 id="song-flag-title">Flag song</h2><p id="song-flag-song"></p><p id="song-flag-state"></p>
-<form id="song-flag-form"><label>Review note (optional)<textarea id="song-flag-note" maxlength="2000" rows="5"></textarea></label><p id="song-flag-error" class="song-flag-error" role="alert"></p><div class="song-flag-actions"><button type="submit" id="song-flag-save">Save flag</button><button type="button" id="song-flag-resolve" hidden>Resolve flag</button><button type="button" id="song-flag-reopen" hidden>Reopen flag</button></div></form>
+<form id="song-flag-form"><label>Review note (optional)<textarea id="song-flag-note" maxlength="2000" rows="5"></textarea></label><p id="song-flag-error" class="song-flag-error" role="alert"></p><div class="song-flag-actions"><button type="submit" id="song-flag-save" class="ui-primary">Save flag</button><button type="button" id="song-flag-resolve" hidden>Resolve flag</button><button type="button" id="song-flag-reopen" hidden>Reopen flag</button></div></form>
 </dialog>

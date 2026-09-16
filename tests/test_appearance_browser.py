@@ -1,12 +1,12 @@
 """Appearance persists independently of navigation, edits and audio playback."""
 from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import Select, WebDriverWait
+from selenium.webdriver.support.ui import WebDriverWait
 from tests.test_live_browser import booth
 from tests.test_web import app as app_fixture
 
 
 def choose(driver, theme):
-    Select(driver.find_element(By.CSS_SELECTOR, '[data-appearance]')).select_by_value(theme)
+    driver.find_element(By.CSS_SELECTOR, f'[data-appearance="{theme}"]').click()
     assert driver.execute_script('return document.documentElement.dataset.theme') == theme
 
 
@@ -20,7 +20,7 @@ def test_appearance_persistence_navigation_and_audio(booth):
     assert driver.execute_script('return originalMonitor === FreoMonitor.audio && !FreoMonitor.audio.paused')
     driver.find_element(By.CSS_SELECTOR, '.admin-nav a[href$="/categories"]').click()
     WebDriverWait(driver, 10).until(lambda d: '/categories' in d.current_url and d.find_elements(By.CSS_SELECTOR, '.list-card'))
-    assert Select(driver.find_element(By.CSS_SELECTOR, '[data-appearance]')).first_selected_option.get_attribute('value') == 'night'
+    assert driver.find_element(By.CSS_SELECTOR, '[data-appearance=night]').get_attribute('aria-pressed') == 'true'
     assert driver.execute_script('return originalMonitor === FreoMonitor.audio && !FreoMonitor.audio.paused')
     driver.refresh()
     assert driver.execute_script('return document.documentElement.dataset.theme') == 'night'
@@ -37,13 +37,13 @@ def test_appearance_persistence_navigation_and_audio(booth):
         driver.set_window_size(1600, 1200)
 
 
-def test_system_preference_storage_and_unsaved_input(booth):
+def test_legacy_preference_storage_and_unsaved_input(booth):
     app, driver, base, tmp_path = booth
+    driver.execute_script("localStorage.setItem('freo.appearance','system')")
     driver.execute_cdp_cmd('Emulation.setEmulatedMedia', {'features': [{'name': 'prefers-color-scheme', 'value': 'dark'}]})
-    Select(driver.find_element(By.CSS_SELECTOR, '[data-appearance]')).select_by_value('system')
-    WebDriverWait(driver, 10).until(lambda d: d.execute_script('return document.documentElement.dataset.theme') == 'night')
-    driver.execute_cdp_cmd('Emulation.setEmulatedMedia', {'features': [{'name': 'prefers-color-scheme', 'value': 'light'}]})
-    WebDriverWait(driver, 5).until(lambda d: d.execute_script('return document.documentElement.dataset.theme') == 'day')
+    driver.refresh()
+    assert driver.execute_script('return document.documentElement.dataset.theme') == 'day'
+    assert not driver.find_elements(By.CSS_SELECTOR, '[data-appearance=system]')
     choose(driver, 'night')
     driver.execute_cdp_cmd('Emulation.setEmulatedMedia', {'features': [{'name': 'prefers-color-scheme', 'value': 'light'}]})
     assert driver.execute_script('return document.documentElement.dataset.theme') == 'night'
@@ -54,7 +54,7 @@ def test_system_preference_storage_and_unsaved_input(booth):
     assert driver.execute_script('return document.documentElement.dataset.theme') == 'night'
     driver.execute_script("localStorage.setItem('freo.appearance','invalid')")
     driver.refresh()
-    assert Select(driver.find_element(By.CSS_SELECTOR, '[data-appearance]')).first_selected_option.get_attribute('value') == 'system'
+    assert driver.find_element(By.CSS_SELECTOR, '[data-appearance=day]').get_attribute('aria-pressed') == 'true'
 
 
 def test_unavailable_storage_and_dynamic_dialog(booth):

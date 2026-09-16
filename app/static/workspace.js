@@ -129,6 +129,14 @@
     }
   };
   const mount = () => {
+    const header = document.querySelector('.admin-topbar');
+    if (header) {
+      const sizeHeader = () => document.documentElement.style.setProperty('--header-height', `${header.getBoundingClientRect().height}px`);
+      const observer = new ResizeObserver(sizeHeader);
+      observer.observe(header); sizeHeader();
+      window.FreoPage.cleanup(() => observer.disconnect());
+    }
+
     const placeholder = document.querySelector('[data-master-monitor]');
     if (!placeholder) {stop(); host?.remove(); clearTimeout(nowTimer); nowVersion++; nowRequest?.abort(); return;}
     const availableStations = placeholder.dataset.availableStations ? JSON.parse(placeholder.dataset.availableStations) : null;
@@ -137,7 +145,7 @@
     stationName = preserve ? stationName : placeholder.dataset.stationName || '';
     if (!host) {
       host = document.createElement('div'); host.className = 'master-monitor';
-      host.innerHTML = '<button type="button" aria-pressed="false"><span class="monitor-dot" aria-hidden="true"></span> MASTER MONITOR</button><small class="monitor-state" role="status"></small><label class="monitor-volume">Volume<input type="range" min="0" max="100" value="80" aria-label="Master monitor listening volume"></label>';
+      host.innerHTML = '<button type="button" aria-pressed="false"><span class="monitor-dot" aria-hidden="true"></span> Monitor</button><small class="monitor-state" role="status"></small><label class="monitor-volume">Volume<input type="range" min="0" max="100" value="80" aria-label="Master monitor listening volume"></label>';
       audio.volume = .8;
       host.querySelector('button').addEventListener('click', () => wanted ? stop() : play());
       host.querySelector('input').addEventListener('input', event => audio.volume = Number(event.target.value) / 100);

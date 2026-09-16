@@ -51,10 +51,6 @@
   --theme-coral: #68444b;
   --theme-seafoam: #21464b;
 }
-/* Shared navigation control stays available on every public and admin page. */
-.appearance-control {display:inline-flex;align-items:center;gap:8px;flex-shrink:0;font-size:12px;color:var(--theme-muted);white-space:nowrap}
-.appearance-control select {font:inherit;font-weight:600;color:var(--theme-text);background:var(--theme-surface);border:1px solid var(--theme-border);border-radius:999px;padding:8px 28px 8px 12px;min-height:38px;cursor:pointer;min-width:145px;max-width:160px}
-.appearance-control select:focus-visible {outline:3px solid var(--theme-focus);outline-offset:3px}
 html {background:var(--theme-canvas)}
 body {accent-color:var(--theme-accent)}
 ::selection {background:var(--theme-accent);color:var(--theme-on-accent)}
@@ -72,18 +68,8 @@ body {accent-color:var(--theme-accent)}
 .radio-experience {--radio-accent:var(--theme-accent);--radio-second:var(--theme-lavender);--radio-third:var(--theme-danger)}
 .radio-experience.palette-sunset {--radio-accent:var(--theme-warning);--radio-second:var(--theme-danger);--radio-third:var(--theme-lavender)}
 .radio-experience.palette-ocean {--radio-accent:var(--theme-accent);--radio-second:var(--theme-lavender);--radio-third:var(--theme-success)}
-.radio-site-header {flex-wrap:wrap;gap:16px}
-.admin-topbar {gap:16px}
-.admin-topbar-end {flex-wrap:wrap}
 .button:not(.secondary),.admin-primary {background:var(--theme-accent);border-color:var(--theme-accent);color:var(--theme-on-accent)}
 input::placeholder,textarea::placeholder {color:var(--theme-muted);opacity:1}
-@media(max-width:850px) {
-  .appearance-control {gap:6px;font-size:11px}
-  .appearance-control select {min-height:40px}
-  .admin-topbar {flex-wrap:wrap;height:auto;min-height:68px;padding-block:12px}
-  .admin-topbar-end {margin-left:auto}
-}
-
 /* Fallback station covers echo the skin; uploaded covers retain a dark scrim. */
 .radio-cover:not(:has(>img)) {background:radial-gradient(ellipse at 85% 10%,var(--theme-coral),transparent 60%),linear-gradient(120deg,var(--theme-seafoam),var(--theme-lavender-soft));color:var(--theme-text)}
 .radio-cover:not(:has(>img)) .cover-shade {background:linear-gradient(0deg,var(--theme-surface),transparent)}

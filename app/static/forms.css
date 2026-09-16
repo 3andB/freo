@@ -1,0 +1,170 @@
+/* Shared controls sit above the legacy page layout layer. */
+:root {--control-edge:#718b8c;--control-radius:12px;--control-height:46px}
+:root[data-theme=night] {--control-edge:#69888e}
+:where(input,select,textarea) {font:inherit;box-sizing:border-box}
+:where(input:not([type=hidden],[type=checkbox],[type=radio],[type=range],[type=color]),select,textarea) {
+  display:block;width:100%;min-width:0;max-width:100%;min-height:var(--control-height);
+  padding:11px 14px;border:1px solid var(--control-edge);border-radius:var(--control-radius);
+  background:var(--theme-surface);color:var(--theme-text);font-size:15px;font-weight:400;line-height:1.45;
+  box-shadow:0 2px 4px var(--theme-shadow-color);transition:border-color .15s,box-shadow .15s;
+}
+:where(textarea) {min-height:110px;resize:vertical}
+:where(select) {padding-right:32px;cursor:pointer}
+:where(select[multiple]) {min-height:140px;padding:10px}
+:where(input[type=file]) {padding:12px;border-style:dashed;background:var(--theme-raised);font-size:13px}
+::file-selector-button {font:600 13px system-ui;background:var(--theme-surface);color:var(--theme-text);border:1px solid var(--control-edge);border-radius:8px;padding:9px 12px;margin-right:12px;cursor:pointer}
+:where(input[type=checkbox],input[type=radio]) {width:19px;height:19px;flex:0 0 19px;margin:2px 0;accent-color:var(--theme-accent);cursor:pointer}
+:where(input[type=color]) {width:54px;height:46px;padding:5px;border:1px solid var(--control-edge);border-radius:10px;background:var(--theme-surface)}
+:where(input,select,textarea):focus-visible {outline:3px solid var(--theme-focus);outline-offset:3px;border-color:var(--theme-focus)}
+:where(input,textarea)[readonly] {background:var(--theme-raised);box-shadow:none}
+:where(input,select,textarea):disabled {opacity:.6;cursor:not-allowed;background:var(--theme-raised)}
+:where(input,select,textarea)[aria-invalid=true],:where(input,select,textarea):user-invalid {border-color:var(--theme-danger)}
+:where(label):has(> :is(input:not([type=hidden],[type=range]),select,textarea)) {display:flex;flex-direction:column;align-items:stretch;gap:8px;min-width:0;font-size:14px;font-weight:600;line-height:1.5;color:var(--theme-text)}
+:where(label):has(> :is(input[type=checkbox],input[type=radio])) {flex-direction:row;align-items:flex-start;gap:10px;font-weight:400;cursor:pointer}
+:where(label) :where(small),.field-help {font-size:12px;font-weight:400;color:var(--theme-muted);line-height:1.6}
+:where(form)>:where(label,fieldset,details) {margin-block:0 20px}
+:where(form)>:where(input,select,textarea):not([type=hidden]) {margin-block:0 16px}
+:where(form)>:where(button):not(:where(.dj-booth button)) {margin-block:4px 0}
+:where(fieldset) {min-width:0;border:1px solid var(--theme-border);border-radius:16px;padding:22px;margin:24px 0}
+:where(legend) {font-weight:650;font-size:16px;padding-inline:8px;color:var(--theme-text)}
+:where(fieldset)>:where(label) {margin-block:12px}
+:where(.settings-columns,.event-form-grid,.form-grid) {gap:20px;align-items:start}
+:where(.settings-columns)>label {margin-block:0 20px}
+:where(.admin-card,.studio-dialog,.freo-dialog) {min-width:0}
+:where(.admin-card)>form+form {margin-top:20px}
+/* Forms and utility actions share a button family. Audio decks and calendar
+   blocks retain their purpose-built interaction shapes and dimensions. */
+:where(form,dialog,.settings-actions,.inline-actions,.tag-actions,.playlist-toolbar,.media-actions) :where(button):not(:where(.dj-booth button,.music-player button,.preview-button,.music-toggle,.song-chip,.dialog-close,.feedback-close)),
+:where(.admin-action,.studio-link,.ui-button) {
+  display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:44px;
+  padding:10px 18px;border:1px solid var(--control-edge);border-radius:11px;
+  background:var(--theme-surface);color:var(--theme-text);font-size:14px;font-weight:650;
+  line-height:1.4;letter-spacing:normal;text-decoration:none;text-transform:none;
+  white-space:normal;cursor:pointer;box-shadow:0 2px 4px var(--theme-shadow-color);
+}
+:where(form,dialog) button:where([type=submit],.admin-primary):not(:where(.danger,[formaction],.dj-booth button,.decommission button)),
+:where(.admin-primary,.ui-primary) {background:var(--theme-accent);color:var(--theme-on-accent);border-color:var(--theme-accent)}
+:where(form,dialog,.settings-actions,.inline-actions,.tag-actions) button:enabled:hover:not(:where(.dj-booth button,.music-toggle,.preview-button)) {filter:brightness(.96)}
+:where(button,.ui-button,.admin-action):focus-visible {outline:3px solid var(--theme-focus);outline-offset:3px}
+:where(button):disabled:not(:where(.dj-booth button)) {cursor:not-allowed;opacity:.48;box-shadow:none}
+:where(button)[aria-busy=true] {cursor:progress}
+:where(button.danger,.decommission button,[data-delete-tag],#playlist-delete,.ui-danger) {color:var(--theme-danger);background:var(--theme-danger-soft);border-color:var(--theme-danger)}
+:where(.inline-actions,.settings-actions,.dialog-actions,.tag-actions,.form-actions) {display:flex;align-items:center;flex-wrap:wrap;gap:12px}
+.form-actions {margin-top:8px;padding-top:20px;border-top:1px solid var(--theme-border)}
+:where(.admin-notice,.error[role=alert]) {border-radius:12px;line-height:1.6}
+/* A calm station creation form and clear station actions. */
+.station-create {padding:28px;margin-bottom:28px}
+.station-create-heading {display:flex;align-items:start;justify-content:space-between;gap:20px;margin-bottom:24px}
+.station-create-heading h2 {margin:0 0 6px;font-size:24px;letter-spacing:-.03em}
+.station-create-heading p {margin:0;color:var(--theme-muted);font-size:14px}
+.station-capacity {padding:7px 12px;border:1px solid var(--theme-border);border-radius:999px;white-space:nowrap;font-size:12px;color:var(--theme-muted)}
+.station-create-grid {display:grid;grid-template-columns:1fr 1fr;gap:22px}
+.station-create-grid .field-wide {grid-column:1/-1}
+.station-create-grid textarea {min-height:110px}
+.station-create .form-actions {margin-top:24px}
+.station-tile .station-settings-link {display:inline-flex;align-items:center;min-height:44px;color:var(--theme-accent);font-weight:650;text-decoration:none}
+.station-tile>details {margin-top:24px;padding:18px;border:1px solid var(--theme-border);border-radius:12px;background:var(--theme-canvas)}
+.station-tile>details>summary {color:var(--theme-danger);font-size:13px;font-weight:650;cursor:pointer}
+.station-tile>details p {font-size:13px;line-height:1.65}
+.station-tile>details form {margin-top:20px}
+/* Predictable header groups; metadata yields space before controls do. */
+.admin-topbar {display:grid;grid-template-columns:auto minmax(140px,1fr) auto auto;align-items:center;gap:24px;padding:16px 24px;min-height:88px;height:auto}
+.admin-topbar .wordmark {font-size:22px}
+.admin-topbar .topbar-now-playing {min-width:0;gap:4px;order:initial}
+.admin-topbar .topbar-now-playing strong {font-size:14px;line-height:1.35}
+.admin-topbar .topbar-now-playing :is(small,span) {font-size:12px}
+.admin-topbar-end {display:flex;align-items:center;gap:18px;flex-wrap:nowrap;margin:0;width:auto}
+.admin-topbar-end :is(a,button) {white-space:nowrap;line-height:1.4}
+.admin-topbar-end form {margin:0}
+.admin-topbar-end form button {min-height:40px;margin:0;padding:8px 0;border:0;border-radius:0;box-shadow:none;background:transparent;color:var(--theme-muted);font-size:13px}
+.master-monitor {margin:0;grid-template-columns:auto 76px;gap:5px 14px}
+.master-monitor button {min-height:40px;padding:9px 14px;font-size:12px;letter-spacing:0;text-transform:none;white-space:nowrap;border-radius:11px}
+.master-monitor .monitor-state {font-size:11px;max-width:190px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.appearance-control {display:inline-flex;align-items:center;gap:3px;padding:4px;border:1px solid var(--theme-border);border-radius:999px;background:var(--theme-raised);flex-shrink:0}
+.appearance-control button {display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:34px;padding:7px 11px;border:0;border-radius:999px;background:transparent;color:var(--theme-muted);font:600 12px/1.4 system-ui;cursor:pointer;box-shadow:none;white-space:nowrap}
+.appearance-control button[aria-pressed=true] {background:var(--theme-surface);color:var(--theme-text);box-shadow:0 2px 6px var(--theme-shadow-color)}
+.appearance-control button:focus-visible {outline:2px solid var(--theme-focus);outline-offset:2px}
+.radio-site-header {display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:20px;padding-block:18px}
+.nav-row {gap:20px;padding-block:14px}
+.nav-row nav {column-gap:20px;row-gap:12px;align-items:center}
+.nav-row form button {padding:8px 0;min-height:40px;background:transparent;box-shadow:none;border:0;color:var(--theme-muted)}
+@media(max-width:1200px) {
+  .admin-topbar {grid-template-columns:auto minmax(120px,1fr) auto;gap:16px 24px}
+  .admin-topbar-end {grid-column:1/-1;justify-content:flex-end;border-top:1px solid var(--theme-border);padding-top:12px}
+}
+@media(max-width:650px) {
+  :root {--control-height:48px}
+  :where(input:not([type=hidden],[type=checkbox],[type=radio],[type=range],[type=color]),select,textarea) {font-size:16px}
+  .admin-topbar {position:relative;grid-template-columns:minmax(0,1fr) auto;padding:16px;gap:16px}
+  .admin-topbar .topbar-now-playing {grid-column:1/-1;grid-row:2}
+  .admin-topbar-end {grid-row:3;justify-content:space-between;gap:12px}
+  .admin-topbar .master-monitor {grid-column:2;grid-row:1;grid-template-columns:auto}
+  .master-monitor .monitor-volume {display:none}
+  .master-monitor .monitor-state {max-width:160px}
+  .station-create {padding:20px}
+  .station-create-heading {flex-direction:column;gap:12px}
+  .station-create-grid {grid-template-columns:1fr;gap:20px}
+  .station-create-grid .field-wide {grid-column:auto}
+  .settings-columns,.event-form-grid {grid-template-columns:1fr}
+  .station-create .form-actions button {width:100%}
+}
+@media(prefers-reduced-motion:reduce) {input,select,textarea {transition:none}}
+
+@media(min-width:851px) {
+  .admin-sidebar {top:var(--header-height,96px);height:calc(100dvh - var(--header-height,96px))}
+}
+@media(min-width:651px) {
+  .admin-toolbar {top:var(--header-height,96px)}
+}
+/* Toolbar/search fields share the visual treatment without growing into
+   full-width editor rows. */
+:where(.station-picker,.media-filters,.room-search,.booth-search,.inline-actions) :where(input,select) {width:auto;flex:1;min-width:0}
+:where(.station-picker,.media-filters,.room-search,.booth-search) :where(label) {margin:0}
+:where(.station-picker,.media-filters,.room-search,.booth-search)>:where(input,select,button) {margin:0}
+/* Author-level display rules must not reveal conditional fields or panels. */
+[hidden]:not([hidden=until-found]) {display:none!important}
+/* Utility buttons outside forms use the same finish, while playback controls,
+   classification chips and timetable controls preserve their own shapes. */
+button:not(:where(.dj-booth button,.master-monitor button,.music-player button,.radio-transport button,.appearance-control button,.preview-button,.music-toggle,.song-chip,.calendar-day button,.dialog-close,.feedback-close)) {border-radius:11px;font-family:inherit}
+.ui-primary {background:var(--theme-accent);border-color:var(--theme-accent);color:var(--theme-on-accent)}
+.ui-danger {background:var(--theme-danger-soft);border-color:var(--theme-danger);color:var(--theme-danger)}
+.room-search input {flex:1 1 100%;width:100%}
+.drop-zone {position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;padding:28px;cursor:pointer}
+.drop-zone input[type=file] {position:absolute;inset:0 auto auto 0;width:1px;height:1px;min-height:0;padding:0;border:0;overflow:hidden;opacity:0}
+.drop-zone:focus-within {outline:3px solid var(--theme-focus);outline-offset:3px}
+.upload-choices {flex-wrap:wrap}
+@media(max-width:650px) {
+  .room-search select {flex:1 1 100%;width:100%}
+  .room-search button {width:100%}
+}
+@media(max-width:360px) {
+  .admin-topbar-end {gap:8px}
+  .admin-topbar-end :is(a,form button) {font-size:12px}
+  .appearance-control button {padding-inline:8px}
+}
+.room-search {align-items:center}
+.room-search button {min-height:46px;align-self:flex-start}
+.room-destinations header {flex-wrap:wrap;gap:8px}
+.room-destinations header h2 {flex:1}
+.room-destinations header a {font-size:12px;line-height:1.5}
+.room-destinations header button {min-width:32px;flex-shrink:0}
+
+.editor-broadcast {margin-top:24px;padding-top:20px;border-top:1px solid var(--theme-border)}
+.editor-broadcast h3 {font-size:16px;margin:0 0 12px}
+.editor-broadcast .media-actions {display:flex;flex-wrap:wrap;gap:10px}
+/* Grid forms already provide spacing; don't add a second label margin. */
+:where(.login-card,#playlist-form,#playlist-source-form,.category-editor)>label {margin:0}
+textarea[rows="2"] {min-height:76px}
+/* Playlist details and tracks share the first screen on wide workspaces. */
+.playlist-tracks {min-width:0}
+@media(min-width:1400px) {
+  .playlist-editor {display:grid;grid-template-columns:minmax(230px,.8fr) minmax(0,1.8fr);gap:28px;align-items:start}
+  .playlist-editor .playlist-fields {display:grid;grid-template-columns:1fr;gap:18px}
+  .playlist-editor .playlist-fields label {min-width:0}
+  .playlist-tracks>.playlist-toolbar:first-child {margin-top:0}
+  .playlist-tracks .playlist-song {flex-wrap:wrap;gap:9px}
+  .playlist-tracks .playlist-song-copy {min-width:150px}
+}
+@media(min-width:851px) {
+  .room-destinations,.song-inspector {top:calc(var(--header-height,96px) + 104px)}
+}

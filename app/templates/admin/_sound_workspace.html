@@ -6,7 +6,7 @@
     <header><h2>Categories</h2><button type="button" data-create="category" aria-label="Create category">＋</button></header><div id="room-categories"></div>
     <header><h2>Tags</h2><button type="button" data-create="tag" aria-label="Create tag">＋</button></header><div id="room-tags"></div>
     <p class="room-hint">Drop songs onto a playlist, category, or tag. Select songs and use Apply for the same result.</p>
-    <details class="target-setting"><summary>Station loudness</summary><form id="target-form"><label>Target LUFS<input name="target" type="number" min="-30" max="-12" step="0.5" value="{{ selected.target_lufs }}"></label><button>Save target</button></form></details>
+    <details class="target-setting"><summary>Station loudness</summary><form id="target-form"><label>Target LUFS<input name="target" type="number" min="-30" max="-12" step="0.5" value="{{ selected.target_lufs }}"></label><button class="ui-primary">Save target</button></form></details>
   </aside>
   <section class="room-library studio-panel" aria-label="Song collection">
     <header><div><span class="eyebrow">LISTEN · SELECT · ORGANIZE</span><h2 id="collection-title">All songs</h2></div><span id="room-total"></span></header>
@@ -16,5 +16,5 @@
     <footer class="room-pagination"><button type="button" id="room-prev">← Previous</button><span id="room-page"></span><button type="button" id="room-next">Next →</button></footer>
   </section>
   <aside id="song-inspector" class="song-inspector studio-panel" aria-label="Selected song"><p class="room-empty">Select a song to listen, add notes, or refine its categories and tags.</p></aside>
-  <dialog id="destination-dialog" class="studio-dialog"><form method="dialog"><button class="dialog-close" aria-label="Close">×</button></form><h2 id="destination-title">Create tag</h2><form id="destination-form"><label>Name<input name="name" required maxlength="80" placeholder="HOT"></label><label>Description<textarea name="description" maxlength="500" rows="2"></textarea></label><label id="tag-color-label">Color<input name="color" type="color" value="#b9e79b"></label><button>Save</button><p id="destination-error" role="status"></p></form></dialog>
+  <dialog id="destination-dialog" class="studio-dialog"><form method="dialog"><button class="dialog-close" aria-label="Close">×</button></form><h2 id="destination-title">Create tag</h2><form id="destination-form"><label>Name<input name="name" required maxlength="80" placeholder="HOT"></label><label>Description<textarea name="description" maxlength="500" rows="2"></textarea></label><label id="tag-color-label">Color<input name="color" type="color" value="#b9e79b"></label><button class="ui-primary">Save</button><p id="destination-error" role="status"></p></form></dialog>
 </section>

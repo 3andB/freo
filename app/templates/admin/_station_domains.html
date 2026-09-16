@@ -4,7 +4,7 @@
 <form method="post" action="{{ url_for('station_domains.mutate', slug=selected.slug, action='add') }}">
 <input type="hidden" name="csrf" value="{{ csrf_token() }}">
 <label>Hostname<input name="hostname" placeholder="rock.example.com" maxlength="260" required></label>
-<button type="submit">Add domain</button>
+<button type="submit" class="ui-primary">Add domain</button>
 </form>
 <h3>DNS instructions</h3>
 {% if config.FREO_DOMAIN_TARGET_HOST or config.FREO_DOMAIN_TARGET_IPS %}
@@ -22,7 +22,7 @@
 <input type="hidden" name="csrf" value="{{ csrf_token() }}"><input type="hidden" name="domain_id" value="{{ domain.id }}">
 <button type="submit">Verify</button>
 {% if domain.enabled and not domain.is_primary %}<button type="submit" formaction="{{ url_for('station_domains.mutate', slug=selected.slug, action='primary') }}">Set primary</button>{% endif %}
-<button type="submit" formaction="{{ url_for('station_domains.mutate', slug=selected.slug, action='remove') }}">Remove domain</button>
+<button type="submit" formaction="{{ url_for('station_domains.mutate', slug=selected.slug, action='remove') }}" class="ui-danger">Remove domain</button>
 </form>
 </article>
 {% else %}<p>No custom domains added.</p>{% endfor %}

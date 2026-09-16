@@ -7,16 +7,18 @@
   <div class="playlist-layout">
     <aside class="studio-panel playlist-sidebar"><header><h2>Your playlists</h2><button type="button" id="playlist-new">+ New</button></header><div id="playlist-list"></div><a href="{{ url_for('admin_media.library',slug=selected.slug) }}">Browse Music →</a></aside>
     <section class="studio-panel playlist-editor" id="playlist-editor" hidden>
-      <form id="playlist-form"><div class="playlist-fields"><label>Name<input name="name" required maxlength="120"></label><label>Playback<select name="mode"><option value="STRAIGHT">Straight — in order</option><option value="RANDOM">Random — shuffle songs</option></select></label></div><label>Description<textarea name="description" maxlength="500" rows="2" placeholder="What makes this playlist special?"></textarea></label><div class="inline-actions"><button type="submit">Save playlist</button><span id="playlist-save-state">Saved</span><button type="button" id="playlist-discard" hidden>Discard edits</button></div></form>
+      <form id="playlist-form"><div class="playlist-fields"><label>Name<input name="name" required maxlength="120"></label><label>Playback<select name="mode"><option value="STRAIGHT">Straight — in order</option><option value="RANDOM">Random — shuffle songs</option></select></label></div><label>Description<textarea name="description" maxlength="500" rows="2" placeholder="What makes this playlist special?"></textarea></label><div class="inline-actions"><button type="submit" class="ui-primary">Save playlist</button><span id="playlist-save-state">Saved</span><button type="button" id="playlist-discard" hidden>Discard edits</button></div></form>
+      <div class="playlist-tracks">
       <header class="playlist-toolbar"><div><h2 id="playlist-count"></h2><p id="playlist-mode-hint"></p></div><button type="button" id="playlist-add">+ Add music</button></header>
-      <div class="playlist-toolbar"><label>Find a song<input type="search" id="playlist-search" placeholder="Search this playlist"></label><button type="button" id="playlist-remove" disabled>Remove selected</button></div>
+      <div class="playlist-toolbar"><label>Find a song<input type="search" id="playlist-search" placeholder="Search this playlist"></label><button type="button" id="playlist-remove" disabled class="ui-danger">Remove selected</button></div>
       <div id="playlist-songs"></div>
-      <footer class="playlist-toolbar"><p>Drag songs to reorder, or use the ↑ ↓ buttons. Removing songs keeps them in Music.</p><button type="button" id="playlist-delete">Delete playlist</button></footer>
+      <footer class="playlist-toolbar"><p>Drag songs to reorder, or use the ↑ ↓ buttons. Removing songs keeps them in Music.</p><button type="button" id="playlist-delete" class="ui-danger">Delete playlist</button></footer>
+      </div>
     </section>
     <p id="playlist-empty" class="room-empty">Loading playlists…</p>
   </div>
   <dialog id="playlist-add-dialog" class="studio-dialog"><form method="dialog"><button class="dialog-close" aria-label="Close">×</button></form><h2>Add music</h2><p>Add current songs. Future library changes won’t add songs automatically.</p>
-    <form id="playlist-source-form"><label>Add from<select name="kind"><option value="category">Category</option><option value="artist">Artist</option><option value="album">Album</option></select></label><label>Choose a collection<select name="source"></select></label><button type="submit">Add songs from collection</button></form>
+    <form id="playlist-source-form"><label>Add from<select name="kind"><option value="category">Category</option><option value="artist">Artist</option><option value="album">Album</option></select></label><label>Choose a collection<select name="source"></select></label><button type="submit" class="ui-primary">Add songs from collection</button></form>
     <hr><form id="playlist-song-search"><label>Or find individual songs<input type="search" name="q" placeholder="Song, artist, or album"></label><button>Search</button></form><div id="playlist-results"></div><div class="playlist-toolbar"><button type="button" id="playlist-results-prev">Previous</button><span id="playlist-results-page"></span><button type="button" id="playlist-results-next">Next</button></div><p id="playlist-add-status" role="status"></p>
   </dialog>
 </section>

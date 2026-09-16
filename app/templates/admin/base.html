@@ -1,10 +1,9 @@
 {% extends 'base.html' %}
-{% block head %}{{ super() }}{% if page in ['media','sound-room','tags','playlists'] %}<link rel="stylesheet" href="{{ url_for('static',filename='music.css',v='miami-1') }}">{% endif %}{% endblock %}
+{% block head %}{{ super() }}{% if page in ['media','sound-room','tags','playlists'] %}<link rel="stylesheet" href="{{ url_for('static',filename='music.css',v='forms-20260916') }}">{% endif %}{% endblock %}
 {% block body_class %}dashboard-page admin-page{% endblock %}
 {% block header %}
 <header class="admin-topbar">
   <a class="wordmark" href="{{ url_for('web.admin_home') }}">freo<span>.world</span></a>
-  <span class="admin-topbar-label">Station operations <span class="readonly-pill">ADMIN</span></span>
   <div class="topbar-now-playing" data-now-playing role="status"><small data-now-label>Checking playback…</small><strong data-now-title>—</strong><span data-now-artist></span></div>
   <div data-master-monitor data-available-stations='{{ stations|selectattr("enabled")|map(attribute="slug")|list|tojson }}' {% if not selected %}data-preserve-station{% endif %} data-station="{{ selected.slug if selected else '' }}" data-station-name="{{ selected.name if selected else '' }}" data-stream="{{ selected.stream.public_path if selected else '' }}"></div>
   <div class="admin-topbar-end">{% include '_appearance.html' %}<a href="{{ url_for('web.homepage') }}">Public site</a>

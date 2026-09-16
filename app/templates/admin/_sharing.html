@@ -6,4 +6,4 @@
 {% if sharing_kind == 'song' and ((sharing_item.catalog_artist and sharing_item.catalog_artist.available_to_all) or (sharing_item.catalog_album and sharing_item.catalog_album.available_to_all)) %}<p>Also available to all channels through its artist or album. Turning off this song's option does not remove inherited availability.</p>{% endif %}
 {% if sharing_kind == 'album' and sharing_item.artist.available_to_all %}<p>Also shared through its artist.</p>{% endif %}
 <p>Changes affect the shared catalog across this installation. Disabled or unapproved songs remain unavailable for broadcast.</p>
-<button type="submit">Save availability</button></form></section>
+<button type="submit" class="ui-primary">Save availability</button></form></section>
