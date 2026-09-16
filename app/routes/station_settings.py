@@ -13,6 +13,7 @@ from app.services.admin_auth import admin_required, current_admin, require_csrf
 from app.services.programming import clean_text
 from app.services.stations import update_station, public_station_for
 from app.services.station_domains import preferred_url
+from app.services.visual_schedule import policy
 
 station_settings = Blueprint('station_settings', __name__)
 
@@ -88,7 +89,7 @@ def page(slug):
         except ValueError as exc:
             db.session.rollback()
             error = str(exc)
-    return render_template('admin/station_settings.html',selected=station,stations=admin_stations(),page='settings',error=error,public_url=preferred_url(station)), 400 if error else 200
+    return render_template('admin/station_settings.html',selected=station,stations=admin_stations(),page='settings',error=error,public_url=preferred_url(station),playback_policy=policy(station)), 400 if error else 200
 
 
 @station_settings.get('/station-assets/<slug>/logo.png')

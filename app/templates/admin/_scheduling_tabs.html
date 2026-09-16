@@ -1,10 +1,5 @@
-<nav class="planning-tabs" aria-label="Scheduling tools">
-{% for label, endpoint, section, pages in [('Calendar','admin_calendar.page',none,['calendar']),('Events','admin_events.list_page',none,['events']),('Templates','admin_programming.list_page','clocks',['clocks','rotations','blocks']),('Commercials','admin_traffic.page',none,['traffic']),('Defaults','admin_programming.list_page','schedule',['schedule'])] %}
-<a href="{{ url_for(endpoint,slug=selected.slug,section=section) if section else url_for(endpoint,slug=selected.slug) }}" {% if page in pages %}aria-current="page"{% endif %}>{{ label }}</a>
-{% endfor %}
+<nav class="planning-tabs" aria-label="Schedule tools">
+{% for view,label in [('calendar','Calendar'),('shows','Shows'),('blocks','Blocks'),('simple','Simple')] %}<a href="{{ url_for('schedule_studio.page',slug=selected.slug,view=view) }}">{{ label }}</a>{% endfor %}
+<a href="{{ url_for('admin_events.list_page',slug=selected.slug) }}">Events</a>
+<a href="{{ url_for('admin_blocks.list_page',slug=selected.slug) }}">Event sequences</a>
 </nav>
-{% if page in ['clocks','rotations','blocks'] %}<nav class="planning-tabs template-tabs" aria-label="Template types">
-<a href="{{ url_for('admin_programming.list_page',slug=selected.slug,section='clocks') }}" {% if page == 'clocks' %}aria-current="page"{% endif %}>Show templates</a>
-<a href="{{ url_for('admin_programming.list_page',slug=selected.slug,section='rotations') }}" {% if page == 'rotations' %}aria-current="page"{% endif %}>Music patterns</a>
-<a href="{{ url_for('admin_blocks.list_page',slug=selected.slug) }}" {% if page == 'blocks' %}aria-current="page"{% endif %}>Sequences</a>
-</nav>{% endif %}

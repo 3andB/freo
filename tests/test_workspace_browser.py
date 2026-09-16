@@ -46,16 +46,16 @@ def test_song_cart_assignment_description_and_modes_in_custom_dialog(booth):
 def test_calendar_create_edit_and_mobile_layout(booth):
     app,driver,base,tmp_path=booth
     driver.get(base+'/admin/stations/test-station/calendar?date=2026-09-14')
-    driver.find_element(By.CSS_SELECTOR,'.calendar-hero [data-new-program]').click()
-    form=driver.find_element(By.CSS_SELECTOR,'#program-dialog form[method=post]')
-    form.find_element(By.NAME,'name').send_keys('Morning discoveries')
-    form.find_element(By.CSS_SELECTOR,'button[type=submit]').click()
-    WebDriverWait(driver,5).until(lambda d:d.find_element(By.CSS_SELECTOR,'dialog.freo-dialog:not(#program-dialog) .dialog-actions .admin-primary')).click()
-    WebDriverWait(driver,10).until(lambda d:d.find_elements(By.CSS_SELECTOR,'.program-block'))
-    assert 'Morning discoveries' in driver.find_element(By.CSS_SELECTOR,'.calendar-grid').text
-    driver.find_element(By.CSS_SELECTOR,'[data-edit-program]').click()
-    assert driver.find_element(By.CSS_SELECTOR,'#program-dialog [name="name"]').get_attribute('value')=='Morning discoveries'
-    driver.find_element(By.CSS_SELECTOR,'#program-dialog .dialog-close').click()
+    driver.find_element(By.XPATH,"//nav[@id='source-tabs']/button[text()='Songs']").click()
+    wait_text(driver,'#source-results','Verified Test Track')
+    driver.find_element(By.CSS_SELECTOR,'.source-actions button').click()
+    driver.find_element(By.CSS_SELECTOR,'#section-form button[type=submit]').click()
+    driver.find_element(By.ID,'save-schedule').click()
+    wait_text(driver,'#save-state','Saved')
+    wait_text(driver,'#timeline','Verified Test Track')
+    driver.find_element(By.CSS_SELECTOR,'.timeline-section[aria-label^="Verified Test Track"]').click()
+    assert 'Verified Test Track' in driver.find_element(By.ID,'section-source').get_attribute('value')
+    driver.find_element(By.CSS_SELECTOR,'#section-inspector .dialog-close').click()
     for width in (430,820,1440):
         driver.set_window_size(width,1000)
         assert driver.execute_script('return document.documentElement.scrollWidth<=innerWidth')
@@ -109,14 +109,15 @@ def test_programming_event_series_and_content_picker(booth):
     driver.execute_script("arguments[0].value='10:15:00'",form.find_element(By.NAME,'local_time'))
     with app.app_context():
         identifier=Track.query.first().uuid
-    Select(form.find_element(By.NAME,'content_identifier')).select_by_value(identifier)
+    wait_text(driver,'#event-audio-results','Verified Test Track')
+    driver.find_element(By.CSS_SELECTOR,'#event-audio-results button').click()
+    assert form.find_element(By.NAME,'content_identifier').get_attribute('value')==identifier
     assert form.find_element(By.NAME,'late_tolerance_seconds').get_attribute('value')=='300'
     form.find_element(By.CSS_SELECTOR,'button[type=submit]').click()
     WebDriverWait(driver,10).until(lambda d:'/events/create' not in d.current_url)
     assert 'Weekday announcement' in driver.find_element(By.TAG_NAME,'h1').text
     driver.get(base+'/admin/stations/test-station/calendar?date=2027-01-04')
-    assert len(driver.find_elements(By.CSS_SELECTOR,'.calendar-event'))==3
-    assert 'Weekly baseline' in driver.find_element(By.CSS_SELECTOR,'.calendar-grid').text
+    WebDriverWait(driver,10).until(lambda d:len(d.find_elements(By.CSS_SELECTOR,'.timeline-event'))==3)
     for width in (430,820,1440):
         driver.set_window_size(width,1000)
         assert driver.execute_script('return document.documentElement.scrollWidth<=innerWidth')

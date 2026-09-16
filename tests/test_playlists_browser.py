@@ -3,7 +3,7 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait, Select
 from selenium.common.exceptions import StaleElementReferenceException
 from app.extensions import db
-from app.models import Station, Playlist, ScheduleProgram
+from app.models import Station, Playlist, ChannelSchedule
 from app.services.playlists import seed_playlists
 from tests.test_live_browser import booth, wait_text
 from tests.test_web import app as app_fixture
@@ -43,15 +43,15 @@ def test_playlist_music_bubbles_editor_undo_and_schedule(booth):
     driver.set_window_size(1600,1200)
     driver.save_screenshot('/tmp/freo-playlists.png')
     driver.get(base+'/admin/stations/test-station/calendar')
-    driver.find_element(By.CSS_SELECTOR,'[data-new-program]').click()
-    Select(driver.find_element(By.CSS_SELECTOR,'#program-dialog [name=kind]')).select_by_value('playlist')
-    driver.find_element(By.CSS_SELECTOR,'#program-dialog [name=name]').send_keys('Friday show')
-    driver.find_element(By.CSS_SELECTOR,'#program-dialog button.admin-primary').click()
-    driver.find_element(By.CSS_SELECTOR,'body > dialog.freo-dialog[open] button.admin-primary').click()
-    wait_text(driver,'.admin-content','Published 1 calendar program')
+    driver.find_element(By.XPATH,"//nav[@id='source-tabs']/button[text()='Playlists']").click()
+    wait_text(driver,'#source-results','Friday Drive')
+    driver.find_element(By.CSS_SELECTOR,'button[aria-label="Add Friday Drive"]').click()
+    driver.find_element(By.CSS_SELECTOR,'#section-form button[type=submit]').click()
+    driver.find_element(By.ID,'save-schedule').click()
+    wait_text(driver,'#save-state','Saved')
     with app.app_context():
         row=Playlist.query.filter_by(name='Friday Drive').one();assert row.mode=='RANDOM' and len(row.items)==1
-        assert ScheduleProgram.query.one().clock.slots[0].playlist_id==row.id
+        assert any(item['source']['kind']=='playlist' and item['source']['id']==row.id for item in ChannelSchedule.query.one().calendar)
 
 
 def test_playlist_reorder_and_music_drag(booth):

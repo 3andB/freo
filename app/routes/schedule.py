@@ -46,6 +46,13 @@ def schedule(slug):
     station = station_or_none(slug)
     if station is None:
         return jsonify(status='not_found'), 404
+    from app.services.visual_schedule import policy
+    configured = policy(station)
+    if configured and configured.activated:
+        return jsonify(timezone=station.timezone, mode=configured.mode,
+                       calendar=configured.calendar if configured.mode == 'CALENDAR' else [],
+                       blocks=configured.assignments if configured.mode == 'BLOCKS' else [],
+                       simple=configured.live_simple if configured.mode == 'SIMPLE' else None)
     rows = ScheduleAssignment.query.filter_by(station_id=station.id).order_by(ScheduleAssignment.weekday, ScheduleAssignment.start_time).all()
     return jsonify(timezone=station.timezone,
                    assignments=[{'weekday': row.weekday, 'time': row.start_time.strftime('%H:%M'),

@@ -28,7 +28,9 @@ def test_calendar_forecast_is_read_only_and_shows_distant_multi_day_series(app):
     response = client.get('/admin/stations/test-station/calendar?date=2027-01-04')
     assert response.status_code == 200
     body = response.get_data(as_text=True)
-    assert 'Weekday station ID' in body and 'Weekly baseline' in body
+    assert 'schedule-studio' in body
+    forecast = client.get('/admin/stations/test-station/schedule-studio/api/events?date=2027-01-04&days=7').json
+    assert len(forecast['items']) == 3 and forecast['items'][0]['name'] == 'Weekday station ID'
     with app.app_context():
         assert TimedEventOccurrence.query.count() == before
     assert client.get('/admin/stations/test-station/calendar?view=day&date=2027-01-05').get_data(as_text=True).count('Edit event →') == 0
@@ -94,7 +96,7 @@ def test_event_create_multiday_form_and_navigation(app):
     base = '/admin/stations/test-station'
     page = client.get(base + '/events/create').get_data(as_text=True)
     nav = page.split('aria-label="Operations"')[1].split('</nav>')[0]
-    assert nav.index('>Music<') < nav.index('>Categories<') < nav.index('>Playlists<') < nav.index('>Scheduling<')
+    assert nav.index('>Music<') < nav.index('>Categories<') < nav.index('>Playlists<') < nav.index('>Schedule ')
     assert 'value="300"' in page
     with app.app_context():
         track_id = Track.query.first().uuid

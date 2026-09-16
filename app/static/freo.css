@@ -303,3 +303,5 @@ html{scroll-behavior:auto}.admin-primary{display:inline-flex;align-items:center;
 @media(max-width:650px){.mic-controls{grid-template-columns:1fr;gap:24px;padding:0 18px 18px}.mic-console header{align-items:flex-start}.mode-switch .mode-button{padding:10px}.mode-switch .mode-button small{font-size:9px}}
 
 }
+
+.schedule-links a{margin-left:12px}.schedule-mode-status{font-size:11px;color:var(--theme-accent);text-decoration:none}.event-audio-browser{grid-column:1/-1}#event-audio-results{display:flex;flex-direction:column;max-height:300px;overflow:auto;gap:5px}

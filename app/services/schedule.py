@@ -41,6 +41,7 @@ class Resolution:
     occurrence_key: str | None
     next_transition: datetime | None
     program: object | None = None
+    visual: dict | None = None
 
 
 def _assignments(station):
@@ -78,6 +79,13 @@ def resolve(station, at=None):
     now = utc_instant(at)
     zone = ZoneInfo(validate_timezone(station.timezone))
     local = now.astimezone(zone)
+    from app.services.visual_schedule import resolve_visual
+    visual = resolve_visual(station, now)
+    if visual is not None:
+        from app.models import Clock
+        ref = visual['source']
+        clock = Clock.query.filter_by(id=ref['id'], station_id=station.id, enabled=True).first() if ref and ref['kind'] == 'legacy' else None
+        return Resolution(local, None, clock, visual['key'][:120], visual['next_transition'], visual=visual if not clock else None)
     rows = _assignments(station)
     past, upcoming = [], []
     for row in rows:

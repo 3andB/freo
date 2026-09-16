@@ -4,14 +4,14 @@
 {% block header %}
 <header class="admin-topbar">
   <a class="wordmark" href="{{ url_for('web.admin_home') }}">freo<span>.world</span></a>
-  <div class="topbar-now-playing" data-now-playing role="status"><small data-now-label>Checking playback…</small><strong data-now-title>—</strong><span data-now-artist></span></div>
+  <div class="topbar-now-playing" data-now-playing role="status"><small data-now-label>Checking playback…</small><strong data-now-title>—</strong><span data-now-artist></span>{% if selected %}<a class="schedule-mode-status" data-status-url="{{ url_for('schedule_studio.read',slug=selected.slug,action='state') }}" href="{{ url_for('schedule_studio.page',slug=selected.slug,view='active') }}">Active mode: {{ selected.scheduling.mode|title if selected.scheduling else 'Calendar' }}</a>{% endif %}</div>
   <div data-master-monitor data-available-stations='{{ stations|selectattr("enabled")|map(attribute="slug")|list|tojson }}' {% if not selected %}data-preserve-station{% endif %} data-station="{{ selected.slug if selected else '' }}" data-station-name="{{ selected.name if selected else '' }}" data-stream="{{ selected.stream.public_path if selected else '' }}"></div>
   <div class="admin-topbar-end">{% include '_appearance.html' %}<a href="{{ url_for('web.homepage') }}">Public site</a>
     <form action="{{ url_for('web.logout') }}" method="post"><input type="hidden" name="csrf" value="{{ session.get('logout_csrf', '') }}"><button type="submit">Sign out</button></form>
   </div>
 </header>
 {% endblock %}
-{% block scripts %}{% if selected and page in ['live','media','sound-room'] %}<script defer src="{{ url_for('static',filename='song_flags.js') }}"></script>{% endif %}<script defer src="{{ url_for('static', filename='admin.js') }}"></script>{% if page in ['media','sound-room','tags','playlists'] %}<script defer src="{{ url_for('static',filename='music_preview.js',v='sound-room-1') }}"></script><script defer src="{{ url_for('static',filename='music_toggles.js',v='playlists-v1') }}"></script>{% endif %}{% endblock %}
+{% block scripts %}{% if selected and page in ['live','media','sound-room'] %}<script defer src="{{ url_for('static',filename='song_flags.js') }}"></script>{% endif %}<script defer src="{{ url_for('static', filename='admin.js') }}"></script><script defer src="{{ url_for('static',filename='schedule_status.js') }}"></script>{% if page in ['media','sound-room','tags','playlists'] %}<script defer src="{{ url_for('static',filename='music_preview.js',v='sound-room-1') }}"></script><script defer src="{{ url_for('static',filename='music_toggles.js',v='playlists-v1') }}"></script>{% endif %}{% endblock %}
 {% block content %}
 <div class="admin-layout">
   <aside class="admin-sidebar" aria-label="Admin navigation">
@@ -31,14 +31,11 @@
       <a href="{{ url_for('admin_programming.tags',slug=selected.slug) }}" {% if page == 'tags' %}aria-current="page"{% endif %}>Tags</a>
       <a href="{{ url_for('playlists.page',slug=selected.slug) }}" {% if page == 'playlists' %}aria-current="page"{% endif %}>Playlists</a>
       <a href="{{ url_for('admin_imaging.library', slug=selected.slug) }}" {% if page == 'imaging' %}aria-current="page"{% endif %}>Imaging</a>
-      <details class="scheduling-nav" {% if page in ['calendar','events','blocks','traffic','clocks','rotations','schedule'] %}open{% endif %}>
-        <summary>Scheduling</summary>
-        <a href="{{ url_for('admin_calendar.page',slug=selected.slug) }}" {% if page == 'calendar' %}aria-current="page"{% endif %}>Calendar</a>
+      <a href="{{ url_for('schedule_studio.page',slug=selected.slug,view='active') }}">Schedule <small>{{ selected.scheduling.mode|title if selected.scheduling else 'Calendar' }} active</small></a>
+      <nav class="schedule-links" aria-label="Schedule workspaces">
+        {% for view,label in [('calendar','Calendar'),('shows','Shows'),('blocks','Blocks'),('simple','Simple')] %}<a href="{{ url_for('schedule_studio.page',slug=selected.slug,view=view) }}" {% if page == 'studio-'+view %}aria-current="page"{% endif %}>{{ label }}</a>{% endfor %}
         <a href="{{ url_for('admin_events.list_page',slug=selected.slug) }}" {% if page == 'events' %}aria-current="page"{% endif %}>Events</a>
-        <a href="{{ url_for('admin_programming.list_page',slug=selected.slug,section='clocks') }}" {% if page in ['clocks','rotations','blocks'] %}aria-current="page"{% endif %}>Templates</a>
-        <a href="{{ url_for('admin_traffic.page',slug=selected.slug) }}" {% if page == 'traffic' %}aria-current="page"{% endif %}>Commercials</a>
-        <a href="{{ url_for('admin_programming.list_page',slug=selected.slug,section='schedule') }}" {% if page == 'schedule' %}aria-current="page"{% endif %}>Defaults</a>
-      </details>
+      </nav>
       {% endif %}
       <a href="{{ url_for('central_api.settings') }}" {% if page == 'installation' %}aria-current="page"{% endif %}>Installation</a>
       <span class="admin-nav-label">OBSERVATION</span>

@@ -219,6 +219,13 @@ def remove_assignment(slug, assignment_id):
 def current(slug, at=None):
     station = require_station(slug)
     resolution = resolve(station, at)
+    if resolution.visual is not None:
+        visual = resolution.visual
+        return {'timezone': station.timezone, 'local_time': resolution.local_time.isoformat(),
+                'mode': visual['mode'], 'clock': None, 'source': visual['mode'].lower(),
+                'content': visual['source'], 'fallback_reason': visual['reason'],
+                'assignment_id': None, 'occurrence': resolution.occurrence_key,
+                'next_transition': resolution.next_transition.isoformat() if resolution.next_transition else None}
     default = station.automation.default_clock if station.automation else None
     clock = resolution.clock or (default if usable_clock(default, station.id) else None)
     return {'timezone': station.timezone, 'local_time': resolution.local_time.isoformat(),

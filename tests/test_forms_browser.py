@@ -1,5 +1,6 @@
 """Audit shared controls and headers across the actual authenticated screens."""
 from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
 from app.models import Track
 from tests.test_live_browser import booth
 from tests.test_web import app as app_fixture
@@ -62,8 +63,10 @@ def test_station_form_keyboard_validation_and_dialog(booth):
     # Native validity remains available to the workspace submission handler.
     assert driver.execute_script('return arguments[0].checkValidity()', form) is False
     driver.get(base + '/admin/stations/test-station/calendar')
-    driver.find_element(By.CSS_SELECTOR, '.calendar-hero [data-new-program]').click()
-    dialog = driver.find_element(By.ID, 'program-dialog')
+    driver.find_element(By.XPATH, "//nav[@id='source-tabs']/button[text()='Songs']").click()
+    WebDriverWait(driver, 10).until(lambda d:d.find_elements(By.CSS_SELECTOR, '.source-actions button'))
+    driver.find_element(By.CSS_SELECTOR, '.source-actions button').click()
+    dialog = driver.find_element(By.ID, 'section-inspector')
     assert dialog.is_displayed()
     for width in (390, 820, 1440):
         driver.set_window_size(width, 1100)

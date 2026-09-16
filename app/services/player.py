@@ -134,8 +134,10 @@ def automatic_entries(station, start_day, days=31):
         if len(sources)==1:
             target=sources[0].category or sources[0].playlist
         title=target.name if target else resolution.program.name if resolution.program else clock.name if clock else 'Station mix'
+        if resolution.visual is not None:
+            title=resolution.visual['label']
         output.append(dict(start=point.isoformat(),end=finish.isoformat(),title=title,
-                           description='',source='automatic' if clock else 'fallback'))
+                           description='',source=resolution.visual['mode'].lower() if resolution.visual is not None and not resolution.visual['reason'] else 'automatic' if clock else 'fallback'))
         point=finish
     return output
 

@@ -2,7 +2,7 @@
 from app.services.availability import available
 from app.services.availability import tracks_for
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 from sqlalchemy.exc import IntegrityError
@@ -72,7 +72,7 @@ def parse_event_time(value):
 def save_event(slug, *, identifier=None, name, description='', timing_mode, recurrence_type,
                content_type, content_identifier, local_date=None, local_time=None, weekday=None, weekdays=None,
                early_tolerance_seconds=0, late_tolerance_seconds=10, missed_policy='SKIP',
-               interrupt_policy='NEVER', priority=100):
+               interrupt_policy='NEVER', priority=100, repeat_hours=None, starts_on=None, ends_on=None):
     station = get_station(slug)
     if station is None:
         raise ValueError('Station not found')
@@ -104,6 +104,13 @@ def save_event(slug, *, identifier=None, name, description='', timing_mode, recu
         for occurrence in row.occurrences:
             if occurrence.state in ('PENDING', 'READY'):
                 occurrence.state = 'CANCELLED'
+    hours = sorted({_integer(h, 0, 23, 'Hour') for h in repeat_hours}) if repeat_hours is not None else None
+    if hours == []: raise ValueError('Choose at least one hour')
+    row.repeat_hours = hours if recurrence_type == 'WEEKLY' else None
+    row.starts_on = date.fromisoformat(starts_on) if starts_on else None
+    row.ends_on = date.fromisoformat(ends_on) if ends_on else None
+    if row.starts_on and row.ends_on and row.ends_on < row.starts_on:
+        raise ValueError('End date is before start date')
     row.name, row.description = _clean(name, 120, True), _clean(description, 500)
     row.timing_mode, row.recurrence_type, row.content_type = timing_mode, recurrence_type, content_type
     row.track_id = target.id if content_type == 'TRACK' else None
@@ -141,10 +148,13 @@ def _instants(event, start, end):
     output = []
     for offset in range(-1, (end - start).days + 3):
         day = local_start + timedelta(days=offset)
+        if event.starts_on and day < event.starts_on or event.ends_on and day > event.ends_on:
+            continue
         if day.weekday() in event.repeat_days:
-            value = _wall_to_utc(datetime.combine(day, event.local_time), zone)
-            if start - timedelta(days=1) <= value <= end:
-                output.append(value)
+            for hour in event.repeat_hours if event.repeat_hours is not None else [event.local_time.hour]:
+                value = _wall_to_utc(datetime.combine(day, event.local_time.replace(hour=hour)), zone)
+                if start - timedelta(days=1) <= value <= end and value not in output:
+                    output.append(value)
     return output
 
 

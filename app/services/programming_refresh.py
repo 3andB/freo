@@ -18,6 +18,9 @@ def signature(station,now=None):
     state=station.automation
     values=[station.timezone,station.target_lufs,programming.occurrence_key,
             state.active_rotation_id,state.default_clock_id,state.track_separation_seconds,state.artist_separation_seconds]
+    schedule=db.session.get(m.ChannelSchedule,station.id)
+    if schedule:
+        values.append([schedule.revision,schedule.mode,schedule.activation,schedule.default_playlist_id,{key:programming.visual[key] for key in ('source','key','reason')} if programming.visual else None])
     # Core rows avoid relationship caches and do not load audio/artwork blobs.
     for model in (m.Playlist,m.MediaCategory,m.Rotation,m.Clock,m.ScheduleAssignment,m.ScheduleProgram,m.ImagingAsset,m.ImagingGroup,m.EventBlock,m.TimedEvent):
         table=model.__table__
@@ -46,6 +49,7 @@ def checkpoint(station):
     state=station.automation
     clock=db.session.get(m.ClockState,station.id)
     return dict(rotation=state.active_rotation_id,index=state.next_slot_index,
+        visual={},
         clock=dict(id=clock.clock_id,occurrence=clock.occurrence_key,index=clock.next_slot_index) if clock else None,
         playlists={str(row.clock_slot_id):dict(occurrence=row.occurrence_key,state=row.state) for row in m.PlaylistCursor.query.filter_by(station_id=station.id)},
         rotations={str(row.rotation_id):row.next_slot_index for row in m.RotationCursor.query.filter_by(station_id=station.id)})
@@ -54,6 +58,9 @@ def checkpoint(station):
 def restore(station,saved):
     if not saved:return
     state=station.automation
+    for key,prior in saved.get('visual',{}).items():
+        row=db.session.get(m.ScheduleCursor,(station.id,key))
+        if row:row.state=prior
     if state.active_rotation_id==saved['rotation']:state.next_slot_index=saved['index']
     clock=db.session.get(m.ClockState,station.id)
     prior=saved.get('clock')
@@ -74,7 +81,7 @@ def refresh(station,reader,current_signature):
     reader.collect(station.slug)
     rows=m.SelectionDecision.query.filter(m.SelectionDecision.station_id==station.id,
         m.SelectionDecision.admin_user_id.is_(None),m.SelectionDecision.playback_bus=='A',
-        ~m.SelectionDecision.selection_method.in_(('timed_event','event_block')),
+        ~m.SelectionDecision.selection_method.in_(('timed_event','event_block','schedule_insert')),
         m.SelectionDecision.status.in_(('selected','queued','failed')),
         db.or_(m.SelectionDecision.status!='failed',m.SelectionDecision.reason=='programming_refresh_pending'),
         db.or_(m.SelectionDecision.programming_signature.is_(None),m.SelectionDecision.programming_signature!=current_signature,
@@ -106,7 +113,7 @@ def refresh(station,reader,current_signature):
     first=removed[0]
     later_started=m.SelectionDecision.query.filter(m.SelectionDecision.station_id==station.id,
         m.SelectionDecision.id>first.id,m.SelectionDecision.status=='started',m.SelectionDecision.admin_user_id.is_(None),
-        ~m.SelectionDecision.selection_method.in_(('timed_event','event_block')),m.SelectionDecision.playback_bus=='A').first()
+        ~m.SelectionDecision.selection_method.in_(('timed_event','event_block','schedule_insert')),m.SelectionDecision.playback_bus=='A').first()
     later_block=m.EventBlockExecution.query.filter(m.EventBlockExecution.station_id==station.id,
         m.EventBlockExecution.source=='CLOCK',m.EventBlockExecution.created_at>=first.selected_at).first()
     if not later_started and not later_block:restore(station,first.cursor_checkpoint)

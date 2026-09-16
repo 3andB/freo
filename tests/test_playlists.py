@@ -181,7 +181,7 @@ def test_calendar_form_and_signature_include_playlist_changes(app):
         before=signature(station);songs[-1].enabled=False;db.session.commit();assert signature(station)!=before
     response=client.post('/admin/stations/test-station/calendar/create',data=dict(csrf='test-admin-csrf-token',kind='playlist',playlist=identifier,name='Morning',weekday='2',start='09:00',end='10:00'),follow_redirects=True)
     assert response.status_code==200 and b'Published 1 calendar' in response.data
-    assert b'data-playlist=' in response.data
+    assert b'id="schedule-initial"' in response.data and b'Morning' in response.data
 
 
 def test_empty_playlist_uses_complete_default_clock_pattern(app,monkeypatch):

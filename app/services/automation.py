@@ -216,7 +216,7 @@ def _choose(tracks, history, now, track_seconds, artist_seconds):
     return None, 'none', 0
 
 
-def select_next(slug, storage=None, now=None, programming_signature=None):
+def select_next(slug, storage=None, now=None, programming_signature=None, *, programming_override=None, commit=True):
     """Lock one station cursor, select one playable object, and commit its decision."""
     station = require_station(slug)
     state = AutomationState.query.filter_by(station_id=station.id).with_for_update().first()
@@ -228,7 +228,15 @@ def select_next(slug, storage=None, now=None, programming_signature=None):
     now = now or datetime.now(timezone.utc)
     storage = storage or LocalMediaStorage()
     from app.services.schedule import resolve, usable_clock
-    programming = resolve(station, now)
+    programming = programming_override or resolve(station, now)
+    if programming.visual is not None:
+        from app.services.visual_schedule import select_visual
+        decision = select_visual(station, programming.visual, storage, now)
+        if decision:
+            decision.programming_signature = selected_signature
+            decision.cursor_checkpoint = dict(selected_checkpoint,visual=decision.cursor_checkpoint.get('visual',{}))
+        db.session.commit() if commit else db.session.flush()
+        return decision
     clock = programming.clock or (state.default_clock if usable_clock(state.default_clock, station.id) else None)
     playlist_fallback = False
     if clock:
@@ -288,20 +296,20 @@ def select_next(slug, storage=None, now=None, programming_signature=None):
             if decision:
                 decision.programming_signature=selected_signature
                 decision.cursor_checkpoint=selected_checkpoint
-                db.session.commit()
+                db.session.commit() if commit else db.session.flush()
                 return decision
-        db.session.commit()
+        db.session.commit() if commit else db.session.flush()
         return None
     if not state.active_rotation or not state.active_rotation.enabled:
         if playlist_fallback:
-            db.session.commit()
+            db.session.commit() if commit else db.session.flush()
             return None
         raise ValueError('No active clock or rotation')
     decision = _select_rotation(station, state.active_rotation, state, storage, now, {})
     if decision:
         decision.programming_signature=selected_signature
         decision.cursor_checkpoint=selected_checkpoint
-    db.session.commit()
+    db.session.commit() if commit else db.session.flush()
     return decision
 
 

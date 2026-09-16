@@ -49,7 +49,7 @@ def create(slug):
         except ValueError as error:
             db.session.rollback(); flash(str(error), 'error')
     return render_template('admin/event_form.html', **context(station, event=None,
-        tracks=_tracks(station), imaging=_imaging(station), blocks=_blocks(station), modes=MODES, recurrences=RECURRENCES,
+        tracks=[], imaging=[], blocks=[], modes=MODES, recurrences=RECURRENCES,
         missed=MISSED, interrupts=INTERRUPTS))
 
 
@@ -61,7 +61,9 @@ def _save(station, row=None):
         local_date=request.form.get('local_date'), local_time=request.form.get('local_time'), weekday=request.form.get('weekday'),
         weekdays=request.form.getlist('weekdays') if 'repeat_days_present' in request.form else None,
         early_tolerance_seconds=request.form.get('early_tolerance_seconds'), late_tolerance_seconds=request.form.get('late_tolerance_seconds'),
-        missed_policy=request.form.get('missed_policy'), interrupt_policy=request.form.get('interrupt_policy'), priority=request.form.get('priority'))
+        missed_policy=request.form.get('missed_policy'), interrupt_policy=request.form.get('interrupt_policy'), priority=request.form.get('priority'),
+        repeat_hours=request.form.getlist('repeat_hours') if request.form.get('hourly') else None,
+        starts_on=request.form.get('starts_on'), ends_on=request.form.get('ends_on'))
 
 
 def _tracks(station): return tracks_for(station.id).filter_by(enabled=True, ingest_status='accepted', decommissioned_at=None).order_by(Track.title).all()
@@ -79,7 +81,7 @@ def detail(slug, identifier):
     event_local = row.scheduled_at_utc.replace(tzinfo=row.scheduled_at_utc.tzinfo or timezone.utc).astimezone(ZoneInfo(station.timezone)) if row.scheduled_at_utc else None
     return render_template('admin/event_detail.html', **context(station, event=row, occurrences=occurrences,
         event_local=event_local,
-        commercial_log=commercial_log(row), warnings=conflict_warnings(row), tracks=_tracks(station), imaging=_imaging(station), blocks=_blocks(station), modes=MODES,
+        commercial_log=commercial_log(row), warnings=conflict_warnings(row), tracks=[], imaging=[], blocks=[], modes=MODES,
         recurrences=RECURRENCES, missed=MISSED, interrupts=INTERRUPTS))
 
 

@@ -22,6 +22,11 @@ def coverage(station, start, end):
             rotation = None
         source = 'Weekly baseline' if resolved.program and resolved.program.baseline_assignment_id else 'Dated program' if resolved.program and resolved.program.on_date else 'Weekly program' if resolved.program else 'Weekly baseline' if resolved.assignment else 'Station default' if clock or rotation else 'Engine fallback'
         name = resolved.program.name if resolved.program else clock.name if clock else rotation.name if rotation else 'No playable programming configured'
+        if resolved.visual is not None:
+            visual = resolved.visual
+            clock, rotation = None, None
+            source = 'Default playlist' if visual['reason'] else visual['mode'].title()
+            name = visual['source']['name'] if visual['source'] else 'No playable programming configured'
         finish = min(end, resolved.next_transition) if resolved.next_transition else end
         if finish <= point:
             raise ValueError('Schedule transition did not advance')

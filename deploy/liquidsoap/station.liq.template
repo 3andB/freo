@@ -360,6 +360,49 @@ backup = mksafe(switch(track_sensitive=false, [({auto_play() and not queue.is_re
 backup = amplify({auto_mix()*main_gain()*mic_program_gain()}, backup)
 mic_audio = amplify({if cart_takeover() and cart.is_ready() then 0.0 else mic_gain()*main_gain() end}, mksafe(mic_input))
 radio = add(normalize=false, [music_auto, music_a, music_b, mksafe(cart), backup, mic_audio])
+# Confirmed channel mode changes fade the complete outgoing program, including
+# a cart or DJ source, then atomically replace the queue with prepared audio.
+schedule_switch_token = ref("")
+schedule_switch_phase = ref("APPLIED")
+schedule_switch_end = ref(0.0)
+server.register(namespace="freo_schedule", "status", fun (_) -> schedule_switch_phase() ^ "|" ^ schedule_switch_token())
+server.register(namespace="freo_schedule", "switch", fun (value) -> begin
+  parts = string.split(separator=" ", value)
+  token = list.nth(default="", parts, 0)
+  rid = list.nth(default="", parts, 1)
+  if token == schedule_switch_token() then schedule_switch_phase()
+  elsif schedule_switch_phase() == "FADING" then "ERROR another switch is fading"
+  else
+    prepared = list.filter(fun (r) -> string(request.id(r)) == rid, queue.queue())
+    current = queue.current()
+    already_current = null.defined(current) and string(request.id(null.get(current))) == rid
+    if list.length(prepared) != 1 and not already_current then "ERROR target is not prepared"
+    else
+      schedule_switch_token := token
+      schedule_switch_phase := "FADING"
+      schedule_switch_end := time()+2.0
+      thread.run(delay=2.0, {
+        if schedule_switch_token() == token then
+          if mic_active() then mic_phase := "FAILED" end
+          deck_a.set_queue([]); deck_a.skip(); a_play := false
+          deck_b.set_queue([]); deck_b.skip(); b_play := false
+          cart.set_queue([]); cart.skip()
+          ignore(set_mode("AUTO"))
+          transition_duration := 0.0
+          auto_play := true; auto_to := 1.0; a_to := 0.0; b_to := 0.0
+          playing = queue.current()
+          target_playing = null.defined(playing) and string(request.id(null.get(playing))) == rid
+          queue.set_queue(if target_playing then [] else prepared end)
+          if not target_playing then queue.skip() end
+          schedule_switch_end := 0.0
+          schedule_switch_phase := "APPLIED"
+        end
+      })
+      "FADING"
+    end
+  end
+end)
+radio = amplify({if schedule_switch_end() > 0.0 then max(0.0, min(1.0, (schedule_switch_end()-time())/2.0)) else 1.0 end}, radio)
 radio = limit(attack=1.0, release=100.0, threshold=-1.5, ratio=100.0, gain=0.0, radio)
 def current_auto()
   r = queue.current()

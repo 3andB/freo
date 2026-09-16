@@ -592,6 +592,10 @@ def tick(reader, target_depth=2):
         if time.monotonic() < reader.unavailable_until.get(slug, 0):
             continue
         try:
+            from app.services.schedule_switch import process_transition
+            if process_transition(state.station, reader):
+                observe_queue(state.station)
+                continue
             from app.services.playout_queue import sync_mixer
             mic_active = False
             try:
@@ -652,7 +656,7 @@ def tick(reader, target_depth=2):
                 observe_queue(state.station)
                 continue
             programming = resolve(state.station)
-            has_clock = bool(programming.clock or usable_clock(state.default_clock, state.station_id))
+            has_clock = bool(programming.visual is not None or programming.clock or usable_clock(state.default_clock, state.station_id))
             has_rotation = bool(state.active_rotation and state.active_rotation.enabled and any(slot.enabled for slot in state.active_rotation.slots))
             if not has_clock and not has_rotation:
                 observe_queue(state.station)

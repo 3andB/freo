@@ -203,6 +203,7 @@ class Track(db.Model):
     __tablename__ = 'tracks'
     __table_args__ = (
         db.UniqueConstraint('station_id', 'checksum_sha256', name='uq_tracks_station_checksum'),
+        db.Index('ix_tracks_title_id', 'title', 'id'),
         db.UniqueConstraint('freo_track_id', name='uq_tracks_freo_track_id'),
         db.CheckConstraint("ingest_status IN ('accepted','rejected')", name='ck_tracks_ingest_status'),
         db.CheckConstraint('duration_ms > 0', name='ck_tracks_duration'),
@@ -697,6 +698,9 @@ class TimedEvent(db.Model):
     scheduled_at_utc = db.Column(db.DateTime(timezone=True))
     weekday = db.Column(db.Integer)
     weekdays = db.Column(db.String(20))
+    repeat_hours = db.Column(db.JSON)
+    starts_on = db.Column(db.Date)
+    ends_on = db.Column(db.Date)
     local_time = db.Column(db.Time)
     early_tolerance_seconds = db.Column(db.Integer, nullable=False, default=0)
     late_tolerance_seconds = db.Column(db.Integer, nullable=False, default=10)
@@ -1033,3 +1037,7 @@ class CentralHourlyMetric(db.Model):
     peak_listeners = db.Column(db.BigInteger, nullable=False, default=0)
     snapshot = db.Column(db.JSON, nullable=False, default=dict)
     sent = db.Column(db.Boolean, nullable=False, default=False)
+
+# Visual scheduling models share the application's metadata and station identities.
+from .scheduling import (ChannelSchedule, ScheduleComposition, ScheduleCompositionRevision,
+                         ScheduleTransition, ScheduleCursor)

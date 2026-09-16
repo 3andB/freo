@@ -17,26 +17,8 @@ admin_calendar = Blueprint('admin_calendar', __name__)
 @admin_calendar.get('/admin/stations/<slug>/calendar')
 @admin_required
 def page(slug):
-    station = station_or_404(slug, require_enabled=False)
-    try:
-        day = date.fromisoformat(request.args['date']) if request.args.get('date') else datetime.now(ZoneInfo(station.timezone)).date()
-    except ValueError:
-        abort(400)
-    view = request.args.get('view', 'week')
-    if view not in ('week','day','agenda'):
-        view = 'week'
-    first = day - timedelta(days=day.weekday()) if view == 'week' else day
-    from app.services.planning import preview_days
-    preview = preview_days(station, first, 1 if view == 'day' else 7)
-    return render_template('admin/calendar.html',page='calendar',selected=station,stations=admin_stations(),
-        days=calendar_days(station, first, 1 if view=='day' else 7),view=view,day=day,
-        previous=first-timedelta(days=1 if view=='day' else 7),following=first+timedelta(days=1 if view=='day' else 7),
-        playlists=playlist_listing(station.id),
-        categories=MediaCategory.query.filter_by(station_id=station.id,enabled=True).order_by(MediaCategory.name).all(),
-        clocks=Clock.query.filter_by(station_id=station.id,enabled=True).order_by(Clock.name).all(),
-        rotations=Rotation.query.filter_by(station_id=station.id,enabled=True).order_by(Rotation.name).all(),
-        preview_days=preview,
-        active=resolve(station),error=None)
+    from app.routes.schedule_studio import render_workspace
+    return render_workspace(slug, 'calendar')
 
 
 @admin_calendar.post('/admin/stations/<slug>/calendar/<action>')
