@@ -2,6 +2,7 @@
 {% block title %}{{ selected.name }} · Station settings{% endblock %}
 {% block admin_content %}
 <section class="admin-card station-settings"><h1>Station settings</h1><p>Manage {{ selected.name }}’s identity and public listening page.</p>
+<p><a href="{{ url_for('dmca.cases') }}">DMCA reports</a> · <a href="{{ url_for('dmca.report',station_text=selected.name) }}">Public copyright report form</a></p>
 {% if error %}<p class="admin-notice error" role="alert">{{ error }}</p>{% endif %}
 {% set values = request.form if request.method == 'POST' else selected %}
 <form method="post" action="{{ url_for('station_settings.page',slug=selected.slug) }}" enctype="multipart/form-data">

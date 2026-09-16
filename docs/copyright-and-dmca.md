@@ -14,7 +14,7 @@ ISRC is optional in Song details. Newly supplied values are uppercased, with whi
 - `GET /admin/dmca/<reference>`: private details and immutable evidence snapshot.
 - `POST /admin/dmca/<reference>/status`: CSRF-protected status update with an `AuditEvent`.
 
-The current player shows its Freo Track ID and a report link while confirmed track metadata is fresh. Imaging has no track identifier. Cases preserve the supplied identifier, station text, claimant information, descriptions, confirmations, signature, and submission time. A resolved track contributes its internal track/owner-station association and a title/artist/hash/ISRC/public-ID/station snapshot. The reported station is resolved separately from local names/URLs, since shared tracks can air on another station. No supplied URLs are fetched. Foreign keys become NULL on physical deletion while evidence remains.
+The player always shows a station-prefilled copyright report link, including when stopped, playing imaging, or missing metadata. A Freo Track ID is shown and prefilled only while confirmed track metadata is fresh. Imaging has no track identifier. The admin sidebar, station overview, and station settings link to DMCA reports. Cases preserve the supplied identifier, station text, claimant information, descriptions, confirmations, signature, and submission time. A resolved track contributes its internal track/owner-station association and a title/artist/hash/ISRC/public-ID/station snapshot. The reported station is resolved separately from local names/URLs, since shared tracks can air on another station. No supplied URLs are fetched. Foreign keys become NULL on physical deletion while evidence remains.
 
 All cases begin `OPEN`. Available statuses are `OPEN`, `REVIEWING`, `ACTIONED`, `REJECTED`, and `CLOSED`. Neither submission nor a status change deletes/disables tracks, changes station state, or controls playback. `ACTIONED` is a human-entered record of review, not an automated enforcement command.
 
@@ -82,7 +82,7 @@ It checks fresh migrations, legacy upgrade/backfill, downgrade/re-upgrade, Alemb
 - Application/schema: `app/__init__.py`, `app/config.py`, `app/models/__init__.py`, `migrations/versions/c07d9a21b634_copyright_and_dmca.py`.
 - Routes: `app/routes/dmca.py`, `app/routes/admin_media.py`, `app/routes/catalog_editor.py`, `app/routes/web.py`.
 - Services: `app/services/copyright.py`, `app/services/dmca.py`, `app/services/catalog_edit.py`, `app/services/media.py`, `app/services/music_catalog.py`, `app/services/player.py`.
-- Templates: `app/templates/dmca.html`, `app/templates/admin/dmca.html`, `app/templates/admin/base.html`, `app/templates/admin/media_track.html`, `app/templates/player.html`.
+- Templates: `app/templates/dmca.html`, `app/templates/admin/dmca.html`, `app/templates/admin/base.html`, `app/templates/admin/media_track.html`, `app/templates/admin/overview.html`, `app/templates/admin/station_settings.html`, `app/templates/player.html`.
 - Browser code: `app/static/media_editor.js`, `app/static/player.js`.
 - Tests: `tests/test_copyright_dmca.py`, `tests/test_dmca_postgres.py`, `tests/test_copyright_browser.py`, `tests/test_music_catalog.py` (existing ISRC fixture updated to the required format).
 - Documentation: `README.md`, `docs/copyright-and-dmca.md`.
@@ -106,3 +106,8 @@ Following explicit deployment authorization, revision `c07d9a21b634` was applied
 A PostgreSQL custom-format backup was created and its archive directory verified at `/var/backups/freo/copyright-20260916T162104Z/before.dump`. The web, ingest, automation, and microphone services were restarted; the provisioning and public-schedule timers were restored. All were active after maintenance.
 
 The final isolated feature/browser/catalog run passed **24 tests**. Live HTTPS checks passed for health/readiness, the DMCA form, unauthenticated admin rejection, missing/invalid-form CSRF validation, both active station players, and public API privacy.
+
+
+### Link visibility follow-up
+
+The reporting link remains visible without JavaScript or confirmed current-track metadata and retains the station prefill. Only the optional Track ID is hidden when metadata is unavailable. DMCA reports now appears beside station settings in admin navigation, with direct links on station overview/settings. The player script version was bumped for existing browser caches. The 33 focused browser, copyright, and player checks passed across the main run and corrected missing-metadata fixture rerun. This change requires only a web restart, with no migration.
