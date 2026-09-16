@@ -154,6 +154,9 @@
   function renderCurrent(rows,fresh){
     const key=JSON.stringify([rows,fresh]);if(key===currentKey)return;currentKey=key;
     const song=rows[0];
+    $('copyright-track').hidden=!(fresh && song?.freo_track_id);
+    $('freo-track-id').textContent=song?.freo_track_id?`FREO TRACK · ${song.freo_track_id}`:'';
+    $('copyright-report').href=song?.report_url||'/dmca';
     $('playing-label').textContent=song?'NOW ON AIR':fresh?'LIVE STATION':'WAITING FOR LIVE METADATA';
     $('playing-heading').textContent=song?.title||root.querySelector('h1').textContent;
     $('playing-artist').textContent=song?.artist||'Keep listening. We’ll bring you the details.';

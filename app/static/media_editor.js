@@ -12,7 +12,7 @@
     if(next.cover){$('editor-cover').src=next.cover;$('editor-cover').hidden=false;$('cover-placeholder').hidden=true;}else{$('editor-cover').hidden=true;$('cover-placeholder').hidden=false;}
   }
   async function refresh(){if(busy||FreoMusicToggles.pending)return;try{const response=await scope.fetch(config.songUrl,{cache:'no-store'});if(!response.ok)throw Error();paint(await response.json());}catch(_){message('Status unavailable. Your edits are still here.');}}
-  async function save(){if(busy)return false;busy=true;message('Saving…');try{const form=$('song-details'),data={title:form.elements.title.value,track_number:form.elements.track_number.value,...selectors.values()};const next=await FreoCatalog.api(config.songUrl,config.csrf,{data:JSON.stringify(data)});paint(next);$('editor-title').textContent=next.title;$('editor-subtitle').textContent=`${next.artist} · ${next.album||'Single'}`;
+  async function save(){if(busy)return false;busy=true;message('Saving…');try{const form=$('song-details'),data={isrc:form.elements.isrc.value,title:form.elements.title.value,track_number:form.elements.track_number.value,...selectors.values()};const next=await FreoCatalog.api(config.songUrl,config.csrf,{data:JSON.stringify(data)});paint(next);form.elements.isrc.value=next.isrc||'';$('editor-title').textContent=next.title;$('editor-subtitle').textContent=`${next.artist} · ${next.album||'Single'}`;
       const advanced=root.querySelector('details form');for(const key of ['title','artist','album','track_number'])if(advanced.elements[key])advanced.elements[key].value=next[key]??'';
       root.querySelector('[data-preview]').dataset.title=next.title;message('Saved');return true;
     }catch(e){message(e.message);return false;}finally{busy=false;}}

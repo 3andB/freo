@@ -99,9 +99,9 @@ def ingest(slug, source, title=None, artist=None, album=None, storage=None, *,
     final = None
     committed = False
     try:
-        checksum = hashlib.sha256()
         total = 0
         with os.fdopen(fd, 'rb') as source_stream, os.fdopen(temp_fd, 'wb') as target:
+            checksum = hashlib.sha256()
             while chunk := source_stream.read(1024 * 1024):
                 total += len(chunk)
                 if total > MAX_MEDIA_FILE_BYTES:

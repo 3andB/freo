@@ -1,0 +1,28 @@
+{% extends 'base.html' %}
+{% block title %}Report a copyright issue · Freo{% endblock %}
+{% block content %}
+<section class="shell"><h1>Report a copyright issue</h1>
+{% if reference %}
+<p>Your report has been received. Keep this reference: <strong>{{ reference }}</strong>.</p>
+<p>The report will be reviewed. Submission does not automatically remove material or suspend a station.</p>
+{% else %}
+<p>Copyright owners and authorized representatives can report allegedly infringing material using this form. Include enough detail to identify the work and locate the material.</p>
+<p>Freo Track IDs, file hashes, and ISRCs identify recordings or files; they do not establish ownership or licensing. Reports are reviewed privately by Freo administrators.</p>
+{% if error %}<p role="alert">{{ error }}</p>{% endif %}
+<form method="post" action="{{ url_for('dmca.report') }}" class="form-card">
+<input type="hidden" name="csrf" value="{{ csrf_token() }}">
+{% for key, label, limit, required in fields %}
+<label for="{{ key }}">{{ label }}</label>
+{% if key in ['copyrighted_work', 'material_location'] %}
+<textarea id="{{ key }}" name="{{ key }}" maxlength="{{ limit }}" rows="5" required>{{ values.get(key, '') }}</textarea>
+{% else %}
+<input id="{{ key }}" name="{{ key }}" type="{{ 'email' if key == 'claimant_email' else 'text' }}" maxlength="{{ limit }}" value="{{ values.get(key, '') }}" {% if required %}required{% endif %}>
+{% endif %}
+{% endfor %}
+<label><input type="checkbox" name="good_faith" value="yes" required {% if values.get('good_faith') == 'yes' %}checked{% endif %}> I have a good-faith belief that the use described is not authorized by the copyright owner, its agent, or the law.</label>
+<label><input type="checkbox" name="authorized" value="yes" required {% if values.get('authorized') == 'yes' %}checked{% endif %}> The information in this report is accurate, and under penalty of perjury I am the copyright owner or authorized to act on the owner's behalf.</label>
+<button type="submit">Submit report</button>
+</form>
+{% endif %}
+</section>
+{% endblock %}

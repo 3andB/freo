@@ -221,7 +221,10 @@ def edit_track(slug, track_uuid):
         if not title or not artist:
             raise MediaValidationError('Title and artist are required')
         track.title, track.artist, track.album = title, artist, album
-        track.album_artist=normalize(request.form.get('album_artist'),200,'');track.genre=normalize(request.form.get('genre'),100,'');track.isrc=normalize(request.form.get('isrc'),20,'').upper()
+        track.album_artist=normalize(request.form.get('album_artist'),200,'');track.genre=normalize(request.form.get('genre'),100,'')
+        if 'isrc' in request.form and request.form['isrc'] != (track.isrc or ''):
+            from app.services.copyright import normalize_isrc
+            track.isrc = normalize_isrc(request.form['isrc'])
         from app.services.music_catalog import organize_song
         organize_song(track,{'album_artist':track.album_artist,'genre':track.genre,'isrc':track.isrc,'year':request.form.get('year'),'track':request.form.get('track_number'),'disc':request.form.get('disc_number')})
         def bounded_int(name,minimum,maximum):

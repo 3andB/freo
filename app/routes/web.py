@@ -255,7 +255,7 @@ def page_security_headers(response):
             "script-src 'self'; media-src 'self' blob:; connect-src 'self'; "
             "base-uri 'self'; frame-ancestors 'none'")
         response.headers['X-Content-Type-Options'] = 'nosniff'
-        response.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
+        response.headers.setdefault('Referrer-Policy', 'strict-origin-when-cross-origin')
     return response
 
 

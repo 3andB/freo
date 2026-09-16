@@ -1,5 +1,7 @@
 from datetime import datetime, timezone
 
+from sqlalchemy import event, select, text, inspect
+from app.services import copyright as copyright_ids
 from app.extensions import db
 
 
@@ -191,9 +193,11 @@ class MusicTag(db.Model):
 
 
 class Track(db.Model):
+    __mapper_args__ = {"batch": False}
     __tablename__ = 'tracks'
     __table_args__ = (
         db.UniqueConstraint('station_id', 'checksum_sha256', name='uq_tracks_station_checksum'),
+        db.UniqueConstraint('freo_track_id', name='uq_tracks_freo_track_id'),
         db.CheckConstraint("ingest_status IN ('accepted','rejected')", name='ck_tracks_ingest_status'),
         db.CheckConstraint('duration_ms > 0', name='ck_tracks_duration'),
         db.CheckConstraint('file_size_bytes > 0', name='ck_tracks_size'),
@@ -212,7 +216,8 @@ class Track(db.Model):
     disc_number = db.Column(db.Integer)
     release_year = db.Column(db.Integer)
     genre = db.Column(db.String(100), nullable=False, default='')
-    isrc = db.Column(db.String(20), nullable=False, default='')
+    isrc = db.Column(db.String(20), nullable=True)
+    freo_track_id = db.Column(db.String(12), nullable=False)
     artwork_key = db.Column(db.String(50))
     cover_id = db.Column(db.String(36), db.ForeignKey('music_artwork.id', ondelete='SET NULL'))
     bpm = db.Column(db.Float)
@@ -241,7 +246,7 @@ class Track(db.Model):
     sample_rate_hz = db.Column(db.Integer, nullable=False)
     channels = db.Column(db.Integer, nullable=False)
     file_size_bytes = db.Column(db.BigInteger, nullable=False)
-    checksum_sha256 = db.Column(db.String(64), nullable=False)
+    checksum_sha256 = db.Column(db.String(64), nullable=True)
     enabled = db.Column(db.Boolean, nullable=False, default=True)
     ingest_status = db.Column(db.String(12), nullable=False, default='accepted')
     decommissioned_at = db.Column(db.DateTime(timezone=True))
@@ -937,3 +942,51 @@ class ListenerFeedbackEvent(db.Model):
     action = db.Column(db.String(40), nullable=False)
     value = db.Column(db.Integer, nullable=False)
     created_at = db.Column(db.DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc), index=True)
+
+
+class DMCACase(db.Model):
+    __tablename__ = 'dmca_cases'
+    __table_args__ = (
+        db.CheckConstraint("status IN ('OPEN','REVIEWING','ACTIONED','REJECTED','CLOSED')", name='ck_dmca_status'),
+        db.Index('ix_dmca_status_created', 'status', 'created_at'),
+        db.Index('ix_dmca_created', 'created_at', 'id'),
+        db.Index('ix_dmca_network_created', 'network_key', 'created_at'),
+    )
+    id = db.Column(db.Integer, primary_key=True)
+    reference = db.Column(db.String(37), nullable=False, unique=True)
+    created_at = db.Column(db.DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+    status = db.Column(db.String(12), nullable=False, default='OPEN')
+    supplied_track_id = db.Column(db.String(64), nullable=False, default='')
+    station_text = db.Column(db.String(500), nullable=False)
+    track_id = db.Column(db.Integer, db.ForeignKey('tracks.id', ondelete='SET NULL'), index=True)
+    station_id = db.Column(db.Integer, db.ForeignKey('stations.id', ondelete='SET NULL'), index=True)
+    reported_station_id = db.Column(db.Integer, db.ForeignKey('stations.id', ondelete='SET NULL'))
+    snapshot = db.Column(db.JSON, nullable=False, default=dict)
+    copyrighted_work = db.Column(db.Text, nullable=False)
+    material_location = db.Column(db.Text, nullable=False)
+    claimant_name = db.Column(db.String(200), nullable=False)
+    claimant_email = db.Column(db.String(254), nullable=False)
+    good_faith = db.Column(db.Boolean, nullable=False)
+    authorized = db.Column(db.Boolean, nullable=False)
+    signature = db.Column(db.String(200), nullable=False)
+    network_key = db.Column(db.String(64), nullable=False)
+
+
+# Serializing each random candidate also handles a concurrent collision in PostgreSQL.
+@event.listens_for(Track, 'before_insert')
+def assign_freo_track_id(mapper, connection, target):
+    for _ in range(20):
+        candidate = copyright_ids.new_track_id()
+        if connection.dialect.name == 'postgresql':
+            connection.execute(text('SELECT pg_advisory_xact_lock(hashtextextended(:key, 0))'),
+                               {'key': 'freo-track:' + candidate})
+        if not connection.execute(select(Track.id).where(Track.freo_track_id == candidate)).first():
+            target.freo_track_id = candidate
+            return
+    raise ValueError('Unable to allocate a unique Freo Track ID')
+
+
+@event.listens_for(Track, 'before_update')
+def preserve_freo_track_id(mapper, connection, target):
+    if inspect(target).attrs.freo_track_id.history.has_changes():
+        raise ValueError('Freo Track IDs are permanent')

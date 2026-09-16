@@ -50,7 +50,10 @@ def organize_song(song, tags=None):
     song.artist_id=artist.id;song.album_id=album.id if album else None;song.album_artist=album_artist
     song.track_number=optional_int(tags.get('track') or tags.get('tracknumber') or song.track_number,1,999)
     song.disc_number=optional_int(tags.get('disc') or tags.get('discnumber') or song.disc_number,1,99)
-    song.release_year=year;song.genre=genre;song.isrc=normalize(tags.get('isrc') or song.isrc,20,'').upper()
+    song.release_year=year;song.genre=genre
+    if 'isrc' in tags and tags['isrc'] != song.isrc:
+        from app.services.copyright import normalize_isrc
+        song.isrc = normalize_isrc(tags['isrc'])
     return song
 
 

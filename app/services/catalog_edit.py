@@ -21,6 +21,9 @@ def validate_metadata(station_id, data):
     if not isinstance(data, dict):
         raise ValueError('Invalid song details')
     result = {}
+    if "isrc" in data:
+        from app.services.copyright import normalize_isrc
+        result["isrc"] = normalize_isrc(data["isrc"])
     for name, limit in [('title', 200), ('artist_name', 200), ('album_name', 200)]:
         if name in data:
             value = data[name]
@@ -59,6 +62,8 @@ def validate_metadata(station_id, data):
 
 def apply_metadata(song, data, station_id=None):
     station_id = station_id or song.station_id
+    if isinstance(data, dict) and data.get('isrc') == song.isrc:
+        data = {key: value for key, value in data.items() if key != 'isrc'}
     data = validate_metadata(station_id, data)
     artist = owned(Artist, station_id, data['artist_id']) if data.get('artist_id') else None
     if data.get('artist_name'): artist = artist_for(song.station_id, data['artist_name'])
@@ -74,6 +79,7 @@ def apply_metadata(song, data, station_id=None):
         artist = artist or song.catalog_artist or artist_for(song.station_id, song.artist)
         song.catalog_album = album_for(song.station_id, artist, data['album_name'])
         song.album = song.catalog_album.title
+    if 'isrc' in data: song.isrc = data['isrc']
     if 'title' in data: song.title = data['title']
     if 'track_number' in data: song.track_number = data['track_number']
     if 'cover_id' in data:

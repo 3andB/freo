@@ -10,9 +10,13 @@ class BaseConfig:
     FREO_MEDIA_ROOT = ""
     LOG_LEVEL = "INFO"
     FREO_MAX_STATIONS = 3
+    DMCA_REPORTS_PER_HOUR = 5
+    DMCA_TRUSTED_PROXY_IPS = ()
 
 
 class ProductionConfig(BaseConfig):
+    # Bundled Nginx overwrites X-Real-IP and connects over loopback.
+    DMCA_TRUSTED_PROXY_IPS = ('127.0.0.1', '::1')
     DEBUG = False
 
     @staticmethod

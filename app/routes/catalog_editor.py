@@ -36,7 +36,7 @@ def cover_url(song):
 
 def state(song):
     eligible = song.enabled and not song.decommissioned_at and any(c.enabled for c in song.categories)
-    return dict(uuid=song.uuid, title=song.title, artist=song.artist, album=song.album, track_number=song.track_number, artist_id=song.artist_id, album_id=song.album_id,
+    return dict(uuid=song.uuid, isrc=song.isrc, title=song.title, artist=song.artist, album=song.album, track_number=song.track_number, artist_id=song.artist_id, album_id=song.album_id,
                 enabled=song.enabled, analysis=song.analysis_status, error=song.analysis_error,
                 processing_requested=song.analysis_requested, waveform=song.waveform, cover=cover_url(song),
                 tags=[t.id for t in song.tags], categories=[c.id for c in song.categories],

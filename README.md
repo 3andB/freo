@@ -1,5 +1,7 @@
 # Freo
 
+[Copyright identification and DMCA reporting](docs/copyright-and-dmca.md) documents permanent public Track IDs, optional ISRC metadata, private copyright reports, admin review, and upgrade instructions.
+
 [Player settings and listener feedback](docs/player-and-listener-experience.md) add station messages, cover art, social links, published Day/Week/Month schedules, top/bottom ad slots, and song votes with private comments. The public player uses a responsive DJ-inspired record design.
 
 Phase 9 adds first-class station imaging and carts: private validated uploads, station-scoped groups, exact-cart and group clock slots, and confirmed imaging history. See [Imaging and carts](docs/imaging.md). The authenticated [DJ Booth](docs/live-assist.md) provides two modes: focused Auto and paired-deck DJ Booth; observed Now Playing and Up Next; persistent cue; in-booth music/category browsing; twelve assignable cart/identity controls; worker-observed Program and optional browser Monitor meters; fixed Skip/Fade; and worker-mediated crossfade takeover. Phase 11 adds [timed events](docs/timed-events.md): one-time and weekly events, HARD/SOFT/NON_INTERRUPTING behavior, timing windows, occurrence history, permitted automated-music interruption, and booth event awareness.

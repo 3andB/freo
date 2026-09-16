@@ -43,6 +43,7 @@
       <a href="{{ url_for('web.admin_section', section='history') }}{{ suffix }}" {% if page == 'history' %}aria-current="page"{% endif %}>History</a>
       <a href="{{ url_for('web.admin_section', section='system') }}{{ suffix }}" {% if page == 'system' %}aria-current="page"{% endif %}>System</a>
       <a href="{{ url_for('admin_media.audit_view') }}" {% if page == 'audit' %}aria-current="page"{% endif %}>Admin audit</a>
+      <a href="{{ url_for('dmca.cases') }}" {% if page == 'dmca' %}aria-current="page"{% endif %}>Copyright reports</a>
     </nav>
     <div class="admin-sidebar-foot">Made for your next great hour.<br><a href="https://github.com/lee-3andB/freo/tree/main/docs">Documentation ↗</a></div>
   </aside>

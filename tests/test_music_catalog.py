@@ -16,10 +16,10 @@ def test_catalog_reuses_normalized_artist_and_album(app):
         station=Station.query.filter_by(slug='test-station').first();songs=Track.query.filter_by(station_id=station.id).limit(2).all()
         if len(songs)==1:
             first=songs[0];copy=Track(station_id=station.id,uuid='10000000-0000-4000-8000-000000000001',title='Second',artist=' artist ',album=' album ',original_filename='two.mp3',storage_key='1'*32+'.mp3',media_type='mp3',duration_ms=1000,sample_rate_hz=44100,channels=2,file_size_bytes=10,checksum_sha256='1'*64);db.session.add(copy);songs.append(copy)
-        songs[0].artist='Artist';songs[0].album='Album';organize_song(songs[0],{'track':'1/10','disc':'1','year':'2024','genre':'Pop','isrc':'abc123'})
+        songs[0].artist='Artist';songs[0].album='Album';organize_song(songs[0],{'track':'1/10','disc':'1','year':'2024','genre':'Pop','isrc':'us-ab1-23-45678'})
         songs[1].artist=' artist ';songs[1].album=' album ';organize_song(songs[1],{'track':'2'});db.session.commit()
         assert songs[0].artist_id==songs[1].artist_id and songs[0].album_id==songs[1].album_id
-        assert songs[0].track_number==1 and songs[0].release_year==2024 and songs[0].isrc=='ABC123'
+        assert songs[0].track_number==1 and songs[0].release_year==2024 and songs[0].isrc=='USAB12345678'
 
 
 def test_catalog_pages_and_bulk_categories_are_station_scoped(app):
