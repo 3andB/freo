@@ -3,7 +3,9 @@
   if (!root) return;
   const scope = window.FreoPage, $ = id => document.getElementById(id);
   const base = `/api/stations/${encodeURIComponent(root.dataset.station)}`;
-  const audio = $('station-audio'), play = $('play-button'), message = $('audio-message');
+  let audio = $('station-audio');
+  const play = $('play-button'), message = $('audio-message');
+  const stream = audio.getAttribute('src');
   const zone = root.dataset.timezone, canVote = root.dataset.voting === 'yes';
   const storage = {get(key) {try {return localStorage.getItem(key);} catch {return null;}}, set(key,value) {try {localStorage.setItem(key,value);} catch {}}};
   const el = (tag, text, className) => {const node = document.createElement(tag); if (text !== undefined) node.textContent = text; if (className) node.className = className; return node;};
@@ -20,6 +22,8 @@
   const label=root.querySelector('.vinyl-label'), labelFallback=label.cloneNode(true);
   let artworkKey='';
   let wanted=false, connecting=false, retryAt=0, retries=0, currentKey='', recentKey='', busyRefresh=false;
+  let audioAttempt=0, connectingSince=0;
+  let audioEvents=new AbortController();
   let currentTitle=root.querySelector('h1').textContent, currentArtist='Live radio';
   let motionReduced=storage.get('freo-motion') === 'reduced' || root.dataset.motion!=='yes';
   function motion() {root.classList.toggle('low-motion',motionReduced);$('motion-button').setAttribute('aria-pressed',String(motionReduced));}
@@ -38,25 +42,70 @@
     if ('mediaSession' in navigator) navigator.mediaSession.playbackState=playing?'playing':'paused';
   }
   async function start(retry=false) {
+    const attempt=++audioAttempt;
+    retryAt=0;
+    if(!retry)retries=0;
+    connectingSince=Date.now();
     wanted=true;connecting=true;message.textContent=retry?'Reconnecting…':'Connecting…';syncAudio();
     document.querySelectorAll('audio,video').forEach(other=>{if(other!==audio)other.pause();});
     window.FreoMonitor?.stop();
-    try {if (retry || audio.error) audio.load();await audio.play();}
-    catch(error) {if(!wanted)return; if(error.name==='NotAllowedError'){wanted=false;message.textContent='Tap play to allow audio.';}else reconnect();connecting=false;syncAudio();}
+    // Safari can retain a failed native media resource after load(). A manual
+    // play gets a new element within the gesture; automatic retries retain the
+    // element's playback permission. Neither path reuses a cached stream URL.
+    if(!retry){
+      const previous=audio;
+      audioEvents.abort();
+      audio=document.createElement('audio');
+      audio.id='station-audio';audio.preload='none';audio.setAttribute('playsinline','');
+      audio.volume=previous.volume;audio.muted=previous.muted;
+      previous.pause();previous.removeAttribute('src');previous.load();
+      previous.replaceWith(audio);
+      bindAudio();
+    }
+    const source=new URL(stream,location.href);
+    source.searchParams.set('_freo',`${Date.now()}-${attempt}`);
+    audio.src=source.href;
+    // Setting src starts resource selection. Avoid a second load/reset before
+    // play(), which can queue an extra abort on WebKit.
+    try {await audio.play();}
+    catch(error) {
+      if(attempt!==audioAttempt || !wanted)return;
+      if(error.name==='NotAllowedError'){
+        wanted=false;connecting=false;connectingSince=0;
+        message.textContent='Tap play to allow audio.';syncAudio();
+      }else reconnect();
+    }
   }
-  function pause() {wanted=false;retryAt=0;retries=0;connecting=false;audio.pause();message.textContent='Paused. Come back anytime.';syncAudio();}
+  function pause() {
+    audioAttempt++;wanted=false;retryAt=0;retries=0;connecting=false;connectingSince=0;
+    audio.pause();audio.removeAttribute('src');audio.load();
+    message.textContent='Paused. Come back anytime.';syncAudio();
+  }
   function reconnect() {
-    connecting=false;
+    if(!wanted || retryAt)return;
+    audioAttempt++;connecting=false;connectingSince=0;
     if(wanted && retries<3){retryAt=Date.now()+Math.pow(2,retries++)*2000;message.textContent='Signal interrupted. Reconnecting shortly…';}
-    else {wanted=false;retryAt=0;message.textContent='Signal unavailable. Press play to retry.';}
+    else {wanted=false;retryAt=0;audio.pause();message.textContent='Signal unavailable. Press play to retry.';}
     syncAudio();
   }
   play.addEventListener('click',()=>wanted?pause():start());
-  scope.listen(audio,'playing',()=>{if(!wanted){audio.pause();return;}connecting=false;retryAt=0;retries=0;message.textContent='You’re listening live.';syncAudio();});
-  scope.listen(audio,'waiting',()=>{connecting=true;message.textContent='Buffering…';syncAudio();});
-  scope.listen(audio,'pause',()=>{if(!retryAt){wanted=false;connecting=false;message.textContent='Paused.';}syncAudio();});
-  scope.listen(audio,'error',reconnect);
-  scope.interval(()=>{if(retryAt && Date.now()>=retryAt){retryAt=0;start(true);}},1000);
+  function buffering(){if(!wanted || retryAt)return;if(!connecting)connectingSince=Date.now();connecting=true;message.textContent='Buffering…';syncAudio();}
+  function bindAudio(){
+    audioEvents=new AbortController();
+    const current=audio;
+    const listen=(event,handler)=>current.addEventListener(event,()=>{if(audio===current)handler();},{signal:audioEvents.signal});
+    listen('playing',()=>{if(!wanted){audio.pause();return;}connecting=false;connectingSince=0;retryAt=0;retries=0;message.textContent='You’re listening live.';syncAudio();});
+    listen('waiting',buffering);
+    listen('stalled',()=>{if(audio.readyState<3)buffering();});
+    listen('pause',()=>{if(wanted && audio.paused && !connecting && !retryAt)pause();});
+    listen('error',()=>{if(audio.error)reconnect();});
+    listen('ended',()=>{if(audio.ended)reconnect();});
+  }
+  bindAudio();
+  scope.interval(()=>{
+    if(wanted && connecting && Date.now()-connectingSince>=15000)reconnect();
+    if(retryAt && Date.now()>=retryAt){retryAt=0;start(true);}
+  },1000);
   audio.volume=.8;
   $('volume').addEventListener('input',event=>{audio.volume=Number(event.target.value)/100;audio.muted=false;$('mute-button').setAttribute('aria-pressed','false');$('mute-button').setAttribute('aria-label','Mute');});
   $('mute-button').addEventListener('click',()=>{audio.muted=!audio.muted;$('mute-button').setAttribute('aria-pressed',String(audio.muted));$('mute-button').setAttribute('aria-label',audio.muted?'Unmute':'Mute');});
@@ -68,7 +117,7 @@
   }
   const sentinel=el('div');$('radio-transport').before(sentinel);
   const sticky=new IntersectionObserver(entries=>{const entry=entries[0];$('radio-transport').classList.toggle('transport-sticky',!entry.isIntersecting&&matchMedia('(max-width:650px)').matches);});
-  sticky.observe(sentinel);scope.cleanup(()=>{sticky.disconnect();wanted=false;audio.pause();});
+  sticky.observe(sentinel);scope.cleanup(()=>{sticky.disconnect();audioEvents.abort();pause();});
 
   // A feedback dialog owns its captured song, even if the live song changes.
   const dialog=$('feedback-dialog');let captured=null,feedback=null,feedbackBusy=false,feedbackGeneration=0;

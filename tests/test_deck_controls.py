@@ -58,16 +58,20 @@ def test_repeat_replaces_lookahead_on_same_deck(prepared,monkeypatch):
     assert command.target_decision.track_id==track.id and command.target_decision.playback_bus=='A'
 
 
-def test_stale_request_and_duplicate_click_cannot_control_new_song(prepared,monkeypatch):
+@pytest.mark.parametrize('actual_decision', [9999, None], ids=['new-song', 'track-ended'])
+def test_stale_request_and_duplicate_click_cannot_control_new_song(prepared,monkeypatch,actual_decision):
     station,track,user,snapshot=prepared;nonce=str(uuid.uuid4())
     command=request_deck(station,user,'A','CLEAR',None,str(snapshot.current_decision_id),nonce)
     assert request_deck(station,user,'A','CLEAR',None,str(snapshot.current_decision_id),nonce).id==command.id
     with pytest.raises(ValueError,match='still being applied'):
         request_deck(station,user,'B','LOAD',track.uuid,'',str(uuid.uuid4()))
-    monkeypatch.setattr('app.services.playout_queue.mixer_state',lambda _:dict(snapshot.mixer,a_id=9999))
+    monkeypatch.setattr('app.services.playout_queue.mixer_state',lambda _:dict(snapshot.mixer,a_id=actual_decision))
     monkeypatch.setattr('app.services.playout_queue.channel_queue',lambda *args:[])
+    commands=[]
+    monkeypatch.setattr('app.services.playout_queue.deck_control',lambda *args:commands.append(args))
     with pytest.raises(ValueError,match='Deck changed'):
         process_deck_command(station,command,'engine')
+    assert commands==[]
 
 
 def test_deck_endpoint_requires_csrf_and_dj_queue_is_rejected(app,prepared):

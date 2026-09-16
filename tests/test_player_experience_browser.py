@@ -111,3 +111,82 @@ def test_ads_mobile_creatives_reduced_motion_and_draft_preview(booth):
     assert 'Unpublished preview' in driver.find_element(By.CSS_SELECTOR,'.radio-preview-notice').text
     driver.close();driver.switch_to.window(original)
     with app.app_context():assert StationPlayerSettings.query.one().config['message']!='Private draft preview'
+
+
+def test_pause_resume_reopens_live_stream_on_desktop_and_mobile(booth, monkeypatch):
+    """Resume must connect to live audio, not reuse a paused/stale stream buffer."""
+    app, driver, base, tmp = booth
+    requests = []
+    stream = app.view_functions['test_monitor_stream']
+
+    def counted_stream():
+        requests.append(True)
+        response = stream()
+        response.headers['Cache-Control'] = 'no-store'
+        return response
+
+    monkeypatch.setitem(app.view_functions, 'test_monitor_stream', counted_stream)
+    for width, height in ((1440, 1000), (390, 844)):
+        driver.set_window_size(width, height)
+        driver.get(base + '/player/test-station')
+        play = driver.find_element(By.ID, 'play-button')
+        play.click()
+        wait_text(driver, '#audio-message', 'listening live')
+        WebDriverWait(driver, 10).until(lambda d: d.execute_script(
+            'return document.getElementById("station-audio").currentTime > .2'))
+        for _ in range(2):
+            driver.execute_script('window.previousURL=document.getElementById("station-audio").currentSrc;')
+            play.click()
+            WebDriverWait(driver, 5).until(lambda d: d.execute_script(
+                'return document.getElementById("station-audio").paused'))
+            before = len(requests)
+            driver.execute_script('''
+                window.previousStream=document.getElementById('station-audio');
+                previousStream.volume=.4;previousStream.muted=true;
+                // Reproduce a native media object that cannot recover after
+                // pause. A fresh page worked for the affected Safari user.
+                previousStream.play=()=>Promise.reject(new DOMException('Stale resource','NotSupportedError'));
+            ''')
+            play.click()
+            wait_text(driver, '#audio-message', 'listening live')
+            WebDriverWait(driver, 5).until(lambda _: len(requests) > before)
+            position = driver.execute_script('return document.getElementById("station-audio").currentTime')
+            WebDriverWait(driver, 5).until(lambda d: d.execute_script(
+                'return document.getElementById("station-audio").currentTime') > position + .2)
+            assert play.get_attribute('aria-label') == 'Pause live stream'
+            assert driver.execute_script('''
+                const a=document.getElementById('station-audio');
+                return a!==previousStream && a.currentSrc!==previousURL && a.volume===.4 && a.muted;
+            ''')
+            driver.execute_script('''
+                previousStream.dispatchEvent(new Event('pause'));
+                previousStream.dispatchEvent(new Event('error'));
+                document.getElementById('station-audio').muted=false;
+            ''')
+            assert play.get_attribute('aria-label') == 'Pause live stream'
+        # Rapid taps queue pause events and abort old play promises. The final
+        # play intent must survive those events and establish a new connection.
+        driver.execute_script('const p=document.getElementById("play-button");p.click();p.click();p.click();p.click();')
+        wait_text(driver, '#audio-message', 'listening live')
+        assert play.get_attribute('aria-label') == 'Pause live stream'
+    # A browser can leave play() pending without an error after a connection
+    # dies. Advance only the test clock to exercise the bounded reconnect.
+    play.click()
+    driver.execute_script('''
+        window.realPlayerPlay=HTMLMediaElement.prototype.play;
+        HTMLMediaElement.prototype.play=function(){
+            if(this.id==='station-audio')return new Promise((resolve,reject)=>{window.rejectOldPlay=reject;});
+            return window.realPlayerPlay.call(this);
+        };
+        window.realPlayerNow=Date.now;
+    ''')
+    play.click()
+    driver.execute_script('Date.now=()=>window.realPlayerNow()+20000;')
+    wait_text(driver, '#audio-message', 'Reconnecting shortly')
+    driver.execute_script('''
+        HTMLMediaElement.prototype.play=window.realPlayerPlay;
+        Date.now=()=>window.realPlayerNow()+40000;
+    ''')
+    wait_text(driver, '#audio-message', 'listening live')
+    driver.execute_script('Date.now=window.realPlayerNow;window.rejectOldPlay(new DOMException("Old attempt", "AbortError"));')
+    assert play.get_attribute('aria-label') == 'Pause live stream'

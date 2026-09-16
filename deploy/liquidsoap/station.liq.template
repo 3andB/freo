@@ -10,47 +10,32 @@ tone = sine(amplitude=0.08, __FREQUENCY__.)
 tone = metadata.map(fun (_) -> [("title", __TITLE__)], tone)
 # Engine-owned sources: the browser only submits worker-mediated intent.
 deck_a = request.queue(id="freo_a", prefetch=1)
-# One program queue with an atomic insert operation for between-song events.
-# Expose both prefetched and waiting requests so inserting preserves music order.
+# One resolved program queue. A separate waiting list plus background prefetch
+# can reinsert an in-flight request ahead of an inserted event. Resolve local
+# approved media before adding it; the engine owns only this one future queue.
 def program_queue()
-  waiting = ref([])
-  def next()
-    if list.is_empty(waiting()) then null()
-    else
-      let [r, ...rest] = waiting()
-      waiting := rest
-      (r:request)
-    end
-  end
-  source = request.dynamic(id="freo_queue", prefetch=1, available={not list.is_empty(waiting())}, next)
-  def all_requests() = [...source.queue(), ...waiting()] end
-  def set_queue(requests)
-    waiting := requests
-    source.set_queue([])
-  end
+  source = request.dynamic(id="freo_queue", prefetch=0, available=false, fun () -> null())
+  def all_requests() = source.queue() end
+  def set_queue(requests) = source.set_queue(requests) end
   def push(uri)
     r = request.create(uri)
-    waiting := [...waiting(), r]
-    ignore(source.fetch())
-    string(request.id(r))
+    if source.add(r) then string(request.id(r))
+    else request.destroy(r); "ERROR unavailable audio" end
   end
   def insert(uri)
     r = request.create(uri)
     if request.resolve(r) then
       set_queue([r, ...all_requests()])
-      ignore(source.fetch())
       string(request.id(r))
     else
       request.destroy(r)
       "ERROR unavailable event audio"
     end
   end
-  # Atomic future-only removal preserves the current request and manual/event order.
   server.register(namespace="freo_queue", "remove", fun (value) -> begin
     ids = string.split(separator=" ", value)
     retained = list.filter(fun (r) -> not list.mem(string(request.id(r)), ids), all_requests())
     set_queue(retained)
-    ignore(source.fetch())
     "OK"
   end)
   server.register(namespace="freo_queue", "push", push)

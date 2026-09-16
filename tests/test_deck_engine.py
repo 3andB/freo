@@ -17,12 +17,14 @@ def test_actual_worker_load_play_pause_repeat_clear_and_mode(app,tmp_path,monkey
     media=tmp_path/'media';runtime=tmp_path/'runtime';directory=runtime/'test-station';directory.mkdir(parents=True)
     originals=media/'test-station'/'originals';originals.mkdir(parents=True)
     key='a'*32+'.mp3';audio=originals/key
-    subprocess.run(['ffmpeg','-v','error','-f','lavfi','-i','sine=frequency=440:duration=4','-y',str(audio)],check=True)
+    # Leave time for real socket/DB observations and operator commands. Four
+    # seconds could expire during CLEAR, correctly triggering stale protection.
+    subprocess.run(['ffmpeg','-v','error','-f','lavfi','-i','sine=frequency=440:duration=20','-y',str(audio)],check=True)
     monkeypatch.setenv('FREO_MEDIA_ROOT',str(media))
     monkeypatch.setattr('app.services.playout_queue.SOCKET_ROOT',runtime)
     monkeypatch.setattr('app.automation_worker.EVENT_ROOT',runtime)
     with app.app_context():
-        station=Station.query.filter_by(slug='test-station').one();track=Track.query.first();track.storage_key=key;track.duration_ms=4000
+        station=Station.query.filter_by(slug='test-station').one();track=Track.query.first();track.storage_key=key;track.duration_ms=20000
         station.automation.operator_mode='DJ_BOOTH';station.automation.hold=True;db.session.commit();user=AdminUser.query.first()
         source=render_liquidsoap(station,'a'*64).replace('/run/freo/playout/test-station',str(directory))
         source='settings.init.allow_root := true\n'+source[:source.index('output.icecast(')]+f'output.file(%wav, "{tmp_path}/audio.wav", radio)\n'
@@ -58,9 +60,17 @@ def test_actual_worker_load_play_pause_repeat_clear_and_mode(app,tmp_path,monkey
                     time.sleep(.2);assert refresh()['mixer'][deck.lower()+'_elapsed']==0
                     observed,_=action(deck,'PLAY');assert observed['current']['decision_id']==identifier
                 observed,command=action('B','REPEAT');repeat=command.target_decision_id
-                time.sleep(4);observed=refresh()
+                deadline=time.monotonic()+30
+                while time.monotonic()<deadline:
+                    observed=refresh()
+                    if (observed['current'] and observed['current']['decision_id']==repeat
+                            and db.session.get(SelectionDecision,repeat).status=='started'):break
+                    time.sleep(.1)
                 assert observed['current']['decision_id']==repeat
                 assert db.session.get(SelectionDecision,repeat).status=='started'
+                # Freeze the repeated track before testing explicit cleanup;
+                # end-of-track stale commands have separate rejection coverage.
+                action('B','PAUSE')
                 for deck in ('A','B'):
                     observed,_=action(deck,'CLEAR');assert observed['mixer'][deck.lower()] is None
                 assert refresh()['current'] is None
@@ -215,8 +225,9 @@ def test_auto_and_dj_crossfade(app,tmp_path,monkeypatch,deck,direction):
     assert sum(a2<a1-.01 for (a1,_),(a2,_) in zip(ratios,ratios[1:]))>=15
 
 
-def test_soft_insert_preserves_current_song_and_all_future_requests(app,tmp_path,monkeypatch):
-    """Actual engine proof: song → event → both prefetched and waiting music."""
+@pytest.mark.parametrize('future_count', [2, 6])
+def test_soft_insert_preserves_current_song_and_all_future_requests(app,tmp_path,monkeypatch,future_count):
+    """Actual engine proof: current song → inserted event → all future music."""
     from app.services.playout_queue import _command, queued_order
     media=tmp_path/'media';runtime=tmp_path/'runtime';directory=runtime/'test-station';directory.mkdir(parents=True)
     originals=media/'test-station'/'originals';originals.mkdir(parents=True)
@@ -245,15 +256,17 @@ def test_soft_insert_preserves_current_song_and_all_future_requests(app,tmp_path
                 if starts():break
                 time.sleep(.1)
             assert starts()[0][0] == 1
-            second=enqueue('b',2);third=enqueue('c',3)
-            event=enqueue('d',4,'insert')
-            assert queued_order('test-station') == [event,second,third]
+            future=[enqueue('b' if i%2==0 else 'c',i+2) for i in range(future_count)]
+            event_decision=future_count+2
+            event=enqueue('d',event_decision,'insert')
+            assert queued_order('test-station') == [event,*future]
             assert [identifier for identifier,_ in starts()] == [1]
-            for _ in range(140):
-                if len(starts()) >= 4:break
+            deadline=time.monotonic()+10+2*future_count
+            while time.monotonic()<deadline:
+                if len(starts()) >= future_count+2:break
                 time.sleep(.1)
             actual=starts()
-            assert [identifier for identifier,_ in actual] == [1,4,2,3]
+            assert [identifier for identifier,_ in actual] == [1,event_decision,*range(2,future_count+2)]
             assert actual[1][1]-actual[0][1] >= 4.5
         finally:
             proc.terminate()
