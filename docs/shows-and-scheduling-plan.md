@@ -1,6 +1,6 @@
 # Shows and scheduling redesign
 
-Status: implementation delivered in the workspace, September 16, 2026; live rollout pending. This document covers the nine requested changes and the three-mode update, and supersedes conflicting product direction in `programming-harmonization-plan.md`. See [implementation, validation, and rollout](shows-and-scheduling-rollout.md) for delivered behavior, deployment order, and remaining design refinements. The detailed proposal below records the broader design, including refinements beyond this v1 implementation.
+Status: deployed on the current installation, September 16, 2026. Scheduling mode activation remains an explicit operator action. This document covers the nine requested changes and the three-mode update, and supersedes conflicting product direction in `programming-harmonization-plan.md`. See [implementation, validation, and rollout](shows-and-scheduling-rollout.md) for delivered behavior, deployment order, and remaining design refinements. The detailed proposal below records the broader design, including refinements beyond this v1 implementation.
 
 ## Product direction
 

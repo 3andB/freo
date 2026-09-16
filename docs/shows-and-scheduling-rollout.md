@@ -1,6 +1,6 @@
 # Shows and scheduling: implementation and rollout
 
-The source implementation is complete for the requested Calendar, Blocks, and Simple workflows. This change has not been deployed to live stations. The database and managed Liquidsoap configurations must be updated together before operators activate the new scheduler.
+The source implementation is complete for the requested Calendar, Blocks, and Simple workflows. Deployed on the current installation on September 16, 2026. The database and managed Liquidsoap configurations have been updated together; operators can now explicitly activate the new scheduler.
 
 ## Operator workflow
 
@@ -17,10 +17,10 @@ Saved Shows have immutable revisions. Apply to future uses explicitly updates Ca
 
 ## Deployment order
 
-Use the existing release procedure and a station maintenance window for engine restarts. No live restart or database migration was executed during implementation.
+For subsequent installations, use the existing release procedure and a station maintenance window for engine restarts. The current installation completed the deployment recorded below.
 
 1. Back up the database, application release, and managed station configs. Record the current migration revision and running stations.
-2. Stop/restart application and automation processes as coordinated by the release procedure. Apply `venv/bin/flask --app wsgi:app db upgrade` using the installation's configured environment. New head: `ab92e51c7034`; parent: `d18e42f6a905`. The migration adds scheduling tables, hourly Event fields, and a title/id search index. It does not activate stations or rewrite legacy programming.
+2. Keep services running for the additive transaction, with a bounded PostgreSQL lock timeout so contention aborts safely. Apply `venv/bin/flask --app wsgi:app db upgrade` using the installation's configured environment. New head: `ab92e51c7034`; parent: `d18e42f6a905`. The migration adds scheduling tables, hourly Event fields, and a title/id search index. It does not activate stations or rewrite legacy programming.
 3. Deploy the matching application, worker, static files, and Liquidsoap template. Render each managed station through the root-run `station render <slug>` CLI and restart its managed instance in the maintenance window. Rendering validates Liquidsoap before replacing its config. An old engine cannot execute the new scheduling handoff; the worker checks capability before queuing target audio.
 4. Start the matching web and automation processes. Verify normal station health, audio, Event delivery, and active-mode status. Configure the default playlist, review the imported Calendar, save it, and explicitly confirm activation for each station.
 5. Confirm on-air playback and selection history after switching. Check an unfilled Calendar interval, unassigned Block day, and unavailable Simple source against the default playlist.
@@ -37,4 +37,12 @@ Rollback restores a matching prior application/worker/engine release and databas
 - A seeded SQLite catalog with 100,000 songs returned 40-row pages with 7.3 ms median / 8.6 ms p95 in the isolated benchmark. This measures source search, not complete playout throughput or production PostgreSQL latency.
 - Legacy overnight coverage is compared across 370 dates. DST boundary tests cover spring and fall; music follows local wall time and wakes at UTC-offset changes. The timeline currently uses a local 24-hour ruler without separate visual lanes for repeated hours.
 
-Production PostgreSQL migration/recovery, live station restarts, and an operator usability review remain rollout checks. The v1 editor uses individual section selection; bulk multi-selection and dedicated faceted tag/sort controls from the broader design are not included. Search includes song title, artist, album, and tags. Existing legacy clocks containing only imaging/sequences should retain compatibility playback until the operator configures a music source/default for activation.
+The current installation passed the production PostgreSQL migration and live restart checks. Fresh-install PostgreSQL recovery and an operator usability review remain separate acceptance checks. The v1 editor uses individual section selection; bulk multi-selection and dedicated faceted tag/sort controls from the broader design are not included. Search includes song title, artist, album, and tags. Existing legacy clocks containing only imaging/sequences should retain compatibility playback until the operator configures a music source/default for activation.
+
+## Current installation deployment — September 16, 2026
+
+Implementation commit: `2fefec7`. Migration advanced from `d18e42f6a905` to `ab92e51c7034` transactionally while services remained available. A private database dump, prior source archive, and runtime configuration backup were verified before migration.
+
+Both managed station configurations passed installed Liquidsoap validation and were rendered. The running `freo-demo` engine was restarted; `freo-demo-2` retained its stopped state. Web, automation, ingest, microphone, and central API services were restarted onto the release.
+
+Post-deployment checks returned HTTP 200 for application health, database readiness, automation heartbeat, and the diagnostic stream. `freo-demo` reported running playout and an online stream, nonzero program audio, and the new `freo_schedule.status` capability. Read-only checks against production PostgreSQL passed for 12 authenticated pages and 16 source-query combinations. Existing programming remains active until an operator confirms a scheduling-mode activation.
