@@ -8,7 +8,7 @@ from sqlalchemy.exc import IntegrityError
 from app.extensions import db
 from app.models import CentralInstallation, Station, CentralHourlyMetric
 from app.services.station_domains import preferred_url
-from .client import APIError, Client, MAX_BYTES, identity_response, license_response, timestamp
+from .client import APIError, Client, MAX_BYTES, identity_response, license_response, timestamp, uuid_string
 from .identity import IdentityStore
 from .licensing import checkpoint
 from .metrics import machine_snapshot, sample, station_state, wire_metric, observe_station
@@ -137,6 +137,63 @@ class Reporter:
         db.session.commit()
         return saved
 
+    def activate(self, row):
+        pending = row.state.get('activation')
+        if not pending or not pending.get('code'):
+            return
+        saved = self.store.read()
+        existing = saved if saved and saved.get('installation_id') else None
+        # Consume before the external exchange. A restart must not create a
+        # second installation after a response or disk-write failure.
+        row.state = {k: v for k, v in row.state.items() if k != 'activation'}
+        if not existing:
+            row.registration_state = 'registration_uncertain'
+        db.session.commit()
+        if pending['expires'] <= time.time():
+            if not existing and not saved:
+                row.registration_state = 'unconfigured'
+                db.session.commit()
+            raise APIError('activation_code_expired')
+        if row.installation_id and (not existing or existing['installation_id'] != row.installation_id):
+            raise APIError('credentials_missing_recovery_required')
+        if not existing and saved:
+            raise APIError('activation_uncertain_recovery_required')
+        if not existing:
+            self.store.write({'registration_attempted': True})
+        connection = self.client_factory(current_app.config['FREO_API_URL'],
+                                         existing['access_token'] if existing else None)
+        try:
+            response = connection.request('POST', '/v1/activate',
+                {'activation_code': pending['code'], 'installation': machine_snapshot()})
+        except APIError as error:
+            if not existing and error.status in (400, 401, 409, 413, 415, 429):
+                self.store.path.unlink(missing_ok=True)
+                row.registration_state = 'unconfigured'
+                db.session.commit()
+            raise
+        try:
+            uuid_string(response['station_profile_id'])
+            timestamp(response['server_time'])
+            if response['token_type'] != 'Bearer' or response['heartbeat_interval_seconds'] != 3600:
+                raise ValueError()
+            credentials = existing or identity_response(response)
+            if response['installation_id'] != credentials['installation_id']:
+                raise ValueError()
+            if existing and 'access_token' in response:
+                raise ValueError()
+            entitlement = license_response(response['license'], credentials['installation_id'])
+        except (KeyError, ValueError, TypeError):
+            raise APIError('invalid_activation_response') from None
+        self.store.write(credentials)
+        row.installation_id = credentials['installation_id']
+        row.registration_state = 'registered'
+        received = time.time()
+        row.license_cache = {'entitlement': entitlement, 'received_at': received,
+                            'checked_at': received, 'server_floor': timestamp(entitlement['server_time'])}
+        row.state = dict(row.state, owner_profile_id=response['station_profile_id'], license={'due': 0}, report={'due': 0})
+        row.last_error = ''
+        db.session.commit()
+
     def license(self, row, client, now):
         response = client.request('GET', '/v1/license')
         entitlement = license_response(response, row.installation_id)
@@ -216,6 +273,7 @@ class Reporter:
         if row.registration_state == 'unconfigured':
             return
         try:
+            self.activate(row)
             credentials = self.register(row)
         except APIError as error:
             row.last_error = error.code

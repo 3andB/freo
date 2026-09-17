@@ -548,3 +548,83 @@ def test_reporter_cli_and_hidden_credential_recovery(central, monkeypatch, app):
     assert result.exit_code == 0, result.output
     assert TOKEN not in result.output
     assert reporter.store.read()['installation_id'] == INSTALLATION_ID
+
+
+@pytest.mark.parametrize('existing', [False, True])
+def test_owner_activation_preserves_identity_and_survives_restart(central, existing):
+    from app.routes.central_api import queue_activation
+    reporter, api = central
+    if existing:
+        reporter.tick()
+    station_ids = [s.freo_station_id for s in Station.query]
+    original_factory = api.factory
+    exchanges = []
+    profile_id = str(uuid4())
+
+    def factory(url, token=None):
+        original = original_factory(url, token)
+        class Connection:
+            def request(self, method, path, payload=None):
+                if path != '/v1/activate':
+                    return original.request(method, path, payload)
+                exchanges.append((token, payload))
+                result = dict(installation_id=INSTALLATION_ID, station_profile_id=profile_id,
+                    token_type='Bearer', heartbeat_interval_seconds=3600,
+                    server_time=iso(time.time()), license=api.entitlement)
+                if not existing:
+                    result['access_token'] = TOKEN
+                return result
+        return Connection()
+
+    reporter.client_factory = factory
+    queue_activation('freo-7k4p-m9q2')
+    reporter.tick()
+    assert exchanges[0][0] == (TOKEN if existing else None)
+    assert exchanges[0][1]['activation_code'] == 'FREO-7K4P-M9Q2'
+    assert reporter.store.read() == {'installation_id': INSTALLATION_ID, 'access_token': TOKEN}
+    assert installation().state['owner_profile_id'] == profile_id
+    assert 'activation' not in installation().state
+    assert installation().registration_state == 'registered'
+    assert [s.freo_station_id for s in Station.query] == station_ids
+    Reporter(factory).tick()
+    assert len(exchanges) == 1
+    assert sum(path == '/v1/register' for _, path, _, _ in api.calls) == int(existing)
+
+
+def test_activation_lost_response_is_not_automatically_retried(central):
+    from app.routes.central_api import queue_activation
+    reporter, api = central
+    queue_activation('FREO-7K4P-M9Q2')
+    api.fail['/v1/activate'] = APIError('connection_or_response_error')
+    reporter.tick()
+    reporter.tick()
+    assert len(api.calls) == 1 and api.calls[0][1] == '/v1/activate'
+    assert reporter.store.read() == {'registration_attempted': True}
+    assert installation().registration_state == 'registration_uncertain'
+    assert 'activation' not in installation().state
+    assert all(s.enabled for s in Station.query)
+
+
+def test_rejected_activation_allows_new_code(central):
+    from app.routes.central_api import queue_activation
+    reporter, api = central
+    api.fail['/v1/activate'] = APIError('http_400', status=400)
+    queue_activation('FREO-7K4P-M9Q2')
+    reporter.tick()
+    assert reporter.store.read() is None
+    assert installation().registration_state == 'unconfigured'
+    queue_activation('FREO-7K4P-M9Q3')
+    assert installation().registration_state == 'activation_queued'
+
+
+def test_activation_admin_csrf_and_code_not_reflected(app):
+    client = admin_client(app)
+    code = 'FREO-7K4P-M9Q2'
+    assert client.post('/admin/installation', data={'action':'activate','activation_code':code}).status_code == 400
+    client.get('/admin/installation')
+    with client.session_transaction() as state:
+        csrf = state['admin_csrf']
+    assert client.post('/admin/installation', data={'csrf':csrf,'action':'activate','activation_code':code}).status_code == 302
+    assert code not in client.get('/admin/installation').text
+    with app.app_context():
+        assert installation().registration_state == 'activation_queued'

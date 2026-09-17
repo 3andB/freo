@@ -15,6 +15,22 @@ from app.services.central_api.licensing import effective_time
 central_api = Blueprint('central_api', __name__)
 
 
+def queue_activation(code):
+    code = code.strip().upper()
+    if not re.fullmatch(r'FREO-[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}', code):
+        raise ValueError('Enter the activation code from your Freo Live station profile')
+    row = installation()
+    # Only a short-lived activation code crosses the private database queue.
+    # Installation bearer credentials remain in the reporter's private file.
+    row.state = dict(row.state, activation={'code': code, 'expires': time.time() + 1800})
+    if not row.installation_id:
+        if row.registration_state == 'registration_uncertain':
+            raise ValueError('Recover the existing installation credential before connecting its owner profile')
+        row.registration_state = 'activation_queued'
+    row.last_error = ''
+    db.session.commit()
+
+
 def configure(email, retry=False):
     email = email.strip()
     if len(email) > 254 or not re.fullmatch(r'[^\s@\x00-\x1f]+@[^\s@\x00-\x1f]+\.[^\s@\x00-\x1f]+', email):
@@ -38,7 +54,9 @@ def settings():
     if request.method == 'POST':
         require_csrf()
         try:
-            if request.form.get('action') == 'retry_connection':
+            if request.form.get('action') == 'activate':
+                queue_activation(request.form.get('activation_code', ''))
+            elif request.form.get('action') == 'retry_connection':
                 if not row.installation_id:
                     raise ValueError('Register this installation first')
                 row.registration_state = 'registered'
@@ -106,6 +124,18 @@ def recover_credential(installation_id):
     except (ValueError, APIError) as error:
         raise click.ClickException(str(error)) from None
     click.echo('Credential saved. Start the reporter to verify it.')
+
+
+@cli.command('activate')
+def activate_command():
+    """Queue an owner activation without displaying its code or credential."""
+    code = click.prompt('Activation code', hide_input=True)
+    try:
+        queue_activation(code)
+    except ValueError as error:
+        db.session.rollback()
+        raise click.ClickException(str(error)) from None
+    click.echo('Activation queued. The background reporter will connect your station profile.')
 
 
 @cli.command('run')
