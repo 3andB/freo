@@ -33,7 +33,11 @@ API contract; calling it does not require purchasing or activating a paid
 license. A valid response indicating no paid entitlement must be accepted and
 cached. It must not be confused with a failed status fetch or expired paid
 entitlement. Do not invent a wire representation for absence of a paid license;
-confirm its exact fields with the API team.
+the API team has confirmed that this is the normal active Community entitlement.
+`plan: free` does not mean a missing license. Read `channel_limit` and
+`grace_until` from the response; do not hardcode the current two-channel,
+seven-day defaults. A genuinely missing license returns retryable
+`503 license_unavailable`; preserve the previous cache and existing broadcasts.
 
 Paid-license changes must not recreate identity, change owner registration or
 stop ordinary reporting. Implement entitlement associations and paid feature
@@ -140,10 +144,9 @@ and all newer client work is represented in the integration baseline.
      registration and optional paid-license status separately. Never infer
      registration from an installation UUID or paid licensing from registration.
      A valid absence of paid entitlement is a normal status, not a setup error.
-   - Audit existing entitlement validators and channel-expansion checks: the
-     current client assumes a populated entitlement with an active status.
-     Reconcile that assumption with the API's Community allowance and explicit
-     no-paid-license response. Do not classify absence of a paid license as an
+   - Verify entitlement validators and channel-expansion checks accept the active
+     Community entitlement, including null expiry/renewal and optional owner
+     linkage. Retain the supplied channel limit and grace deadline. Do not classify absence of a paid license as an
      expired or suspended license, or add a purchase requirement for Community
      use. Preserve separately specified limits and outage behavior.
    - All communication is outbound HTTPS with certificate verification. No
@@ -281,33 +284,32 @@ local tick alone do not satisfy acceptance.
 - Resume the reporter only after the fault is corrected, then repeat UUID,
   heartbeat and server-side last-seen verification.
 
-## API-team dependencies and questions
+## API-team answers and verification handoff
 
-1. **Pinned contract access:** Can the team provide `api/docs/contract.md` and
-   request validators at `506a3ee`, or repository access? The supplied raw URL
-   returned 404; the available local copy is `1116c05`.
-2. **Production readiness:** Is `https://api.freo.live` running that contract or a
-   compatible descendant, including idempotent `/v1/enroll`, registration status
-   in license responses and activation without an email-verification gate?
-3. **Optional paid-license schema:** What exact response does `/v1/license`
-   return for an installation without a paid license, both before and after
-   owner registration? Which fields distinguish Community allowance, owner
-   registration and paid-license status, and how is a paid entitlement's
-   owner/station/installation association represented? Provide example responses
-   or point to the pinned schema; do not assume every installation has a paid
-   license record.
-4. **Registry verification:** Who can inspect the final installation UUID in
-   Freo Live and return its server-side `last_seen_at`, deployed version, channel
-   URLs and registration status? An existing authenticated admin session or an
-   API-team verification is sufficient; do not send credentials in chat.
-5. **Conditional recovery:** If local inspection reveals an existing UUID with
-   missing/rejected credentials or uncertain legacy registration, what supported
-   recovery procedure preserves that identity? This question becomes blocking
-   only if that state is found.
+The API team supplied standalone [contract](https://freo.live/downloads/freo-api/506a3ee/contract.md),
+[validators](https://freo.live/downloads/freo-api/506a3ee/validation.py) and a
+[checksummed bundle](https://freo.live/downloads/freo-api/506a3ee/freo-api-506a3ee.zip).
+Bundle checksums and standalone-file equality were verified locally. The
+validators use `pydantic[email]==2.13.5`, including cross-field checks.
 
-Integration and isolated testing can proceed while access is arranged. Exact
-contract validation and server-side acceptance remain explicit dependencies;
-they must not be reported as complete without evidence.
+An installation without a paid license receives an active Community entitlement
+at enrollment. Both before and after registration, `/v1/license` returns 200
+with `plan: free`, null expiry and renewal, and server-supplied channel limit and
+grace deadline. Registration changes the owner profile and registration status;
+it preserves identity, credential and entitlement. Current production defaults
+are two channels and seven days; clients read these from responses. A genuinely
+missing license produces retryable `503 license_unavailable`.
+
+The API team confirmed production compatibility, including security fixes at
+`eb41af4` that leave the contract unchanged, and will perform registry-side
+verification. After deployment, provide the installation UUID, deployed version,
+expected channel URLs, expected registration status and successful heartbeat's
+UTC `server_time`. Never provide the bearer credential. Client-side receipt and
+API-team registry confirmation are recorded separately until both are complete.
+
+Credential recovery is only needed if an existing identity is found without its
+credential. Production preflight found no installation UUID and an unconfigured
+local record, so automatic enrollment is appropriate for this installation.
 
 ## Final deployment report
 

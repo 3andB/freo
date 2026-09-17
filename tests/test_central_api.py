@@ -1,4 +1,4 @@
-"""Wire fixtures follow freo-live/api/docs/contract.md, commit 1116c05."""
+"""Wire fixtures follow freo-live/api/docs/contract.md, commit 506a3ee."""
 import json
 import os
 import time
@@ -39,6 +39,7 @@ class FakeAPI:
         self.calls = []
         self.fail = {}
         self.entitlement = license_payload()
+        self.token = TOKEN
 
     def factory(self, url, token=None):
         outer = self
@@ -50,7 +51,11 @@ class FakeAPI:
                 if path == '/v1/register':
                     return dict(installation_id=INSTALLATION_ID, access_token=TOKEN,
                         token_type='Bearer', server_time=iso(time.time()), heartbeat_interval_seconds=3600)
-                assert token == TOKEN
+                if path == '/v1/enroll':
+                    outer.token = token
+                    return dict(installation_id=INSTALLATION_ID, token_type='Bearer',
+                        server_time=iso(time.time()), heartbeat_interval_seconds=3600, station_profile_id=None)
+                assert token == outer.token
                 if path == '/v1/license':
                     return outer.entitlement
                 if path == '/v1/stations/sync':
@@ -173,6 +178,8 @@ def test_station_uuid_unique_immutable_and_rename_sync(central):
 
 def test_weighted_hours_gaps_and_privacy(central, monkeypatch):
     reporter, api = central
+    installation().registration_state = 'unconfigured'
+    db.session.commit()
     now = int(time.time() // 3600) * 3600
     sample(now - 120)
     monkeypatch.setattr('app.services.central_api.metrics.observation', lambda slug: (True, 10))
@@ -287,7 +294,9 @@ def test_explicit_license_changes_only_block_expansion(central, changes):
 
 
 @pytest.mark.parametrize('change', [dict(installation_id=str(uuid4())), dict(channel_limit=True),
-    dict(status='unknown'), dict(grace_until='bad'), dict(outage_policy='stop'), dict(expires_at='nope')])
+    dict(status='unknown'), dict(grace_until='bad'), dict(outage_policy='stop'), dict(expires_at='nope'), dict(station_profile_id=0), dict(station_profile_id=''), dict(registration_status='registered', station_profile_id=None),
+    dict(registration_status='unregistered', station_profile_id=INSTALLATION_ID),
+    dict(registration_status='unknown', station_profile_id=None)])
 def test_invalid_entitlement_is_rejected(change):
     with pytest.raises(APIError, match='invalid_license_response'):
         license_response(license_payload(**change), INSTALLATION_ID)
@@ -390,6 +399,9 @@ def test_transport_timeouts_no_redirects_and_retry_after(monkeypatch):
     with pytest.raises(APIError, match='http_302'):
         client.request('GET', '/v1/license')
     assert len(connections) == 2 and all(connection.closed for connection in connections)
+    response.status = 201
+    with pytest.raises(APIError, match='invalid_heartbeat_status'):
+        client.request('POST', '/v1/heartbeat', {'installation': {}, 'stations': []})
 
 
 def test_retry_after_and_invalid_payload_do_not_spin(central):
@@ -462,17 +474,24 @@ def test_station_settings_country_directory_fields_and_uuid(app):
 def test_payloads_against_actual_server_validators(central):
     import importlib.util
     from pathlib import Path
-    source = Path(os.environ['FREO_API_CONTRACT_SOURCE']) / 'freo_api' / 'validation.py'
+    root = Path(os.environ['FREO_API_CONTRACT_SOURCE'])
+    source = root / 'validation.py' if (root / 'validation.py').exists() else root / 'freo_api' / 'validation.py'
     spec = importlib.util.spec_from_file_location('freo_api_contract_validation', source)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     reporter, api = central
+    installation().registration_state = 'unconfigured'
+    db.session.commit()
     now = int(time.time() // 3600) * 3600
     sample(now - 120)
     sample(now - 60)
     reporter.tick()
-    validators = {'/v1/register': module.Registration, '/v1/stations/sync': module.StationSync,
-                  '/v1/heartbeat': module.Heartbeat}
+    from app.routes.central_api import queue_activation
+    api.fail['/v1/activate'] = APIError('http_400', status=400)
+    queue_activation('FREO-7K4P-M9Q2')
+    reporter.tick()
+    validators = {'/v1/enroll': module.Enrollment, '/v1/register': module.Registration, '/v1/stations/sync': module.StationSync,
+                  '/v1/heartbeat': module.Heartbeat, '/v1/activate': module.Activation}
     for _, path, payload, _ in api.calls:
         if path in validators:
             validators[path].model_validate_json(json.dumps(payload))
@@ -548,3 +567,282 @@ def test_reporter_cli_and_hidden_credential_recovery(central, monkeypatch, app):
     assert result.exit_code == 0, result.output
     assert TOKEN not in result.output
     assert reporter.store.read()['installation_id'] == INSTALLATION_ID
+
+
+@pytest.mark.parametrize('existing', [False, True])
+def test_owner_activation_preserves_identity_and_survives_restart(central, existing):
+    from app.routes.central_api import queue_activation
+    reporter, api = central
+    if existing:
+        reporter.tick()
+    station_ids = [s.freo_station_id for s in Station.query]
+    original_factory = api.factory
+    exchanges = []
+    profile_id = str(uuid4())
+
+    def factory(url, token=None):
+        original = original_factory(url, token)
+        class Connection:
+            def request(self, method, path, payload=None):
+                if path != '/v1/activate':
+                    return original.request(method, path, payload)
+                exchanges.append((token, payload))
+                result = dict(installation_id=INSTALLATION_ID, station_profile_id=profile_id,
+                    token_type='Bearer', heartbeat_interval_seconds=3600,
+                    server_time=iso(time.time()), license=api.entitlement)
+                return result
+        return Connection()
+
+    reporter.client_factory = factory
+    queue_activation('freo-7k4p-m9q2')
+    reporter.tick()
+    assert exchanges[0][0] == api.token
+    assert exchanges[0][1]['activation_code'] == 'FREO-7K4P-M9Q2'
+    assert reporter.store.read() == {'installation_id': INSTALLATION_ID, 'access_token': api.token}
+    assert installation().state['owner_profile_id'] == profile_id
+    assert 'activation' not in installation().state
+    assert installation().registration_state == 'enrolled'
+    assert [s.freo_station_id for s in Station.query] == station_ids
+    Reporter(factory).tick()
+    assert len(exchanges) == 1
+    assert sum(path == '/v1/register' for _, path, _, _ in api.calls) == int(existing)
+
+
+def test_activation_lost_response_retries_same_identity_after_backoff(central):
+    from app.routes.central_api import queue_activation
+    reporter, api = central
+    queue_activation('FREO-7K4P-M9Q2')
+    api.fail['/v1/activate'] = APIError('connection_or_response_error')
+    reporter.tick()
+    identity = reporter.store.read()
+    reporter.tick()
+    Reporter(api.factory).tick()
+    assert sum(path == '/v1/enroll' for _, path, _, _ in api.calls) == 1
+    assert sum(path == '/v1/activate' for _, path, _, _ in api.calls) == 1
+    assert installation().registration_state == 'enrolled'
+    assert 'activation' in installation().state
+    assert all(s.enabled for s in Station.query)
+    installation().state = dict(installation().state, claim={'due': 0})
+    db.session.commit()
+    Reporter(api.factory).tick()
+    assert sum(path == '/v1/activate' for _, path, _, _ in api.calls) == 2
+    assert reporter.store.read() == identity
+
+
+def test_rejected_activation_allows_new_code_without_new_identity(central):
+    from app.routes.central_api import queue_activation
+    reporter, api = central
+    api.fail['/v1/activate'] = APIError('http_400', status=400)
+    queue_activation('FREO-7K4P-M9Q2')
+    reporter.tick()
+    identity = reporter.store.read()
+    assert identity['installation_id'] == INSTALLATION_ID
+    assert installation().registration_state == 'enrolled'
+    assert 'activation' not in installation().state
+    queue_activation('FREO-7K4P-M9Q3')
+    reporter.tick()
+    assert reporter.store.read() == identity
+    assert sum(path == '/v1/enroll' for _, path, _, _ in api.calls) == 1
+
+
+def test_activation_admin_csrf_and_code_not_reflected(app):
+    client = admin_client(app)
+    code = 'FREO-7K4P-M9Q2'
+    assert client.post('/admin/installation', data={'action':'activate','activation_code':code}).status_code == 400
+    client.get('/admin/installation')
+    with client.session_transaction() as state:
+        csrf = state['admin_csrf']
+    assert client.post('/admin/installation', data={'csrf':csrf,'action':'activate','activation_code':code}).status_code == 302
+    assert code not in client.get('/admin/installation').text
+    with app.app_context():
+        assert installation().registration_state == 'activation_queued'
+
+
+def test_unconfigured_installation_enrolls_without_email(central):
+    reporter, api = central
+    row = installation()
+    row.registration_state, row.manager_email = 'unconfigured', ''
+    db.session.commit()
+    reporter.tick()
+    assert api.calls[0][1] == '/v1/enroll'
+    assert set(api.calls[0][2]) == {'installation'}
+    assert api.calls[0][3].startswith('freo_')
+    assert row.installation_id == INSTALLATION_ID
+    assert row.license_cache['entitlement']['status'] == 'active'
+    assert any(path == '/v1/heartbeat' for _, path, _, _ in api.calls)
+    identity = reporter.store.read()
+    assert identity['access_token'] not in repr(row.state) + repr(row.license_cache)
+    Reporter(api.factory).tick()
+    assert reporter.store.read() == identity
+    assert sum(path == '/v1/enroll' for _, path, _, _ in api.calls) == 1
+
+
+def test_enrollment_lost_response_reuses_durable_token_across_restart(central):
+    reporter, api = central
+    installation().registration_state = 'unconfigured'
+    db.session.commit()
+    api.fail['/v1/enroll'] = APIError('connection_or_response_error')
+    reporter.tick()
+    saved = reporter.store.read()
+    assert saved['enrollment_token'] == api.calls[0][3]
+    Reporter(api.factory).tick()
+    assert len(api.calls) == 1
+    installation().state = dict(installation().state, enrollment={'due': 0})
+    db.session.commit()
+    del api.fail['/v1/enroll']
+    Reporter(api.factory).tick()
+    assert api.calls[1][3] == saved['enrollment_token']
+    assert reporter.store.read()['access_token'] == saved['enrollment_token']
+    assert installation().registration_state == 'enrolled'
+
+
+def test_enrollment_credential_save_failure_prevents_network(central, monkeypatch):
+    reporter, api = central
+    installation().registration_state = 'unconfigured'
+    db.session.commit()
+    def fail_write(data):
+        raise OSError('disk unavailable')
+    monkeypatch.setattr(reporter.store, 'write', fail_write)
+    with pytest.raises(OSError):
+        reporter.tick()
+    assert not api.calls
+
+
+def test_enrollment_response_save_failure_recovers_same_identity(central, monkeypatch):
+    reporter, api = central
+    installation().registration_state = 'unconfigured'
+    db.session.commit()
+    write = reporter.store.write
+    def fail_response(data):
+        if 'installation_id' in data:
+            raise OSError('disk unavailable')
+        write(data)
+    monkeypatch.setattr(reporter.store, 'write', fail_response)
+    with pytest.raises(OSError):
+        reporter.tick()
+    pending = reporter.store.read()
+    Reporter(api.factory).tick()
+    assert reporter.store.read()['access_token'] == pending['enrollment_token']
+    assert [token for _, path, _, token in api.calls if path == '/v1/enroll'] == [pending['enrollment_token']] * 2
+
+
+def test_missing_pending_enrollment_credential_does_not_duplicate(central):
+    reporter, api = central
+    installation().registration_state = 'enrolling'
+    db.session.commit()
+    reporter.tick()
+    assert not api.calls
+    assert installation().last_error == 'credentials_missing_recovery_required'
+
+
+def test_revoked_pending_enrollment_never_generates_replacement(central):
+    reporter, api = central
+    installation().registration_state = 'unconfigured'
+    db.session.commit()
+    api.fail['/v1/enroll'] = APIError('unauthorized', status=401)
+    reporter.tick()
+    saved = reporter.store.read()
+    Reporter(api.factory).tick()
+    assert len(api.calls) == 1 and reporter.store.read() == saved
+    assert installation().registration_state == 'credentials_rejected'
+
+
+def test_license_refresh_recovers_owner_link_after_lost_activation(central):
+    reporter, api = central
+    reporter.tick()
+    profile_id = str(uuid4())
+    api.entitlement['station_profile_id'] = profile_id
+    Reporter(api.factory).tick()
+    assert installation().state['owner_profile_id'] == profile_id
+
+
+def test_reporting_does_not_mark_installation_registered(app, central):
+    reporter, api = central
+    row = installation()
+    row.registration_state, row.manager_email = 'unconfigured', ''
+    api.entitlement.update(station_profile_id=None, registration_status='unregistered')
+    db.session.commit()
+    reporter.tick()
+    client = admin_client(app)
+    page = client.get('/admin/installation').text
+    assert 'Registration: <strong>Unregistered</strong>' in page
+    assert 'Registered with Freo' not in page
+    identity = reporter.store.read()
+    api.entitlement.update(station_profile_id=str(uuid4()), registration_status='registered')
+    Reporter(api.factory).tick()
+    assert 'Registration: <strong>Registered with Freo</strong>' in client.get('/admin/installation').text
+    assert reporter.store.read() == identity
+    assert all(s.enabled for s in Station.query)
+
+
+@pytest.mark.parametrize('registered', [False, True])
+def test_community_entitlement_reports_without_purchase(central, registered):
+    reporter, api = central
+    row = installation()
+    row.registration_state, row.manager_email = 'unconfigured', ''
+    api.entitlement.update(plan='free', channel_limit=2, expires_at=None, renews_at=None,
+        station_profile_id=str(uuid4()) if registered else None,
+        registration_status='registered' if registered else 'unregistered')
+    db.session.commit()
+    reporter.tick()
+    assert [path for _, path, _, _ in api.calls] == ['/v1/enroll', '/v1/license', '/v1/stations/sync', '/v1/heartbeat']
+    assert row.license_cache['entitlement'] == api.entitlement
+    assert bool(row.state['owner_profile_id']) is registered
+    assert row.state['last_heartbeat']['stations_accepted'] == Station.query.count()
+
+
+@pytest.mark.parametrize('cached', [False, True])
+def test_license_unavailable_preserves_cache_and_allows_reporting(central, cached):
+    reporter, api = central
+    row = installation()
+    row.registration_state, row.manager_email = 'unconfigured', ''
+    if cached:
+        reporter.tick()
+        row.state = dict(row.state, license={'due': 0}, report={'due': 0})
+    db.session.commit()
+    previous = row.license_cache
+    api.calls.clear()
+    api.fail['/v1/license'] = APIError('license_unavailable', status=503)
+    reporter.tick()
+    if cached:
+        assert row.license_cache['entitlement'] == previous['entitlement']
+        assert row.license_cache['received_at'] == previous['received_at']
+    else:
+        assert row.license_cache is None
+    assert any(path == '/v1/heartbeat' for _, path, _, _ in api.calls)
+    assert all(s.enabled for s in Station.query)
+    assert row.state['license']['failures'] == 1
+    assert not row.state['license']['blocked']
+
+
+def test_heartbeat_receipt_is_validated_durable_and_private(central, caplog):
+    import logging
+    reporter, api = central
+    with caplog.at_level(logging.INFO):
+        reporter.tick()
+    receipt = dict(installation().state['last_heartbeat'])
+    assert receipt['next_heartbeat_seconds'] == 3600
+    assert receipt['stations_accepted'] == 2
+    assert receipt['metrics_accepted'] == 0
+    assert receipt['server_time'] in caplog.text
+    assert TOKEN not in caplog.text
+    Reporter(api.factory).tick()
+    assert installation().state['last_heartbeat'] == receipt
+    class InvalidHeartbeat:
+        def request(self, method, path, payload):
+            return dict(server_time=iso(time.time()), stations_accepted=999,
+                        metrics_accepted=0, next_heartbeat_seconds=3600)
+    with pytest.raises(APIError, match='invalid_heartbeat_response'):
+        reporter.heartbeat(installation(), InvalidHeartbeat(), [])
+    assert installation().state['last_heartbeat'] == receipt
+
+
+def test_empty_installation_reports_presence(central):
+    reporter, api = central
+    db.session.remove()
+    db.drop_all()
+    db.create_all()
+    reporter.tick()
+    heartbeat = next(payload for _, path, payload, _ in api.calls if path == '/v1/heartbeat')
+    assert heartbeat['stations'] == []
+    assert installation().state['last_heartbeat']['stations_accepted'] == 0

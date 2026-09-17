@@ -2,13 +2,14 @@
 import hashlib
 import json
 import random
+import secrets
 import time
 from flask import current_app
 from sqlalchemy.exc import IntegrityError
 from app.extensions import db
 from app.models import CentralInstallation, Station, CentralHourlyMetric
 from app.services.station_domains import preferred_url
-from .client import APIError, Client, MAX_BYTES, identity_response, license_response, timestamp
+from .client import APIError, Client, MAX_BYTES, identity_response, license_response, timestamp, uuid_string
 from .identity import IdentityStore
 from .licensing import checkpoint
 from .metrics import machine_snapshot, sample, station_state, wire_metric, observe_station
@@ -111,11 +112,13 @@ class Reporter:
                 raise APIError('credential_identity_mismatch')
             row.installation_id = saved['installation_id']
             if row.registration_state != 'credentials_rejected':
-                row.registration_state = 'registered'
+                row.registration_state = 'enrolled'
             db.session.commit()
             return saved
         if row.installation_id:
             raise APIError('credentials_missing_recovery_required')
+        if (saved and 'enrollment_token' in saved) or row.registration_state in ('unconfigured', 'activation_queued', 'enrolling'):
+            return self.enroll(row, saved)
         if row.registration_state not in ('pending', 'retry_registration'):
             return None
         if saved and row.registration_state != 'retry_registration':
@@ -132,18 +135,94 @@ class Reporter:
         saved = identity_response(response)
         self.store.write(saved)  # Credential is durable before any other API request.
         row.installation_id = saved['installation_id']
-        row.registration_state = 'registered'
+        row.registration_state = 'enrolled'
         row.last_error = ''
         db.session.commit()
         return saved
+
+    def enroll(self, row, saved):
+        now = time.time()
+        if not self.due(row, 'enrollment', now):
+            return None
+        if saved and 'enrollment_token' not in saved:
+            raise APIError('registration_uncertain_recovery_required')
+        if not saved:
+            if row.registration_state == 'enrolling':
+                raise APIError('credentials_missing_recovery_required')
+            saved = {'enrollment_token': 'freo_' + secrets.token_urlsafe(32)}
+            self.store.write(saved)  # Durable before sending, including on process crashes.
+        row.registration_state = 'enrolling'
+        db.session.commit()
+        token = saved['enrollment_token']
+        try:
+            response = self.client_factory(current_app.config['FREO_API_URL'], token).request(
+                'POST', '/v1/enroll', {'installation': machine_snapshot()})
+            credentials = identity_response(dict(response, access_token=token))
+        except APIError as error:
+            self.failure(row, 'enrollment', now, error)
+            return None
+        self.store.write(credentials)
+        row.installation_id = credentials['installation_id']
+        row.registration_state = 'enrolled'
+        self.success(row, 'enrollment', now)
+        return credentials
+
+    def activate(self, row, credentials):
+        pending = row.state.get('activation')
+        now = time.time()
+        if not pending or not pending.get('code') or not self.due(row, 'claim', now):
+            return
+        try:
+            if pending['expires'] <= now:
+                raise APIError('activation_code_expired', status=400)
+            connection = self.client_factory(current_app.config['FREO_API_URL'], credentials['access_token'])
+            response = connection.request('POST', '/v1/activate',
+                {'activation_code': pending['code'], 'installation': machine_snapshot()})
+            try:
+                profile_id = uuid_string(response['station_profile_id'])
+                timestamp(response['server_time'])
+                if (response['token_type'] != 'Bearer' or response['heartbeat_interval_seconds'] != 3600
+                        or response['installation_id'] != credentials['installation_id'] or 'access_token' in response):
+                    raise ValueError()
+                entitlement = license_response(response['license'], credentials['installation_id'])
+            except (KeyError, ValueError, TypeError):
+                raise APIError('invalid_activation_response') from None
+        except APIError as error:
+            # A used code can be retried only by this same authenticated installation.
+            # Keep transient attempts queued across restarts; discard rejected/expired codes.
+            if error.status in (400, 401, 409, 413, 415):
+                row.state = {k: v for k, v in row.state.items() if k != 'activation'}
+            self.failure(row, 'claim', now, error)
+            return
+        row.license_cache = {'entitlement': entitlement, 'received_at': now,
+                            'checked_at': now, 'server_floor': timestamp(entitlement['server_time'])}
+        row.state = {k: v for k, v in row.state.items() if k not in ('activation', 'claim')}
+        row.state = dict(row.state, owner_profile_id=profile_id, license={'due': 0}, report={'due': 0})
+        row.last_error = ''
+        db.session.commit()
 
     def license(self, row, client, now):
         response = client.request('GET', '/v1/license')
         entitlement = license_response(response, row.installation_id)
         received = time.time()
+        if 'station_profile_id' in entitlement:
+            row.state = dict(row.state, owner_profile_id=entitlement['station_profile_id'])
         row.license_cache = {'entitlement': entitlement, 'received_at': received,
                             'checked_at': received, 'server_floor': timestamp(entitlement['server_time'])}
         self.success(row, 'license', now, entitlement['refresh_after_seconds'])
+
+    def heartbeat(self, row, client, entries):
+        snapshot = machine_snapshot()
+        response = client.request('POST', '/v1/heartbeat', {'installation': snapshot, 'stations': entries})
+        validate_heartbeat(response, len(entries), sum(len(entry.get('metrics', [])) for entry in entries))
+        # Retain only validated, nonsecret acknowledgement fields for operators.
+        receipt = {key: response[key] for key in ('server_time', 'next_heartbeat_seconds',
+                                                  'stations_accepted', 'metrics_accepted')}
+        receipt['freo_version'] = snapshot['freo_version']
+        self.save_state(row, last_heartbeat=receipt)
+        current_app.logger.info('Central API heartbeat accepted installation=%s server_time=%s stations=%s metrics=%s',
+                                row.installation_id, receipt['server_time'],
+                                receipt['stations_accepted'], receipt['metrics_accepted'])
 
     def report(self, row, client, now, on_air):
         stations = Station.query.order_by(Station.id).all()
@@ -195,17 +274,15 @@ class Reporter:
             if not entries:
                 continue
             db.session.commit()
-            response = client.request('POST', '/v1/heartbeat', {'installation': machine_snapshot(), 'stations': entries})
+            self.heartbeat(row, client, entries)
             calls += 1
-            validate_heartbeat(response, len(entries), len(sent))
             heartbeat_sent = True
             for metric in sent:
                 metric.sent = True
             self.save_state(row, station_cursor=batch[-1].id)
         # Unknown station observations still allow installation-only reporting.
         if not heartbeat_sent:
-            response = client.request('POST', '/v1/heartbeat', {'installation': machine_snapshot(), 'stations': []})
-            validate_heartbeat(response, 0, 0)
+            self.heartbeat(row, client, [])
         self.success(row, 'report', now)
 
     def tick(self, now=None):
@@ -213,8 +290,6 @@ class Reporter:
         row = installation()
         checkpoint(row, now)
         db.session.commit()
-        if row.registration_state == 'unconfigured':
-            return
         try:
             credentials = self.register(row)
         except APIError as error:
@@ -224,9 +299,12 @@ class Reporter:
             return
         if not credentials:
             return
-        on_air = sample(now)
         if row.registration_state == 'credentials_rejected':
             return
+        self.activate(row, credentials)
+        if row.registration_state == 'credentials_rejected':
+            return
+        on_air = sample(now)
         client = self.client_factory(current_app.config['FREO_API_URL'], credentials['access_token'])
         # A process start refreshes the license, while honoring persisted backoff.
         if self.startup and not row.state.get('license', {}).get('failures'):

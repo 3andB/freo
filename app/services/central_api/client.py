@@ -1,6 +1,6 @@
-"""Pinned wire contract: freo-live/api/docs/contract.md at 1116c05.
+"""Pinned wire contract: freo-live/api/docs/contract.md at 506a3ee.
 
-No automatic transport retries: registration is deliberately non-idempotent.
+The reporter persists retry scheduling; legacy registration is non-idempotent.
 """
 import http.client
 import json
@@ -70,7 +70,15 @@ def license_response(data, installation_id):
             raise ValueError()
         keys = ('installation_id', 'plan', 'channel_limit', 'status', 'issued_at', 'expires_at',
                 'renews_at', 'grace_until', 'server_time', 'refresh_after_seconds', 'outage_policy')
-        return {key: data[key] for key in keys}
+        result = {key: data[key] for key in keys}
+        if 'station_profile_id' in data:
+            result['station_profile_id'] = uuid_string(data['station_profile_id']) if data['station_profile_id'] is not None else None
+        if 'registration_status' in data:
+            expected = 'registered' if result.get('station_profile_id') else 'unregistered'
+            if 'station_profile_id' not in result or data['registration_status'] != expected:
+                raise ValueError()
+            result['registration_status'] = expected
+        return result
     except (ValueError, TypeError, KeyError, AttributeError, OverflowError):
         raise APIError('invalid_license_response') from None
 
@@ -84,7 +92,7 @@ class Client:
         self.token = token
 
     def request(self, method, path, payload=None):
-        if path not in ('/v1/register', '/v1/stations/sync', '/v1/heartbeat', '/v1/license'):
+        if path not in ('/v1/enroll', '/v1/register', '/v1/activate', '/v1/stations/sync', '/v1/heartbeat', '/v1/license'):
             raise ValueError('Unknown central API endpoint')
         body = None if payload is None else json.dumps(payload, allow_nan=False, separators=(',', ':')).encode()
         if body is not None and len(body) > MAX_BYTES:
@@ -117,6 +125,8 @@ class Client:
                     except (ValueError, KeyError, TypeError):
                         pass
                 raise APIError(code, status=response.status, retry_after=max(0, retry))
+            if path == '/v1/heartbeat' and response.status != 200:
+                raise APIError('invalid_heartbeat_status')
             if len(raw) > MAX_BYTES:
                 raise APIError('response_too_large')
             data = json.loads(raw)

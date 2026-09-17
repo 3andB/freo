@@ -1,3 +1,9 @@
+> Freo automatically contacts api.freo.live to identify this installation and send
+> its version, machine facts, channel metadata, and hourly listener/library totals.
+> No email or Freo Live account is required for Community. Listener identities,
+> listener IP addresses and music metadata are not sent. Public directory listing
+> requires a separate opt-in. See [reporting and recovery](central-api-integration-plan.md).
+
 # Installation and deployment
 
 ## Production target
