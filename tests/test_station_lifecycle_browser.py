@@ -16,7 +16,7 @@ def test_add_limit_delete_and_share_in_browser(booth):
     form.find_element(By.NAME,'slug').send_keys('browser-station')
     form.find_element(By.CSS_SELECTOR,'button').click()
     wait_text(driver,'.admin-station-grid','Browser station')
-    wait_text(driver,'.admin-card','Station limit reached')
+    wait_text(driver,'.station-create','Station limit reached')
     for width in (430,820,1440):
         driver.set_window_size(width,1000)
         assert driver.execute_script('return document.documentElement.scrollWidth <= innerWidth')
@@ -45,7 +45,7 @@ def test_deleted_monitor_station_is_cleared_on_station_list(booth):
     WebDriverWait(driver,10).until(lambda d:d.execute_script('return !FreoMonitor.audio.paused'))
     with app.app_context():
         request_delete(Station.query.filter_by(slug='test-station').one())
-    driver.find_element(By.CSS_SELECTOR,'.admin-nav a[href="/admin/stations"]').click()
+    driver.find_element(By.CSS_SELECTOR,'.admin-nav a[href="/admin"]').click()
     WebDriverWait(driver,10).until(lambda d:d.execute_script('return FreoMonitor.audio.paused'))
     assert driver.find_element(By.CSS_SELECTOR,'.master-monitor button').get_attribute('disabled')
     assert 'Select a station' in driver.find_element(By.CSS_SELECTOR,'.monitor-state').text

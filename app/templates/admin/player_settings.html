@@ -1,7 +1,7 @@
 {% extends 'admin/base.html' %}
 {% block title %}{{ selected.name }} · Player settings{% endblock %}
 {% block head %}{{ super() }}<link rel="stylesheet" href="{{ url_for('static',filename='player.css',v='forms-20260916') }}">{% endblock %}
-{% block admin_content %}
+{% block admin_content %}<p><a href="{{ url_for('player_experience.directory') }}">← Player settings for all stations</a></p>
 <section class="admin-card station-settings experience-settings">
 <p class="eyebrow">THE LISTENING EXPERIENCE</p><h1>Make it your station.</h1>
 <p>Artwork, announcements, programming, and community — all in one player.</p>

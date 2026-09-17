@@ -97,21 +97,34 @@ def selected_station(stations):
 @login_required
 def admin_home():
     stations = admin_stations()
-    station = selected_station(stations)
-    data = admin_context(station) if station else None
-    return render_template('admin/overview.html', stations=stations, selected=station, data=data,
-                           page='overview', detail=False)
+    from app.services.operations import snapshot
+    from app.services.stations import deletion_impact
+    return render_template('admin/overview.html', stations=stations, selected=None,
+                           ops=snapshot(stations), page='overview',
+                           impacts={station.slug: deletion_impact(station) for station in stations},
+                           station_limit=current_app.config['FREO_MAX_STATIONS'])
 
 
 @web_blueprint.get('/admin/stations')
 @login_required
 def admin_station_list():
-    stations = admin_stations()
-    observations = {station.slug: observed_status(station) for station in stations}
-    from app.services.stations import deletion_impact
-    impacts = {station.slug: deletion_impact(station) for station in stations}
-    return render_template('admin/stations.html', stations=stations, observations=observations, impacts=impacts,
-                           selected=None, page='stations', station_limit=current_app.config['FREO_MAX_STATIONS'])
+    return redirect(url_for('web.admin_home', _anchor='stations'))
+
+
+@web_blueprint.get('/admin/switch-station')
+@login_required
+def switch_station():
+    station = station_or_404(request.args.get('station', ''), require_enabled=False)
+    return redirect(url_for('schedule_studio.page', slug=station.slug, view='control'))
+
+
+@web_blueprint.get('/admin/api/operations')
+@login_required
+def operations_snapshot():
+    from app.services.operations import snapshot
+    response = jsonify(snapshot(admin_stations()))
+    response.headers['Cache-Control'] = 'private, no-store'
+    return response
 
 
 @web_blueprint.get('/admin/stations/<slug>')
@@ -119,8 +132,8 @@ def admin_station_list():
 def admin_station(slug):
     station = station_or_404(slug, require_enabled=False)
     data = admin_context(station)
-    return render_template('admin/overview.html', stations=admin_stations(), selected=station,
-                           data=data, page='stations', detail=True)
+    return render_template('admin/station_overview.html', stations=admin_stations(), selected=station,
+                           data=data, page='station-detail', detail=True)
 
 
 _SECTIONS = {'media', 'categories', 'rotations', 'clocks', 'schedule', 'history', 'system', 'calendar', 'events', 'blocks', 'traffic'}

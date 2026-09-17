@@ -24,7 +24,8 @@ def test_station_control_navigation_and_mode_switches(booth):
         db.session.commit()
     links = [link.text for link in driver.find_elements(By.CSS_SELECTOR, '.admin-nav > a')]
     assert links[links.index('Playlists') + 1] == 'Shows'
-    assert links[links.index('Plan') + 1] == 'Installation'
+    assert 'Installation / freo.live' not in links
+    assert links[0] == 'Overview'
     assert all(label not in links for label in ['Calendar', 'Blocks', 'Simple', 'Schedule'])
     assert not driver.find_elements(By.CSS_SELECTOR, '.admin-nav nav')
     driver.find_element(By.LINK_TEXT, 'Station Control').click()

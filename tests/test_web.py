@@ -85,18 +85,18 @@ def test_dashboard_requires_login_and_password_not_leaked(app):
     page = client.get('/admin')
     assert page.status_code == 200
     body = page.get_data(as_text=True)
-    assert 'OPERATIONAL OVERVIEW' in body
+    assert 'Operations overview' in body
     assert 'Verified Test Track' in body
     assert 'Test Artist' in body
     assert 'Music Clock' in body
-    assert 'Power' in body
-    assert 'Accepted tracks' in body
+    assert 'Listening hours' in body
+    assert 'FREO.LIVE / MOTHER SHIP' in body
     assert 'test-password-long-enough' not in page.get_data(as_text=True)
     assert page.headers['Cache-Control'] == 'private, no-store'
     assert "frame-ancestors 'none'" in page.headers['Content-Security-Policy']
     assert client.get('/dashboard/test-station').headers['Location'].endswith('/admin/stations/test-station')
     assert client.get('/admin/stations/test-station').status_code == 200
-    assert 'Second Station' in client.get('/admin/stations').get_data(as_text=True)
+    assert 'Second Station' in client.get('/admin/stations', follow_redirects=True).get_data(as_text=True)
     for section in ('media', 'categories', 'rotations', 'clocks', 'schedule', 'history', 'system'):
         response = client.get(f'/admin/{section}?station=test-station', follow_redirects=True)
         assert response.status_code == 200, section
@@ -105,8 +105,8 @@ def test_dashboard_requires_login_and_password_not_leaked(app):
     assert 'Monday' in client.get('/admin/schedule?station=test-station', follow_redirects=True).get_data(as_text=True)
     assert 'Verified Test Track' in client.get('/admin/history?station=test-station').get_data(as_text=True)
     assert 'Verified Test Track' not in client.get('/admin/history?station=second-station').get_data(as_text=True)
-    assert 'No track start has been confirmed' in client.get('/admin?station=second-station').get_data(as_text=True)
-    assert client.get('/admin?station=missing').status_code == 404
+    assert 'Operations overview' in client.get('/admin?station=second-station').get_data(as_text=True)
+    assert client.get('/admin?station=missing').status_code == 200
     assert client.get('/admin/unsupported').status_code == 404
     assert client.post('/admin/media').status_code == 405
     assert client.get('/admin/api/stations/test-station/now').json['now_playing']['title'] == 'Verified Test Track'

@@ -7,6 +7,8 @@ from tests.test_live_browser import booth, app_fixture, wait_text
 
 def test_installation_setup_and_station_location(booth):
     app, driver, base, tmp = booth
+    driver.find_element(By.CSS_SELECTOR, '.admin-nav a[href="/admin"]').click()
+    wait_text(driver, 'h1', 'Operations overview')
     driver.find_element(By.CSS_SELECTOR, '.admin-nav a[href="/admin/installation"]').click()
     wait_text(driver, '.admin-content h1', 'Freo installation')
     wait_text(driver, '.admin-content', 'Freo automatically contacts api.freo.live')

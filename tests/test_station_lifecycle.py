@@ -119,7 +119,7 @@ def test_delete_last_station_retains_history_and_returns_to_empty(app):
         assert client.get(path).status_code == 404, path
     assert client.get('/api/stations').json['stations'] == []
     assert b'No managed stations yet' in client.get('/admin').data
-    assert b'Only' not in client.get('/admin/stations').data
+    assert b'Only' not in client.get('/admin/stations', follow_redirects=True).data
 
 
 def test_browser_creation_deletion_csrf_and_pending_states(app):
@@ -133,7 +133,7 @@ def test_browser_creation_deletion_csrf_and_pending_states(app):
         station=get_station('one')
         assert station.lifecycle_state == 'pending_create'
         process_station(station)
-    assert b'Delete station' in client.get('/admin/stations').data
+    assert b'Delete station' in client.get('/admin/stations', follow_redirects=True).data
     assert client.post('/admin/stations/one/delete',data={'csrf':form['csrf'],'confirm':'wrong'}).status_code == 303
     with app.app_context(): assert get_station('one').enabled
     assert client.post('/admin/stations/one/delete',data={'csrf':form['csrf'],'confirm':'one'}).status_code == 303

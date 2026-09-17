@@ -62,6 +62,7 @@ def booth(app_fixture, monkeypatch, tmp_path):
         driver.find_element(By.NAME,'email').send_keys('admin@example.test')
         driver.find_element(By.NAME,'password').send_keys('test-password-long-enough')
         driver.find_element(By.CSS_SELECTOR,'.login-card button[type=submit]').click()
+        WebDriverWait(driver,10).until(lambda d:d.current_url==base+'/admin' and d.find_elements(By.CSS_SELECTOR,'.admin-sidebar'))
         driver.get(base+'/admin/stations/test-station/live')
         yield app,driver,base,tmp_path
     except Exception:

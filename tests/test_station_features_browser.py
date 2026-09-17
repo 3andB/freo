@@ -78,9 +78,9 @@ def test_settings_navigation_and_persistence(booth):
     assert driver.find_element(By.ID,'station-public-url').get_attribute('value').endswith('/player/harbour-radio')
     driver.save_screenshot('/tmp/freo-station-settings.png')
     driver.find_element(By.LINK_TEXT,'Overview').click()
-    wait_text(driver,'.hero-title-line','Harbour Radio')
-    wait_text(driver,'.admin-hero-copy','Fremantle, WA')
-    driver.find_element(By.LINK_TEXT,'Stations').click()
+    wait_text(driver,'h1','Operations overview')
+    wait_text(driver,'[data-ops-station="test-station"]','Fremantle, WA')
+    assert driver.find_element(By.CSS_SELECTOR,'.admin-nav').get_attribute('data-context') == 'operations'
     wait_text(driver,'.admin-station-grid','Harbour Radio')
     driver.get(base+'/player/harbour-radio')
     wait_text(driver,'.radio-description','Music by the sea')

@@ -233,11 +233,6 @@
     if (form.dataset.confirm && !await FreoDialog.confirm({title:'Confirm change',message:form.dataset.confirm,confirmLabel:event.submitter?.textContent.trim() || 'Continue'})) return;
     const data = new FormData(form, event.submitter);
     if (form.method === 'get') {
-      if(form.classList.contains('station-picker')) {
-        const selected=String(data.get('station')||'');
-        if(/^\/admin\/stations\/[^/]+\//.test(url.pathname))url.pathname=url.pathname.replace(/^(\/admin\/stations\/)[^/]+/, '$1'+encodeURIComponent(selected));
-        else if(url.pathname==='/admin/stations')url.pathname='/admin';
-      }
       url.search = new URLSearchParams(data).toString(); navigate(url.href);
     }
     else navigate(url.href, {submitted: true, request: {method: 'POST', body: data}});

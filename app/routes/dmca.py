@@ -44,15 +44,17 @@ def report():
 @dmca.get('/admin/dmca')
 @admin_required
 def cases():
+    from app.routes.web import admin_stations
     rows = db.paginate(db.select(DMCACase).order_by(DMCACase.created_at.desc(), DMCACase.id.desc()), per_page=30, max_per_page=30)
-    return render_template('admin/dmca.html', cases=rows, page='dmca', stations=[], selected=None)
+    return render_template('admin/dmca.html', cases=rows, page='dmca', stations=admin_stations(), selected=None)
 
 
 @dmca.get('/admin/dmca/<reference>')
 @admin_required
 def detail(reference):
+    from app.routes.web import admin_stations
     row = DMCACase.query.filter_by(reference=reference).first_or_404()
-    return render_template('admin/dmca.html', case=row, statuses=STATUSES, page='dmca', stations=[], selected=None)
+    return render_template('admin/dmca.html', case=row, statuses=STATUSES, page='dmca', stations=admin_stations(), selected=None)
 
 
 @dmca.post('/admin/dmca/<reference>/status')

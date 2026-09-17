@@ -32,6 +32,46 @@ def helpers():
     return dict(player_context=service.public_context, player_time=lambda value,zone: service.timestamp(value).astimezone(ZoneInfo(zone)).strftime('%d %b %Y · %H:%M'))
 
 
+@player_experience.get('/admin/player-settings')
+@admin_required
+def directory():
+    from sqlalchemy import func
+    stations = admin_stations()
+    latest = db.session.query(func.max(PublicScheduleRevision.id)).group_by(PublicScheduleRevision.station_id)
+    publications = {row.station_id: row for row in PublicScheduleRevision.query.filter(PublicScheduleRevision.id.in_(latest))}
+    return render_template('admin/player_directory.html', selected=None, stations=stations,
+                           page='player-directory', publications=publications,
+                           configs={s.id: service.settings(s) for s in stations})
+
+
+@player_experience.get('/admin/listener-feedback')
+@admin_required
+def operations_inbox():
+    from sqlalchemy.orm import joinedload
+    stations = admin_stations()
+    station_filter = request.args.get('station', '')
+    review = request.args.get('review', '')
+    if review not in ('', 'new', 'reviewed', 'spam'):
+        abort(400)
+    query = ListenerVote.query.filter(ListenerVote.station_id.in_([s.id for s in stations]))
+    if station_filter:
+        target = next((s for s in stations if s.slug == station_filter), None)
+        if not target:
+            abort(404)
+        query = query.filter_by(station_id=target.id)
+    if review:
+        query = query.filter_by(review_state=review)
+    number = request.args.get('page', 1, type=int)
+    if number is None or number < 1:
+        abort(400)
+    rows = query.options(joinedload(ListenerVote.track)).order_by(
+        ListenerVote.updated_at.desc(), ListenerVote.id.desc()).offset((number - 1) * 50).limit(51).all()
+    return render_template('admin/operations_feedback.html', selected=None, stations=stations,
+                           page='operations-feedback', rows=rows[:50], more=len(rows) > 50,
+                           number=number, station_filter=station_filter, review=review,
+                           station_names={s.id: s for s in stations})
+
+
 @player_experience.route('/admin/stations/<slug>/player-settings',methods=['GET','POST'])
 @admin_required
 def settings(slug):
@@ -237,6 +277,10 @@ def feedback(slug,decision_id):
 def inbox(slug):
     station=station_or_404(request.args.get('station',slug) if request.method=='GET' else slug,require_enabled=False)
     if station.slug!=slug:return redirect(url_for('.inbox',slug=station.slug))
+    def return_url():
+        if request.form.get('return_to') == 'operations':
+            return url_for('.operations_inbox')
+        return url_for('.inbox', slug=slug)
     if request.method=='POST':
         require_csrf()
         db.session.query(Station.id).filter_by(id=station.id).with_for_update().first()
@@ -248,10 +292,10 @@ def inbox(slug):
         else:
             try:reason=service.clean_text(request.form.get('reason',''),200)
             except ValueError as exc:
-                flash(str(exc),'error');return redirect(url_for('.inbox',slug=slug))
+                flash(str(exc),'error');return redirect(return_url())
             if action=='exclude' and not reason:
                 flash('Add a reason before excluding a vote.','error')
-                return redirect(url_for('.inbox',slug=slug))
+                return redirect(return_url())
             previous_value, previous_excluded = row.value, row.excluded
             if action in ('reviewed','spam'):row.review_state=action
             elif action=='delete-comment':row.comment='';row.review_state='reviewed'
@@ -261,7 +305,7 @@ def inbox(slug):
             feedback_transition(row, previous_value, previous_excluded, datetime.now(timezone.utc))
             audit('listener_feedback_'+action,user_id=current_admin().id,station_id=station.id,target_type='listener_vote',target_id=row.id,summary=reason)
             db.session.commit();flash('Feedback updated.','success')
-        return redirect(url_for('.inbox',slug=slug))
+        return redirect(return_url())
     query=ListenerVote.query.filter_by(station_id=station.id)
     track=request.args.get('track')
     if track:

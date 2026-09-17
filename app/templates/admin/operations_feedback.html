@@ -1,0 +1,18 @@
+{% extends 'admin/base.html' %}
+{% block title %}Listener Feedback · Radio Station Ops{% endblock %}
+{% block admin_content %}
+<header class="ops-heading"><div><span class="eyebrow">RADIO STATION OPS / ALL STATIONS</span><h1>Listener feedback</h1><p>Private feedback across your stations. Excluding a vote changes accepted totals; marking a comment as spam does not.</p></div></header>
+<form method="get" class="ops-feedback-filter">
+<label>Station<select name="station"><option value="">All stations</option>{% for station in stations %}<option value="{{ station.slug }}" {% if station_filter == station.slug %}selected{% endif %}>{{ station.name }}</option>{% endfor %}</select></label>
+<label>Review status<select name="review">{% for value,label in [('','All feedback'),('new','New'),('reviewed','Reviewed'),('spam','Spam')] %}<option value="{{ value }}" {% if review == value %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label><button type="submit">Filter</button>
+</form>
+{% for row in rows %}{% set feedback_station = station_names[row.station_id] %}
+<article class="admin-card ops-feedback-card"><span class="eyebrow">{{ feedback_station.name }} · {{ row.review_state }}{% if row.excluded %} · Vote excluded{% endif %}</span><h2>{{ row.track.title }} — {{ row.track.artist }}</h2><p>{{ 'Thumbs up' if row.value == 1 else 'Thumbs down' if row.value == -1 else 'Vote removed' }} · {{ row.updated_at.strftime('%d %b %Y · %H:%M UTC') }}</p><p>{{ row.comment or 'No comment.' }}</p>
+{% if feedback_station.lifecycle_state not in ('pending_delete','delete_failed') %}
+<form method="post" action="{{ url_for('player_experience.inbox',slug=feedback_station.slug) }}">
+<input type="hidden" name="csrf" value="{{ csrf_token() }}"><input type="hidden" name="id" value="{{ row.id }}"><input type="hidden" name="revision" value="{{ row.revision }}"><input type="hidden" name="return_to" value="operations">
+<label>Moderation reason<input name="reason" maxlength="200" placeholder="Required to exclude a vote"></label><div class="form-actions"><button name="action" value="reviewed">Mark reviewed</button><button name="action" value="spam">Mark comment as spam</button><button name="action" value="{{ 'restore' if row.excluded else 'exclude' }}">{{ 'Restore' if row.excluded else 'Exclude' }} vote</button>{% if row.comment %}<button name="action" value="delete-comment" class="ui-danger">Delete comment</button>{% endif %}</div></form>{% endif %}
+</article>
+{% else %}<section class="empty-panel"><h2>No matching feedback</h2><p>Feedback appears here when listeners vote or comment on a station’s player.</p><a href="{{ url_for('player_experience.directory') }}">Player and feedback settings →</a></section>{% endfor %}
+<nav aria-label="Feedback pages">{% if number > 1 %}<a href="{{ url_for('player_experience.operations_inbox',page=number-1,station=station_filter,review=review) }}">← Previous</a>{% endif %} <span>Page {{ number }}</span> {% if more %}<a href="{{ url_for('player_experience.operations_inbox',page=number+1,station=station_filter,review=review) }}">Next →</a>{% endif %}</nav>
+{% endblock %}

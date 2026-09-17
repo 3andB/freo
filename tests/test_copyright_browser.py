@@ -63,8 +63,9 @@ def test_report_link_without_metadata_and_station_admin_navigation(booth):
     assert driver.find_element(By.ID, 'supplied_track_id').get_attribute('value') == ''
     for path in ('/admin/stations/test-station', '/admin/stations/test-station/settings'):
         driver.get(base + path)
-        link = driver.find_element(By.CSS_SELECTOR, '.admin-nav a[href="/admin/dmca"]')
-        assert link.text == 'DMCA reports'
+        assert not driver.find_elements(By.CSS_SELECTOR, '.admin-nav a[href="/admin/dmca"]')
         assert driver.find_elements(By.CSS_SELECTOR, '.admin-content a[href="/admin/dmca"]')
+    driver.find_element(By.CSS_SELECTOR, '.admin-nav a[href="/admin"]').click()
+    wait_text(driver, 'h1', 'Operations overview')
     driver.find_element(By.CSS_SELECTOR, '.admin-nav a[href="/admin/dmca"]').click()
     wait_text(driver, '.admin-content h1', 'Copyright reports')

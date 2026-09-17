@@ -1,0 +1,16 @@
+{% extends 'admin/base.html' %}
+{% block title %}Player Settings · Radio Station Ops{% endblock %}
+{% block admin_content %}
+<header class="ops-heading"><div><span class="eyebrow">RADIO STATION OPS / ALL STATIONS</span><h1>Player settings</h1><p>Choose a station to configure its public player, schedule, and listener feedback.</p></div></header>
+<div class="admin-station-grid ops-player-directory">
+{% for station in stations %}{% set config = configs[station.id] %}{% set publication = publications.get(station.id) %}
+<article class="admin-card"><h2>{{ station.name }}</h2><dl class="detail-list">
+<div><dt>Configuration</dt><dd>{{ 'Revision ' ~ station.player_settings.revision if station.player_settings else 'Default settings' }}</dd></div>
+<div><dt>Public schedule</dt><dd>{{ 'Enabled' if config.schedule_enabled else 'Disabled' }}</dd></div>
+<div><dt>Latest publication</dt><dd>{{ publication.created_at.strftime('%d %b %Y · %H:%M UTC') if publication else 'Not published' }}</dd></div>
+<div><dt>Publication status</dt><dd>{% if not config.schedule_enabled %}Schedule hidden{% elif not publication %}Awaiting publication{% elif publication.config_revision != (station.player_settings.revision if station.player_settings else 0) %}Settings changed since publication{% else %}Published{% endif %}</dd></div>
+<div><dt>Voting</dt><dd>{{ 'Enabled' if config.voting_enabled else 'Disabled' }}</dd></div>
+</dl>{% if station.lifecycle_state not in ('pending_delete','delete_failed') %}<a class="admin-primary" href="{{ url_for('player_experience.settings',slug=station.slug) }}">Edit {{ station.name }} →</a>{% else %}<p>Station deletion in progress.</p>{% endif %}</article>
+{% else %}<section class="empty-panel"><h2>No stations yet</h2><a href="{{ url_for('web.admin_home',_anchor='add-station') }}">Add a station →</a></section>{% endfor %}
+</div>
+{% endblock %}

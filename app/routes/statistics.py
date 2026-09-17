@@ -67,7 +67,7 @@ def export(slug=None):
     writer = csv.writer(output)
     def write(*values):
         writer.writerow(["'" + v if isinstance(v, str) and v.lstrip().startswith(('=', '+', '-', '@')) else v for v in values])
-    write('Scope', station.name if station else 'All channels')
+    write('Scope', station.name if station else 'All stations')
     write('Timezone', result['timezone'])
     write('Start (Unix UTC)', result['period']['start'], 'End (exclusive Unix UTC)', result['period']['end'])
     write('Observed coverage (%)', result['stats']['total']['coverage'])
