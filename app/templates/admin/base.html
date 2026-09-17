@@ -39,6 +39,7 @@
       {% endif %}
       <a href="{{ url_for('central_api.settings') }}" {% if page == 'installation' %}aria-current="page"{% endif %}>Installation</a>
       <span class="admin-nav-label">OBSERVATION</span>
+      <a href="{{ url_for('statistics.page',slug=selected.slug) if selected else url_for('statistics.page') }}" {% if page == 'stats' %}aria-current="page"{% endif %}>Statistics</a>
       <a href="{{ url_for('web.admin_section', section='history') }}{{ suffix }}" {% if page == 'history' %}aria-current="page"{% endif %}>History</a>
       <a href="{{ url_for('web.admin_section', section='system') }}{{ suffix }}" {% if page == 'system' %}aria-current="page"{% endif %}>System</a>
       <a href="{{ url_for('admin_media.audit_view') }}" {% if page == 'audit' %}aria-current="page"{% endif %}>Admin audit</a>
@@ -48,7 +49,7 @@
   <div class="admin-main">
     <div class="admin-toolbar">
       <div><span class="eyebrow">FREO / {{ page|upper }}</span><span class="toolbar-caption">{{ stations|length }} managed station{{ '' if stations|length == 1 else 's' }}</span></div>
-      {% if stations %}<form method="get" action="{{ url_for('web.admin_section', section=page) if page in ['media','categories','rotations','clocks','schedule','calendar','events','blocks','traffic'] else url_for('web.admin_home') if detail is defined and detail else request.path }}" class="station-picker"><label for="station-select">Station</label><select id="station-select" name="station">{% for station in stations %}<option value="{{ station.slug }}" {% if selected and station.id == selected.id %}selected{% endif %}>{{ station.name }}</option>{% endfor %}</select><button type="submit">View</button></form>{% endif %}
+      {% if stations and page != 'stats' %}<form method="get" action="{{ url_for('web.admin_section', section=page) if page in ['media','categories','rotations','clocks','schedule','calendar','events','blocks','traffic'] else url_for('web.admin_home') if detail is defined and detail else request.path }}" class="station-picker"><label for="station-select">Station</label><select id="station-select" name="station">{% for station in stations %}<option value="{{ station.slug }}" {% if selected and station.id == selected.id %}selected{% endif %}>{{ station.name }}</option>{% endfor %}</select><button type="submit">View</button></form>{% endif %}
     </div>
     <div class="admin-content">
       {% with messages = get_flashed_messages(with_categories=true) %}{% for category, message in messages %}<p class="admin-notice {{ 'error' if category == 'error' else 'success' }}" role="status">{{ message }}</p>{% endfor %}{% endwith %}

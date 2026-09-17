@@ -21,6 +21,12 @@ test -f /etc/systemd/system/freo-public-schedules.service
 systemctl is-active --quiet freo-public-schedules.timer
 id freo-automation >/dev/null
 id freo-ingest >/dev/null
+id freo-stats >/dev/null
+systemctl is-active --quiet freo-stats.service freo-stats-inventory.timer freo-geoip.timer
+if id -nG freo-stats | tr ' ' '\n' | grep -qx freo-playout; then
+  echo 'Statistics worker must not belong to the Liquidsoap control group.' >&2
+  exit 1
+fi
 if id -nG freo-ingest | tr ' ' '\n' | grep -qx freo-playout; then
   echo 'Ingest worker must not belong to the Liquidsoap control group.' >&2
   exit 1
@@ -50,6 +56,14 @@ for attempt in {1..10}; do
 done
 curl --fail --silent --show-error http://127.0.0.1:8000/api/stations >/dev/null
 curl --fail --silent --show-error http://127.0.0.1:8000/health/icecast >/dev/null
+python3 - <<'PY'
+import json
+from urllib.request import build_opener, ProxyHandler
+with build_opener(ProxyHandler({})).open('http://127.0.0.1:8001/status-json.xsl', timeout=3) as response:
+    version = json.load(response).get('icestats', {}).get('server_id', '')
+if not version.startswith('Icecast 2.5.'):
+    raise SystemExit('The running Icecast service must use the supported 2.5 series.')
+PY
 systemctl is-active --quiet freo-provision.timer
 if [[ ${FREO_ENABLE_DIAGNOSTIC:-0} == 1 ]]; then
 for endpoint in icecast playout stream; do

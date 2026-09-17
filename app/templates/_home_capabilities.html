@@ -1,0 +1,45 @@
+{% set groups = [
+  ('Music & playlists', 'media-library.md', [
+    ('A connected catalog', 'Artist, album and song views; metadata, artwork, notes and review flags.', 'Search, filter and organize in one workspace.'),
+    ('Import & analysis', 'MP3 file, batch and folder uploads; progress, duplicate checks, BPM, waveform, loudness and peak analysis.', 'Background processing keeps preparation out of the broadcast path.'),
+    ('Categories & tags', 'Multiple categories, colored tags, bulk assignment and membership Undo.', 'Each channel keeps its own organization.'),
+    ('Playlists', 'Straight order or non-repeating Random cycles; bulk additions, reordering and scheduling.', 'Category, artist and album additions copy the current songs.'),
+    ('Preview & level matching', 'Private audition, seeking, original/normalized listening and station loudness targets.', 'Playback gain preserves original audio files.')
+  ]),
+  ('Programming & on-air moments', 'shows-and-scheduling-rollout.md', [
+    ('Calendar, Blocks & Simple', 'Three scheduling modes, reusable Shows, recurring placements and saved revisions.', 'A configured, playable default playlist fills gaps.'),
+    ('Rotations & clocks', 'Explicit category rotations, repeating clock slots, previews and track/artist separation.', 'Advanced rotation rules are distinct from visual-scheduler shuffle cycles.'),
+    ('Timed events', 'Songs, IDs, announcements and sequences; one-time, weekly and hourly series.', 'Hard, soft and non-interrupting policies; timing windows and outcomes.'),
+    ('Event sequences & stopsets', 'Ordered music/imaging snapshots, item failure policies and execution history.', 'Separate from the scheduler’s 24-hour Blocks.'),
+    ('Traffic planning', 'Advertisers, campaigns, creatives, dayparts, daily logs, makegoods and CSV as-run reports.', 'Advanced commercial planning; billing and invoicing are not included.')
+  ]),
+  ('Booth & live audio', 'live-assist.md', [
+    ('Two-deck control', 'Load, Take Air, pause, resume, repeat once, clear and fade out.', 'Choose a 0–10 second transition; prepare while Auto plays.'),
+    ('Monitoring', 'Persistent Master Monitor, listening volume, private preview and program/monitor meters.', 'Program levels come from the worker; monitor levels measure browser audio.'),
+    ('Carts & imaging', 'Eight hot carts, four station-ID slots, imaging groups, sweepers, promos and jingles.', 'Play over with ducking, or take over and resume. One cart at a time.'),
+    ('Live Mic', 'Off-air input testing, software gain, mute, fades and disconnect fallback.', 'Optional WebRTC gateway; browser mic or OS-recognized stereo USB input.')
+  ]),
+  ('Audience & listener experience', 'statistics.md', [
+    ('Audience & geography', 'Current, average and peak connections, listener-hours, approximate map and period comparisons.', 'Connections are sampled; they do not identify unique people.'),
+    ('Music & engagement', 'Confirmed song/artist plays, likes, dislikes, approval and moderated private comments.', 'Queue entries and private previews do not count as plays.'),
+    ('Resources & reliability', 'Stream transfer, storage, mount availability, low program levels and broadcast outcomes.', 'Coverage gaps remain visible. Stream bytes exclude website/proxy overhead.'),
+    ('Branded listening', 'Covers, artwork, palettes, announcements, socials, sponsor slots and mobile controls.', 'Day/Night and reduced-motion preferences.'),
+    ('Public schedules', 'Published Day, Week and Month listings, automatic schedules and custom overrides.', 'Listener-facing listings are separate from engine control.'),
+    ('Reports you can use', 'Overall or per-channel statistics, timezone-aware dates, tables and CSV export.', 'Six views: Overview, Audience, Music, Engagement, Resources, Reliability.')
+  ]),
+  ('Station & project operations', 'channel-management.md', [
+    ('Multiple channels', 'Separate station engines and streams; shared artists, albums and songs without duplicated audio.', 'Configured station limits apply. Current admins manage all stations.'),
+    ('Identity & domains', 'Station logos, location, descriptions, stable URL aliases and verified custom domains.', 'Contacts stay private unless published; operators configure DNS and HTTPS.'),
+    ('History & accountability', 'Confirmed playback starts, admin audit records, health views and durable control intent.', 'Controls recheck the intended song before changing playback.'),
+    ('Copyright review', 'Permanent public Track IDs, optional ISRC, reporting form and private case management.', 'Review tools do not establish ownership or music licensing.'),
+    ('Installation integration', 'Permanent station UUIDs, optional registration, aggregate reports, directory metadata and cached entitlements.', 'The Central reporting service runs separately from station playout.')
+  ])
+] %}
+<nav class="project-feature-index" aria-label="Feature groups">{% for name, guide, rows in groups %}<a href="#feature-group-{{ loop.index }}">{{ name }}</a>{% endfor %}</nav>
+{% for name, guide, rows in groups %}
+<div class="project-capability-group" id="feature-group-{{ loop.index }}">
+  <div class="project-capability-heading"><h3><span>{{ '%02d' % loop.index }}</span> {{ name }}</h3><a href="{{ docs }}{{ guide }}">Read the guide ↗</a></div>
+  <div class="project-table-scroll" role="region" aria-label="{{ name }} features" tabindex="0"><p class="project-table-hint">Scroll across to explore <span aria-hidden="true">↔</span></p><table class="project-table project-capability-table"><caption class="project-sr-only">{{ name }} capabilities</caption><thead><tr><th scope="col">Capability</th><th scope="col">What Freo includes</th><th scope="col">In practice</th></tr></thead><tbody>{% for title, description, note in rows %}<tr><th scope="row">{{ title }}</th><td>{{ description }}</td><td>{{ note }}</td></tr>{% endfor %}</tbody></table></div>
+</div>
+{% endfor %}
+<p class="project-footnote">Explore the <a href="{{ docs }}traffic.md">traffic workflow</a>, <a href="{{ docs }}custom-domains.md">custom domains</a> and <a href="{{ docs }}copyright-and-dmca.md">copyright review</a> in detail. Freo is actively developing; see the setup notes for current requirements and release limits.</p>

@@ -1,7 +1,7 @@
 {% extends 'base.html' %}
 {% block title %}{{ station.name }} — listen live{% endblock %}
 {% block body_class %}player-page{% endblock %}
-{% block head %}<link rel="stylesheet" href="{{ url_for('static',filename='player.css',v='forms-20260916') }}">{% endblock %}
+{% block head %}<link rel="stylesheet" href="{{ url_for('static',filename='player.css',v='forms-20260916') }}"><script defer src="{{ url_for('static',filename='statistics_presence.js',v='1') }}"></script>{% endblock %}
 {% block header %}<header class="radio-site-header"><a class="wordmark" href="{{ url_for('web.homepage') }}">freo<span>.world</span></a><nav aria-label="Player navigation"><a href="{{ url_for('web.stations') }}">Discover stations</a><a href="{{ url_for('web.admin_home') if session.get('admin_user_id') else url_for('web.login') }}">Station admin ↗</a></nav>{% include '_appearance.html' %}</header>{% endblock %}
 {% block content %}
 {% set context=player_preview if player_preview is defined else player_context(station) %}{% set cfg=context.player_config %}{% set assets=context.player_assets %}

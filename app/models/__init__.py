@@ -565,6 +565,7 @@ class RotationCursor(db.Model):
 class SelectionDecision(db.Model):
     __tablename__ = 'selection_decisions'
     __table_args__ = (
+        db.Index('ix_decision_stats_started', 'status', 'started_at', 'station_id'),
         db.CheckConstraint("status IN ('selected','submitting','queued','started','failed')", name='ck_decision_status'),
         db.CheckConstraint('track_id IS NULL OR imaging_asset_id IS NULL', name='ck_decision_one_playable'),
     )
@@ -1041,3 +1042,5 @@ class CentralHourlyMetric(db.Model):
 # Visual scheduling models share the application's metadata and station identities.
 from .scheduling import (ChannelSchedule, ScheduleComposition, ScheduleCompositionRevision,
                          ScheduleTransition, ScheduleCursor)
+from .statistics import (StatsState, AudienceSample, StatsBucket, AudiencePresence,
+                         GeoBucket, GeoReach, StorageSnapshot, BroadcastIncident, FeedbackTransition)

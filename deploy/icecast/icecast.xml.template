@@ -16,9 +16,14 @@
     <admin-password>__ADMIN_PASSWORD__</admin-password>
   </authentication>
   <hostname>localhost</hostname>
-  <listen-socket>
+  <listen-socket id="freo-local">
     <port>8001</port>
     <bind-address>127.0.0.1</bind-address>
+    <trusted-proxy>#freo-nginx</trusted-proxy>
+  </listen-socket>
+  <!-- Icecast 2.5: only the local Nginx proxy may supply client addresses. -->
+  <listen-socket id="freo-nginx" type="virtual">
+    <client-address>127.0.0.1</client-address>
   </listen-socket>
   <fileserve>0</fileserve>
   <paths>

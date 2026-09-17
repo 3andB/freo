@@ -1,0 +1,24 @@
+[Unit]
+Description=Freo local audience and geographic statistics
+After=network.target postgresql.service icecast2.service
+
+[Service]
+User=freo-stats
+Group=freo
+WorkingDirectory=/opt/freo
+EnvironmentFile=/opt/freo/.env
+LoadCredential=icecast.json:/etc/freo/secrets/statistics.json
+ExecStart=/opt/freo/venv/bin/flask --app wsgi:app stats run
+Restart=on-failure
+RestartSec=10
+StateDirectory=freo/statistics
+StateDirectoryMode=0700
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+UMask=0027
+Nice=10
+
+[Install]
+WantedBy=multi-user.target

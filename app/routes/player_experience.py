@@ -211,9 +211,12 @@ def feedback(slug,decision_id):
                 network_count=ListenerFeedbackEvent.query.filter_by(station_id=station.id,listener_key=network_key,action='rate').filter(ListenerFeedbackEvent.created_at>now-timedelta(minutes=1)).count()
                 if count>=20 or network_count>=120:return jsonify(error='Please wait a minute before sending more feedback.'),429
                 row=row or ListenerVote(station_id=station.id,track_id=decision.track_id,listener_key=key,revision=0)
+                previous_value, previous_excluded = row.value or 0, row.excluded or False
                 if row.comment!=comment:row.review_state='new'
                 row.value=value;row.comment=comment;row.decision_id=decision_id;row.revision+=1;row.updated_at=now
                 db.session.add(row)
+                from app.services.statistics import feedback_transition
+                feedback_transition(row, previous_value, previous_excluded, now)
                 db.session.add(ListenerFeedbackEvent(station_id=station.id,listener_key=key,track_id=decision.track_id,action='vote',value=value))
                 db.session.add(ListenerFeedbackEvent(station_id=station.id,listener_key=network_key,track_id=decision.track_id,action='rate',value=0))
                 db.session.commit()
@@ -249,10 +252,13 @@ def inbox(slug):
             if action=='exclude' and not reason:
                 flash('Add a reason before excluding a vote.','error')
                 return redirect(url_for('.inbox',slug=slug))
+            previous_value, previous_excluded = row.value, row.excluded
             if action in ('reviewed','spam'):row.review_state=action
             elif action=='delete-comment':row.comment='';row.review_state='reviewed'
             else:row.excluded=action=='exclude'
             row.revision+=1
+            from app.services.statistics import feedback_transition
+            feedback_transition(row, previous_value, previous_excluded, datetime.now(timezone.utc))
             audit('listener_feedback_'+action,user_id=current_admin().id,station_id=station.id,target_type='listener_vote',target_id=row.id,summary=reason)
             db.session.commit();flash('Feedback updated.','success')
         return redirect(url_for('.inbox',slug=slug))

@@ -2,6 +2,9 @@
 import hmac
 import secrets
 import time
+import json
+from functools import lru_cache
+from pathlib import Path
 
 from flask import Blueprint, flash, abort, redirect, render_template, request, session, url_for, jsonify, current_app
 from werkzeug.security import check_password_hash
@@ -43,11 +46,18 @@ def station_or_404(slug, require_enabled=True):
 
 @web_blueprint.get('/')
 def homepage():
-    try:
-        stations = Station.query.filter_by(enabled=True, deleted_at=None).order_by(Station.slug).all()
-    except SQLAlchemyError:
-        stations = []
-    return render_template('home.html', stations=stations)
+    return render_template('home.html', screens=product_screens(),
+                           project_url=current_app.config.get('PUBLIC_BASE_URL', '').rstrip('/'))
+
+
+@lru_cache(maxsize=1)
+def product_screens():
+    """Release-owned screenshot metadata; the project page needs no station query."""
+    manifest = Path(__file__).resolve().parents[1] / 'static' / 'product' / 'manifest.json'
+    screens = {}
+    for row in json.loads(manifest.read_text())['screens']:
+        screens.setdefault(row['name'], {})[row['theme']] = row
+    return screens
 
 
 @web_blueprint.get('/stations')

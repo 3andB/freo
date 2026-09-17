@@ -4,6 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#f7f8f4">
+  <link rel="icon" href="{{ url_for('static', filename='favicon.svg') }}" type="image/svg+xml">
   <script src="{{ url_for('static', filename='theme.js',v='forms-20260916') }}"></script>
   <title>{% block title %}Freo{% endblock %}</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='freo.css',v='forms-20260916') }}">
@@ -32,7 +33,7 @@
     </div>
   </header>{% endblock %}
   <main id="main">{% block content %}{% endblock %}</main>
-  <footer class="site-footer"><div class="shell"><span>Freo · early-stage internet radio automation</span><a href="https://github.com/lee-3andB/freo">Source and documentation</a></div></footer>
+  {% block footer %}<footer class="site-footer"><div class="shell"><span>Freo · early-stage internet radio automation</span><a href="https://github.com/lee-3andB/freo">Source and documentation</a></div></footer>{% endblock %}
   {% block scripts %}{% endblock %}
 </body>
 </html>

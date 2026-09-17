@@ -17,9 +17,23 @@ if [[ ! -d "$source_dir/app" ]]; then
   exit 1
 fi
 export DEBIAN_FRONTEND=noninteractive
-printf 'Installing required Freo system packages without upgrading existing packages...\n'
+printf 'Installing Freo dependencies; Icecast will use the supported 2.5 series...\n'
 apt-get update
-apt-get install --no-upgrade -y python3 python3-venv python3-pip tzdata git nginx postgresql postgresql-contrib openssl certbot python3-certbot-nginx liquidsoap icecast2 ffmpeg acl
+apt-get install --no-upgrade -y python3 ca-certificates gnupg
+bash "$source_dir/scripts/configure-icecast-repository.sh"
+apt-get update
+apt-get install --no-upgrade -y python3 python3-venv python3-pip tzdata git nginx postgresql postgresql-contrib openssl certbot python3-certbot-nginx liquidsoap ffmpeg acl
+# The trusted-proxy configuration requires Icecast 2.5 even on existing installs.
+# Keep dpkg from removing the old package's empty directory during upgrade;
+# Xiph's post-install script still expects it but no longer ships the directory.
+install -d -m 0750 /var/log/icecast2
+touch /var/log/icecast2/.freo-keep
+mapfile -t active_playout_units < <(systemctl list-units --state=active --no-legend --plain 'freo-playout*.service' | awk '{print $1}')
+apt-get install --no-remove -y 'icecast2=2.5.*'
+# A package-triggered Icecast restart can stop Requires= playout dependents.
+if (( ${#active_playout_units[@]} )); then
+  systemctl start "${active_playout_units[@]}"
+fi
 dpkg-query -W -f='Installed ${Package} ${Version}\n' liquidsoap icecast2 ffmpeg
 systemctl enable --now postgresql nginx
 if ! id freo >/dev/null 2>&1; then
@@ -125,6 +139,7 @@ if [[ $source_dir != "$install_dir" ]]; then
   install -m 0644 "$source_dir/deploy/liquidsoap/station.liq.template" "$install_dir/deploy/liquidsoap/station.liq.template"
   install -m 0644 "$source_dir/deploy/nginx/station-location.conf.template" "$install_dir/deploy/nginx/station-location.conf.template"
   install -m 0755 "$source_dir/scripts/render-radio-config.py" "$install_dir/scripts/render-radio-config.py"
+  install -m 0755 "$source_dir/scripts/configure-icecast-repository.sh" "$install_dir/scripts/configure-icecast-repository.sh"
   install -m 0755 "$source_dir/scripts/validate-station-instance.py" "$install_dir/scripts/validate-station-instance.py"
 fi
 python3 "$install_dir/scripts/render-radio-config.py"
@@ -167,6 +182,7 @@ systemctl enable --now freo-public-schedules.timer
 systemctl reload icecast2.service
 install -m 0644 "$source_dir/deploy/nginx/stream-location.conf" /etc/nginx/snippets/freo-stream.conf
 install -m 0644 "$source_dir/deploy/nginx/admin-upload.conf" /etc/nginx/snippets/freo-admin-upload.conf
+install -m 0644 "$source_dir/deploy/nginx/static-assets.conf" /etc/nginx/snippets/freo-static-assets.conf
 install -d -o root -g root -m 0755 /etc/nginx/snippets/freo-stations
 site=/etc/nginx/sites-available/freo
 if [[ ! -e $site ]]; then
@@ -195,6 +211,21 @@ if not backup.exists():
 site.write_text(body.replace(needle, needle + '\n    include /etc/nginx/snippets/freo-admin-upload.conf;', 1))
 PY
 fi
+if ! grep -q 'freo-static-assets.conf' "$site"; then
+  python3 - "$site" <<'PY'
+from pathlib import Path
+import sys
+site = Path(sys.argv[1])
+body = site.read_text()
+needle = 'include /etc/nginx/snippets/freo-admin-upload.conf;'
+if body.count(needle) != 1:
+    raise SystemExit('Existing Nginx site lacks one unambiguous upload include; add the static assets include manually')
+backup = site.with_name(site.name + '.pre-static-assets')
+if not backup.exists():
+    backup.write_text(body)
+site.write_text(body.replace(needle, needle + '\n    include /etc/nginx/snippets/freo-static-assets.conf;', 1))
+PY
+fi
 nginx -t
 systemctl reload nginx
 install -m 0644 "$source_dir/deploy/systemd/freo-provision.timer" /etc/systemd/system/freo-provision.timer
@@ -219,6 +250,7 @@ for attempt in {1..30}; do
   sleep 2
 done
 fi
+bash "$source_dir/scripts/install-statistics.sh" "$source_dir"
 "$source_dir/scripts/validate-install.sh"
 
 printf 'Complete registration in Admin → Installation with the station manager email.\n'
