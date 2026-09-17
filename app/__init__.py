@@ -69,6 +69,8 @@ def create_app(config_name=None):
     app.register_blueprint(schedule_cli, cli_group=None)
     app.register_blueprint(schedule_blueprint)
     app.register_blueprint(web_blueprint)
+    from .routes.website import website
+    app.register_blueprint(website)
     from .routes.dmca import dmca
     app.register_blueprint(dmca)
     from .routes.central_api import central_api

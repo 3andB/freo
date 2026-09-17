@@ -79,6 +79,9 @@ def state_json(station):
 
 def render_workspace(slug,view='calendar'):
     station=station_for(slug)
+    if view=='control':
+        return render_template('admin/station_control.html',selected=station,stations=admin_stations(),
+            page='station-control',initial=state_json(station),can_switch=can_control_playout(current_admin(),station))
     if view not in ('calendar','shows','blocks','simple'):abort(404)
     return render_template('admin/schedule_studio.html',selected=station,stations=admin_stations(),page='studio-'+view,
         workspace=view,initial=state_json(station))

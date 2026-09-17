@@ -76,7 +76,7 @@ def test_station_name_and_public_url_keep_internal_identity_and_aliases(app):
     for slug in ('test-station','new-radio','newer-radio'):
         assert client.get('/player/'+slug).status_code==200
         assert client.get('/listen/'+slug).headers['Location']=='/stream/test-station'
-    assert b'Newer Radio' in client.get('/stations').data
+    assert b'Newer Radio' in client.get('/stations',follow_redirects=True).data
 
 
 def test_song_cart_description_and_behavior_are_snapshotted(app,monkeypatch):

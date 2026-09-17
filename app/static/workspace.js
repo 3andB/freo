@@ -167,6 +167,9 @@
   window.FreoMonitor = {toggle: () => wanted ? stop() : play(), stop, audio, levels:monitorLevels};
 
   let navigating = false, dirty = false;
+  // Browser fragment navigation also emits popstate. Track the rendered page,
+  // since location has already changed by the time a history event arrives.
+  let renderedPage = location.pathname + location.search;
   const remember = () => history.replaceState({...history.state, freo: true, scroll: scrollY}, '', location.href);
   const isPage = url => url.origin === location.origin && !/\/(api|stream|static)\//.test(url.pathname) && !/\/(audition|artwork|export|download)(\/|$)/.test(url.pathname);
   async function navigate(url, options = {}) {
@@ -176,6 +179,9 @@
     try {
       const response = await fetch(url, {credentials: 'same-origin', ...options.request});
       if (!response.headers.get('content-type')?.includes('text/html')) {location.assign(url); return;}
+      const destination = new URL(response.url);
+      const requestedHash = new URL(url, location.href).hash;
+      if (requestedHash) destination.hash = requestedHash;
       const next = new DOMParser().parseFromString(await response.text(), 'text/html');
       if (!next.querySelector('#main')) throw new Error('Page unavailable');
       if (!options.pop) remember();
@@ -184,19 +190,21 @@
       host?.remove();
       const scripts = [...next.querySelectorAll('script[src]')].map(el => el.src).filter(src => new URL(src).origin === location.origin && !src.includes('/workspace.js'));
       next.querySelectorAll('script').forEach(el => el.remove());
+      document.querySelectorAll('link[href*="/website-theme.css"]').forEach(link => link.remove());
       next.querySelectorAll('link[rel="stylesheet"]').forEach(link => {
         if (![...document.querySelectorAll('link[rel="stylesheet"]')].some(el => el.href === link.href)) document.head.insertBefore(link.cloneNode(true), document.querySelector('link[href*="/theme.css"]'));
       });
       document.title = next.title; document.body.className = next.body.className;
       document.body.replaceChildren(...next.body.childNodes);
+      renderedPage = destination.pathname + destination.search;
       window.FreoTheme?.sync();
-      if (!options.pop) history.pushState({freo: true, scroll: 0}, '', response.url);
+      if (!options.pop) history.pushState({freo: true, scroll: 0}, '', destination.href);
       dirty = false; mount(); prepareForms();
       for (const src of scripts) await new Promise((resolve, reject) => {
         const script = document.createElement('script'); script.src = src; script.onload = resolve; script.onerror = reject; document.body.append(script);
       });
       document.querySelector('#main')?.setAttribute('tabindex', '-1'); document.querySelector('#main')?.focus({preventScroll: true});
-      if (new URL(response.url).hash) document.getElementById(decodeURIComponent(new URL(response.url).hash.slice(1)))?.scrollIntoView();
+      if (destination.hash) document.getElementById(decodeURIComponent(destination.hash.slice(1)))?.scrollIntoView();
       else window.scrollTo(0, options.pop ? history.state?.scroll || 0 : 0);
     } catch (_) {
       const notice = document.createElement('p'); notice.className = 'admin-notice error'; notice.setAttribute('role', 'alert');
@@ -234,7 +242,10 @@
     }
     else navigate(url.href, {submitted: true, request: {method: 'POST', body: data}});
   });
-  window.addEventListener('popstate', () => navigate(location.href, {pop: true}));
+  window.addEventListener('popstate', () => {
+    if (location.pathname + location.search === renderedPage) return;
+    navigate(location.href, {pop: true});
+  });
   window.FreoWorkspace = {navigate};
   mount(); prepareForms(); remember();
 })();

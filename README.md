@@ -1,5 +1,7 @@
 # Freo
 
+[Station website and Website CMS](docs/station-website.md): every installation opens with a customizable station homepage, automatic channel cards, real library counts, published schedules, images, colors and draft/publish controls. Manage it in **Admin → Website**.
+
 [Central API integration](docs/central-api-integration-plan.md) covers installation registration, permanent station UUIDs, aggregate hourly reports, cached licensing, setup and recovery.
 
 [Copyright identification and DMCA reporting](docs/copyright-and-dmca.md) documents permanent public Track IDs, optional ISRC metadata, private copyright reports, admin review, and upgrade instructions.

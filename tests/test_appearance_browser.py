@@ -24,7 +24,7 @@ def test_appearance_persistence_navigation_and_audio(booth):
     assert driver.execute_script('return originalMonitor === FreoMonitor.audio && !FreoMonitor.audio.paused')
     driver.refresh()
     assert driver.execute_script('return document.documentElement.dataset.theme') == 'night'
-    for path in ('/', '/stations', '/player/test-station', '/admin/stations/test-station/playlists', '/admin/stations/test-station/calendar', '/admin/stations/test-station/live', '/admin/stations/test-station/media'):
+    for path in ('/player/test-station', '/admin/stations/test-station/playlists', '/admin/stations/test-station/calendar', '/admin/stations/test-station/live', '/admin/stations/test-station/media'):
         driver.get(base + path)
         for theme in ('day', 'night'):
             choose(driver, theme)

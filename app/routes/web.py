@@ -2,9 +2,6 @@
 import hmac
 import secrets
 import time
-import json
-from functools import lru_cache
-from pathlib import Path
 
 from flask import Blueprint, flash, abort, redirect, render_template, request, session, url_for, jsonify, current_app
 from werkzeug.security import check_password_hash
@@ -46,34 +43,18 @@ def station_or_404(slug, require_enabled=True):
 
 @web_blueprint.get('/')
 def homepage():
-    return render_template('home.html', screens=product_screens(),
-                           project_url=current_app.config.get('PUBLIC_BASE_URL', '').rstrip('/'))
-
-
-@lru_cache(maxsize=1)
-def product_screens():
-    """Release-owned screenshot metadata; the project page needs no station query."""
-    manifest = Path(__file__).resolve().parents[1] / 'static' / 'product' / 'manifest.json'
-    screens = {}
-    for row in json.loads(manifest.read_text())['screens']:
-        screens.setdefault(row['name'], {})[row['theme']] = row
-    return screens
+    from app.services.website import presentation
+    try:
+        return render_template('home.html', **presentation())
+    except SQLAlchemyError:
+        db.session.rollback()
+        current_app.logger.exception('Website database unavailable')
+        return render_template('website_unavailable.html'), 503
 
 
 @web_blueprint.get('/stations')
 def stations():
-    from sqlalchemy.orm import selectinload
-    from app.models import StationPlayerAsset, StationPlayerSettings
-    rows = (Station.query.filter_by(enabled=True, deleted_at=None)
-            .filter(Station.lifecycle_state.notin_(('pending_delete', 'delete_failed')))
-            .options(selectinload(Station.logo)).order_by(Station.name, Station.id).all())
-    identifiers = [station.id for station in rows]
-    # Fetch image versions here; artwork bytes belong to the asset endpoint.
-    covers = dict(db.session.query(StationPlayerAsset.station_id, StationPlayerAsset.version)
-                  .filter(StationPlayerAsset.station_id.in_(identifiers), StationPlayerAsset.kind == 'cover').all()) if identifiers else {}
-    appearance = dict(db.session.query(StationPlayerSettings.station_id, StationPlayerSettings.config)
-                      .filter(StationPlayerSettings.station_id.in_(identifiers)).all()) if identifiers else {}
-    return render_template('stations.html', stations=rows, covers=covers, appearance=appearance)
+    return redirect(url_for('web.homepage') + '#channels', code=302)
 
 
 @web_blueprint.get('/player/<slug>')
@@ -264,6 +245,8 @@ def page_security_headers(response):
             "default-src 'self'; img-src 'self' data:; style-src 'self'; "
             "script-src 'self'; media-src 'self' blob:; connect-src 'self'; "
             "base-uri 'self'; frame-ancestors 'none'")
+        if request.endpoint == 'website.preview':
+            response.headers['Content-Security-Policy'] = response.headers['Content-Security-Policy'].replace("frame-ancestors 'none'", "frame-ancestors 'self'")
         response.headers['X-Content-Type-Options'] = 'nosniff'
         response.headers.setdefault('Referrer-Policy', 'strict-origin-when-cross-origin')
     return response

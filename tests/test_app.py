@@ -16,7 +16,7 @@ def app(monkeypatch):
 
 def test_factory_and_health(app):
     client = app.test_client()
-    assert client.get("/").status_code == 200
+    assert client.get("/").status_code == 503  # A missing schema is not an empty installation.
     assert client.get("/health").json == {"status": "ok"}
 
 

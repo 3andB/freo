@@ -1,5 +1,5 @@
 <nav class="planning-tabs" aria-label="Schedule tools">
-{% for view,label in [('calendar','Calendar'),('shows','Shows'),('blocks','Blocks'),('simple','Simple')] %}<a href="{{ url_for('schedule_studio.page',slug=selected.slug,view=view) }}">{{ label }}</a>{% endfor %}
+<a href="{{ url_for('schedule_studio.page',slug=selected.slug,view='control') }}">Station Control</a>
 <a href="{{ url_for('admin_events.list_page',slug=selected.slug) }}">Events</a>
 <a href="{{ url_for('admin_blocks.list_page',slug=selected.slug) }}">Event sequences</a>
 </nav>

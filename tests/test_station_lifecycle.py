@@ -32,7 +32,7 @@ def app(station_app, monkeypatch, tmp_path):
 def test_zero_station_pages_and_worker(app):
     client = admin_client(app)
     for path in ('/', '/stations', '/admin', '/admin/stations', '/admin/media', '/admin/history'):
-        assert client.get(path).status_code == 200, path
+        assert client.get(path, follow_redirects=True).status_code == 200, path
     assert client.get('/api/stations').json == {'stations': []}
     assert b'Add station' in client.get('/admin').data
     with app.app_context():

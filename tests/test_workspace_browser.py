@@ -91,11 +91,11 @@ def test_capture_demonstration_screens_when_requested(booth):
         print(driver.execute_script('return {title:document.getElementById("morph-text").textContent,status:document.getElementById("live-playout").textContent,body:document.getElementById("dj-booth").className}'))
         print(driver.get_log('browser'))
         raise
-    driver.save_screenshot('/opt/freo/app/static/product-dj.png')
+    driver.save_screenshot(str(tmp_path / 'dj.png'))
     driver.get(base+'/admin/stations/test-station/calendar?date=2026-09-14')
     wait_text(driver,'.calendar-grid','Morning discoveries')
-    driver.save_screenshot('/opt/freo/app/static/product-schedule.png')
-    assert Path('/opt/freo/app/static/product-dj.png').stat().st_size>10000
+    driver.save_screenshot(str(tmp_path / 'schedule.png'))
+    assert (tmp_path / 'dj.png').stat().st_size>10000
 
 
 def test_programming_event_series_and_content_picker(booth):

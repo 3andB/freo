@@ -1,128 +1,65 @@
 {% extends 'base.html' %}
-{% from '_product_screen.html' import screen with context %}
-{% set docs = 'https://github.com/lee-3andB/freo/blob/main/docs/' %}
-{% block body_class %}public project-home{% endblock %}
-{% block title %}Freo · The whole station. In your hands.{% endblock %}
+{% block title %}{{ site.seo_title or site.name ~ ' · ' ~ site.tagline }}{% endblock %}
+{% block body_class %}public station-home font-{{ site.font }} focal-{{ site.focal }} shade-{{ site.overlay }}{% endblock %}
 {% block head %}
-<meta name="description" content="Meet Freo: self-hosted internet radio with a two-deck DJ Booth, visual scheduling, playlists, live microphone broadcasting, audience statistics and a beautiful listener player.">
-<meta property="og:title" content="Freo · The whole station. In your hands.">
-<meta property="og:description" content="Your music, your schedule, your sound. Explore Freo's connected workspace for independent radio.">
-<meta property="og:type" content="website">
-{% if project_url %}<link rel="canonical" href="{{ project_url }}/"><meta property="og:url" content="{{ project_url }}/"><meta property="og:image" content="{{ project_url }}{{ url_for('static',filename='product/booth-night-' ~ screens.booth.night.width ~ '.webp') }}">{% endif %}
-<meta name="twitter:card" content="summary_large_image">
-<link rel="stylesheet" href="{{ url_for('static',filename='home.css',v='20260917-2') }}">
+<meta name="description" content="{{ site.seo_description or site.intro }}">
+<meta property="og:title" content="{{ site.seo_title or site.name }}">
+<meta property="og:description" content="{{ site.seo_description or site.intro }}">
+<meta property="og:type" content="website"><meta name="twitter:card" content="summary_large_image">
+{% set origin = config.PUBLIC_BASE_URL.rstrip('/') %}
+{% if origin and not preview %}<link rel="canonical" href="{{ origin }}/"><meta property="og:url" content="{{ origin }}/"><meta property="og:image" content="{{ origin }}{{ site_image('share_image') }}">{% endif %}
+{% if preview %}<meta name="robots" content="noindex,nofollow">{% endif %}
+<link rel="icon" href="{{ site_image('favicon') }}">
+<link rel="stylesheet" href="{{ url_for('static',filename='home.css',v='station-1') }}">
+<link rel="stylesheet" href="{{ url_for('website.theme',preview=1 if preview else none) }}">
 {% endblock %}
 {% block header %}
-<header class="project-header">
-  <div class="project-wrap project-nav">
-    <a class="wordmark" href="{{ url_for('web.homepage') }}" aria-label="freo.world home">freo<span>.world</span></a>
-    <nav id="project-navigation" aria-label="Main navigation">
-      <a href="#product">Product</a><a href="#capabilities">Features</a><a href="#technology">Technology</a><a href="{{ url_for('web.stations') }}">Listen ↗</a>
-      <a class="project-nav-studio" href="{{ url_for('web.admin_home') if session.get('admin_user_id') else url_for('web.login') }}">{{ 'Open studio' if session.get('admin_user_id') else 'Sign in' }} <span aria-hidden="true">↗</span></a>
-    </nav>
-    <div class="project-nav-tools">{% include '_appearance.html' %}<button class="project-menu" type="button" aria-label="Menu" aria-controls="project-navigation" aria-expanded="false"><span>Menu</span><span aria-hidden="true">☰</span></button></div>
-    {% if session.get('admin_user_id') %}<div class="project-monitor"><div data-master-monitor data-preserve-station></div><form action="{{ url_for('web.logout') }}" method="post"><input type="hidden" name="csrf" value="{{ session.get('logout_csrf', '') }}"><button type="submit">Sign out</button></form></div>{% endif %}
-  </div>
+{% if preview %}<aside class="site-preview-bar"><span>Draft preview · only you can see these changes</span><a href="{{ url_for('website.editor') }}" target="_top">Back to Website editor ↗</a></aside>{% endif %}
+<header class="station-header site-wrap">
+  <a class="station-brand" href="{{ url_for('web.homepage') }}"><img src="{{ site_image('logo',True) }}" width="44" height="44" alt=""><span>{{ site.name }}<small>{{ site.genre }}</small></span></a>
+  <nav id="station-navigation" aria-label="Main navigation"><a href="#channels">Our channels</a>{% if schedule and 'schedule' in site.sections %}<a href="#schedule">On the schedule</a>{% endif %}{% if 'about' in site.sections and site.about %}<a href="#about">Our story</a>{% endif %}<a href="#contact">Connect</a></nav>
+  <div class="station-header-tools"><button class="site-theme-toggle" type="button" aria-label="Switch color theme" data-default-theme="{{ site.theme }}" hidden>◐</button>{% if featured %}<a class="site-button small" href="{{ featured.url }}">Listen now <span aria-hidden="true">↗</span></a>{% endif %}<button class="station-menu" type="button" aria-label="Open menu" aria-controls="station-navigation" aria-expanded="false" hidden>☰</button></div>
 </header>
+{% if session.get('admin_user_id') %}<div class="site-owner-bar site-wrap"><a href="{{ url_for('website.editor') }}">Edit website ↗</a><div data-master-monitor data-preserve-station></div></div>{% endif %}
 {% endblock %}
 {% block content %}
-<section class="project-hero project-wrap" aria-labelledby="project-title">
-  <div class="project-hero-copy">
-    <p class="project-label"><span class="project-dot" aria-hidden="true"></span> Independent radio. Entirely yours.</p>
-    <h1 id="project-title">The whole station.<br><em>In your hands.</em></h1>
-    <p class="project-lead">Your music. Your schedule. Your sound.</p>
-    <p class="project-intro">Freo is a self-hosted internet radio platform. Build your library, shape the week, take the decks, and discover what connects with your listeners.</p>
-    <div class="project-actions"><a class="project-button" href="#product">Explore Freo <span aria-hidden="true">↓</span></a><a class="project-button project-button-outline" href="#install">Make it your station <span aria-hidden="true">↗</span></a></div>
-    <p class="project-hero-note">Made for music people. Built to broadcast.</p>
-  </div>
-  <div class="project-hero-visual">
-    <div class="project-orbit" aria-hidden="true"></div>
-    <div class="project-studio-label"><span class="project-dot" aria-hidden="true"></span> YOUR NEXT GREAT HOUR STARTS HERE <span>01 / DJ BOOTH</span></div>
-    {{ screen('booth', 'Meet your DJ Booth', 'Two decks. Private preview. Your moment to take the air.', priority=true) }}
-    <div class="project-hero-caption"><span>REAL FREO. BOTH APPEARANCES.</span><span>Try Day / Night above <span aria-hidden="true">↗</span></span></div>
-  </div>
+<section class="station-hero" aria-labelledby="station-title">
+  <img class="hero-photo" src="{{ site_image('hero') }}" srcset="{{ site_image('hero',True) }} 800w, {{ site_image('hero') }} 1600w" sizes="100vw" alt="{{ site.hero_alt }}" width="1600" height="960" fetchpriority="high">
+  <div class="hero-shade"></div>
+  <div class="site-wrap hero-inner"><div class="hero-copy">
+    <div class="hero-identity"><img src="{{ site_image('logo',True) }}" alt="{{ site.logo_alt or site.name ~ ' station image' }}" width="72" height="72"><div><span class="site-eyebrow">{{ site.genre or 'Independent radio' }}</span><p>{{ site.name }}</p></div></div>
+    <h1 id="station-title">{{ site.tagline }}</h1><p class="hero-intro">{{ site.intro }}</p>
+    <div class="hero-actions">{% if featured %}<a class="site-button hero-listen" href="{{ featured.url }}"><span class="play-symbol" aria-hidden="true">▶</span> Listen to {{ featured.station.name }} <span aria-hidden="true">↗</span></a>{% else %}<span class="coming-soon">A new frequency is on its way</span>{% endif %}<a class="hero-secondary" href="#channels">Explore the channels <span aria-hidden="true">↓</span></a></div>
+  </div><div class="hero-bottom"><span>{{ site.location or 'Independent in spirit. Connected by music.' }}</span><span class="hero-caption">YOUR SOUNDTRACK STARTS HERE <span aria-hidden="true">↘</span></span></div></div>
 </section>
-<nav class="project-chapters" aria-label="Explore Freo's workspaces"><div class="project-wrap">
-  <a href="#music"><span>01</span> Music & playlists</a><a href="#schedule"><span>02</span> Scheduling</a><a href="#booth"><span>03</span> On air</a><a href="#statistics"><span>04</span> Statistics</a><a href="#listeners"><span>05</span> Listening</a>
-</div></nav>
-
-<section id="product" class="project-section project-wrap project-story">
-  <div><p class="project-label">A station with your signature</p><h2>From your first record<br>to your next great show.</h2></div>
-  <div><p class="project-body-large">The best stations have a point of view. Freo gives you the space to find yours—and the tools to bring it to life.</p><p>One connected workspace takes you from a carefully chosen library to a full week of programming, a hands-on DJ session, and a player your listeners can make part of their day.</p></div>
-  <ol class="project-workflow"><li><span>01 / COLLECT</span>Find your sound.</li><li><span>02 / COMPOSE</span>Give it a rhythm.</li><li><span>03 / BROADCAST</span>Make a connection.</li><li><span>04 / DISCOVER</span>See what resonates.</li></ol>
-</section>
-
-<section id="music" class="project-section project-tint">
-  <div class="project-wrap">
-    <div class="project-section-heading"><div><p class="project-label">01 / Music & playlists</p><h2>A collection becomes<br><em>a whole world of sound.</em></h2></div><p>From the album you know by heart to tomorrow's discovery. Bring your music together, give it some order, and put it to work.</p></div>
-    <div class="project-library-grid">
-      <article class="project-feature"><div class="project-feature-copy"><span class="project-small-label">THE MUSIC LIBRARY</span><h3>Every record, in its place.</h3><p>Browse artists, albums and songs. Import WAV, M4A, MP3 and FLAC files or whole folders. Shape your library with artwork, colored tags, categories, notes and song flags.</p></div>{{ screen('music', 'Your music library', 'A connected Artist → Album → Song catalog, with categories and tags.') }}<ul class="project-chips"><li>Folder & batch import</li><li>Private preview</li><li>Waveform & loudness analysis</li></ul></article>
-      <article class="project-feature"><div class="project-feature-copy"><span class="project-small-label">PLAYLISTS WITH PURPOSE</span><h3>Set the order. Or find a flow.</h3><p>Build a Straight playlist or let Random work through a fresh cycle. Add songs, albums, artists or categories; drag to reorder, then bring your playlist into the schedule.</p></div>{{ screen('playlists', 'Playlists, your way', 'Ordered songs, flexible membership, and a place in the schedule.') }}<ul class="project-chips"><li>Straight or Random</li><li>Bulk additions</li><li>Reorder & Undo</li></ul></article>
-    </div>
-    <div class="project-inline-note"><span class="project-signal" aria-hidden="true">▂ ▅ ▃ ▇ ▄ ▆ ▂</span><p><strong>A more consistent sound.</strong> Background analysis measures BPM, loudness and true peak. Non-destructive playback gain helps match song levels while keeping your originals intact.</p><a href="{{ docs }}sound-room.md">Inside the music workspace ↗</a></div>
+{% macro numbers() %}{% if metrics and cards %}<section class="station-numbers site-wrap" aria-label="The station in numbers">{% for number,label in metrics %}<div><strong>{{ '{:,}'.format(number) }}</strong><span>{{ label }}</span></div>{% endfor %}</section>{% endif %}{% endmacro %}
+{% if 'numbers' in site.sections and site.sections[0] == 'numbers' %}{{ numbers() }}{% endif %}
+<section id="channels" class="site-section site-wrap">
+  <div class="site-section-heading"><div><p class="site-eyebrow">A LITTLE SOMETHING FOR EVERY MOOD</p><h2>{{ site.channels_heading }}</h2></div><p>Different sounds. The same love of music.<br>Pick a channel and settle in.</p></div>
+  <div class="channel-grid count-{{ cards|length }}">
+  {% for card in cards %}<article class="channel-card channel-color-{{ loop.index0 % 4 }}" data-channel-state="{{ card.state_url }}">
+    <a class="channel-art" href="{{ card.url }}" aria-label="Listen to {{ card.station.name }}">
+      {% if card.artwork %}<img src="{{ card.artwork }}" width="720" height="480" alt="{{ card.station.name }} artwork" loading="lazy">{% else %}<div class="channel-record" aria-hidden="true"><span>{{ '%02d'|format(loop.index) }}</span></div><span class="channel-art-name" aria-hidden="true">{{ card.station.name }}</span>{% endif %}
+      <span class="channel-status{% if card.online %} is-online{% endif %}" data-status><i aria-hidden="true"></i>{{ card.status }}</span><span class="channel-play" aria-hidden="true">↗</span>
+    </a>
+    <div class="channel-copy"><p class="site-eyebrow">{{ card.station.genre or 'Independent radio' }}{% if loop.first %}<span>FEATURED</span>{% endif %}</p><h3><a href="{{ card.url }}">{{ card.station.name }}</a></h3><p class="channel-description">{{ card.station.description or 'Your next discovery is just a play away.' }}</p><div class="channel-now"><span>ON THE TURNTABLE</span><p data-now-song>Open the player to discover what’s on.</p></div><a class="channel-link" href="{{ card.url }}">Open player <span aria-hidden="true">↗</span></a></div>
+  </article>{% else %}<div class="station-empty"><img src="{{ site_image('logo',True) }}" alt="" width="80" height="80"><h3>Something good is on its way.</h3><p>Our channels are getting ready. Come back soon for your next great listen.</p>{% if session.get('admin_user_id') %}<a class="site-button" href="{{ url_for('web.admin_station_list') }}">Add your first channel ↗</a>{% endif %}</div>{% endfor %}
   </div>
 </section>
-
-<section id="schedule" class="project-section project-wrap">
-  <div class="project-section-heading"><div><p class="project-label">02 / Your station, in time</p><h2>Make every hour<br><em>feel like you.</em></h2></div><p>A carefully planned week. A repeatable daily format. One great playlist on repeat. Choose the way you want to program.</p></div>
-  <div class="project-schedule-layout">
-    {{ screen('schedule', 'A rhythm for your whole week', 'Calendar brings your Shows and music sources together, in your station’s timezone.') }}
-    <div class="project-schedule-copy"><span class="project-small-label">THREE WAYS TO FIND YOUR RHYTHM</span><article><span>01</span><div><h3>Calendar</h3><p>Place programs on dates and times. Repeat daily, weekly or monthly. Adjust a single occurrence or a whole series.</p></div></article><article><span>02</span><div><h3>Blocks</h3><p>Compose a full 24-hour format. Assign weekdays, selected dates, or a pattern that rolls from day to day.</p></div></article><article><span>03</span><div><h3>Simple</h3><p>Choose a Show, playlist, artist, album, category or song. Let it repeat continuously.</p></div></article></div>
-  </div>
-  <div class="project-two-up project-show-details">
-    <article><p class="project-label">REUSABLE SHOWS</p><h3>Compose once. Make it a regular.</h3><p>Build a Show from 15 minutes to 24 hours. Drag in sources, resize sections, combine artists and insert a song for a particular moment. Saved revisions keep future edits deliberate.</p>{{ screen('shows', 'Compose a Show', 'A reusable timeline of playlists, artists, albums, categories and songs.') }}</article>
-    <article><p class="project-label">A DAILY FORMAT</p><h3>A whole day, thoughtfully arranged.</h3><p>Save a 24-hour Block and give every part of the day its own character. A configured default playlist fills the gaps; Events add IDs, announcements and other timed moments.</p>{{ screen('blocks', 'Build a 24-hour Block', 'Reusable daily formats, ready for weekday or rotating assignments.') }}</article>
-  </div>
-  <div class="project-table-scroll" role="region" aria-label="Scheduling mode comparison" tabindex="0"><p class="project-table-hint">Scroll across to explore <span aria-hidden="true">↔</span></p><table class="project-table"><caption>Choose your way to program</caption><thead><tr><th scope="col">Mode</th><th scope="col">Your starting point</th><th scope="col">Made for</th></tr></thead><tbody><tr><th scope="row">Calendar</th><td>Day, Week, Month or Agenda</td><td>Shows and music tied to dates, times and recurring series</td></tr><tr><th scope="row">Blocks</th><td>A reusable 24-hour composition</td><td>Weekday formats, selected dates and rolling daily patterns</td></tr><tr><th scope="row">Simple</th><td>One Show or music source</td><td>Continuous playback with an explicit change when you're ready</td></tr></tbody></table></div>
-  <p class="project-footnote">Shows are reusable compositions, not a fourth mode. Events work across all three. Scheduling follows station-local time; normal program boundaries let the current song finish.</p>
-</section>
-
-<section id="booth" class="project-section project-booth-section">
-  <div class="project-wrap">
-    <div class="project-section-heading"><div><p class="project-label">03 / Take the air</p><h2>Automation when you want it.<br><em>Your energy when it matters.</em></h2></div><p>Let the schedule run, take control of two decks, or bring your voice into the mix. The booth keeps your station's sound close at hand.</p></div>
-    <div class="project-booth-grid"><div>{{ screen('booth', 'Two decks. One station. Your control.', 'Prepare the next song, preview privately, and take the air with a chosen fade.') }}</div><div class="project-booth-copy"><span class="project-small-label">THE DJ BOOTH</span><h3>Make the transition<br>your own.</h3><p>Load a song without interrupting Auto. Choose a fade from 0 to 10 seconds and Take Air. Pause, resume, repeat once or fade out. Return to your scheduled sound when your session is done.</p><ul class="project-checks"><li>Matching decks with observed Live and Ready states</li><li>Private song audition and persistent Master Monitor</li><li>Program and browser monitor meters</li><li>Eight hot carts and four station-ID slots</li></ul><a class="project-text-link" href="{{ docs }}live-assist.md">Explore the booth controls <span aria-hidden="true">↗</span></a></div></div>
-    <div class="project-booth-extras">
-      <article><span class="project-small-label">AUTO</span><h3>Let the station find its flow.</h3><p>Keep an eye on the active program, current song and next selection. Monitor your stream and skip through a worker-controlled fade.</p>{{ screen('auto', 'Following your schedule', 'Auto keeps scheduled playback and station status in view.') }}</article>
-      <article><span class="project-small-label">LIVE MIC · OPTIONAL</span><h3>A voice behind the music.</h3><p>Test a browser microphone or USB mixer input off air. Set your gain, go live, then fade back to the interrupted feed.</p>{{ screen('microphone', 'Bring your voice on air', 'The Live Mic console, shown off air. Requires the optional gateway and working WebRTC connectivity.') }}</article>
-    </div>
-    <div class="project-cart-feature"><div><p class="project-label">YOUR STATION'S SIGNATURE</p><h3>Make a moment.<br>At the press of a cart.</h3><p>Fire an ID, sweeper or promo. Play over the music with ducking, or take over and resume the interrupted audio afterward. The same cart wall stays with you in Auto, DJ and Live Mic.</p></div>{{ screen('carts', 'Your carts, always close', 'Assignable audio, clear labels, and play-over or takeover behavior. One cart plays at a time.') }}</div>
-  </div>
-</section>
-
-<section id="statistics" class="project-section project-wrap">
-  <div class="project-section-heading"><div><p class="project-label">04 / Your sound, in numbers</p><h2>Know what plays.<br><em>See what connects.</em></h2></div><p>Go beyond a listener counter. Explore your audience, music, feedback, resources and broadcast reliability, across one channel or the whole installation.</p></div>
-  <div class="project-stats-grid">{{ screen('statistics', 'Your station, in perspective', 'Audience, confirmed plays and listener preferences. Demonstration data.') }}<div class="project-stats-copy"><article><span class="project-small-label">AUDIENCE & REACH</span><h3>A world around your station.</h3><p>Follow current, average and peak connections, listener-hours and approximate geography. Keep stream listeners separate from player-page visitors.</p></article><article><span class="project-small-label">MUSIC & ENGAGEMENT</span><h3>Find the songs that resonate.</h3><p>See confirmed song and artist plays, likes, dislikes and approval. Compare periods and take the data with you as CSV.</p></article><article><span class="project-small-label">RESOURCES & RELIABILITY</span><h3>Keep the bigger picture in view.</h3><p>Track stream transfer, storage, mount availability, low audio levels and broadcast outcomes. Missing observations stay visible as gaps.</p></article></div></div>
-  {{ screen('geography', 'Every connection has a place', 'A locally rendered map of approximate locations. Demonstration data; connections are not unique people.', wide=true, version='20260917-2') }}
-  <div class="project-inline-note"><span class="project-small-label">LOCAL BY DESIGN</span><p>Analytics uses a local geographic database and locally served maps. Raw listener addresses and user agents are not stored in analytics.</p><a href="{{ docs }}statistics.md">Understand the numbers ↗</a></div>
-</section>
-
-<section id="listeners" class="project-section project-tint">
-  <div class="project-wrap project-listener-layout"><div class="project-listener-copy"><p class="project-label">05 / On the other side of the speakers</p><h2>A little place<br><em>to tune in.</em></h2><p class="project-body-large">Your station deserves a listening experience with as much personality as its music.</p><p>Give it a cover, artwork and your own colors. Share announcements and socials. Publish the schedule, make room for sponsors, and hear back through song votes and private comments.</p><ul class="project-checks"><li>Record-inspired player with Day and Night appearances</li><li>Published Day, Week and Month schedules</li><li>Custom station domains and stable listening links</li><li>Mobile listening controls and reduced-motion options</li></ul><a class="project-button" href="{{ url_for('web.stations') }}">Find a station <span aria-hidden="true">↗</span></a></div><div class="project-player-display">{{ screen('player', 'A home for your station', 'Your cover, your music, your public schedule. A player with its own personality.') }}<div class="project-phone">{{ screen('player-mobile', 'Made for listening anywhere', 'The real Freo player at phone width.') }}</div></div></div>
-</section>
-
-<section id="capabilities" class="project-section project-wrap">
-  <div class="project-section-heading"><div><p class="project-label">The details make the station</p><h2>Small touches.<br><em>Serious capabilities.</em></h2></div><p>From your first import to the commercial log. Explore the tools that make Freo a complete station workspace.</p></div>
-  {% include '_home_capabilities.html' %}
-</section>
-
-<section id="technology" class="project-section project-tech">
-  <div class="project-wrap">
-    <div class="project-section-heading"><div><p class="project-label">Your station. Your server.</p><h2>Good radio.<br><em>Solid foundations.</em></h2></div><p>Freo connects a browser workspace to dedicated broadcast services. Your library, programming and confirmed history live in PostgreSQL; each managed station gets its own Liquidsoap process.</p></div>
-    <ol class="project-engine" aria-label="Broadcast architecture"><li><small>CREATE & CONTROL</small><strong>Freo workspace</strong><span>Flask + PostgreSQL</span></li><li><small>SELECT & COORDINATE</small><strong>Automation worker</strong><span>Durable programming & intent</span></li><li><small>PLAY & MIX</small><strong>Liquidsoap</strong><span>One engine per station</span></li><li><small>DELIVER & LISTEN</small><strong>Icecast + Nginx</strong><span>Your public radio stream</span></li></ol>
-    <p class="project-engine-note">Dedicated ingest and statistics workers support the station. Optional WebRTC microphone audio joins the engine through a separate gateway. The web app records validated commands; the automation worker controls the private playout connection.</p>
-    <div class="project-table-scroll" role="region" aria-label="Freo technology stack" tabindex="0"><p class="project-table-hint">Scroll across to explore <span aria-hidden="true">↔</span></p><table class="project-table"><caption>Under the hood</caption><thead><tr><th scope="col">Layer</th><th scope="col">Technology</th><th scope="col">What it does</th></tr></thead><tbody>
-      <tr><th scope="row">Workspace</th><td>Python · Flask · Gunicorn</td><td>Browser management, APIs and authenticated control requests</td></tr><tr><th scope="row">Station data</th><td>PostgreSQL</td><td>Music, schedules, command intent and confirmed playback history</td></tr><tr><th scope="row">Audio & delivery</th><td>Liquidsoap · Icecast · Nginx</td><td>Station playback, transitions and public listener streams</td></tr><tr><th scope="row">Media preparation</th><td>FFmpeg · ffprobe</td><td>Validated imports, metadata and background audio analysis</td></tr><tr><th scope="row">Live microphone</th><td>WebRTC / Opus · aiortc</td><td>Optional browser microphone and USB audio input gateway</td></tr><tr><th scope="row">Operations</th><td>Ubuntu 24.04 · systemd</td><td>Separate services, workers, timers and health checks</td></tr>
-    </tbody></table></div>
-    <a class="project-text-link" href="https://github.com/lee-3andB/freo">Explore the source <span aria-hidden="true">↗</span></a>
-  </div>
-</section>
-
-<section id="install" class="project-section project-wrap">
-  <div class="project-start"><div><p class="project-label">Make room for your next idea</p><h2>Your station starts<br><em>with your sound.</em></h2><p>Bring the music and the point of view. Explore the setup guide, see how Freo fits your server, and make your next great hour.</p><div class="project-actions"><a class="project-button" href="{{ docs }}installation.md">Read the setup guide <span aria-hidden="true">↗</span></a><a class="project-button project-button-outline" href="https://github.com/lee-3andB/freo">Explore the project <span aria-hidden="true">↗</span></a></div></div><div class="project-start-record" aria-hidden="true"><div><span>FREO</span><i></i><small>YOUR STATION<br>YOUR SOUND</small></div></div></div>
-  <div class="project-setup-note"><span class="project-small-label">PROJECT STATUS</span><p>Freo is an actively developing project for self-hosted internet radio. The production target is Ubuntu 24.04. A separate fresh-VM installation acceptance test remains outstanding; start with the requirements and current installation notes.</p></div>
-  <div class="project-faq"><h3>A few things to know.</h3><div><details><summary>What do I need to run Freo?</summary><p>An Ubuntu 24.04 server, your music, and the services described in the setup guide. Plan for storage and stream bandwidth. Production browser access needs HTTPS. Station broadcast start/stop remains a server CLI operation.</p></details><details><summary>Can I run more than one station?</summary><p>Yes. Freo manages separate station engines and stream mounts. Share artists, albums or songs across channels without copying the audio. Station limits depend on installation configuration and any configured entitlements; current admin accounts manage all stations.</p></details><details><summary>Can I broadcast from a microphone or mixer?</summary><p>Yes, with the optional Live Mic gateway installed and configured. Use a browser microphone or an OS-recognized stereo USB mixer input. HTTPS and working WebRTC connectivity are required; some networks need TURN.</p></details><details><summary>What does “self-hosted” mean here?</summary><p>The application, database and audio services run on your server. Local statistics are collected separately from optional Central integration, which supports registration, aggregate reporting, directory metadata and cached entitlements. See the <a href="{{ docs }}central-api-integration-plan.md">integration guide</a> for details.</p></details><details><summary>Where can I learn about the project and its license?</summary><p>The source and documentation are available on <a href="https://github.com/lee-3andB/freo">GitHub</a>. A software license has not yet been selected. Consult the repository for current project status and reuse terms.</p></details></div></div>
-</section>
-<dialog class="project-lightbox" id="product-lightbox" aria-labelledby="product-lightbox-title"><div class="project-lightbox-toolbar"><div><span class="project-small-label">INSIDE FREO · DEMONSTRATION STATION</span><h2 id="product-lightbox-title">Explore Freo</h2></div>{% include '_appearance.html' %}<button type="button" class="project-lightbox-close" aria-label="Close screenshot">Close <span aria-hidden="true">×</span></button></div><div class="project-lightbox-image" role="region" aria-label="Product screenshot; scroll to explore at full size" tabindex="0"><img alt="" width="1100" height="800"></div><div class="project-lightbox-footer"><button type="button" data-screen-step="-1" aria-label="Previous screenshot">← Previous</button><p id="product-lightbox-caption"></p><button type="button" data-screen-step="1" aria-label="Next screenshot">Next →</button></div></dialog>
+{% for section in site.sections %}
+{% if section == 'numbers' and not loop.first %}{{ numbers() }}
+{% elif section == 'schedule' and schedule %}
+<section id="schedule" class="site-section schedule-section"><div class="site-wrap">
+<div class="site-section-heading"><div><p class="site-eyebrow">MAKE A LITTLE TIME FOR MUSIC</p><h2>{{ site.schedule_heading }}</h2></div>{% if cards|length > 1 %}<label class="schedule-filter">Channel<select aria-label="Filter schedule by channel" data-schedule-filter><option value="">All channels</option>{% for card in cards %}<option value="{{ card.station.id }}">{{ card.station.name }}</option>{% endfor %}</select></label>{% endif %}</div>
+<div class="public-programs">{% for entry in schedule %}<a class="public-program" href="{{ entry.url }}" data-schedule-channel="{{ entry.station_id }}"><div class="program-time"><strong>{{ entry.time }}</strong><span>{{ entry.date }}</span></div><div><span class="site-eyebrow">{{ entry.channel }}</span><h3>{{ entry.title }}</h3><small>{{ entry.timezone }}</small></div><span aria-hidden="true">↗</span></a>{% endfor %}</div><p class="schedule-no-results" hidden>No upcoming published programs for this channel.</p>
+</div></section>
+{% elif section == 'about' and site.about %}
+<section id="about" class="site-section site-wrap station-story"><div class="story-image"><img src="{{ site_image('about_image') }}" srcset="{{ site_image('about_image',True) }} 800w, {{ site_image('about_image') }} 1600w" sizes="(max-width:760px) 100vw, 50vw" alt="{{ site.about_image_alt or 'Records, warm light, and a place to listen' }}" width="800" height="800" loading="lazy"><span class="story-stamp">MADE OF MUSIC<br><b>And a little soul.</b></span></div><div class="story-copy"><p class="site-eyebrow">THE PEOPLE BEHIND THE FREQUENCY</p><h2>{{ site.about_heading }}</h2><div class="story-text">{{ site.about }}</div>{% if site.location %}<p class="story-location">↗ &nbsp; {{ site.location }}</p>{% endif %}<a class="site-text-link" href="#channels">Find your next good listen <span aria-hidden="true">→</span></a></div></section>
+{% elif section == 'announcement' and announcement_visible %}
+<section class="site-wrap announcement-section"><div><p class="site-eyebrow">FROM THE STATION</p><h2>{{ site.announcement_title }}</h2><p>{{ site.announcement }}</p></div>{% if site.announcement_url %}<a class="site-button" href="{{ site.announcement_url }}" rel="noopener noreferrer">{{ site.announcement_label or 'Find out more' }} ↗</a>{% endif %}</section>
+{% endif %}{% endfor %}
 {% endblock %}
-{% block footer %}<footer class="project-footer"><div class="project-wrap"><div><a class="wordmark" href="{{ url_for('web.homepage') }}">freo<span>.world</span></a><p>Independent radio. Entirely yours.</p></div><nav aria-label="Footer navigation"><a href="{{ url_for('web.stations') }}">Listen</a><a href="{{ docs }}installation.md">Documentation</a><a href="https://github.com/lee-3andB/freo">GitHub ↗</a><a href="{{ url_for('web.login') }}">Station admin</a></nav><div class="project-footer-bottom"><span>Made for your next great hour.</span><span>Product screenshots use fictional demonstration data.</span></div></div></footer>{% endblock %}
-{% block scripts %}<script defer src="{{ url_for('static',filename='home.js',v='20260917-1') }}"></script>{% endblock %}
+{% block footer %}
+<footer id="contact" class="station-footer"><div class="site-wrap"><div class="footer-top"><div><p class="site-eyebrow">STAY A LITTLE LONGER</p><h2>Keep good company.</h2><p>Wherever you are, take {{ site.name }} with you.</p></div><a class="station-brand" href="#main"><img src="{{ site_image('logo',True) }}" width="64" height="64" alt=""><span>{{ site.name }}<small>{{ site.genre }}</small></span></a></div><div class="footer-links">{% for social in site.socials %}<a href="{{ social.url }}" rel="noopener noreferrer">{{ social.label }} ↗</a>{% endfor %}{% if site.publish_contact %}{% if site.contact_email %}<a href="mailto:{{ site.contact_email }}">{{ site.contact_email }}</a>{% endif %}{% if site.phone %}<span>{{ site.phone }}</span>{% endif %}{% endif %}</div><div class="footer-bottom"><span>© {{ year }} {{ site.copyright or site.name }}</span><span><a href="https://github.com/lee-3andB/freo">Powered by Freo</a><span aria-hidden="true"> · </span><a href="{{ url_for('web.admin_home') if session.get('admin_user_id') else url_for('web.login') }}">{{ 'Open studio' if session.get('admin_user_id') else 'Station sign in' }}</a></span></div></div></footer>
+{% endblock %}
+{% block scripts %}<script defer src="{{ url_for('static',filename='home.js',v='station-1') }}"></script>{% endblock %}

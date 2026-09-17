@@ -1,6 +1,6 @@
 # Freo web surfaces
 
-The homepage introduces what Freo currently does and states its early-stage installation status. `/stations` lists enabled managed stations, and `/player/<slug>` plays the real public HTTPS `/stream/<slug>` mount. The player labels metadata as the **last confirmed start**, because the most recent history row is not guaranteed to be the item still on air. It handles stream and metadata outages separately. Browser autoplay restrictions require a user gesture; audio begins only after the listener presses Play.
+The default homepage is the listener-facing station website. Owners manage branding, images, colors, sections, drafts and publishing in **Admin → Website**. See [Station website](station-website.md). `/stations` redirects to its automatic channel list; verified channel domains still open their own player. `/player/<slug>` plays the public stream after a listener presses Play. Current music and on-air status use fresh observations; unavailable signals are stated explicitly.
 
 After sign-in, `/admin` is the operational overview. `/admin/stations` lists all managed stations, including stopped stations, and `/admin/stations/<slug>` opens a deeper station view with pending approved requests. The sidebar has authenticated Media management and editable Categories, Rotations, Clocks, and Schedule pages plus read-only History and System pages. The station picker keeps those pages station-scoped. The old `/dashboard/<slug>` URL redirects to the station detail page.
 

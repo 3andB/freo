@@ -9,11 +9,13 @@
 {% if installation.installation_id %}
 <p>Installation ID: <code>{{ installation.installation_id }}</code></p>
 <p>Manager email: {{ installation.manager_email }}. Contact Freo to change the registered account email.</p>
+<div id="installation-plan"><h2>Plan</h2>
 {% if cache %}<p>Plan: {{ cache.entitlement.plan }} · Status: {{ cache.entitlement.status }} · Enabled channel limit: {{ cache.entitlement.channel_limit }}</p>
 <p>Last server verification: {{ cache.entitlement.server_time }}. Grace through {{ cache.entitlement.grace_until }}.</p>
 {% if grace_elapsed %}<p>Grace has elapsed. Verify the license before enabling additional stations. Existing broadcasts remain available.</p>{% elif using_grace %}<p>Using the cached entitlement during its grace period. Existing broadcasts remain available.</p>{% endif %}
 {% if server_now is none %}<p>Local clock needs verification before enabling additional stations.</p>{% endif %}
 {% else %}<p>Waiting for license verification. Existing configured stations remain available.</p>{% endif %}
+</div>
 <form method="post"><input type="hidden" name="csrf" value="{{ csrf_token() }}"><input type="hidden" name="action" value="retry_connection"><button type="submit">Retry connection</button></form>
 {% elif installation.registration_state in ['unconfigured','registration_uncertain'] %}
 <form method="post"><input type="hidden" name="csrf" value="{{ csrf_token() }}">
@@ -25,5 +27,6 @@
 {% endif %}
 <button type="submit">{{ 'Retry registration' if installation.registration_state == 'registration_uncertain' else 'Register installation' }}</button></form>
 {% else %}<p>Registration is queued for the background reporter.</p>{% endif %}
+{% if not installation.installation_id %}<div id="installation-plan"><h2>Plan</h2><p>Plan details will appear after registration and license verification.</p></div>{% endif %}
 </section>
 {% endblock %}

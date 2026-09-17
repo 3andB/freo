@@ -7,6 +7,71 @@ from app.models import Station, Track, Playlist, PlaylistItem, ScheduleCompositi
 from tests.test_live_browser import booth, app_fixture, wait_text
 
 
+def test_station_control_navigation_and_mode_switches(booth):
+    from app.models import ChannelSchedule
+    from app.services import visual_schedule as vs
+    app, driver, base, tmp_path = booth
+    with app.app_context():
+        station = Station.query.filter_by(slug='test-station').one()
+        track = Track.query.first()
+        playlist = Playlist(station_id=station.id, name='Control fallback', mode='STRAIGHT')
+        playlist.items.append(PlaylistItem(track_id=track.id, position=1))
+        db.session.add(playlist); db.session.flush()
+        policy = vs.policy(station, True)
+        policy.default_playlist_id = playlist.id
+        policy.simple = dict(kind='song', id=track.id)
+        policy.activated = True
+        db.session.commit()
+    links = [link.text for link in driver.find_elements(By.CSS_SELECTOR, '.admin-nav > a')]
+    assert links[links.index('Playlists') + 1] == 'Shows'
+    assert links[links.index('Plan') + 1] == 'Installation'
+    assert all(label not in links for label in ['Calendar', 'Blocks', 'Simple', 'Schedule'])
+    assert not driver.find_elements(By.CSS_SELECTOR, '.admin-nav nav')
+    driver.find_element(By.LINK_TEXT, 'Station Control').click()
+    wait_text(driver, '#control-status-heading', 'Calendar mode')
+    for mode in ['SIMPLE', 'BLOCKS', 'CALENDAR']:
+        driver.find_element(By.CSS_SELECTOR, f'[data-switch-mode="{mode}"]').click()
+        wait_text(driver, 'dialog[open]', 'Will play now:')
+        if mode == 'SIMPLE':
+            driver.find_element(By.XPATH, "//dialog[@open]//button[text()='Cancel']").click()
+            with app.app_context():
+                assert ScheduleTransition.query.count() == 0
+            driver.find_element(By.CSS_SELECTOR, f'[data-switch-mode="{mode}"]').click()
+            wait_text(driver, 'dialog[open]', 'Will play now:')
+        driver.find_element(By.CSS_SELECTOR, 'dialog[open] .admin-primary').click()
+        wait_text(driver, '#control-transition', 'Waiting for the playback engine')
+        with app.app_context():
+            command = ScheduleTransition.query.filter_by(state='PENDING').one()
+            assert command.mode == mode
+            policy = ChannelSchedule.query.filter_by(station_id=command.station_id).one()
+            assert policy.mode != mode
+            # Simulate the worker's acknowledgement; engine handoff has separate tests.
+            policy.mode = mode
+            command.state = 'APPLIED'
+            db.session.commit()
+        wait_text(driver, '#control-status-heading', f'{mode.title()} mode')
+    driver.find_element(By.CSS_SELECTOR, '[data-switch-mode="BLOCKS"]').click()
+    wait_text(driver, 'dialog[open]', 'Will play now:')
+    driver.find_element(By.CSS_SELECTOR, 'dialog[open] .admin-primary').click()
+    wait_text(driver, '#control-transition', 'Waiting for the playback engine')
+    with app.app_context():
+        command = ScheduleTransition.query.filter_by(state='PENDING').one()
+        command.state = 'FAILED'
+        command.error = 'Playback engine unavailable. Current mode retained.'
+        db.session.commit()
+    wait_text(driver, '#control-transition', 'Switch failed: Playback engine unavailable')
+    wait_text(driver, '#control-status-heading', 'Calendar mode')
+    driver.set_window_size(390, 844)
+    assert driver.execute_script('return document.documentElement.scrollWidth <= innerWidth + 2')
+    driver.save_screenshot('/tmp/freo-station-control-mobile.png')
+    driver.set_window_size(1600, 1200)
+    driver.save_screenshot('/tmp/freo-station-control.png')
+    driver.find_element(By.LINK_TEXT, 'Open Blocks').click()
+    wait_text(driver, '#workspace-title', 'Blocks')
+    driver.find_element(By.LINK_TEXT, 'Station Control').click()
+    wait_text(driver, '#control-status-heading', 'Calendar mode')
+
+
 def test_show_console_simple_confirmation_and_events(booth):
     app,driver,base,tmp_path=booth
     driver.find_element(By.CSS_SELECTOR,'.admin-nav a[href$="/schedule-studio/shows"]').click()

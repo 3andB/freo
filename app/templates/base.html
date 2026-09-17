@@ -8,7 +8,7 @@
   <script src="{{ url_for('static', filename='theme.js',v='forms-20260916') }}"></script>
   <title>{% block title %}Freo{% endblock %}</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='freo.css',v='forms-20260916') }}">
-  <script defer src="{{ url_for('static', filename='workspace.js',v='audio-20260917') }}"></script>
+  <script defer src="{{ url_for('static', filename='workspace.js',v='website-nav-20260917') }}"></script>
   {% block head %}{% endblock %}
   <link rel="stylesheet" href="{{ url_for('static', filename='theme.css',v='forms-20260916') }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='forms.css',v='forms-20260916') }}">
@@ -20,9 +20,9 @@
       <a class="wordmark" href="{{ url_for('web.homepage') }}" aria-label="Freo home">freo<span>.world</span></a>
       <nav aria-label="Main navigation">
         <a href="{{ url_for('web.stations') }}">Listen</a>
-        <a href="{{ url_for('web.homepage') }}#capabilities">Capabilities</a>
-        <a href="{{ url_for('web.homepage') }}#install">Install status</a>
-        <a href="https://github.com/lee-3andB/freo">GitHub</a>
+        <a href="{{ url_for('web.homepage') }}#about">Our story</a>
+        <a href="{{ url_for('web.homepage') }}#contact">Connect</a>
+
         {% if session.get('admin_user_id') %}<a href="{{ url_for('web.admin_home') }}">Admin</a>{% else %}<a href="{{ url_for('web.login') }}">Admin sign in</a>{% endif %}
       </nav>
       {% include '_appearance.html' %}
@@ -33,7 +33,7 @@
     </div>
   </header>{% endblock %}
   <main id="main">{% block content %}{% endblock %}</main>
-  {% block footer %}<footer class="site-footer"><div class="shell"><span>Freo · early-stage internet radio automation</span><a href="https://github.com/lee-3andB/freo">Source and documentation</a></div></footer>{% endblock %}
+  {% block footer %}<footer class="site-footer"><div class="shell"><span>Independent radio · Powered by Freo</span><a href="https://github.com/lee-3andB/freo">Source and documentation</a></div></footer>{% endblock %}
   {% block scripts %}{% endblock %}
 </body>
 </html>

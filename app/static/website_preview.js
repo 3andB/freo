@@ -1,0 +1,1 @@
+document.querySelectorAll('[data-size]').forEach(button=>button.addEventListener('click',()=>{document.querySelector('iframe').classList.toggle('mobile',button.dataset.size==='mobile');document.querySelectorAll('[data-size]').forEach(item=>item.setAttribute('aria-pressed',String(item===button)));}));

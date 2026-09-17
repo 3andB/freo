@@ -849,6 +849,29 @@ class StationLogo(db.Model):
     version = db.Column(db.String(64), nullable=False)
 
 
+class WebsiteSettings(db.Model):
+    __tablename__ = 'website_settings'
+    __table_args__ = (db.CheckConstraint('id = 1', name='ck_website_singleton'),)
+    id = db.Column(db.Integer, primary_key=True, default=1)
+    draft = db.Column(db.JSON, nullable=False, default=dict)
+    published = db.Column(db.JSON, nullable=False, default=dict)
+    revision = db.Column(db.Integer, nullable=False, default=1)
+
+
+class WebsitePublication(db.Model):
+    __tablename__ = 'website_publications'
+    id = db.Column(db.Integer, primary_key=True)
+    config = db.Column(db.JSON, nullable=False)
+    created_at = db.Column(db.DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+
+
+class WebsiteAsset(db.Model):
+    __tablename__ = 'website_assets'
+    id = db.Column(db.String(64), primary_key=True)
+    image = db.deferred(db.Column(db.LargeBinary, nullable=False))
+    small = db.deferred(db.Column(db.LargeBinary, nullable=False))
+
+
 class SongFlag(db.Model):
     __tablename__ = 'song_flags'
     __table_args__ = (db.UniqueConstraint('station_id', 'track_id', name='uq_song_flag_station_track'),)

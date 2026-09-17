@@ -57,8 +57,8 @@ def app(monkeypatch, request, tmp_path):
 
 def test_public_pages_and_no_mutations(app):
     client = app.test_client()
-    assert 'The whole station.' in client.get('/').get_data(as_text=True)
-    assert 'Test Station' in client.get('/stations').get_data(as_text=True)
+    assert 'Test Station' in client.get('/').get_data(as_text=True)
+    assert 'Test Station' in client.get('/stations', follow_redirects=True).get_data(as_text=True)
     assert '/stream/test-station' in client.get('/player/test-station').get_data(as_text=True)
     assert client.post('/api/stations').status_code == 405
     assert client.post('/api/stations/test-station/start').status_code == 404

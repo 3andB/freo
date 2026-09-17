@@ -1,0 +1,16 @@
+.control-status { margin-bottom: 20px; padding: 24px; }
+.control-status h2 { margin-top: 12px; }
+.control-modes { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px; }
+.control-mode { display: flex; flex-direction: column; min-width: 0; padding: 24px; }
+.control-mode h2 { margin: 0; }
+.control-mode.is-active { border-color: var(--theme-accent); }
+.control-mode-heading { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
+.control-mode-heading span { font-size: 12px; color: var(--theme-accent); }
+.control-mode p { flex: 1; }
+.control-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 16px; }
+.control-actions a { text-decoration: none; }
+.control-actions button { padding: 12px 18px; border: 1px solid var(--theme-border); border-radius: 10px; background: var(--theme-raised); color: var(--theme-text); font: 700 12px system-ui, sans-serif; cursor: pointer; }
+.control-actions button:disabled { opacity: .55; cursor: default; }
+#control-message:empty, #control-transition:empty { display: none; }
+#control-message.error { color: var(--theme-danger); }
+@media (max-width: 1100px) { .control-modes { grid-template-columns: 1fr; } }

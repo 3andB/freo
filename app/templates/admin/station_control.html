@@ -1,0 +1,31 @@
+{% extends 'admin/base.html' %}
+{% block title %}Station Control · {{ selected.name }} · Freo{% endblock %}
+{% block head %}{{ super() }}<link rel="stylesheet" href="{{ url_for('static',filename='station_control.css') }}">{% endblock %}
+{% block admin_content %}
+<section id="station-control" data-api="{{ url_for('schedule_studio.read',slug=selected.slug,action='state')|replace('/state','/') }}" data-csrf="{{ csrf_token() }}">
+  <input type="hidden" id="control-initial" value="{{ initial|tojson|forceescape }}">
+  <header class="studio-heading"><div><span class="eyebrow">{{ selected.name }} / SYSTEM CONTROL</span><h1>Station Control</h1><p>Choose how your station runs and open its schedule.</p></div></header>
+  <section class="admin-card control-status" aria-labelledby="control-status-heading">
+    <span class="eyebrow">CURRENT STATUS</span>
+    <h2 id="control-status-heading" role="status">System currently running in {{ initial.mode|title }} mode.</h2>
+    <p id="control-transition" role="status"></p>
+    <p id="control-detail">Station timezone: {{ initial.timezone }}</p>
+  </section>
+  <p id="control-message" role="status" aria-live="polite"></p>
+  <div class="control-modes">
+    {% for mode,label,description in [('CALENDAR','Calendar','Schedule your programming by date and time.'),('BLOCKS','Blocks','Build repeatable daily formats and assign them to days.'),('SIMPLE','Simple','Choose one source to play continuously.')] %}
+    <section class="admin-card control-mode" data-mode="{{ mode }}">
+      <div class="control-mode-heading"><h2>{{ label }}</h2><span data-control-badge="{{ mode }}">{{ 'Current mode' if initial.mode == mode else '' }}</span></div>
+      <p>{{ description }}</p>
+      <div class="control-actions">
+        <a class="admin-primary" href="{{ url_for('schedule_studio.page',slug=selected.slug,view=mode|lower) }}">Open {{ label }}</a>
+        {% if can_switch %}<button type="button" data-switch-mode="{{ mode }}" {% if initial.mode == mode and initial.activated %}disabled{% endif %}>{{ 'Active mode' if initial.mode == mode and initial.activated else 'Use ' ~ label }}</button>{% endif %}
+      </div>
+    </section>
+    {% endfor %}
+  </div>
+  <p>Mode changes use your saved programming. Scheduled Events remain enabled.</p>
+  <p><a href="{{ url_for('station_settings.page',slug=selected.slug) }}#playback-settings">Manage the default playlist in Station settings →</a></p>
+</section>
+{% endblock %}
+{% block scripts %}{{ super() }}<script defer src="{{ url_for('static',filename='station_control.js') }}"></script>{% endblock %}

@@ -113,7 +113,7 @@ def preferred_url(station):
 
 
 def route_public_host():
-    endpoints = {'web.homepage', 'web.stations', 'web.player', 'web.listen_alias', 'station_settings.logo', 'player_experience.asset', 'player_experience.public_state', 'player_experience.public_schedule', 'player_experience.feedback', 'player_experience.artwork', 'statistics.visitor_presence'}
+    endpoints = {'web.homepage', 'web.stations', 'web.player', 'web.listen_alias', 'station_settings.logo', 'player_experience.asset', 'player_experience.public_state', 'player_experience.public_schedule', 'player_experience.feedback', 'player_experience.artwork', 'statistics.visitor_presence', 'website.asset', 'website.theme'}
     if request.endpoint not in endpoints:
         return None
     try:
@@ -127,6 +127,8 @@ def route_public_host():
     if not station or not station.enabled or station.deleted_at or station.lifecycle_state in ('pending_delete', 'delete_failed'):
         abort(404)
     g.domain_station = station
+    if request.endpoint in {'website.asset', 'website.theme'}:
+        abort(404)
     if request.endpoint in {'web.homepage', 'web.stations'}:
         return render_template('player.html', station=station)
     try:

@@ -518,7 +518,7 @@ def test_missing_observation_keeps_clock_high_watermark(central, monkeypatch):
 
 def test_reporting_configuration_error_does_not_break_web(app):
     app.config['FREO_INSTALL_TYPE'] = 'misconfigured'
-    assert app.test_client().get('/stations').status_code == 200
+    assert app.test_client().get('/stations', follow_redirects=True).status_code == 200
     from app.services.central_api.metrics import machine_snapshot
     with app.app_context(), pytest.raises(APIError, match='invalid_install_type'):
         machine_snapshot()
