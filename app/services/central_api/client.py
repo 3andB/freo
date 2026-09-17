@@ -72,7 +72,7 @@ def license_response(data, installation_id):
                 'renews_at', 'grace_until', 'server_time', 'refresh_after_seconds', 'outage_policy')
         result = {key: data[key] for key in keys}
         if 'station_profile_id' in data:
-            result['station_profile_id'] = uuid_string(data['station_profile_id']) if data['station_profile_id'] else None
+            result['station_profile_id'] = uuid_string(data['station_profile_id']) if data['station_profile_id'] is not None else None
         return result
     except (ValueError, TypeError, KeyError, AttributeError, OverflowError):
         raise APIError('invalid_license_response') from None

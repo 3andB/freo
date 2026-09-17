@@ -294,7 +294,7 @@ def test_explicit_license_changes_only_block_expansion(central, changes):
 
 
 @pytest.mark.parametrize('change', [dict(installation_id=str(uuid4())), dict(channel_limit=True),
-    dict(status='unknown'), dict(grace_until='bad'), dict(outage_policy='stop'), dict(expires_at='nope')])
+    dict(status='unknown'), dict(grace_until='bad'), dict(outage_policy='stop'), dict(expires_at='nope'), dict(station_profile_id=0), dict(station_profile_id='')])
 def test_invalid_entitlement_is_rejected(change):
     with pytest.raises(APIError, match='invalid_license_response'):
         license_response(license_payload(**change), INSTALLATION_ID)
