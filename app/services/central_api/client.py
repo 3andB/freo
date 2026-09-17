@@ -73,6 +73,11 @@ def license_response(data, installation_id):
         result = {key: data[key] for key in keys}
         if 'station_profile_id' in data:
             result['station_profile_id'] = uuid_string(data['station_profile_id']) if data['station_profile_id'] is not None else None
+        if 'registration_status' in data:
+            expected = 'registered' if result.get('station_profile_id') else 'unregistered'
+            if 'station_profile_id' not in result or data['registration_status'] != expected:
+                raise ValueError()
+            result['registration_status'] = expected
         return result
     except (ValueError, TypeError, KeyError, AttributeError, OverflowError):
         raise APIError('invalid_license_response') from None

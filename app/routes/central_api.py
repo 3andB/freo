@@ -39,7 +39,7 @@ def configure(email, retry=False):
         raise ValueError('Enter a valid station manager email')
     row = installation()
     if row.installation_id:
-        raise ValueError('This installation is already registered; contact Freo for account or credential changes')
+        raise ValueError('This installation already has an identity; contact Freo for account or credential changes')
     if row.registration_state != 'unconfigured' and not (retry and row.registration_state == 'registration_uncertain'):
         raise ValueError('Registration is already queued or requires an explicit retry acknowledgement')
     row.manager_email = email
@@ -62,7 +62,7 @@ def settings():
                 if row.registration_state == 'registration_uncertain':
                     raise ValueError('Recover the existing credential before retrying')
                 if row.installation_id:
-                    row.registration_state = 'registered'
+                    row.registration_state = 'enrolled'
                 # Explicit operator retry; keep entitlement and identity intact.
                 row.state = {key: value for key, value in row.state.items() if key not in ('license', 'report', 'enrollment', 'claim', 'retry_after')}
                 db.session.commit()
@@ -121,7 +121,7 @@ def recover_credential(installation_id):
                 raise ValueError('Installation ID does not match the saved identity')
             store.write({'installation_id': installation_id, 'access_token': token})
         row.installation_id = installation_id
-        row.registration_state = 'registered'
+        row.registration_state = 'enrolled'
         row.state = {key: value for key, value in row.state.items() if key not in ('license', 'report', 'enrollment', 'claim', 'retry_after')}
         db.session.commit()
     except (ValueError, APIError) as error:

@@ -3,8 +3,8 @@
 {% block admin_content %}
 <section class="admin-card"><h1>Freo installation</h1>
 <p>Freo automatically contacts api.freo.live to identify this installation and report its version, machine information, channel metadata, and hourly listener and library totals. No email or owner account is needed for Community. Listener identities, listener IP addresses and music metadata are never sent. Public directory listing is a separate opt-in for each channel.</p>
-<p>Status: <strong>{{ installation.registration_state|replace('_', ' ') }}</strong></p>
-<p>Ownership: <strong>{{ "Owner linked" if installation.state.get("owner_profile_id") else "Unclaimed" }}</strong></p><h2>Connect your Freo Live station</h2>
+<p>Registration: <strong>{{ "Registered with Freo" if installation.state.get("owner_profile_id") else "Unregistered" }}</strong></p>
+<p>Reporting setup: <strong>{{ "enrolled" if installation.registration_state == "registered" else installation.registration_state|replace("_", " ") }}</strong></p><h2>Connect your Freo Live station</h2>
 <p><a href="https://freo.live/account" target="_blank" rel="noopener">Open your Freo Live account</a>, choose your station, and generate a connection code. Existing installation and channel identities are preserved.</p>
 {% if installation.state.get('owner_profile_id') %}<p>Your Freo Live station profile is connected.</p>{% endif %}
 {% if installation.state.get('activation') %}<p>An activation code is queued for the background reporter.</p>{% else %}

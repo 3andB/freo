@@ -100,3 +100,15 @@ remain intact. Upgrades preserve legacy registration uncertainty and recovery
 requirements; they never replace a missing or revoked credential automatically.
 Owner account creation and public directory publication remain optional. The
 reporter does not stop or restart broadcasts on enrollment or API failure.
+
+### Registration status and account email
+
+First startup enrolls and reports automatically over HTTPS. `registration_state`
+is internal connection setup state (`enrolled` after credentials are saved).
+The admin registration label uses the owner profile returned by the API:
+**Unregistered** until activation, then **Registered with Freo**. The license
+response also includes `registration_status`; it is checked against that profile.
+Registration does not change reporting, channel allowance or outage behavior.
+Freo Live signup leads directly to activation-code generation. Postmark and
+account email verification are separate and never required to activate a station.
+The mothership needs no SSH access to installations.

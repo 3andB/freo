@@ -294,7 +294,9 @@ def test_explicit_license_changes_only_block_expansion(central, changes):
 
 
 @pytest.mark.parametrize('change', [dict(installation_id=str(uuid4())), dict(channel_limit=True),
-    dict(status='unknown'), dict(grace_until='bad'), dict(outage_policy='stop'), dict(expires_at='nope'), dict(station_profile_id=0), dict(station_profile_id='')])
+    dict(status='unknown'), dict(grace_until='bad'), dict(outage_policy='stop'), dict(expires_at='nope'), dict(station_profile_id=0), dict(station_profile_id=''), dict(registration_status='registered', station_profile_id=None),
+    dict(registration_status='unregistered', station_profile_id=INSTALLATION_ID),
+    dict(registration_status='unknown', station_profile_id=None)])
 def test_invalid_entitlement_is_rejected(change):
     with pytest.raises(APIError, match='invalid_license_response'):
         license_response(license_payload(**change), INSTALLATION_ID)
@@ -591,7 +593,7 @@ def test_owner_activation_preserves_identity_and_survives_restart(central, exist
     assert reporter.store.read() == {'installation_id': INSTALLATION_ID, 'access_token': api.token}
     assert installation().state['owner_profile_id'] == profile_id
     assert 'activation' not in installation().state
-    assert installation().registration_state == 'registered'
+    assert installation().registration_state == 'enrolled'
     assert [s.freo_station_id for s in Station.query] == station_ids
     Reporter(factory).tick()
     assert len(exchanges) == 1
@@ -609,7 +611,7 @@ def test_activation_lost_response_retries_same_identity_after_backoff(central):
     Reporter(api.factory).tick()
     assert sum(path == '/v1/enroll' for _, path, _, _ in api.calls) == 1
     assert sum(path == '/v1/activate' for _, path, _, _ in api.calls) == 1
-    assert installation().registration_state == 'registered'
+    assert installation().registration_state == 'enrolled'
     assert 'activation' in installation().state
     assert all(s.enabled for s in Station.query)
     installation().state = dict(installation().state, claim={'due': 0})
@@ -627,7 +629,7 @@ def test_rejected_activation_allows_new_code_without_new_identity(central):
     reporter.tick()
     identity = reporter.store.read()
     assert identity['installation_id'] == INSTALLATION_ID
-    assert installation().registration_state == 'registered'
+    assert installation().registration_state == 'enrolled'
     assert 'activation' not in installation().state
     queue_activation('FREO-7K4P-M9Q3')
     reporter.tick()
@@ -683,7 +685,7 @@ def test_enrollment_lost_response_reuses_durable_token_across_restart(central):
     Reporter(api.factory).tick()
     assert api.calls[1][3] == saved['enrollment_token']
     assert reporter.store.read()['access_token'] == saved['enrollment_token']
-    assert installation().registration_state == 'registered'
+    assert installation().registration_state == 'enrolled'
 
 
 def test_enrollment_credential_save_failure_prevents_network(central, monkeypatch):
@@ -744,3 +746,22 @@ def test_license_refresh_recovers_owner_link_after_lost_activation(central):
     api.entitlement['station_profile_id'] = profile_id
     Reporter(api.factory).tick()
     assert installation().state['owner_profile_id'] == profile_id
+
+
+def test_reporting_does_not_mark_installation_registered(app, central):
+    reporter, api = central
+    row = installation()
+    row.registration_state, row.manager_email = 'unconfigured', ''
+    api.entitlement.update(station_profile_id=None, registration_status='unregistered')
+    db.session.commit()
+    reporter.tick()
+    client = admin_client(app)
+    page = client.get('/admin/installation').text
+    assert 'Registration: <strong>Unregistered</strong>' in page
+    assert 'Registered with Freo' not in page
+    identity = reporter.store.read()
+    api.entitlement.update(station_profile_id=str(uuid4()), registration_status='registered')
+    Reporter(api.factory).tick()
+    assert 'Registration: <strong>Registered with Freo</strong>' in client.get('/admin/installation').text
+    assert reporter.store.read() == identity
+    assert all(s.enabled for s in Station.query)

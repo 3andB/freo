@@ -112,7 +112,7 @@ class Reporter:
                 raise APIError('credential_identity_mismatch')
             row.installation_id = saved['installation_id']
             if row.registration_state != 'credentials_rejected':
-                row.registration_state = 'registered'
+                row.registration_state = 'enrolled'
             db.session.commit()
             return saved
         if row.installation_id:
@@ -135,7 +135,7 @@ class Reporter:
         saved = identity_response(response)
         self.store.write(saved)  # Credential is durable before any other API request.
         row.installation_id = saved['installation_id']
-        row.registration_state = 'registered'
+        row.registration_state = 'enrolled'
         row.last_error = ''
         db.session.commit()
         return saved
@@ -163,7 +163,7 @@ class Reporter:
             return None
         self.store.write(credentials)
         row.installation_id = credentials['installation_id']
-        row.registration_state = 'registered'
+        row.registration_state = 'enrolled'
         self.success(row, 'enrollment', now)
         return credentials
 
