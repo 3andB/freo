@@ -3,10 +3,10 @@ import os
 import platform
 import shutil
 from datetime import datetime, timezone
-from pathlib import Path
 from flask import current_app
 from sqlalchemy import func
 from app.extensions import db
+from app.version import VERSION
 from app.models import Station, Track, AutomationHeartbeat, CentralStationState, CentralHourlyMetric
 from app.services.availability import track_scope
 from app.services.broadcast_status import observation
@@ -25,13 +25,7 @@ def machine_snapshot():
         total, free = disk.total, disk.free
     except OSError:
         total = free = None
-    version = current_app.config['FREO_VERSION']
-    try:
-        if version == 'development':
-            version = Path('/etc/freo/release').read_text().strip()[:128] or version
-    except OSError:
-        pass
-    return dict(freo_version=version, install_type=current_app.config['FREO_INSTALL_TYPE'],
+    return dict(freo_version=VERSION, install_type=current_app.config['FREO_INSTALL_TYPE'],
                 os=platform.system()[:128], architecture=platform.machine()[:128], cpu_count=os.cpu_count(),
                 ram_bytes=ram, disk_total_bytes=total, disk_free_bytes=free)
 

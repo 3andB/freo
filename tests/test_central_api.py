@@ -40,6 +40,7 @@ class FakeAPI:
         self.fail = {}
         self.entitlement = license_payload()
         self.token = TOKEN
+        self.heartbeat_fields = {}
 
     def factory(self, url, token=None):
         outer = self
@@ -62,8 +63,9 @@ class FakeAPI:
                     return {'stations': [{'station_id': row['station_id'], 'created_at': iso(time.time()),
                         'updated_at': iso(time.time())} for row in payload['stations']], 'server_time': iso(time.time())}
                 assert path == '/v1/heartbeat'
-                return dict(server_time=iso(time.time()), next_heartbeat_seconds=3600,
-                    stations_accepted=len(payload['stations']), metrics_accepted=sum(len(s['metrics']) for s in payload['stations']))
+                return dict(dict(server_time=iso(time.time()), next_heartbeat_seconds=3600,
+                    stations_accepted=len(payload['stations']), metrics_accepted=sum(len(s['metrics']) for s in payload['stations'])),
+                    **outer.heartbeat_fields)
         return Connection()
 
 
@@ -844,5 +846,7 @@ def test_empty_installation_reports_presence(central):
     db.create_all()
     reporter.tick()
     heartbeat = next(payload for _, path, payload, _ in api.calls if path == '/v1/heartbeat')
+    from app.version import VERSION
+    assert heartbeat['installation']['freo_version'] == VERSION
     assert heartbeat['stations'] == []
     assert installation().state['last_heartbeat']['stations_accepted'] == 0

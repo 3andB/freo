@@ -6,6 +6,11 @@
 <p>Registration: <strong>{{ "Registered with Freo" if installation.state.get("owner_profile_id") else "Unregistered" }}</strong></p>
 <p>Reporting setup: <strong>{{ "enrolled" if installation.registration_state == "registered" else installation.registration_state|replace("_", " ") }}</strong></p>
 {% if installation.state.get('last_heartbeat') %}<p>Last successful heartbeat: <time>{{ installation.state.last_heartbeat.server_time }}</time>.</p>{% endif %}
+<h2>Version</h2>
+<p>Installed version: <strong>{{ installed_version }}</strong></p>
+<p>Latest reported version: <strong>{{ installation.state.get('last_heartbeat', {}).get('latest_version') or 'Unknown' }}</strong></p>
+<p>Update status: <strong>{% if update_available is sameas true %}Update available{% elif update_available is sameas false %}No newer version available{% else %}Unknown{% endif %}</strong></p>
+<p>Version information comes from the last successful heartbeat. A failed report leaves the current update status unknown; the previous release information remains visible.</p>
 <h2>Register with Freo (optional)</h2>
 <p>Registration links your owner account. A paid license is optional; Community reporting works before and after registration.</p>
 <p><a href="https://freo.live/account" target="_blank" rel="noopener">Open your Freo Live account</a>, choose your station, and generate a connection code. Existing installation and channel identities are preserved.</p>

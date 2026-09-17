@@ -1,5 +1,6 @@
-"""Pinned wire contract: freo-live/api/docs/contract.md at 506a3ee.
+"""Base wire contract: freo-live/api/docs/contract.md at 506a3ee.
 
+Includes public release discovery and optional heartbeat update fields.
 The reporter persists retry scheduling; legacy registration is non-idempotent.
 """
 import http.client
@@ -92,13 +93,15 @@ class Client:
         self.token = token
 
     def request(self, method, path, payload=None):
-        if path not in ('/v1/enroll', '/v1/register', '/v1/activate', '/v1/stations/sync', '/v1/heartbeat', '/v1/license'):
+        if path not in ('/v1/enroll', '/v1/register', '/v1/activate', '/v1/stations/sync', '/v1/heartbeat', '/v1/license', '/v1/releases/latest'):
             raise ValueError('Unknown central API endpoint')
+        if path == '/v1/releases/latest' and (method != 'GET' or payload is not None):
+            raise ValueError('Release discovery requires GET without a payload')
         body = None if payload is None else json.dumps(payload, allow_nan=False, separators=(',', ':')).encode()
         if body is not None and len(body) > MAX_BYTES:
             raise APIError('payload_too_large', status=413)
         headers = {'Accept': 'application/json', 'Content-Type': 'application/json'}
-        if self.token:
+        if self.token and path != '/v1/releases/latest':
             headers['Authorization'] = 'Bearer ' + self.token
         connection = http.client.HTTPSConnection(self.url.hostname, self.url.port or 443,
                                                  timeout=5, context=ssl.create_default_context())

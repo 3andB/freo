@@ -41,7 +41,7 @@ def create_app(config_name=None):
         raise ValueError("FLASK_ENV must be development, production, or testing")
     app = Flask(__name__)
     app.config.from_object(configs[name])
-    for key in ("SECRET_KEY", "PUBLIC_BASE_URL", "FREO_DOMAIN", "FREO_INSTALLATION_HOSTS", "FREO_DOMAIN_TARGET_HOST", "FREO_DOMAIN_TARGET_IPS", "FREO_MEDIA_ROOT", "LOG_LEVEL", "FREO_API_URL", "FREO_API_STATE_DIR", "FREO_VERSION", "FREO_INSTALL_TYPE", "FREO_GEOIP_DATABASE", "FREO_STATS_STATE_DIR"):
+    for key in ("SECRET_KEY", "PUBLIC_BASE_URL", "FREO_DOMAIN", "FREO_INSTALLATION_HOSTS", "FREO_DOMAIN_TARGET_HOST", "FREO_DOMAIN_TARGET_IPS", "FREO_MEDIA_ROOT", "LOG_LEVEL", "FREO_API_URL", "FREO_API_STATE_DIR", "FREO_INSTALL_TYPE", "FREO_GEOIP_DATABASE", "FREO_STATS_STATE_DIR"):
         if key in os.environ:
             app.config[key] = os.environ[key]
     try:

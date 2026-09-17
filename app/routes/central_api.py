@@ -4,6 +4,7 @@ import click
 import time
 from flask import Blueprint, current_app, flash, redirect, render_template, request, url_for
 from app.extensions import db
+from app.version import VERSION
 from app.routes.web import admin_stations
 from app.services.admin_auth import admin_required, current_admin, require_csrf
 from app.services.admin_media import audit
@@ -11,6 +12,7 @@ from app.services.central_api import Reporter, installation
 from app.services.central_api.client import APIError, uuid_string, timestamp
 from app.services.central_api.identity import IdentityStore
 from app.services.central_api.licensing import effective_time
+from app.services.central_api.releases import check_version
 
 central_api = Blueprint('central_api', __name__)
 
@@ -81,7 +83,12 @@ def settings():
     grace_elapsed = bool(cache and server_now is not None and server_now > timestamp(cache['entitlement']['grace_until']))
     expiry = cache['entitlement']['expires_at'] if cache else None
     using_grace = bool(expiry and server_now is not None and server_now > timestamp(expiry))
+    receipt = row.state.get('last_heartbeat', {})
+    update_available = receipt.get('update_available')
+    if receipt.get('freo_version') != VERSION or row.state.get('report', {}).get('failures'):
+        update_available = None
     response = current_app.make_response((render_template('admin/installation.html', installation=row,
+        installed_version=VERSION, update_available=update_available,
         cache=cache, server_now=server_now, grace_elapsed=grace_elapsed, using_grace=using_grace, error=error, stations=admin_stations(), selected=None, page='installation'), 400 if error else 200))
     response.headers['Cache-Control'] = 'private, no-store'
     return response
@@ -90,6 +97,18 @@ def settings():
 @central_api.cli.group('central-api')
 def cli():
     """Configure and run the independent central API reporter."""
+
+
+@cli.command('check-version')
+def check_version_command():
+    """Check the public release without enrollment or installation credentials."""
+    click.echo('Installed version: ' + VERSION)
+    try:
+        result = check_version(current_app.config['FREO_API_URL'])
+    except APIError as error:
+        raise click.ClickException('Version check unavailable; update status unknown (' + error.code + ').') from None
+    click.echo('Latest version: ' + result['latest_version'])
+    click.echo('Update available.' if result['update_available'] else 'No newer version available.')
 
 
 @cli.command('configure')

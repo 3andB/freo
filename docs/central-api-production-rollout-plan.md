@@ -215,8 +215,9 @@ PUBLIC_BASE_URL=https://freo.world
    required local database/configuration access.
 4. Preserve any existing identity file. Enforce directory `0700`, credential
    file `0600`, both owned by `freo-automation`. Do not truncate or replace it.
-5. Write the final release commit to `/etc/freo/release`; ensure no stale
-   `FREO_VERSION` override masks it.
+5. Write the final release commit to `/etc/freo/release` for diagnostics. The
+   reported client version comes only from `app/version.py`; legacy
+   `FREO_VERSION` overrides and this commit file do not affect reporting.
 6. Reload systemd and restart only the application workers required by the
    deployment. Enable and start the reporter. Because the reporter is already
    running today, ensure an explicit restart loads the new release; merely

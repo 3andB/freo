@@ -13,6 +13,7 @@ from .client import APIError, Client, MAX_BYTES, identity_response, license_resp
 from .identity import IdentityStore
 from .licensing import checkpoint
 from .metrics import machine_snapshot, sample, station_state, wire_metric, observe_station
+from .releases import heartbeat_release
 
 
 def installation():
@@ -219,6 +220,7 @@ class Reporter:
         receipt = {key: response[key] for key in ('server_time', 'next_heartbeat_seconds',
                                                   'stations_accepted', 'metrics_accepted')}
         receipt['freo_version'] = snapshot['freo_version']
+        receipt.update(heartbeat_release(response))
         self.save_state(row, last_heartbeat=receipt)
         current_app.logger.info('Central API heartbeat accepted installation=%s server_time=%s stations=%s metrics=%s',
                                 row.installation_id, receipt['server_time'],

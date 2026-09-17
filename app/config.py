@@ -12,7 +12,6 @@ class BaseConfig:
     FREO_MAX_STATIONS = 3
     FREO_API_URL = 'https://api.freo.live'
     FREO_API_STATE_DIR = '/var/lib/freo/central-api'
-    FREO_VERSION = 'development'
     FREO_INSTALL_TYPE = 'self-hosted'
     DMCA_REPORTS_PER_HOUR = 5
     DMCA_TRUSTED_PROXY_IPS = ()

@@ -54,7 +54,7 @@ systemctl enable --now freo-central-api.service
 
 The automation restart loads the new model schema; station playout units need not restart. Fresh installations install the reporter through `scripts/provision.sh`. The reporter automatically enrolls installations without an owner account. Review **Admin → Installation** for reporting details and optional owner connection; review country/directory settings for each channel. No real registration is performed by the tests.
 
-Defaults: `FREO_API_URL=https://api.freo.live`, `FREO_API_STATE_DIR=/var/lib/freo/central-api`, `FREO_INSTALL_TYPE=self-hosted`. `FREO_VERSION` can override `/etc/freo/release`; source-only checkouts otherwise identify as `development`. A custom state directory also needs matching systemd write permission and owner/mode. The API URL must be an HTTPS origin, without `/v1`, credentials, query or fragment. Leave TLS verification enabled; repair the server certificate if verification fails.
+Defaults: `FREO_API_URL=https://api.freo.live`, `FREO_API_STATE_DIR=/var/lib/freo/central-api`, `FREO_INSTALL_TYPE=self-hosted`. The installed version is defined only in `app/version.py`; `FREO_VERSION` environment/configuration overrides and `/etc/freo/release` no longer determine the reported version. The release file may still record a deployment commit for diagnostics. A custom state directory also needs matching systemd write permission and owner/mode. The API URL must be an HTTPS origin, without `/v1`, credentials, query or fragment. Leave TLS verification enabled; repair the server certificate if verification fails.
 
 ## Recovery and backups
 
@@ -117,12 +117,45 @@ The mothership needs no SSH access to installations.
 
 Validated HTTP 200 heartbeat responses retain their exact `server_time`, accepted
 station/metric counts, next interval and deployed version in private local
-reporting state. Admin → Installation displays the last successful heartbeat.
+reporting state. Admin → Installation displays the last successful heartbeat,
+installed version, latest reported release, and update status. Heartbeats send
+the installed version as `installation.freo_version`, alongside the existing
+machine snapshot, stations and metrics, using the existing bearer credential.
+There are no top-level version or installation ID fields. The client does not
+discover or send its IP or forwarded-IP headers; the API observes connection IPs.
 The reporter logs only the installation UUID, server time and accepted counts,
 never bearer credentials or activation codes. A failed or malformed response
 does not overwrite the last successful receipt.
+
+The optional `latest_version` and `update_available` response fields are stored
+with the receipt, separately from the license cache. The API's boolean is
+authoritative: true means a newer release exists; false means the installed
+version is equal to or newer than the published release. Null, missing or
+malformed update status is unknown, never false. Invalid optional version fields
+are treated as unknown without discarding an otherwise valid acknowledgement;
+unrecognized fields are ignored. Failed reporting retains the receipt and shows
+the current update status as unknown. A receipt for a different installed
+version also cannot establish current update status.
 
 The Community entitlement is a valid active license even without an account or
 paid purchase. Read channel limits and grace deadlines from the API. A 503
 `license_unavailable` is a refresh failure: preserve the previous cache and
 broadcasts, and continue otherwise permitted heartbeat reporting.
+
+## Public version discovery
+
+Run `flask --app app:create_app central-api check-version` in the configured
+application environment to request `GET /v1/releases/latest`. This command
+requires no installation credentials, enrollment, owner registration or license;
+it neither reads the identity store nor reads/writes installation or license
+state. It uses the configured API origin (default `https://api.freo.live`) and
+always omits authorization on this public endpoint.
+
+The command displays installed/latest versions and compares strict
+[SemVer 2.0.0](https://semver.org/) precedence, including prereleases and ignoring
+build metadata. Unavailable or invalid responses produce an unknown-status
+message and a nonzero exit code. HTTP requests retain the existing bounded
+timeouts, TLS verification and response-size limit. No additional polling is
+introduced: normal discovery comes from existing hourly heartbeats, and admin
+page rendering uses cached data only. Nothing downloads, installs or rolls back
+releases, and failures never control broadcasts or replace cached entitlements.
