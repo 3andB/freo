@@ -78,3 +78,26 @@ Downgrading this migration deletes station UUIDs and reporting state. Treat roll
 The optional `FREO_API_CONTRACT_SOURCE=/path/to/freo-live/api` test loads the actual pinned server validators with Pydantic 2.13.5 from a separate test environment. No API source checkout or Pydantic runtime dependency is needed for normal Freo operation or tests.
 
 Verified on 2026-09-16: full suite **397 passed, 20 skipped**; final focused API run **34 passed**, including the actual pinned server validators; new admin browser flow **1 passed**; PostgreSQL migration/concurrency regressions **8 passed** across the new API, existing station and DMCA tests. An additional station/settings regression run passed 73 checks. The full-suite skips are opt-in/environment-dependent checks; the relevant PostgreSQL checks were run separately against disposable databases. Python compilation, shell syntax, systemd unit validation and Git whitespace checks passed. A read-only HTTPS health check returned 200 with certificate verification enabled. No real installation registration, telemetry submission or production deployment was performed.
+
+## Owner-profile activation
+
+Admin → Installation now accepts the short-lived `FREO-XXXX-XXXX` code generated
+at https://freo.live/account. The hidden-input `central-api activate` CLI queues
+the same operation. The background reporter performs `/v1/activate`; the web
+request never receives or writes the installation bearer credential.
+
+A pending activation code is held briefly in the private local database queue,
+expires after at most 30 minutes, is never rendered back or logged, and is
+removed before the network exchange. The long-lived bearer credential remains
+only in the reporter's 0600 identity file. Existing installations use their
+existing bearer token, retain their installation/channel UUIDs, and validate the
+returned owner profile and entitlement. New identities are saved atomically
+before any further API call. Activation does not stop or restart broadcasts.
+
+Do not automatically retry a new activation after losing its response. A durable
+attempt marker requires operator credential recovery; generating another code
+must not create another installation. Import the recovered identity with the
+existing hidden-input `central-api recover-credential` command. Explicitly
+rejected codes can be replaced. After successful connection, restart the reporter
+to verify it reloads the same identity and retains the cached license during API
+outages. The API's station sync, heartbeat and license paths remain unchanged.

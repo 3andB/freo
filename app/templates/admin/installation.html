@@ -4,6 +4,13 @@
 <section class="admin-card"><h1>Freo installation</h1>
 <p>Register this installation for station identity, hourly aggregate reporting and licensing. Reports contain listener counts and library totals. Listener identities, IP addresses and music metadata are never sent.</p>
 <p>Status: <strong>{{ installation.registration_state|replace('_', ' ') }}</strong></p>
+<h2>Connect your Freo Live station</h2>
+<p><a href="https://freo.live/account" target="_blank" rel="noopener">Open your Freo Live account</a>, choose your station, and generate a connection code. Existing installation and channel identities are preserved.</p>
+{% if installation.state.get('owner_profile_id') %}<p>Your Freo Live station profile is connected.</p>{% endif %}
+{% if installation.state.get('activation') %}<p>An activation code is queued for the background reporter.</p>{% else %}
+<form method="post"><input type="hidden" name="csrf" value="{{ csrf_token() }}"><input type="hidden" name="action" value="activate">
+<label>Activation code<input name="activation_code" type="password" autocomplete="off" maxlength="14" required placeholder="FREO-XXXX-XXXX"></label>
+<button type="submit">Connect Freo Live</button></form>{% endif %}
 {% if error %}<p class="admin-notice error" role="alert">{{ error }}</p>{% endif %}
 {% if installation.last_error %}<p class="admin-notice error">Connection needs attention: {{ installation.last_error }}. Existing broadcasts remain available.</p>{% endif %}
 {% if installation.installation_id %}

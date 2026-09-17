@@ -84,7 +84,7 @@ class Client:
         self.token = token
 
     def request(self, method, path, payload=None):
-        if path not in ('/v1/register', '/v1/stations/sync', '/v1/heartbeat', '/v1/license'):
+        if path not in ('/v1/register', '/v1/activate', '/v1/stations/sync', '/v1/heartbeat', '/v1/license'):
             raise ValueError('Unknown central API endpoint')
         body = None if payload is None else json.dumps(payload, allow_nan=False, separators=(',', ':')).encode()
         if body is not None and len(body) > MAX_BYTES:
