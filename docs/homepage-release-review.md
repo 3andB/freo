@@ -24,4 +24,26 @@ Run `venv/bin/python scripts/capture-homepage.py` to reproduce the imagery using
 
 Homepage-specific CSS and JavaScript together are approximately 7 KB gzipped. A Lighthouse 12.8.2 mobile run against the uncompressed isolated Flask server identified a menu initialization layout shift and an unnamed compact menu button. Both were corrected; the subsequent measurement reported CLS 0 (previously 0.188). The public Nginx asset location now compresses text assets and caches release assets for one hour. Streaming responses are outside that location.
 
-Laboratory scores depend on server/browser contention and simulated throttling; they are not field performance or a guarantee on physical devices. Final deployed measurements and service verification are recorded below after release.
+Laboratory scores depend on server/browser contention and simulated throttling; they are not field performance or a guarantee on physical devices. The deployed measurement and service verification follow.
+
+## Deployed result
+
+The full project update was committed as `f4cd306` and pushed to `origin/main`. Freo and the statistics worker restarted successfully at 04:36 UTC; Nginx reloaded its validated static-assets configuration. The database was already at the current migration, so no schema change was needed. Existing station playout remained running.
+
+The production HTTPS homepage returns the new content, all 14 screenshot placements and the corrected accessible menu. CSS delivery returns `Content-Encoding: gzip` with a one-hour cache lifetime. Full installation validation passed again after restart. Reading the public `/stream/freo-demo` endpoint returned HTTP 200, `audio/mpeg`, and 8,192 audio bytes.
+
+Lighthouse 12.8.2 measured `https://freo.world/` from this server with its default mobile profile (412 × 823 CSS pixels, simulated mobile network/CPU throttling). The [machine-readable measurement](audits/2026-09-17-homepage-lighthouse.json) records the browser, profile, timestamps and metrics.
+
+| Measure | Deployed result |
+| --- | --- |
+| Performance | 95 / 100 |
+| Accessibility | 100 / 100 |
+| Best practices | 100 / 100 |
+| SEO | 100 / 100 |
+| First contentful paint | 2.0 s |
+| Largest contentful paint | 2.1 s |
+| Cumulative layout shift | 0 |
+| Total blocking time | 0 ms |
+| Initial measured transfer | 166 KiB |
+
+The mobile laboratory targets in the design specification were met. Native-device Safari testing and real-user field data are outside this Chromium-based release verification.
