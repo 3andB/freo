@@ -9,11 +9,13 @@ def test_installation_setup_and_station_location(booth):
     app, driver, base, tmp = booth
     driver.find_element(By.CSS_SELECTOR, '.admin-nav a[href="/admin/installation"]').click()
     wait_text(driver, '.admin-content h1', 'Freo installation')
-    driver.find_element(By.NAME, 'manager_email').send_keys('manager@example.org')
+    wait_text(driver, '.admin-content', 'Freo automatically contacts api.freo.live')
+    assert not driver.find_elements(By.NAME, 'manager_email')
+    driver.find_element(By.NAME, 'activation_code').send_keys('FREO-7K4P-M9Q2')
     driver.find_element(By.CSS_SELECTOR, '.admin-content button[type=submit]').click()
-    wait_text(driver, '.admin-content', 'Registration is queued')
+    wait_text(driver, '.admin-content', 'An activation code is queued')
     with app.app_context():
-        assert db.session.get(CentralInstallation, 1).registration_state == 'pending'
+        assert db.session.get(CentralInstallation, 1).registration_state == 'activation_queued'
         assert db.session.get(CentralInstallation, 1).installation_id is None
         identity = db.session.get(Station, 1).freo_station_id
     driver.get(base + '/admin/stations/test-station/settings')

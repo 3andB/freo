@@ -8,7 +8,7 @@ Implemented against [freo-live/api/docs/contract.md at 1116c05](https://github.c
 | --- | --- |
 | `Station`, integer IDs, runtime slug, public aliases | Separate immutable, unique UUIDv4. Migration assigns one to every existing station. Renames and normal upgrades preserve it. |
 | Station settings / public location | City, state/province/region and two-letter country code; explicit public genre/categories and directory opt-in, default off. Programming categories stay private. |
-| Existing admin authentication, CSRF and audit | `/admin/installation` collects the private manager email, queues registration and shows connection/license status. No network calls in web requests. |
+| Existing admin authentication, CSRF and audit | `/admin/installation` explains automatic reporting, queues owner connection and shows identity/license status. No network calls in web requests. |
 | Icecast observation and station-scoped media availability | Once-per-minute aggregate samples and SQL counts, including shared music available to that station. Soft-deleted tracks are excluded. |
 | Independent systemd workers | `freo-central-api.service` samples locally and reports hourly. No playout, scheduler, stream-start or restart dependency on this service or the API. |
 | Station allocation lock / enable service | Cached entitlement gates only creation and disabled-to-enabled transitions. Existing enabled stations can stop, start and recover after reboots. Existing local `FREO_MAX_STATIONS` behavior also remains. |
@@ -17,7 +17,8 @@ Code is in `app/services/central_api/`, configuration/CLI in `app/routes/central
 
 ## Contract behavior
 
-- `POST /v1/register` sends manager email once and the machine snapshot. Registration is **not idempotent**. A durable attempt marker precedes the request; its returned installation ID/token are atomically saved before any authenticated request. A lost response or uncertain result requires deliberate operator recovery/retry, never an hourly retry.
+- `POST /v1/enroll` automatically identifies unconfigured installations without email or an owner account. A locally generated 256-bit credential is saved before the request. Retries use that same credential and return the same UUID. Enrollment backoff survives restarts; lost/corrupt credentials never silently generate replacements.
+- Legacy `POST /v1/register` sends manager email once and the machine snapshot. Registration is **not idempotent**. A durable attempt marker precedes the request; its returned installation ID/token are atomically saved before any authenticated request. A lost response or uncertain result requires deliberate operator recovery/retry, never an hourly retry.
 - `POST /v1/stations/sync` sends complete station metadata using the permanent UUID. Batches preserve station identities. The API has no station deletion or account-email-update endpoint. Local deletion retains the UUID and queues directory opt-out and off-air reporting where possible.
 - `POST /v1/heartbeat` sends current on-air observations, machine facts and completed UTC-hour metrics. Server upserts replace each station/hour, so an uncertain acknowledgement is safe to retry. Reports omit email, titles, artist/album names, paths, listener identities and IP addresses.
 - `GET /v1/license` runs after registration, at reporter startup and approximately hourly with jitter. Successful, validated responses replace the local cache. TLS/network/malformed-response failures preserve the entitlement and its original receipt time/grace deadline.
@@ -51,7 +52,7 @@ systemctl restart freo.service freo-automation.service
 systemctl enable --now freo-central-api.service
 ```
 
-The automation restart loads the new model schema; station playout units need not restart. Fresh installations install the reporter through `scripts/provision.sh`. In **Admin → Installation**, enter the manager email and register. Then review country/directory settings for each station. No real registration is performed by the tests.
+The automation restart loads the new model schema; station playout units need not restart. Fresh installations install the reporter through `scripts/provision.sh`. The reporter automatically enrolls installations without an owner account. Review **Admin → Installation** for reporting details and optional owner connection; review country/directory settings for each channel. No real registration is performed by the tests.
 
 Defaults: `FREO_API_URL=https://api.freo.live`, `FREO_API_STATE_DIR=/var/lib/freo/central-api`, `FREO_INSTALL_TYPE=self-hosted`. `FREO_VERSION` can override `/etc/freo/release`; source-only checkouts otherwise identify as `development`. A custom state directory also needs matching systemd write permission and owner/mode. The API URL must be an HTTPS origin, without `/v1`, credentials, query or fragment. Leave TLS verification enabled; repair the server certificate if verification fails.
 
@@ -86,18 +87,16 @@ at https://freo.live/account. The hidden-input `central-api activate` CLI queues
 the same operation. The background reporter performs `/v1/activate`; the web
 request never receives or writes the installation bearer credential.
 
-A pending activation code is held briefly in the private local database queue,
-expires after at most 30 minutes, is never rendered back or logged, and is
-removed before the network exchange. The long-lived bearer credential remains
-only in the reporter's 0600 identity file. Existing installations use their
-existing bearer token, retain their installation/channel UUIDs, and validate the
-returned owner profile and entitlement. New identities are saved atomically
-before any further API call. Activation does not stop or restart broadcasts.
+A pending activation code is held in the private local database queue for at most
+30 minutes, never rendered back or logged. The reporter first enrolls any new
+installation using its durable random credential, then claims the owner profile
+with that same credential. It retries transient activation failures with persisted
+backoff until expiry. The API permits a used code only for the same authenticated,
+already-linked installation. Rejected or expired codes are removed. The hourly
+license response also recovers the linked profile UUID after a lost response.
 
-Do not automatically retry a new activation after losing its response. A durable
-attempt marker requires operator credential recovery; generating another code
-must not create another installation. Import the recovered identity with the
-existing hidden-input `central-api recover-credential` command. Explicitly
-rejected codes can be replaced. After successful connection, restart the reporter
-to verify it reloads the same identity and retains the cached license during API
-outages. The API's station sync, heartbeat and license paths remain unchanged.
+Existing installation/channel IDs, credentials, telemetry and cached licenses
+remain intact. Upgrades preserve legacy registration uncertainty and recovery
+requirements; they never replace a missing or revoked credential automatically.
+Owner account creation and public directory publication remain optional. The
+reporter does not stop or restart broadcasts on enrollment or API failure.

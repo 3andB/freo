@@ -16,6 +16,7 @@ if [[ ! -d "$source_dir/app" ]]; then
   echo 'Missing application files.' >&2
   exit 1
 fi
+printf '%s\n' 'Freo automatically reports installation identity, version, machine facts, channel metadata and hourly aggregate totals to api.freo.live.' 'No owner account is required. Listener identities/IPs and music metadata are not sent; public directory listing is opt-in.'
 export DEBIAN_FRONTEND=noninteractive
 printf 'Installing Freo dependencies; Icecast will use the supported 2.5 series...\n'
 apt-get update

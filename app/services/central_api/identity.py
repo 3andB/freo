@@ -48,6 +48,8 @@ class IdentityStore:
                 data = json.loads(stream.read(4096))
             if data == {'registration_attempted': True}:
                 return data
+            if set(data) == {'enrollment_token'} and re.fullmatch(r'freo_[A-Za-z0-9_-]{43}', data['enrollment_token']):
+                return data
             uuid_string(data['installation_id'])
             if not re.fullmatch(r'freo_[A-Za-z0-9_-]{43}', data['access_token']):
                 raise ValueError()

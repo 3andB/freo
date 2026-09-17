@@ -22,11 +22,13 @@ def queue_activation(code):
     row = installation()
     # Only a short-lived activation code crosses the private database queue.
     # Installation bearer credentials remain in the reporter's private file.
+    row.state = {k: v for k, v in row.state.items() if k != 'claim'}
     row.state = dict(row.state, activation={'code': code, 'expires': time.time() + 1800})
     if not row.installation_id:
         if row.registration_state == 'registration_uncertain':
             raise ValueError('Recover the existing installation credential before connecting its owner profile')
-        row.registration_state = 'activation_queued'
+        if row.registration_state != 'enrolling':
+            row.registration_state = 'activation_queued'
     row.last_error = ''
     db.session.commit()
 
@@ -57,11 +59,12 @@ def settings():
             if request.form.get('action') == 'activate':
                 queue_activation(request.form.get('activation_code', ''))
             elif request.form.get('action') == 'retry_connection':
-                if not row.installation_id:
-                    raise ValueError('Register this installation first')
-                row.registration_state = 'registered'
+                if row.registration_state == 'registration_uncertain':
+                    raise ValueError('Recover the existing credential before retrying')
+                if row.installation_id:
+                    row.registration_state = 'registered'
                 # Explicit operator retry; keep entitlement and identity intact.
-                row.state = {key: value for key, value in row.state.items() if key not in ('license', 'report')}
+                row.state = {key: value for key, value in row.state.items() if key not in ('license', 'report', 'enrollment', 'claim', 'retry_after')}
                 db.session.commit()
             else:
                 configure(request.form.get('manager_email', ''), retry=request.form.get('acknowledge_retry') == 'yes')
@@ -119,7 +122,7 @@ def recover_credential(installation_id):
             store.write({'installation_id': installation_id, 'access_token': token})
         row.installation_id = installation_id
         row.registration_state = 'registered'
-        row.state = {key: value for key, value in row.state.items() if key not in ('license', 'report')}
+        row.state = {key: value for key, value in row.state.items() if key not in ('license', 'report', 'enrollment', 'claim', 'retry_after')}
         db.session.commit()
     except (ValueError, APIError) as error:
         raise click.ClickException(str(error)) from None

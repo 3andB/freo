@@ -70,7 +70,10 @@ def license_response(data, installation_id):
             raise ValueError()
         keys = ('installation_id', 'plan', 'channel_limit', 'status', 'issued_at', 'expires_at',
                 'renews_at', 'grace_until', 'server_time', 'refresh_after_seconds', 'outage_policy')
-        return {key: data[key] for key in keys}
+        result = {key: data[key] for key in keys}
+        if 'station_profile_id' in data:
+            result['station_profile_id'] = uuid_string(data['station_profile_id']) if data['station_profile_id'] else None
+        return result
     except (ValueError, TypeError, KeyError, AttributeError, OverflowError):
         raise APIError('invalid_license_response') from None
 
@@ -84,7 +87,7 @@ class Client:
         self.token = token
 
     def request(self, method, path, payload=None):
-        if path not in ('/v1/register', '/v1/activate', '/v1/stations/sync', '/v1/heartbeat', '/v1/license'):
+        if path not in ('/v1/enroll', '/v1/register', '/v1/activate', '/v1/stations/sync', '/v1/heartbeat', '/v1/license'):
             raise ValueError('Unknown central API endpoint')
         body = None if payload is None else json.dumps(payload, allow_nan=False, separators=(',', ':')).encode()
         if body is not None and len(body) > MAX_BYTES:
