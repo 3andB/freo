@@ -155,7 +155,7 @@ def test_additive_migration_upgrade_downgrade_preserves_catalog(app):
         db.metadata.drop_all(db.engine,tables=tables)
         db.session.execute(db.text('DROP INDEX ix_decision_stats_started'));db.session.commit()
     runner=app.test_cli_runner()
-    for arguments in [('db','stamp','ab92e51c7034'),('db','upgrade'),('db','downgrade','ab92e51c7034'),('db','upgrade')]:
+    for arguments in [('db','stamp','ab92e51c7034'),('db','upgrade','b185c9a027d6'),('db','downgrade','ab92e51c7034'),('db','upgrade','b185c9a027d6')]:
         result=runner.invoke(args=arguments)
         assert result.exit_code==0,result.output
     with app.app_context():

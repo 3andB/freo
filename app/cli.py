@@ -152,7 +152,7 @@ def render_command(slug):
 @click.argument('slug')
 def validate_command(slug):
     station = known(slug)
-    if not station.stream or station.stream.format != 'mp3' or station.stream.bitrate != 64:
+    if not station.stream or station.stream.format != 'mp3' or station.stream.bitrate not in (64, 96, 128):
         raise click.ClickException('Unsupported station stream')
     click.echo('Station model valid; use render to validate runtime config')
 

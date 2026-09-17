@@ -57,6 +57,9 @@ def delete_audio(song):
     # a previous attempt already removed the file before the DB commit.
     path=storage.approved_path(song.station.slug,song.storage_key)
     path.unlink(missing_ok=True)
+    if song.preview_key:
+        storage.preview_path(song.station.slug, song.preview_key).unlink(missing_ok=True)
+        song.preview_key = None
     if song.artwork_key and not (song.catalog_album and song.catalog_album.artwork_key==song.artwork_key):
         storage.artwork_path(song.station.slug,song.artwork_key).unlink(missing_ok=True)
     song.artwork_key=None;song.notes='';song.deleted_at=datetime.now(timezone.utc)

@@ -67,7 +67,7 @@ def library(slug):
         abort(400)
     media_type = request.args.get('format', '')
     if media_type:
-        if media_type != 'mp3':
+        if media_type not in ('mp3', 'wav', 'm4a', 'flac'):
             abort(400)
         query = query.filter_by(media_type=media_type)
     sort = request.args.get('sort', 'title')
@@ -121,9 +121,29 @@ def audition(slug,track_uuid):
     station=station_or_404(slug,require_enabled=False);track=owned_track(station,track_uuid)
     if track.decommissioned_at or track.ingest_status!='accepted': abort(404)
     from app.services.media_storage import LocalMediaStorage
-    try:path=LocalMediaStorage().regular_file(track.station.slug,track.storage_key)
+    storage = LocalMediaStorage()
+    from app.services.media_probe import MIME_TYPES
+    try:path=storage.preview_file(track.station.slug, track.preview_key) if track.preview_key else storage.regular_file(track.station.slug,track.storage_key)
     except (OSError,ValueError):abort(404)
-    response=send_file(path,mimetype='audio/mpeg',conditional=True,max_age=0);response.headers['Cache-Control']='private, no-store';return response
+    response=send_file(path,mimetype='audio/mpeg' if track.preview_key else MIME_TYPES[track.media_type],conditional=True,max_age=0);response.headers['Cache-Control']='private, no-store';return response
+
+
+@admin_media_blueprint.post('/admin/stations/<slug>/media/import-notice')
+@media_mutation_required
+def import_notice(slug):
+    station_or_404(slug, require_enabled=False)
+    from sqlalchemy import update
+    from app.models import AdminUser
+    today = datetime.now(timezone.utc).date()
+    # Atomic claim: one reminder per account and UTC date, across devices/tabs.
+    claimed = db.session.execute(update(AdminUser).where(
+        AdminUser.id == current_admin().id,
+        or_(AdminUser.import_notice_date.is_(None), AdminUser.import_notice_date < today),
+    ).values(import_notice_date=today)).rowcount
+    db.session.commit()
+    response = jsonify(show=bool(claimed))
+    response.headers['Cache-Control'] = 'private, no-store'
+    return response
 
 
 @admin_media_blueprint.route('/admin/stations/<slug>/media/upload', methods=['GET', 'POST'])

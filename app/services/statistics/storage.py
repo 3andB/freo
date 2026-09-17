@@ -45,12 +45,12 @@ def inventory(now):
         data = {key: 0 for key in totals}
         tracks = Track.query.filter_by(station_id=station.id, deleted_at=None).all()
         assets = ImagingAsset.query.filter_by(station_id=station.id).all()
-        refs = dict(originals={t.storage_key for t in tracks}, imaging={a.storage_key for a in assets}, artwork=None, staging=None)
+        refs = dict(originals={t.storage_key for t in tracks}, imaging={a.storage_key for a in assets}, previews={t.preview_key for t in tracks if t.preview_key}, artwork=None, staging=None)
         base = root / station.slug
         if root.is_symlink() or base.is_symlink():
             data['errors'] += 1
         else:
-            for directory, category in [('originals', 'music'), ('imaging', 'imaging'), ('artwork', 'artwork'), ('staging', 'staging')]:
+            for directory, category in [('originals', 'music'), ('previews', 'music'), ('imaging', 'imaging'), ('artwork', 'artwork'), ('staging', 'staging')]:
                 size, count, retained, errors, found = scan(base / directory, refs[directory])
                 data[category] += size
                 data['files'] += count

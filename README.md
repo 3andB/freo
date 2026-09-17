@@ -22,3 +22,5 @@ No license has been selected. The owner must choose one before broadly promoting
 
 See [custom domain setup](docs/custom-domains.md) for verified station domains,
 DNS instructions, and HTTPS deployment with the existing Nginx/Certbot setup.
+
+Audio upload formats, stream quality, processing, and deployment: [Audio imports and station sound](docs/audio-import-and-processing.md).

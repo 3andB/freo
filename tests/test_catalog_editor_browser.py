@@ -5,7 +5,7 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from app.extensions import db
 from app.models import Track,MediaIngestJob,Artist,Album
-from tests.test_live_browser import booth,wait_text
+from tests.test_live_browser import booth,wait_text,open_import
 from tests.test_web import app as app_fixture
 
 
@@ -24,7 +24,7 @@ def test_import_and_edit_catalog(booth, request):
     request.addfinalizer(lambda:shutil.rmtree(share))
     shutil.copy(audio,share/audio.name);shutil.copy(image,share/image.name)
     browser_dir=Path('/tmp')/share.name if browser_tmp.exists() else share
-    driver.get(base+'/admin/stations/test-station/media/upload')
+    open_import(driver, base)
     driver.find_element(By.ID,'media-file').send_keys(str(browser_dir/audio.name))
     wait_text(driver,'.import-card','incoming.mp3')
     WebDriverWait(driver,8).until(lambda d:d.find_element(By.CSS_SELECTOR,'.import-song-fields input').get_attribute('value')=='My imported song')

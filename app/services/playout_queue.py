@@ -24,7 +24,7 @@ def _command(slug, command):
     if '\n' in command or '\r' in command or len(command) > 1024:
         raise ValueError('Invalid Liquidsoap command')
     media_root = re.escape(str(LocalMediaStorage().root))
-    music_pattern = rf'(?:freo_queue\.(?:push|insert)|freo_(?:a|b|cart)\.push) annotate:freo_decision=(?P<decision>[1-9][0-9]*)(?:,freo_gain="-?[0-9]{{1,2}}\.[0-9]{{3}} dB")?:{media_root}/(?P<owner>[a-z0-9](?:[a-z0-9-]{{0,62}}[a-z0-9])?)/originals/(?P<key>[0-9a-f]{{32}}\.mp3)'
+    music_pattern = rf'(?:freo_queue\.(?:push|insert)|freo_(?:a|b|cart)\.push) annotate:freo_decision=(?P<decision>[1-9][0-9]*)(?:,freo_gain="-?[0-9]{{1,2}}\.[0-9]{{3}} dB")?:{media_root}/(?P<owner>[a-z0-9](?:[a-z0-9-]{{0,62}}[a-z0-9])?)/originals/(?P<key>[0-9a-f]{{32}}\.(?:mp3|wav|m4a|flac))'
     imaging_pattern = rf'(?:freo_queue\.(?:push|insert)|freo_(?:a|b|cart)\.push) annotate:freo_decision=[1-9][0-9]*,title="[A-Za-z0-9 ._-]{{1,120}}",artist="[A-Za-z0-9 ._-]{{1,120}}":{media_root}/{re.escape(slug)}/imaging/[0-9a-f]{{32}}\.mp3'
     mic_command = re.fullmatch(r'freo_mic\.(?:state|(?:prepare|lease) [0-9a-f]{32}|(?:take|end) [0-9a-f]{32} (?:[0-9]\.[0-9]{3}|10\.000))', command)
     schedule_command = re.fullmatch(r'freo_schedule\.switch [0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12} [0-9]+', command)

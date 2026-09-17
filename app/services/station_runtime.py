@@ -106,10 +106,14 @@ def install_staged(path, temp):
     os.replace(temp, path)
 
 
-def render_liquidsoap(station, password):
+def render_liquidsoap(station, password, audio_settings=None):
+    from app.services.station_audio import active_settings, validate_settings, processing_liquidsoap
+    audio = validate_settings(audio_settings) if audio_settings is not None else active_settings(station.stream)
     slug = validate_slug(station.slug)
     frequency = 300 + zlib.crc32(slug.encode()) % 300
     values = {
+        '__BITRATE__': str(audio['bitrate']),
+        '__AUDIO_PROCESSING__': processing_liquidsoap(audio),
         '__MIC_ENABLED__': 'true' if os.environ.get('FREO_LIVE_MIC') == '1' else 'false',
         '__MIC_INPUT__': (f'input.http(id="freo_mic_input", max_buffer=0.25, poll_delay=0.5, timeout=2.0, format="wav", int_args=[("probesize",4096),("analyzeduration",0)], {{"http://127.0.0.1:8091/audio/{slug}?token=" ^ mic_token()}})' if os.environ.get('FREO_LIVE_MIC') == '1' else 'blank()'),
         '__CONTROL_SOCKET__': json.dumps(f'/run/freo/playout/{slug}/control.sock'),
@@ -135,8 +139,8 @@ def render(station):
     slug = validate_slug(station.slug)
     if not station.enabled or not station.stream or not station.stream.enabled:
         raise ValueError('Station and stream must be enabled to render')
-    if station.stream.format != 'mp3' or station.stream.bitrate != 64:
-        raise ValueError('Only 64 kbps MP3 is supported in Phase 3')
+    if station.stream.format != 'mp3' or station.stream.bitrate not in (64, 96, 128):
+        raise ValueError('Choose a supported MP3 bitrate')
     from app.services.media import refresh_playlist
     refresh_playlist(slug)
     password = credential(slug)
@@ -191,6 +195,86 @@ def service_action(slug, action):
     run_checked(['/bin/systemctl', action, unit])
 
 
+class AudioRecoveryError(RuntimeError):
+    pass
+
+
+def audio_backup(station):
+    slug = validate_slug(station.slug)
+    return CONFIGS / f'{slug}.liq.audio-{station.stream.audio_revision}.previous'
+
+
+def wait_audio_online(station, timeout=60):
+    import time
+    from app.routes.stations import observed_status
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        status = observed_status(station)
+        if status['playout'] == 'running' and status['stream'] == 'online':
+            return
+        time.sleep(1)
+    raise RuntimeError('Station did not resume streaming')
+
+
+def restore_audio(station):
+    backup = audio_backup(station)
+    if not backup.exists():
+        return
+    if backup.is_symlink():
+        raise AudioRecoveryError('Invalid audio backup')
+    try:
+        target = CONFIGS / f'{validate_slug(station.slug)}.liq'
+        staged = atomic_install(target, backup.read_text(), 0o640, 'root', 'freo-playout')
+        os.replace(staged, target)
+        if station.desired_state == 'running' or service_action(station.slug, 'status'):
+            service_action(station.slug, 'restart')
+            wait_audio_online(station)
+        backup.unlink()
+    except Exception as error:
+        raise AudioRecoveryError('Could not restore station audio') from error
+
+
+@serialized
+def apply_audio(station, values):
+    """Only the station encoder changes; Icecast and other stations stay online.
+
+    Keep a revision-specific backup until the database records success. A worker
+    interrupted after installing the candidate can retry without replacing it.
+    """
+    require_root()
+    slug = validate_slug(station.slug)
+    target = CONFIGS / f'{slug}.liq'
+    if target.is_symlink() or not target.is_file():
+        raise ValueError('Station configuration is unavailable')
+    backup = audio_backup(station)
+    if backup.is_symlink():
+        raise ValueError('Invalid audio backup')
+    staged = atomic_install(target, render_liquidsoap(station, credential(slug), values), 0o640, 'root', 'freo-playout')
+    try:
+        run_checked(['/usr/bin/liquidsoap', '--check', str(staged)])
+        from app.extensions import db
+        db.session.refresh(station)
+        if not station.enabled or station.lifecycle_state != 'ready':
+            raise ValueError('Station is no longer ready for audio changes')
+        if not backup.exists():
+            saved = atomic_install(backup, target.read_text(), 0o640, 'root', 'freo-playout')
+            os.replace(saved, backup)
+        running = service_action(slug, 'status') or station.desired_state == 'running'
+        os.replace(staged, target)
+        if running:
+            service_action(slug, 'restart')
+            wait_audio_online(station)
+    except Exception:
+        restore_audio(station)
+        raise
+    finally:
+        staged.unlink(missing_ok=True)
+
+
+def finish_audio(station):
+    audio_backup(station).unlink(missing_ok=True)
+
+
 @serialized
 def remove(station):
     """Remove only this station's runtime; each step is safe to repeat.
@@ -211,6 +295,10 @@ def remove(station):
             if path.is_symlink():
                 raise ValueError('Symlink runtime file is forbidden')
             path.unlink(missing_ok=True)
+    for backup in CONFIGS.glob(slug + '.liq.audio-*.previous'):
+        if backup.is_symlink():
+            raise ValueError('Symlink audio backup is forbidden')
+        backup.unlink(missing_ok=True)
     run_checked(['/opt/freo/venv/bin/python', str(SOURCE / 'scripts/render-radio-config.py')])
     run_checked(['/usr/sbin/nginx', '-t'])
     run_checked(['/bin/systemctl', 'reload', 'icecast2.service'])

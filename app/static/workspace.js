@@ -26,8 +26,9 @@
 
   window.FreoDialog = {
     notify(options) {return this.confirm({...options,confirmLabel:"OK",notification:true});},
-    confirm({title = 'Confirm change', message, confirmLabel = 'Continue', notification = false}) {
+    confirm({title = 'Confirm change', message, confirmLabel = 'Continue', notification = false, signal}) {
       return new Promise(resolve => {
+        if(signal?.aborted){resolve(false);return;}
         const dialog = document.createElement('dialog'); dialog.className = 'freo-dialog';
         const heading = document.createElement('h2'); heading.textContent = title;
         heading.id = `dialog-${crypto.randomUUID()}`; dialog.setAttribute('aria-labelledby', heading.id);
@@ -36,7 +37,10 @@
         const cancel = document.createElement('button'); cancel.textContent = 'Cancel'; cancel.type = 'button';
         const accept = document.createElement('button'); accept.textContent = confirmLabel; accept.className = 'admin-primary'; accept.type = 'button';
         const previous = document.activeElement;
-        const finish = value => {dialog.close(); dialog.remove(); previous?.focus(); resolve(value);};
+        let settled=false;
+        const abort=()=>finish(false);
+        const finish = value => {if(settled)return;settled=true;signal?.removeEventListener('abort',abort);dialog.close(); dialog.remove(); previous?.focus(); resolve(value);};
+        signal?.addEventListener('abort',abort,{once:true});
         cancel.addEventListener('click', () => finish(false)); accept.addEventListener('click', () => finish(true));
         dialog.addEventListener('cancel', event => {event.preventDefault(); finish(false);});
         if(!notification)actions.append(cancel);actions.append(accept); dialog.append(heading, copy, actions); document.body.append(dialog); dialog.showModal(); (notification ? accept : cancel).focus();

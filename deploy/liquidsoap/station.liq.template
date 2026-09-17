@@ -402,6 +402,7 @@ server.register(namespace="freo_schedule", "switch", fun (value) -> begin
     end
   end
 end)
+__AUDIO_PROCESSING__
 radio = amplify({if schedule_switch_end() > 0.0 then max(0.0, min(1.0, (schedule_switch_end()-time())/2.0)) else 1.0 end}, radio)
 radio = limit(attack=1.0, release=100.0, threshold=-1.5, ratio=100.0, gain=0.0, radio)
 def current_auto()
@@ -455,7 +456,7 @@ thread.run(every=0.1, {
 })
 radio = server.rms(id="freo_program", radio)
 output.icecast(
-  %mp3(bitrate=64),
+  %mp3(bitrate=__BITRATE__),
   host="127.0.0.1",
   port=8001,
   mount=__MOUNT__,

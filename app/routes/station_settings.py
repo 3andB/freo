@@ -5,7 +5,7 @@ import re
 import subprocess
 import tempfile
 from pathlib import Path
-from flask import Blueprint, abort, flash, redirect, render_template, request, Response, url_for, current_app
+from flask import Blueprint, abort, flash, redirect, render_template, request, Response, url_for, current_app, jsonify
 from app.extensions import db
 from app.models import StationLogo
 from app.routes.web import admin_stations, station_or_404
@@ -89,7 +89,31 @@ def page(slug):
         except ValueError as exc:
             db.session.rollback()
             error = str(exc)
-    return render_template('admin/station_settings.html',selected=station,stations=admin_stations(),page='settings',error=error,public_url=preferred_url(station),playback_policy=policy(station)), 400 if error else 200
+    from app.services.station_audio import active_settings
+    return render_template('admin/station_settings.html',selected=station,stations=admin_stations(),page='settings',error=error,public_url=preferred_url(station),playback_policy=policy(station),audio_values=station.stream.pending_audio or active_settings(station.stream)), 400 if error else 200
+
+
+@station_settings.route('/admin/stations/<slug>/settings/audio', methods=['GET', 'POST'])
+@admin_required
+def audio(slug):
+    station = station_or_404(slug, require_enabled=False)
+    from app.services.station_audio import active_settings, from_form, queue_settings
+    if request.method == 'POST':
+        require_csrf()
+        try:
+            changed = queue_settings(station, from_form(request.form), int(request.form.get('revision', '')), current_admin())
+            db.session.commit()
+            flash('Audio changes queued. Listeners may briefly reconnect while the station restarts.' if changed else 'Audio settings are already up to date.', 'success')
+        except (ValueError, TypeError) as error:
+            db.session.rollback()
+            flash(str(error) if isinstance(error, ValueError) else 'Invalid audio settings', 'error')
+            return redirect(url_for('.page', slug=slug) + '#audio-settings', code=303)
+        return redirect(url_for('.page', slug=slug) + '#audio-settings', code=303)
+    stream = station.stream
+    response = jsonify(status=stream.audio_status, error=stream.audio_error, revision=stream.audio_revision,
+                       active=active_settings(stream), pending=stream.pending_audio)
+    response.headers['Cache-Control'] = 'private, no-store'
+    return response
 
 
 @station_settings.get('/station-assets/<slug>/logo.png')

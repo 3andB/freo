@@ -6,7 +6,7 @@ import stat
 import subprocess
 
 MEDIA_ROOT = Path('/var/lib/freo/media')
-KEY_PATTERN = re.compile(r'^[0-9a-f]{32}\.(mp3|flac|wav|ogg)$')
+KEY_PATTERN = re.compile(r'^[0-9a-f]{32}\.(mp3|flac|wav|m4a|ogg)$')
 ARTWORK_PATTERN = re.compile(r'^[0-9a-f]{32}\.jpg$')
 
 
@@ -33,6 +33,15 @@ class LocalMediaStorage:
 
     def imaging_path(self, slug, key):
         return self._media_path(slug, key, 'imaging')
+
+    def preview_path(self, slug, key):
+        if not isinstance(key, str) or not re.fullmatch(r'[0-9a-f]{32}\.mp3', key):
+            raise ValueError('Invalid preview key')
+        return self._media_path(slug, key, 'previews')
+
+    def preview_file(self, slug, key):
+        self.preview_path(slug, key)
+        return self._regular_file(slug, key, 'previews')
 
     def artwork_path(self, slug, key):
         if not isinstance(key,str) or not ARTWORK_PATTERN.fullmatch(key): raise ValueError('Invalid artwork key')

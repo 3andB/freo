@@ -69,8 +69,9 @@ def _prepare_dirs(storage, slug):
     imaging = station_dir / 'imaging'
     staging = station_dir / 'staging'
     artwork = station_dir / 'artwork'
+    previews = station_dir / 'previews'
     for path, group, mode in ((station_dir, gid, 0o2750), (originals, gid, 0o2750),
-                              (imaging, gid, 0o2750), (artwork, gid, 0o2750), (staging, gid, 0o2700)):
+                              (imaging, gid, 0o2750), (artwork, gid, 0o2750), (previews, gid, 0o2750), (staging, gid, 0o2700)):
         path.mkdir(exist_ok=True)
         if path.is_symlink():
             raise ValueError('Symlink storage directory is forbidden')
@@ -97,6 +98,7 @@ def ingest(slug, source, title=None, artist=None, album=None, storage=None, *,
     temp_fd, temp_name = tempfile.mkstemp(prefix='.ingest-', dir=staging)
     temp = Path(temp_name)
     final = None
+    preview = None
     committed = False
     try:
         total = 0
@@ -123,6 +125,10 @@ def ingest(slug, source, title=None, artist=None, album=None, storage=None, *,
         track_uuid = uuidlib.uuid4()
         key = track_uuid.hex + details['extension']
         final = storage.approved_path(slug, key)
+        if details['media_type'] != 'mp3':
+            from app.services.media_preview import create_preview
+            preview = storage.preview_path(slug, track_uuid.hex + '.mp3')
+            create_preview(temp, preview)
         playout_gid = __import__('grp').getgrnam('freo-playout').gr_gid
         if os.geteuid() == 0:
             os.chown(temp, 0, playout_gid)
@@ -133,7 +139,8 @@ def ingest(slug, source, title=None, artist=None, album=None, storage=None, *,
         track = Track(
             station_id=station.id, uuid=str(track_uuid), title=display_title,
             artist=display_artist, album=display_album, original_filename=original_name,
-            storage_key=key, media_type=details['media_type'], duration_ms=details['duration_ms'],
+            storage_key=key, preview_key=preview.name if preview else None,
+            media_type=details['media_type'], duration_ms=details['duration_ms'],
             bitrate_kbps=details['bitrate_kbps'], sample_rate_hz=details['sample_rate_hz'],
             channels=details['channels'], file_size_bytes=total, checksum_sha256=digest,
             enabled=enabled, auto_enable_pending=auto_enable_pending, ingest_status='accepted',
@@ -157,6 +164,8 @@ def ingest(slug, source, title=None, artist=None, album=None, storage=None, *,
         db.session.rollback()
         if final is not None and not committed:
             final.unlink(missing_ok=True)
+        if preview is not None and not committed:
+            preview.unlink(missing_ok=True)
         raise
     finally:
         temp.unlink(missing_ok=True)

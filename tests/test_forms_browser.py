@@ -2,7 +2,7 @@
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from app.models import Track
-from tests.test_live_browser import booth
+from tests.test_live_browser import booth, open_import
 from tests.test_web import app as app_fixture
 
 
@@ -20,7 +20,8 @@ def test_forms_and_headers_across_pages(booth):
     import json
     issues = []
     for path in paths:
-        driver.get(base + path)
+        if path.endswith('/media/upload'): open_import(driver, base)
+        else: driver.get(base + path)
         assert driver.find_elements(By.CSS_SELECTOR, '.admin-topbar'), path
         for theme in ('day', 'night'):
             driver.find_element(By.CSS_SELECTOR, f'[data-appearance={theme}]').click()

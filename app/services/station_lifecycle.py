@@ -87,6 +87,8 @@ def process_pending():
             failures.append(identifier)
             from flask import current_app
             current_app.logger.error('Station provisioning failed: id=%s error_type=%s', identifier, type(error).__name__)
+    from app.services.station_audio import process_pending_audio
+    failures.extend(process_pending_audio())
     if failures:
         raise RuntimeError('One or more station operations failed')
 

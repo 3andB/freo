@@ -17,3 +17,5 @@ New browser imports auto-enable only after successful audio analysis. A manually
 Apply the migration on PostgreSQL containing existing artists, albums, tracks and ingest jobs. Confirm those rows and their states remain intact. Create and edit songs through the catalog API; reject cross-station selections and artist/album mismatches. Test JPEG/PNG cropping, existing album art replacement, singles, duplicate imports, mixed-artist batches, failed analysis, and manual disabling while analysis is running. Exercise restart recovery and a downgrade/re-upgrade on disposable data. Downgrading removes uploaded artwork, pending import choices, waveforms and activation flags; preserve a backup if those need restoring.
 
 Run `tests/test_catalog_editor.py`, `tests/test_catalog_editor_browser.py`, the existing Music/ingest suites and the file-picker/drop browser regression. Browser-owned audio blob URLs are permitted by the media CSP for local previews; script policy remains unchanged.
+
+See [audio imports and processing](audio-import-and-processing.md) for WAV/M4A/FLAC support, daily reminders and stream settings.

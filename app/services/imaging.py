@@ -169,6 +169,8 @@ def ingest_imaging(slug, source, asset_type, name=None, cart_code=None, storage=
         if code and ImagingAsset.query.filter_by(station_id=station.id, cart_code=code).first():
             raise MediaValidationError('Cart code already exists in this station')
         details = probe(temp)
+        if details['media_type'] != 'mp3':
+            raise MediaValidationError('Unsupported audio codec or container')
         original = normalize(original_filename or source.name, 255, 'unnamed')
         display = normalize(name, 200, normalize(Path(original).stem, 200, 'Untitled imaging'))
         asset_uuid = uuid.uuid4()

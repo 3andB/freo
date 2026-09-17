@@ -104,7 +104,7 @@ def test_invalid_files_and_paths(media_app, tmp_path):
                 storage.approved_path('one', key)
         with pytest.raises(ValueError):
             storage.approved_path('../two', 'a' * 32 + '.mp3')
-        wav = tmp_path / 'unsupported.wav'
+        wav = tmp_path / 'unsupported.ogg'
         subprocess.run(['/usr/bin/ffmpeg', '-loglevel', 'error', '-f', 'lavfi', '-i', 'sine=duration=1', '-y', str(wav)], check=True, timeout=15)
         with pytest.raises(MediaValidationError):
             media.ingest('one', wav, storage=storage)

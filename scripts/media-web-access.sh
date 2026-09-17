@@ -11,7 +11,7 @@ setfacl -m d:u:freo:r-x "$media_root"
 for station in "$media_root"/*; do
   [[ -d $station && ! -L $station ]] || continue
   setfacl -m u:freo:r-x,d:u:freo:r-x "$station"
-  for kind in originals imaging artwork; do
+  for kind in originals imaging artwork previews; do
     dir="$station/$kind"
     [[ -d $dir && ! -L $dir ]] || continue
     setfacl -m u:freo:r-x,d:u:freo:r-x "$dir"

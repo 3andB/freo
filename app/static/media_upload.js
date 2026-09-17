@@ -3,12 +3,23 @@
   const scope=FreoPage,$=id=>document.getElementById(id),{el}=FreoCatalog,config=form.dataset;
   let items=[],uploading=false,catalog,batchSelectors,batchChips,batchCover=null;
   const message=text=>$('import-message').textContent=text;
+  form.inert=true;
+  try {
+    const response=await scope.fetch(config.noticeUrl,{method:'POST',body:new URLSearchParams({csrf:config.csrf})});
+    if(!response.ok)throw Error('Could not open the importer. Refresh to retry.');
+    if((await response.json()).show) {
+      const accepted=await FreoDialog.confirm({title:'Before importing music',message:'Only upload and broadcast material you own or are legally authorized to use. Uploading or broadcasting copyrighted material without the necessary rights can violate copyright law and lead to removal, legal action, or financial liability. You are responsible for obtaining the required permissions and licences.',confirmLabel:'Continue to import',signal:scope.signal});
+      if(scope.signal.aborted)return;
+      if(!accepted){FreoWorkspace.navigate(config.libraryUrl);return;}
+    }
+    form.inert=false;
+  } catch(e){message(e.message);return;}
   try{catalog=await FreoCatalog.load(config.base);batchSelectors=FreoCatalog.selectors($('batch-catalog'),catalog,{}, {...config,importing:true,message});batchChips=FreoCatalog.chips($('batch-classification'),catalog);}catch(e){message(e.message);return;}
   function summary(){$('import-defaults').hidden=items.length<2;$('selection-summary').textContent=`${items.length} files · ${items.filter(i=>i.selected.checked&&!i.job).length} selected for import`;form.querySelector('[type=submit]').disabled=uploading||!items.some(i=>i.selected.checked&&!i.job&&!i.invalid);}
   function addFiles(files){
     if(uploading)return;
     for(const file of files){if(items.some(i=>i.file.name===file.name&&i.file.size===file.size&&i.file.lastModified===file.lastModified))continue;
-      const item={file,cover:null,job:null,invalid:!file.name.toLowerCase().endsWith('.mp3')||file.size>Number(config.fileLimit)};
+      const item={file,cover:null,job:null,invalid:!(/\.(mp3|wav|m4a|flac)$/i.test(file.name))||file.size>Number(config.fileLimit)};
       const card=el('article',undefined,'import-card'),top=el('div',undefined,'import-card-head'),check=el('input'),title=el('input'),status=el('p'),preview=el('button','▶ Listen'),details=el('div',undefined,'import-song-fields'),classifications=el('div');
       check.type='checkbox';check.checked=!item.invalid;check.setAttribute('aria-label',`Import ${file.name}`);title.placeholder='Song title — from file metadata';title.maxLength=200;title.setAttribute('aria-label',`Song title for ${file.name}`);preview.type='button';
       const source=URL.createObjectURL(file);item.source=source;preview.onclick=()=>FreoPreview.play({uuid:source,title:title.value||file.name,artist:'Import preview',audition:source});
@@ -17,7 +28,7 @@
       const selectors=FreoCatalog.selectors(selectorHost,catalog,{}, {...config,importing:true,message});const chips=FreoCatalog.chips(classifications,catalog);
       const number=el('input');number.type='number';number.min=1;number.max=999;const numberLabel=el('label','Track number');numberLabel.append(number);details.append(numberLabel);
       const art=el('button','+ Artwork');art.type='button';const image=el('img',undefined,'import-cover');image.hidden=true;art.onclick=async()=>{const cover=await FreoCatalog.chooseCover(config);if(cover){item.cover=cover;image.src=cover.url;image.hidden=false;}};
-      status.setAttribute('role','status');status.textContent=item.invalid?'MP3 required, within the per-song size limit':'Ready to import';card.append(top,details,classifications,image,art,status);$('selected-files').append(card);
+      status.setAttribute('role','status');status.textContent=item.invalid?'Choose WAV, M4A, MP3 or FLAC within the per-song size limit':'Ready to import';card.append(top,details,classifications,image,art,status);$('selected-files').append(card);
       Object.assign(item,{card,selected:check,title,selectors,chips,number,status,image,art,preview});check.onchange=summary;items.push(item);
       FreoReadMetadata(file).then(metadata=>{if(item.job||uploading)return;if(!title.value&&metadata.title)title.value=metadata.title;if(!number.value&&metadata.track_number)number.value=parseInt(metadata.track_number)||'';selectors.detected(metadata);}).catch(()=>{});
     }

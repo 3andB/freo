@@ -12,6 +12,7 @@ class AdminUser(db.Model):
     email = db.Column(db.String(254), nullable=False, unique=True)
     password_hash = db.Column(db.String(255), nullable=False)
     active = db.Column(db.Boolean, nullable=False, default=True)
+    import_notice_date = db.Column(db.Date)
     created_at = db.Column(db.DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
 
 
@@ -121,12 +122,18 @@ class StreamMount(db.Model):
     __tablename__ = 'stream_mounts'
     __table_args__ = (
         db.CheckConstraint("format = 'mp3'", name='ck_stream_mounts_format'),
-        db.CheckConstraint('bitrate = 64', name='ck_stream_mounts_bitrate'),
+        db.CheckConstraint('bitrate IN (64,96,128)', name='ck_stream_mounts_bitrate'),
+        db.CheckConstraint("audio_status IN ('ready','pending','applying','failed')", name='ck_stream_mounts_audio_status'),
     )
     id = db.Column(db.Integer, primary_key=True)
     station_id = db.Column(db.Integer, db.ForeignKey('stations.id', ondelete='CASCADE'), nullable=False, unique=True)
     format = db.Column(db.String(12), nullable=False, default='mp3')
     bitrate = db.Column(db.Integer, nullable=False, default=64)
+    audio_processing = db.Column(db.JSON, nullable=False, default=dict, server_default='{}')
+    pending_audio = db.Column(db.JSON)
+    audio_status = db.Column(db.String(12), nullable=False, default='ready', server_default='ready')
+    audio_error = db.Column(db.String(240), nullable=False, default='', server_default='')
+    audio_revision = db.Column(db.Integer, nullable=False, default=1, server_default='1')
     enabled = db.Column(db.Boolean, nullable=False, default=True)
     created_at = db.Column(db.DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
     station = db.relationship('Station', back_populates='stream')
@@ -234,6 +241,7 @@ class Track(db.Model):
     cue_out_ms = db.Column(db.Integer)
     segue_ms = db.Column(db.Integer)
     waveform = db.Column(db.JSON, nullable=False, default=list, server_default='[]')
+    preview_key = db.Column(db.String(50))
     auto_enable_pending = db.Column(db.Boolean, nullable=False, default=False, server_default=db.false())
     analysis_status = db.Column(db.String(16), nullable=False, default='pending')
     analysis_requested = db.Column(db.Boolean, nullable=False, default=False)

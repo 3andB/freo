@@ -33,3 +33,5 @@ Each station has a canonical IANA timezone used only to evaluate and present wee
 # Phase 7 media administration
 
 An active global admin can upload and manage media only within the station selected in the URL. Every track and category reference is re-queried under that station. The admin cannot start, stop, or reconfigure the station through the browser. Media files remain private; only Icecast stream mounts are public.
+
+Station audio settings now support 64, 96 and 128 kbps MP3, plus optional processing. See [audio imports and station sound](audio-import-and-processing.md).

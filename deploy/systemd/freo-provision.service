@@ -4,7 +4,7 @@ After=postgresql.service nginx.service icecast2.service
 
 [Service]
 Type=oneshot
-TimeoutStartSec=300
+TimeoutStartSec=600
 User=root
 WorkingDirectory=/opt/freo
 EnvironmentFile=/opt/freo/.env

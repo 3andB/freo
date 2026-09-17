@@ -166,9 +166,18 @@ def test_button_actions_are_scoped_and_dj_queue_is_absent(booth):
     assert not driver.find_element(By.CSS_SELECTOR,'.lower-stage').is_displayed()
 
 
+def open_import(driver, base):
+    driver.get(base+'/admin/stations/test-station/media/upload')
+    WebDriverWait(driver, 8).until(lambda d:d.find_elements(By.CSS_SELECTOR, 'dialog.freo-dialog[open]') or d.execute_script("return !!document.querySelector('.drop-zone').ondrop"))
+    dialogs = driver.find_elements(By.CSS_SELECTOR, 'dialog.freo-dialog[open]')
+    if dialogs:
+        dialogs[0].find_element(By.CSS_SELECTOR, '.admin-primary').click()
+    WebDriverWait(driver, 8).until(lambda d:d.execute_script("return !!document.querySelector('.drop-zone').ondrop"))
+
+
 def test_file_picker_and_drop_import_results(booth):
     app,driver,base,tmp_path=booth
-    driver.get(base+'/admin/stations/test-station/media/upload')
+    open_import(driver, base)
     # Snap Chromium has a private /tmp namespace.
     browser_tmp=Path('/tmp/snap-private-tmp/snap.chromium/tmp')
     upload_dir=Path(tempfile.mkdtemp(prefix='freo-upload-',dir=browser_tmp if browser_tmp.exists() else tmp_path))
@@ -199,7 +208,7 @@ def test_recursive_folder_drop_and_cancelled_song_drag(booth):
     ActionChains(driver).release().perform()
     assert not driver.find_elements(By.CSS_SELECTOR,'.pointer-drag-ghost,.drop-active')
     with app.app_context():assert not Station.query.filter_by(slug='test-station').first().automation.cued_track
-    driver.get(base+'/admin/stations/test-station/media/upload')
+    open_import(driver, base)
     WebDriverWait(driver, 8).until(lambda d:d.execute_script("return !!document.querySelector('.drop-zone').ondrop"))
     driver.execute_script("""
       const file={isFile:true,file:resolve=>resolve(new File(['folder song'],'nested.mp3',{type:'audio/mpeg'}))};
