@@ -10,7 +10,7 @@
 <meta property="og:type" content="website">
 {% if project_url %}<link rel="canonical" href="{{ project_url }}/"><meta property="og:url" content="{{ project_url }}/"><meta property="og:image" content="{{ project_url }}{{ url_for('static',filename='product/booth-night-' ~ screens.booth.night.width ~ '.webp') }}">{% endif %}
 <meta name="twitter:card" content="summary_large_image">
-<link rel="stylesheet" href="{{ url_for('static',filename='home.css',v='20260917-1') }}">
+<link rel="stylesheet" href="{{ url_for('static',filename='home.css',v='20260917-2') }}">
 {% endblock %}
 {% block header %}
 <header class="project-header">
@@ -92,7 +92,7 @@
 <section id="statistics" class="project-section project-wrap">
   <div class="project-section-heading"><div><p class="project-label">04 / Your sound, in numbers</p><h2>Know what plays.<br><em>See what connects.</em></h2></div><p>Go beyond a listener counter. Explore your audience, music, feedback, resources and broadcast reliability, across one channel or the whole installation.</p></div>
   <div class="project-stats-grid">{{ screen('statistics', 'Your station, in perspective', 'Audience, confirmed plays and listener preferences. Demonstration data.') }}<div class="project-stats-copy"><article><span class="project-small-label">AUDIENCE & REACH</span><h3>A world around your station.</h3><p>Follow current, average and peak connections, listener-hours and approximate geography. Keep stream listeners separate from player-page visitors.</p></article><article><span class="project-small-label">MUSIC & ENGAGEMENT</span><h3>Find the songs that resonate.</h3><p>See confirmed song and artist plays, likes, dislikes and approval. Compare periods and take the data with you as CSV.</p></article><article><span class="project-small-label">RESOURCES & RELIABILITY</span><h3>Keep the bigger picture in view.</h3><p>Track stream transfer, storage, mount availability, low audio levels and broadcast outcomes. Missing observations stay visible as gaps.</p></article></div></div>
-  {{ screen('geography', 'Every connection has a place', 'A locally rendered map of approximate locations. Demonstration data; connections are not unique people.', wide=true) }}
+  {{ screen('geography', 'Every connection has a place', 'A locally rendered map of approximate locations. Demonstration data; connections are not unique people.', wide=true, version='20260917-2') }}
   <div class="project-inline-note"><span class="project-small-label">LOCAL BY DESIGN</span><p>Analytics uses a local geographic database and locally served maps. Raw listener addresses and user agents are not stored in analytics.</p><a href="{{ docs }}statistics.md">Understand the numbers ↗</a></div>
 </section>
 

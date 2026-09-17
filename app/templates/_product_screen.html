@@ -1,15 +1,15 @@
-{% macro screen(name, title, caption, priority=false, wide=false) %}
+{% macro screen(name, title, caption, priority=false, wide=false, version=none) %}
 {% set day=screens[name].day %}{% set night=screens[name].night %}
 {% set day_width=day.sizes[-2] if day.sizes|length > 2 else day.sizes[-1] %}
 {% set night_width=night.sizes[-2] if night.sizes|length > 2 else night.sizes[-1] %}
 <figure class="project-screen{% if wide %} project-screen-wide{% endif %}">
-  <a class="project-screen-link" href="{{ url_for('static',filename='product/' ~ name ~ '-day-' ~ day.width ~ '.webp') }}" data-product-screen="{{ name }}" data-title="{{ title }}" data-caption="{{ caption }}" data-full-day="{{ url_for('static',filename='product/' ~ name ~ '-day-' ~ day.width ~ '.webp') }}" data-full-night="{{ url_for('static',filename='product/' ~ name ~ '-night-' ~ night.width ~ '.webp') }}" aria-label="View screen: {{ title }}">
-    <img src="{{ url_for('static',filename='product/' ~ name ~ '-day-' ~ day_width ~ '.webp') }}"
-      srcset="{% for width in day.sizes %}{{ url_for('static',filename='product/' ~ name ~ '-day-' ~ width ~ '.webp') }} {{ width }}w{{ ', ' if not loop.last }}{% endfor %}"
+  <a class="project-screen-link" href="{{ url_for('static',filename='product/' ~ name ~ '-day-' ~ day.width ~ '.webp',v=version) }}" data-product-screen="{{ name }}" data-title="{{ title }}" data-caption="{{ caption }}" data-full-day="{{ url_for('static',filename='product/' ~ name ~ '-day-' ~ day.width ~ '.webp',v=version) }}" data-full-night="{{ url_for('static',filename='product/' ~ name ~ '-night-' ~ night.width ~ '.webp',v=version) }}" aria-label="View screen: {{ title }}">
+    <img src="{{ url_for('static',filename='product/' ~ name ~ '-day-' ~ day_width ~ '.webp',v=version) }}"
+      srcset="{% for width in day.sizes %}{{ url_for('static',filename='product/' ~ name ~ '-day-' ~ width ~ '.webp',v=version) }} {{ width }}w{{ ', ' if not loop.last }}{% endfor %}"
       sizes="{% if name=='player-mobile' %}260px{% elif priority %}(max-width: 760px) 90vw, (max-width: 1100px) 65vw, 590px{% elif wide %}(max-width: 1360px) 92vw, 1250px{% else %}(max-width: 760px) 92vw, (max-width: 1100px) 80vw, 720px{% endif %}"
-      data-day="{{ url_for('static',filename='product/' ~ name ~ '-day-' ~ day_width ~ '.webp') }}" data-night="{{ url_for('static',filename='product/' ~ name ~ '-night-' ~ night_width ~ '.webp') }}"
-      data-srcset-day="{% for width in day.sizes %}{{ url_for('static',filename='product/' ~ name ~ '-day-' ~ width ~ '.webp') }} {{ width }}w{{ ', ' if not loop.last }}{% endfor %}"
-      data-srcset-night="{% for width in night.sizes %}{{ url_for('static',filename='product/' ~ name ~ '-night-' ~ width ~ '.webp') }} {{ width }}w{{ ', ' if not loop.last }}{% endfor %}"
+      data-day="{{ url_for('static',filename='product/' ~ name ~ '-day-' ~ day_width ~ '.webp',v=version) }}" data-night="{{ url_for('static',filename='product/' ~ name ~ '-night-' ~ night_width ~ '.webp',v=version) }}"
+      data-srcset-day="{% for width in day.sizes %}{{ url_for('static',filename='product/' ~ name ~ '-day-' ~ width ~ '.webp',v=version) }} {{ width }}w{{ ', ' if not loop.last }}{% endfor %}"
+      data-srcset-night="{% for width in night.sizes %}{{ url_for('static',filename='product/' ~ name ~ '-night-' ~ width ~ '.webp',v=version) }} {{ width }}w{{ ', ' if not loop.last }}{% endfor %}"
       alt="{{ title }} — {{ caption }}" width="{{ day.width }}" height="{{ day.height }}" decoding="async" {% if priority %}fetchpriority="high"{% else %}loading="lazy"{% endif %}>
     <span class="project-expand" aria-hidden="true">View screen ↗</span>
   </a>

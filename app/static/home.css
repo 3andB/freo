@@ -120,7 +120,6 @@
 .project-home .project-stats-copy h3 {font-size:25px}
 .project-home .project-stats-copy p {font-size:14px;margin:0}
 .project-home .project-stats-copy .project-small-label {margin-bottom:12px}
-.project-home .project-screen-wide .project-screen-link {max-height:570px}
 .project-home .project-listener-layout {display:grid;grid-template-columns:.85fr 1.3fr;gap:65px;align-items:center}
 .project-home .project-listener-copy>p:not(.project-label):not(.project-body-large) {font-size:14px}
 .project-home .project-listener-copy .project-body-large {font-size:19px}
@@ -297,7 +296,6 @@
   .project-home .project-cart-feature {margin-top:45px}
   .project-home .project-stats-copy article+article {padding-top:22px;margin-top:22px}
   .project-home .project-stats-copy p {font-size:14px}
-  .project-home .project-screen-wide .project-screen-link {max-height:none}
   .project-home .project-listener-layout {gap:40px}
   .project-home .project-player-display {padding:0 35px 205px 0;max-width:540px;margin-inline:auto;width:100%}
   .project-home .project-phone {width:175px;border-width:5px;border-radius:22px}

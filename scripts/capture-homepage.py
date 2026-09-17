@@ -189,7 +189,7 @@ def demo_app(directory):
     return app, identifiers
 
 
-def capture(output, masters):
+def capture(output, masters, screens=None):
     from selenium import webdriver
     from selenium.webdriver.chrome.options import Options
     from selenium.webdriver.chrome.service import Service
@@ -218,20 +218,28 @@ def capture(output, masters):
             driver.execute_async_script('document.fonts.ready.then(arguments[0])')
 
         def shot(name, selector=None, max_height=None):
+            if screens is not None and name not in screens:
+                return
             for theme in ('day', 'night'):
                 driver.find_element(By.CSS_SELECTOR, f'[data-appearance={theme}]').click()
                 driver.execute_script('window.scrollTo(0,0)')
                 time.sleep(.35)
                 target = driver.find_element(By.CSS_SELECTOR, selector) if selector else None
                 if target:
-                    # Capture the real element via CDP, without sticky chrome covering it.
+                    # Keep canvases visible while capturing, with room for sticky navigation.
+                    driver.execute_script('window.scrollTo(0, Math.max(0, arguments[0].getBoundingClientRect().top + scrollY - 240))', target)
+                    time.sleep(.5)
+                    # Capture from the visible viewport to preserve WebGL rendering.
                     rect = driver.execute_script('const r=arguments[0].getBoundingClientRect();return {x:r.left+scrollX,y:r.top+scrollY,width:r.width,height:r.height}', target)
                     if max_height: rect['height'] = min(rect['height'], max_height)
+                    if not driver.execute_script('return arguments[0].y >= scrollY && arguments[0].y + arguments[0].height <= scrollY + innerHeight', rect):
+                        raise RuntimeError(f'{name} does not fit in the capture viewport')
                     import base64
                     raw = base64.b64decode(driver.execute_cdp_cmd('Page.captureScreenshot', dict(format='png', captureBeyondViewport=False,
                         clip=dict(rect, scale=1)))['data'])
                 else:
                     raw = driver.get_screenshot_as_png()
+                driver.execute_script('window.scrollTo(0,0)')
                 stem = f'{name}-{theme}'
                 (masters / (stem + '.png')).write_bytes(raw)
                 image_width, image_height = struct.unpack('>II', raw[16:24])

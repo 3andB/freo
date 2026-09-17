@@ -293,7 +293,8 @@
       ],
       "route": "/admin/stations/sunroom-radio/stats?range=24h&start=&end=&timezone=UTC&map=all&source=stream&tab=overview",
       "element": ".stats-card:has(#stats-map)",
-      "master": "geography-day.png"
+      "master": "geography-day.png",
+      "captured_at": "2026-09-17T12:23:25.113523+00:00"
     },
     {
       "name": "geography",
@@ -307,7 +308,8 @@
       ],
       "route": "/admin/stations/sunroom-radio/stats?range=24h&start=&end=&timezone=UTC&map=all&source=stream&tab=overview",
       "element": ".stats-card:has(#stats-map)",
-      "master": "geography-night.png"
+      "master": "geography-night.png",
+      "captured_at": "2026-09-17T12:23:25.113523+00:00"
     },
     {
       "name": "player",
