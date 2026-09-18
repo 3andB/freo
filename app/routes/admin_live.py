@@ -64,11 +64,18 @@ def live_status(slug):
 def song_search(slug):
     station=station_for_operator(slug);term=request.args.get('q','').strip()[:100]
     query=tracks_for(station.id).filter_by(enabled=True,ingest_status='accepted',decommissioned_at=None)
+    category = request.args.get('category', '')
+    if category:
+        selected = MediaCategory.query.filter_by(station_id=station.id, slug=category).first_or_404()
+        query = query.filter(Track.categories.any(MediaCategory.id == selected.id))
     if term:
         pattern='%' + term.replace('\\','\\\\').replace('%','\\%').replace('_','\\_') + '%'
         query=query.filter(or_(Track.title.ilike(pattern,escape='\\'),Track.artist.ilike(pattern,escape='\\'),Track.album.ilike(pattern,escape='\\')))
-    tracks=query.order_by(Track.artist,Track.title).limit(50).all()
-    return jsonify([{'uuid':x.uuid,'title':x.title,'artist':x.artist,'album':x.album,'bpm':x.bpm,'duration_ms':x.duration_ms} for x in tracks])
+    offset = max(0, min(request.args.get('offset', 0, type=int), 100000))
+    tracks=query.order_by(Track.artist,Track.title,Track.id).offset(offset).limit(51).all()
+    songs = [{'uuid':x.uuid,'title':x.title,'artist':x.artist,'album':x.album,'bpm':x.bpm,'duration_ms':x.duration_ms,
+              'artwork': url_for('admin_media.album_artwork', slug=station.slug, album_id=x.catalog_album.id) if x.catalog_album and x.catalog_album.artwork_key else None} for x in tracks[:50]]
+    return jsonify(dict(songs=songs, has_more=len(tracks)>50)) if request.args.get('paged') == '1' else jsonify(songs)
 
 
 @admin_live_blueprint.post('/admin/stations/<slug>/live/<action>')
@@ -76,7 +83,7 @@ def song_search(slug):
 def action(slug, action):
     station = station_for_operator(slug)
     require_csrf()
-    if action not in ('deck','mixer','fire-cart','play-b','hold', 'resume','mode','takeover','fade','cue','clear-cue','start-cue','repeat','assign-cart','queue-track', 'queue-imaging', 'queue-block', 'abort-block', 'skip'):
+    if action not in ('cue-list','deck','mixer','fire-cart','play-b','hold', 'resume','mode','takeover','fade','cue','clear-cue','start-cue','repeat','assign-cart','queue-track', 'queue-imaging', 'queue-block', 'abort-block', 'skip'):
         abort(404)
     try:
         if action in ('mixer','play-b','takeover','fade','cue','clear-cue','start-cue','repeat','skip') and station.automation and station.automation.operator_mode == 'DJ_BOOTH':
@@ -87,8 +94,11 @@ def action(slug, action):
                 mic = gateway(slug, 'status')
                 if (mic.get('desired') == 'LIVE' and mic.get('phase') != 'FAILED') or mic.get('phase') in ('FADING','LIVE','RETURNING'):
                     raise ValueError('End the live microphone broadcast before changing the program source.')
-        if action=='deck':
-            request_deck(station,current_admin(),request.form.get('deck'),request.form.get('operation'),request.form.get('identifier'),request.form.get('expected_decision_id',''),request.form.get('nonce'),fade_seconds=request.form.get('fade_seconds',3),play_on_load=request.form.get('play_on_load','false')=='true')
+        if action=='cue-list':
+            from app.services.booth_cue import mutate
+            message = mutate(station, current_admin(), request.form.to_dict())
+        elif action=='deck':
+            request_deck(station,current_admin(),request.form.get('deck'),request.form.get('operation'),request.form.get('identifier'),request.form.get('expected_decision_id',''),request.form.get('nonce'),fade_seconds=request.form.get('fade_seconds',3),play_on_load=request.form.get('play_on_load','false')=='true',cue_entry_id=request.form.get('cue_entry_id') or None)
             message='Deck command requested. The deck display updates when the station applies it.'
         elif action=='mixer':
             set_mixer(station,current_admin(),request.form.get('control'),request.form.get('value'));message='Mixer change requested.'

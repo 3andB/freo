@@ -116,7 +116,8 @@ def test_picker_load_clear_and_artwork_drag(booth):
     app,driver,base,tmp_path=booth
     assert not driver.find_elements(By.ID,'broadcast-fader')
     assert not driver.find_element(By.CSS_SELECTOR,'.up-next').is_displayed()
-    assert not driver.find_element(By.CSS_SELECTOR,'[data-queue-track]').is_displayed()
+    assert not any(button.is_displayed() for button in driver.find_elements(By.CSS_SELECTOR,'[data-queue-track]'))
+    assert driver.find_element(By.ID,'booth-cue-list').is_displayed()
     driver.find_elements(By.CSS_SELECTOR,'.cue-picker-button')[1].click()
     driver.find_element(By.ID,'song-picker-search').send_keys('Verified Test')
     wait_text(driver,'#song-picker-results','Verified Test Track')

@@ -42,15 +42,15 @@
       notice(result.message); await refresh();
       if(action==='assign-cart') await FreoWorkspace.navigate(location.href,{submitted:true});
       return true;
-    } catch(error) { notice(error.message || 'Connection lost. Try again.',true); return false; }
+    } catch(error) { notice(error.message || 'Connection lost. Try again.',true); if(action==='cue-list')await refresh(); return false; }
     finally {busy=false;root.removeAttribute('aria-busy');}
   };
   const fadeControl=document.getElementById('deck-fade-seconds');
   try {const saved=localStorage.getItem('freo-deck-fade');if(saved!==null&&Number.isFinite(Number(saved))&&Number(saved)>=0&&Number(saved)<=10)fadeControl.value=saved;}catch(_){}
   const updateFade=()=>{text('deck-fade-value',`${Number(fadeControl.value)} s`);try{localStorage.setItem('freo-deck-fade',fadeControl.value);}catch(_){}};
   fadeControl.addEventListener('input',updateFade);updateFade();
-  const deckCommand=(deck,operation,identifier='',playOnLoad=false)=>post('deck',{deck,operation,identifier,play_on_load:String(playOnLoad),fade_seconds:fadeControl.value,expected_decision_id:state?.mixer?.[deck.toLowerCase()]?.decision_id||'',nonce:nonce()});
-  const choose = async (id, target) => {
+  const deckCommand=(deck,operation,identifier='',playOnLoad=false,cueEntryId='')=>post('deck',{deck,operation,identifier,cue_entry_id:cueEntryId,play_on_load:String(playOnLoad),fade_seconds:fadeControl.value,expected_decision_id:state?.mixer?.[deck.toLowerCase()]?.decision_id||'',nonce:nonce()});
+  const choose = async (id, target, cueEntryId='') => {
     if(target==='queue')return state?.mode==='AUTO'&&post('queue-track',{identifier:id,nonce:nonce()});
     if(!state?.mixer||state.playout_error){notice('Station connection is unavailable. Try again when the deck reconnects.',true);return false;}
     const deck=target==='A'||target==='air'?'A':'B';
@@ -61,10 +61,11 @@
     if(busy||state.deck_command?.status==='pending')return false;
     pendingLoads.set(deck.toLowerCase(),{expected,uuid:id});
     paintLoading(deck.toLowerCase());timing();
-    const loaded=await deckCommand(deck,'LOAD',id,playing);
+    const loaded=await deckCommand(deck,'LOAD',id,playing,cueEntryId);
     if(!loaded){pendingLoads.delete(deck.toLowerCase());await refresh();}
     return loaded;
   };
+  const cueUI=window.FreoCue.create({root,scope,post,choose,notice});
   root.querySelectorAll('form[method="post"]').forEach(form=>form.addEventListener('submit',event=>{
     event.preventDefault(); const data=Object.fromEntries(new FormData(form));
     if (data.mode) { root.dataset.board=data.mode; window.dispatchEvent(new CustomEvent('freo-board-change')); if(root.dataset.micActive==='true') return; }
@@ -72,20 +73,27 @@
     post(new URL(form.action).pathname.split('/').pop(),data);
   }));
   root.querySelectorAll('[data-queue-track]').forEach(button=>button.addEventListener('click',()=>choose(button.closest('.song-card').dataset.id,'queue')));
-  root.querySelectorAll('[data-load-deck]').forEach(button=>button.addEventListener('click',()=>choose(button.closest('.song-card').dataset.id,button.dataset.loadDeck)));
+  scope.listen(root,'click',event=>{
+    const button=event.target.closest('[data-load-deck],[data-add-cue]');
+    if(!button||button.disabled)return;
+    const card=button.closest('.song-card,[data-cue-entry]');if(!card?.dataset.id)return;
+    if(button.hasAttribute('data-add-cue'))cueUI.add(card.dataset.id);
+    else choose(card.dataset.id,button.dataset.loadDeck,card.dataset.cueEntry||'');
+  });
   root.querySelectorAll('[data-fire-imaging]').forEach(button=>button.addEventListener('click',()=>post('queue-imaging',{identifier:button.dataset.fireImaging,nonce:nonce()})));
 
   // One pointer gesture owns the drag, including drags beginning on artwork.
   let drag=null;
-  const zones=[...root.querySelectorAll('#now-drop,#cue-drop,.up-next')];
-  const cleanDrag=()=>{drag?.ghost?.remove();drag=null;document.body.classList.remove('booth-dragging');zones.forEach(zone=>zone.classList.remove('drop-active'));};
-  root.querySelectorAll('.song-card').forEach(card=>{
-    card.addEventListener('dragstart',event=>event.preventDefault());
-    card.addEventListener('pointerdown',event=>{
-      if(event.button!==0||event.target.closest('button,a,input')||!event.isPrimary)return;
-      drag={id:card.dataset.id,pointer:event.pointerId,x:event.clientX,y:event.clientY,card,ghost:null};
-      card.setPointerCapture(event.pointerId);
-    });
+  const zones=[...root.querySelectorAll('#now-drop,#cue-drop,.up-next,.cue-panel')];
+  const cleanDrag=()=>{drag?.ghost?.remove();drag=null;cueUI.clearHighlight();cueUI.drag(false);document.body.classList.remove('booth-dragging');zones.forEach(zone=>zone.classList.remove('drop-active'));};
+  scope.listen(root,'dragstart',event=>{if(event.target.closest('.song-card,[data-cue-entry]'))event.preventDefault();});
+  scope.listen(root,'pointerdown',event=>{
+    const card=event.target.closest('.song-card,[data-cue-entry]');
+    if(!card||event.button!==0||!event.isPrimary)return;
+    if(event.target.closest('button,a,input')&&!event.target.closest('.cue-handle'))return;
+    if(card.dataset.cueEntry&&!event.target.closest('.cue-handle')&&event.pointerType==='touch')return;
+    drag={id:card.dataset.id,entryId:card.dataset.cueEntry||'',pointer:event.pointerId,x:event.clientX,y:event.clientY,card,ghost:null};
+    cueUI.drag(true);card.setPointerCapture(event.pointerId);
   });
   scope.listen(document,'pointermove',event=>{
     if(!drag||event.pointerId!==drag.pointer)return;
@@ -97,14 +105,20 @@
     event.preventDefault();drag.ghost.style.transform=`translate(${event.clientX+14}px,${event.clientY+14}px)`;
     const under=document.elementFromPoint(event.clientX,event.clientY);
     zones.forEach(zone=>zone.classList.toggle('drop-active',zone.contains(under)));
+    if(under?.closest('.cue-panel')){
+      cueUI.highlight(cueUI.insertion(event.clientY,drag.entryId));
+      const list=document.getElementById('booth-cue-list'),bounds=list.getBoundingClientRect();
+      if(event.clientY<bounds.top+30)list.scrollBy(0,-14);else if(event.clientY>bounds.bottom-30)list.scrollBy(0,14);
+    }else cueUI.clearHighlight();
     if(event.clientY<70)window.scrollBy(0,-18);else if(event.clientY>innerHeight-70)window.scrollBy(0,18);
   },{passive:false});
   scope.listen(document,'pointerup',event=>{
     if(!drag||event.pointerId!==drag.pointer)return;
-    const item=drag,under=document.elementFromPoint(event.clientX,event.clientY);cleanDrag();
+    const item=drag,under=document.elementFromPoint(event.clientX,event.clientY),inCue=under?.closest('.cue-panel'),before=inCue?cueUI.insertion(event.clientY,item.entryId):'';cleanDrag();
     if(!item.ghost)return;
-    if(under?.closest('#cue-drop'))choose(item.id,'cue');
-    else if(under?.closest('#now-drop'))choose(item.id,'air');
+    if(inCue){if(item.entryId)cueUI.move(item.entryId,before);else cueUI.add(item.id,before);}
+    else if(under?.closest('#cue-drop')&&item.id)choose(item.id,'cue',item.entryId);
+    else if(under?.closest('#now-drop')&&item.id)choose(item.id,'air',item.entryId);
     else if(state?.mode==='AUTO'&&under?.closest('.up-next'))choose(item.id,'queue');
     else if(under?.closest('[data-role]')){const slot=under.closest('[data-role]');openAssign(slot);assignForm.elements.identifier.add(new Option(item.card.querySelector('b').textContent,item.id,true,true));}
   });
@@ -241,6 +255,7 @@
       if(next.playout_error&&!next.mixer&&state?.mixer)next.mixer=state.mixer;
       const previous=state;
       state=next;
+      cueUI.render(state);
       if(previous?.mode==='DJ_BOOTH' && state.mode==='AUTO' && state.mixer?.transition?.progress !== undefined){
         pendingLoads.clear();
         FreoDialog.notify({title:'Returning to Auto',message:state.mode_notice?.message || 'Returning to the schedule with a fade.'});
@@ -259,10 +274,10 @@
       text('live-fallback',state.fallback);text('next-event-name',state.next_event?.name||'None');
       const current=state.mode==='DJ_BOOTH' ? state.mixer?.a : (state.current || (state.playout_error ? state.last_known_current : null)), cue=state.mixer?.b;
       const engine=state.mixer,pending=state.deck_command?.status==='pending';
-      if(state.deck_command?.status==='failed'&&lastFailedCommand!==state.deck_command.id){
+      if(state.deck_command?.status==='failed'&&state.deck_command.error!=='cue_changed'&&lastFailedCommand!==state.deck_command.id){
         lastFailedCommand=state.deck_command.id;notice(`Deck ${state.deck_command.deck} could not apply ${state.deck_command.operation.toLowerCase()}. The song or station state changed; review the deck and try again.`,true);
       }
-      root.querySelectorAll('.cue-picker-button,[data-load-deck]').forEach(button=>button.disabled=pending||!engine||!!state.playout_error);
+      root.querySelectorAll('.cue-picker-button,[data-load-deck]').forEach(button=>button.disabled=pending||!engine||!!state.playout_error||!!button.closest('[data-cue-entry]:not([data-id]),[data-cue-entry][data-id=""]'));
 
       for(const [key,load] of pendingLoads){
         const item=engine?.[key],command=state.deck_command;

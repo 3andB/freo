@@ -1,0 +1,12 @@
+<article class="cue-panel console-panel" aria-labelledby="cue-heading">
+  <header class="cue-heading"><div><span class="eyebrow">YOUR SET · YOUR ORDER</span><h2 id="cue-heading">Cue <span id="cue-total">0</span></h2></div><button type="button" id="cue-auto" aria-pressed="false"><i></i>AUTO_CUE <b>OFF</b></button></header>
+  <div class="cue-toolbar"><strong id="cue-name">Untitled Cue</strong><span id="cue-save-state" role="status">Saved</span><button type="button" data-cue-action="new">New</button><button type="button" data-cue-action="load">Load</button><button type="button" data-cue-action="save">Save</button><details class="cue-menu"><summary aria-label="More Cue actions">•••</summary><div><button type="button" data-cue-action="save-as">Save as…</button><button type="button" data-cue-action="rename">Rename…</button></div></details></div>
+  <div class="cue-running"><span id="cue-next">Add songs below to build your set</span><span id="cue-duration">0:00</span></div>
+  <ol id="booth-cue-list" class="cue-list" aria-label="Cue songs"></ol>
+  <p class="cue-help" id="cue-help">Drag to reorder · Finished songs move to the bottom</p>
+</article>
+<div id="cue-divider" class="cue-divider" role="separator" tabindex="0" aria-label="Resize Cue and song browser" aria-orientation="horizontal" aria-valuemin="25" aria-valuemax="70" aria-valuenow="48"><span></span></div>
+<dialog id="cue-dialog" class="cart-assign-dialog cue-dialog" aria-labelledby="cue-dialog-title">
+  <form method="dialog"><button class="dialog-close" aria-label="Close">×</button></form>
+  <h2 id="cue-dialog-title">Save Cue</h2><div id="cue-dialog-content"></div>
+</dialog>

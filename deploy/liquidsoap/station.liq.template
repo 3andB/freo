@@ -347,8 +347,18 @@ thread.run(every=0.05, {
 
 def main_active() = mic_program_gain() > 0.0 and not (cart_takeover() and cart.is_ready()) end
 def main_gain() = if cart.is_ready() and not cart_takeover() then 1.0-duck() else 1.0 end end
-music_a = amplify(override="freo_gain", 1.0, deck_a)
-music_b = amplify(override="freo_gain", 1.0, deck_b)
+# A zero-delay end callback follows rendered audio, including pauses and cart
+# takeovers. The worker rejects interrupted requests and consumes each EOF once.
+def cue_finished(_, metadata)
+  value = decision(metadata)
+  if value != "" then
+    file.write(append=true, perms=0o640, __EVENT_FILE__, data="END " ^ value ^ " " ^ string.float(time()) ^ "\n")
+  end
+end
+music_a = source.on_end(delay=0.0, deck_a, cue_finished)
+music_b = source.on_end(delay=0.0, deck_b, cue_finished)
+music_a = amplify(override="freo_gain", 1.0, music_a)
+music_b = amplify(override="freo_gain", 1.0, music_b)
 music_a = mksafe(switch(track_sensitive=false, [({a_play() and main_active()}, music_a)]))
 music_b = mksafe(switch(track_sensitive=false, [({b_play() and main_active()}, music_b)]))
 music_a = amplify({fade_gain() * a_mix() * main_gain() * mic_program_gain()}, music_a)

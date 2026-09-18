@@ -48,6 +48,8 @@ def set_mode(station,user,mode):
 
 
 def return_to_schedule(station, user=None, reason='Returning to the schedule with a 3-second crossfade.'):
+    from app.services.booth_cue import disarm
+    disarm(station, 'AUTO_CUE is off · station AUTO is active.')
     state=station.automation
     state.operator_mode='AUTO';state.hold=False;state.enabled=True
     state.cued_track_id=None
@@ -337,7 +339,7 @@ def request_abort_block(station, user, execution_id):
 
 
 def safe_item(row):
-    source = 'CART' if row.playback_bus == 'CART' else 'BLOCK' if row.selection_method == 'event_block' else 'EVENT' if row.selection_method == 'timed_event' else 'MANUAL' if row.admin_user_id else 'AUTO'
+    source = 'CART' if row.playback_bus == 'CART' else 'BLOCK' if row.selection_method == 'event_block' else 'EVENT' if row.selection_method == 'timed_event' else 'CUE' if row.selection_method == 'cue_auto' else 'MANUAL' if row.admin_user_id else 'AUTO'
     if row.track:
         return dict(decision_id=row.id, kind='track', title=row.track.title,
                     artist=row.track.artist,album=row.track.album,category=row.category.name if row.category else None,source=source,
@@ -415,7 +417,8 @@ def status(station):
     if cart_row and cart_row.station_id != station.id:cart_row=None
     broadcast_fresh=bool(snapshot and snapshot.broadcast_observed_at and (datetime.now(timezone.utc)-snapshot.broadcast_observed_at.replace(tzinfo=snapshot.broadcast_observed_at.tzinfo or timezone.utc)).total_seconds()<15)
     mode_notice=AuditEvent.query.filter_by(station_id=station.id,action='live_auto_return').order_by(AuditEvent.id.desc()).first()
-    return dict(mode_notice=dict(id=mode_notice.id,message=mode_notice.summary) if mode_notice else None,station=station.slug, automation='HELD' if state and state.hold and not (snapshot_mixer or {}).get('auto_standby') else 'RUNNING' if state and state.enabled else 'DISABLED',mode=state.operator_mode if state else 'AUTO',cue=cue,
+    from app.services.booth_cue import describe
+    return dict(cue_list=describe(station, snapshot_mixer), mode_notice=dict(id=mode_notice.id,message=mode_notice.summary) if mode_notice else None,station=station.slug, automation='HELD' if state and state.hold and not (snapshot_mixer or {}).get('auto_standby') else 'RUNNING' if state and state.enabled else 'DISABLED',mode=state.operator_mode if state else 'AUTO',cue=cue,
         current=current, mixer=snapshot_mixer, deck_command=(dict(id=deck_command.id,status=deck_command.status,deck=deck_command.deck,operation=deck_command.action.removeprefix('DECK_'),error=deck_command.error_code) if deck_command else None), last_known_current=last_known, observation_fresh=reliable, observed_at=snapshot.observed_at.isoformat() if snapshot else None, queue=queue, unknown_queue_items=unknown,
         skip_command=dict(id=skip_command.id,status=skip_command.status,expected_decision_id=skip_command.expected_decision_id,error=skip_command.error_code) if skip_command else None,
         cart=dict(locked=not reliable or bool(cart_id or cart_pending),decision_id=cart_row.id if cart_row else None,role=cart_row.cart_role if cart_row else None,position=cart_row.cart_position if cart_row else None,state=('playing' if cart_id and cart_row and cart_row.started_at else 'queued') if cart_row else 'idle'),
@@ -448,7 +451,7 @@ def deck_item(station, mixer, deck):
     return row if row and row.station_id == station.id else None
 
 
-def request_deck(station, user, deck, action, identifier, expected, nonce, fade_seconds=3, play_on_load=False):
+def request_deck(station, user, deck, action, identifier, expected, nonce, fade_seconds=3, play_on_load=False, cue_entry_id=None):
     if deck not in ('A','B') or action not in ('LOAD','PLAY','PAUSE','CLEAR','FADE','REPEAT'):
         raise ValueError('Choose a valid deck button')
     try:
@@ -489,6 +492,15 @@ def request_deck(station, user, deck, action, identifier, expected, nonce, fade_
             raise ValueError('The song audio is unavailable') from error
         target=SelectionDecision(station_id=station.id,track=track,playback_bus=deck,selection_method='manual_track',admin_user_id=user.id,idempotency_key=str(uuid.uuid4()),status='selected',reason='deck_'+action.lower())
         db.session.add(target);db.session.flush()
+        from app.services.booth_cue import bind
+        bind(station, target, cue_entry_id if action == 'LOAD' else None, current if action == 'REPEAT' else None)
+    from app.services.booth_cue import disarm
+    if action in ('PAUSE', 'CLEAR', 'FADE'):
+        disarm(station, 'AUTO_CUE paused by deck control · switch it on to re-arm.')
+    elif action in ('LOAD', 'PLAY'):
+        from app.services.booth_cue import locked
+        working_cue = locked(station)
+        working_cue.start_pending = False
     command=LiveControlCommand(station_id=station.id,admin_user_id=user.id,deck=deck,action='DECK_'+action,fade_seconds=fade_seconds,play_on_load=play_on_load,idempotency_key=nonce,expected_decision_id=current.id if current else None,target_decision_id=target.id if target else None,status='pending')
     db.session.add(command)
     audit('deck_button_requested',user_id=user.id,station_id=station.id,target_type='deck',target_id=deck,summary=f'{action} requested for Deck {deck}')

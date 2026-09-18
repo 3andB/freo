@@ -45,6 +45,23 @@ class EventReader:
         count = 0
         for line in lines:
             fields = line.strip().split()
+            if len(fields) == 3 and fields[0] == 'END':
+                try:
+                    identifier, stamp = int(fields[1]), float(fields[2])
+                    if identifier <= 0 or not math.isfinite(stamp) or abs(time.time() - stamp) > 7 * 86400:
+                        continue
+                    station = Station.query.filter_by(slug=slug).first()
+                    if station:
+                        from app.services.booth_cue import completed
+                        completed(station, identifier, datetime.fromtimestamp(stamp, timezone.utc), socket_identity(slug))
+                except (ValueError, OverflowError):
+                    continue
+                except Exception:
+                    # Preserve EOF for retry after an unavailable DB/socket. Its
+                    # durable playback row makes replaying earlier lines safe.
+                    self.offsets[slug] = (identity, offset)
+                    raise
+                continue
             if not fields or len(fields) > 2 or not fields[0].isascii() or not fields[0].isdecimal() or len(fields[0]) > 12:
                 continue
             observed_at = None
@@ -314,7 +331,7 @@ def process_manual(station, reader):
                 command.status = 'sent'
             command.processed_at = datetime.now(timezone.utc)
             db.session.commit()
-        except (OSError, RuntimeError, ValueError):
+        except (OSError, RuntimeError, ValueError) as error:
             db.session.rollback()
             failed = db.session.get(LiveControlCommand, command.id)
             failed.status = 'failed'
@@ -323,13 +340,29 @@ def process_manual(station, reader):
             if failed.target_decision and failed.target_decision.status in ('selected', 'submitting'):
                 failed.target_decision.status = 'failed'
                 failed.target_decision.reason = 'manual_takeover_failed'
+            if failed.target_decision and failed.target_decision.selection_method == 'cue_auto':
+                from app.services.booth_cue import disarm, CueChanged, locked
+                if isinstance(error, CueChanged):
+                    failed.error_code = 'cue_changed'
+                    cue = locked(station)
+                    cue.start_pending = cue.auto_enabled
+                else:
+                    disarm(station, 'AUTO_CUE paused · a pending start could not be confirmed. Review the deck and re-arm.')
             db.session.commit()
-            logger.exception('Live control failed station=%s command=%s', slug, command.id)
+            if failed.error_code != 'cue_changed':
+                logger.exception('Live control failed station=%s command=%s', slug, command.id)
             break
 
 
 
 def process_deck_command(station, command, identity):
+    from app.services.booth_cue import interrupt, locked, validate_automatic
+    from app.models import CuePlayback
+    cue = locked(station)
+    automatic = command.target_decision is not None and command.target_decision.selection_method == 'cue_auto'
+    if automatic:
+        binding = db.session.get(CuePlayback, command.target_decision_id) if command.target_decision_id else None
+        validate_automatic(station, cue, binding)
     from app.services.playout_queue import deck_control, mixer_state, channel_queue
     deck=command.deck
     if deck not in ('A','B') or station.automation.operator_mode != 'DJ_BOOTH':
@@ -343,6 +376,10 @@ def process_deck_command(station, command, identity):
     if expected != command.expected_decision_id:
         raise ValueError('Deck changed before the command reached the engine')
     operation=command.action.removeprefix('DECK_')
+    if operation in ('LOAD', 'CLEAR', 'FADE'):
+        interrupt(station, current)
+    if operation == 'PLAY' or (operation == 'LOAD' and command.play_on_load):
+        interrupt(station, mixer.get(('b' if deck == 'A' else 'a')+'_id'))
     if operation == 'LOAD' and current and mixer.get(deck.lower()+'_playing') and not command.play_on_load:
         raise ValueError('Deck started playing before replacement was confirmed')
     if operation in ('LOAD','REPEAT'):
@@ -352,9 +389,17 @@ def process_deck_command(station, command, identity):
         # Persist intent before submitting. An uncertain socket result is terminal;
         # a browser retry cannot apply the same destructive operation twice.
         target.status='submitting';db.session.commit()
+        # Hold the same lock as Cue edits through the socket operation. A New,
+        # Load, removal or disable committed before this point cancels the take.
+        cue = locked(station)
+        if automatic:
+            validate_automatic(station, cue, binding)
         deck_control(station.slug,deck,'clear' if operation=='LOAD' else 'future')
         target.liquidsoap_request_id=push_decision(target)
         target.socket_identity=identity;target.status='queued'
+        if operation == 'REPEAT':
+            # Transfer rotation only after the repeat was actually accepted.
+            interrupt(station, current)
         if operation == 'LOAD' and command.play_on_load:
             deck_control(station.slug,deck,'take',command.fade_seconds)
     else:
@@ -605,9 +650,15 @@ def tick(reader, target_depth=2):
                 if state.operator_mode == 'AUTO' and prior_mixer['mode'] == 'DJ_BOOTH':
                     reader.auto_return_until[slug]=time.monotonic()+4
                 if state.operator_mode != 'DJ_BOOTH':
+                    from app.services.booth_cue import disarm
+                    disarm(state.station, 'AUTO_CUE is off · station AUTO is active.')
                     reader.dj_has_played.discard(slug);reader.dj_stopped_since.pop(slug,None)
             except (OSError, RuntimeError, ValueError):
                 pass
+            if mic_active:
+                from app.services.booth_cue import disarm
+                disarm(state.station, 'AUTO_CUE is off · live microphone is active.')
+                db.session.commit()
             process_manual(state.station, reader)
             if mic_active:
                 state.worker_heartbeat_at = datetime.now(timezone.utc)
@@ -617,8 +668,11 @@ def tick(reader, target_depth=2):
             standby=False
             if state.operator_mode == 'DJ_BOOTH':
                 from app.services.playout_queue import mixer_state
-                standby=mixer_state(slug).get('auto_standby',False)
-                if return_to_auto_if_stopped(state.station,reader,mixer_state(slug)):
+                from app.services.booth_cue import advance
+                observed_mixer = mixer_state(slug)
+                standby=observed_mixer.get('auto_standby',False)
+                cue_active = advance(state.station, observed_mixer, reader)
+                if not cue_active and return_to_auto_if_stopped(state.station,reader,mixer_state(slug)):
                     sync_mixer(state.station)
                     reader.auto_return_until[slug]=time.monotonic()+4
             if state.operator_mode == 'DJ_BOOTH' and not standby:
