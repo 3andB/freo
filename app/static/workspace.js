@@ -174,7 +174,9 @@
   const isPage = url => url.origin === location.origin && !/\/(api|stream|static)\//.test(url.pathname) && !/\/(audition|artwork|export|download)(\/|$)/.test(url.pathname);
   async function navigate(url, options = {}) {
     if (navigating) return;
-    if (dirty && !options.submitted && !await FreoDialog.confirm({title: 'Leave unsaved changes?', message: 'Your edits on this page have not been saved. Leave this page and discard them?', confirmLabel: 'Leave page'})) return;
+    if (!options.submitted && window.FreoPage.beforeLeave) {
+      if (!await window.FreoPage.beforeLeave()) return;
+    } else if (dirty && !options.submitted && !await FreoDialog.confirm({title: 'Leave unsaved changes?', message: 'Your edits on this page have not been saved. Leave this page and discard them?', confirmLabel: 'Leave page'})) return;
     navigating = true; document.documentElement.classList.add('is-navigating');
     try {
       const response = await fetch(url, {credentials: 'same-origin', ...options.request});

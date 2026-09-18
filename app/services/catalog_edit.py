@@ -24,7 +24,7 @@ def validate_metadata(station_id, data):
     if "isrc" in data:
         from app.services.copyright import normalize_isrc
         result["isrc"] = normalize_isrc(data["isrc"])
-    for name, limit in [('title', 200), ('artist_name', 200), ('album_name', 200)]:
+    for name, limit in [('title', 200), ('artist_name', 200), ('album_name', 200), ('album_artist', 200)]:
         if name in data:
             value = data[name]
             if not isinstance(value, str) or len(value.strip()) > limit:
@@ -37,11 +37,13 @@ def validate_metadata(station_id, data):
     artist = None
     if data.get('artist_id'):
         artist = owned(Artist, station_id, data['artist_id']);result['artist_id'] = artist.id
+    album_artist = owned(Artist, station_id, data['album_artist_id']) if data.get('album_artist_id') else artist
+    if data.get('album_artist_id'): result['album_artist_id'] = album_artist.id
     if 'album_id' in data:
         result['album_id'] = None
         if data['album_id']:
             album = owned(Album, station_id, data['album_id'])
-            if not artist or album.artist_id != artist.id:
+            if not album_artist or album.artist_id != album_artist.id:
                 raise ValueError('Choose an album belonging to the selected artist')
             result['album_id'] = album.id
     if data.get('cover_id'):
@@ -52,11 +54,17 @@ def validate_metadata(station_id, data):
             if not isinstance(values, list) or len(values) > 500:
                 raise ValueError('Choose valid tags and categories')
             result[key] = list({owned(model, station_id, value).id for value in values})
-    if data.get('track_number') not in (None, ''):
-        try: number = int(data['track_number'])
-        except (ValueError, TypeError): raise ValueError('Track number must be between 1 and 999')
-        if not 1 <= number <= 999: raise ValueError('Track number must be between 1 and 999')
-        result['track_number'] = number
+    for key, minimum, maximum in [('track_number', 1, 999), ('disc_number', 1, 99), ('release_year', 1000, 3000)]:
+        if key not in data: continue
+        if data[key] in (None, ''):
+            result[key] = None
+            continue
+        try:
+            if isinstance(data[key], bool) or str(int(data[key])) != str(data[key]): raise ValueError()
+            number = int(data[key])
+        except (ValueError, TypeError): raise ValueError(f'{key.replace("_", " ").title()} must be between {minimum} and {maximum}')
+        if not minimum <= number <= maximum: raise ValueError(f'{key.replace("_", " ").title()} must be between {minimum} and {maximum}')
+        result[key] = number
     return result
 
 
@@ -70,18 +78,23 @@ def apply_metadata(song, data, station_id=None):
     if artist:
         song.catalog_artist = artist;song.artist = artist.name
         # Changing artist cannot retain an album belonging to somebody else.
-        if song.catalog_album and song.catalog_album.artist_id != artist.id:
+        if song.catalog_album and song.catalog_album.artist_id != artist.id and not data.get('album_artist_id'):
             song.catalog_album = None;song.album = ''
     if 'album_id' in data:
         album = owned(Album, station_id, data['album_id']) if data['album_id'] else None
         song.catalog_album = album;song.album = album.title if album else ''
+        if not album: song.album_artist = ''
     if data.get('album_name'):
-        artist = artist or song.catalog_artist or artist_for(song.station_id, song.artist)
-        song.catalog_album = album_for(song.station_id, artist, data['album_name'])
+        artist = (owned(Artist, station_id, data['album_artist_id']) if data.get('album_artist_id') else
+                  artist_for(song.station_id, data['album_artist']) if data.get('album_artist') else
+                  artist or song.catalog_artist or artist_for(song.station_id, song.artist))
+        song.catalog_album = album_for(song.station_id, artist, data['album_name'], album_artist=artist.name, year=data.get('release_year'))
         song.album = song.catalog_album.title
     if 'isrc' in data: song.isrc = data['isrc']
     if 'title' in data: song.title = data['title']
-    if 'track_number' in data: song.track_number = data['track_number']
+    for key in ('track_number', 'disc_number', 'release_year'):
+        if key in data: setattr(song, key, data[key])
+    if song.catalog_album: song.album_artist = song.catalog_album.artist.name
     if 'cover_id' in data:
         if song.catalog_album: song.catalog_album.cover_id = data['cover_id']
         else: song.cover_id = data['cover_id']

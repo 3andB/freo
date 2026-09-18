@@ -80,6 +80,8 @@ def create_app(config_name=None):
     app.register_blueprint(admin_cli, cli_group=None)
     from .routes.catalog_editor import catalog_editor
     app.register_blueprint(catalog_editor)
+    from .routes.music_import import music_import
+    app.register_blueprint(music_import)
     app.register_blueprint(admin_media_blueprint)
     app.register_blueprint(sound_room)
     from .routes.playlists import playlists

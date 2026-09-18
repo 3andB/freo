@@ -9,8 +9,14 @@
     if(!response.headers.get('content-type')?.includes('application/json'))throw Error('Session unavailable. Sign in again to save.');
     const result=await response.json();if(!response.ok)throw Error(result.message||'Unable to save');return result;
   }
-  async function load(base){const response=await scope.fetch(base,{cache:'no-store'});if(!response.ok)throw Error('Catalog could not load');return response.json();}
+  const stores=new Map(), listeners=new WeakMap();
+  const notify=data=>(listeners.get(data)||[]).forEach(fn=>fn());
+  async function load(base){const response=await scope.fetch(base,{cache:'no-store'});if(!response.ok)throw Error('Catalog could not load');const next=await response.json();if(!stores.has(base))stores.set(base,next);else Object.assign(stores.get(base),next);const data=stores.get(base);notify(data);return data;}
+  function subscribe(data,fn){if(!listeners.has(data))listeners.set(data,new Set());listeners.get(data).add(fn);const dispose=()=>listeners.get(data)?.delete(fn);scope.cleanup(dispose);return dispose;}
+  function upsert(data,kind,row){const rows=data[kind];const index=rows.findIndex(r=>r.id===row.id);if(index<0)rows.push(row);else rows[index]=row;rows.sort((a,b)=>a.name.localeCompare(b.name));notify(data);}
+
   function selectors(container,catalog,initial,config){
+    if(config.importing||config.searchable)return picker(container,catalog,initial,config);
     let data=catalog,detected={};
     const artist=el('select'),album=el('select'),search=el('input');search.type='search';search.placeholder='Search artists';search.setAttribute('aria-label','Search artists');
     artist.setAttribute('aria-label','Artist');album.setAttribute('aria-label','Album');
@@ -20,7 +26,7 @@
       data.artists.filter(a=>String(a.id)===chosen||a.name.toLowerCase().includes(search.value.toLowerCase())).forEach(a=>artist.append(new Option(a.name,a.id)));
       artist.value=chosen;album.replaceChildren(new Option(config.importing?(detected.album?`From file: ${detected.album}`:'From file metadata'):'Single / No album',''));
       if(config.importing)album.append(new Option('Single / No album','single'));
-      data.albums.filter(a=>String(a.artist_id)===chosen).forEach(a=>album.append(new Option(a.name,a.id)));
+      data.albums.filter(a=>String(a.artist_id)===chosen||String(a.id)===String(fields.album_id)).forEach(a=>album.append(new Option(a.name,a.id)));
       album.value=fields.album_id===null&&config.importing?'single':String(fields.album_id||'');
     }
     for(const [kind,label,select] of [['artists','Artist',artist],['albums','Album',album]]){
@@ -34,22 +40,88 @@
         const close=()=>{panel.remove();add.disabled=false;add.focus();};add.disabled=true;
         if(config.importing)wrap.append(panel);else{document.body.append(panel);panel.showModal();panel.addEventListener('cancel',close);}
         cancel.onclick=close;name.focus();
-        save.onclick=async()=>{if(!name.value.trim()){error.textContent='Enter a name';return;}save.disabled=true;try{const result=await api(config.base+'/'+kind,config.csrf,{name:name.value,artist_id:fields.artist_id});data=await load(config.base);if(kind==='artists'){fields.artist_id=result.id;fields.album_id=config.importing?undefined:null;search.value='';}else fields.album_id=result.id;populate();config.change?.();close();}catch(e){error.textContent=e.message;save.disabled=false;}};
+        save.onclick=async()=>{if(!name.value.trim()){error.textContent='Enter a name';return;}save.disabled=true;try{const result=await api(config.base+'/'+kind,config.csrf,{name:name.value,artist_id:fields.artist_id});upsert(data,kind,result);if(kind==='artists'){fields.artist_id=result.id;fields.album_id=config.importing?undefined:null;search.value='';}else fields.album_id=result.id;populate();config.change?.();close();}catch(e){error.textContent=e.message;save.disabled=false;}};
         name.addEventListener('keydown',event=>{if(event.key==='Enter'){event.preventDefault();save.click();}});
       });
     }
     search.addEventListener('input',populate);
     artist.addEventListener('change',()=>{fields.artist_id=artist.value;fields.album_id=config.importing?undefined:null;populate();config.change?.();});
-    album.addEventListener('change',()=>{fields.album_id=album.value==='single'?null:album.value|| (config.importing?undefined:null);config.change?.();});populate();
-    return {detected(values){detected=values;populate();},values:()=>{const result={};if(fields.artist_id)result.artist_id=Number(fields.artist_id);if(fields.album_id!==undefined)result.album_id=fields.album_id?Number(fields.album_id):null;return result;},set(values){Object.assign(fields,values);populate();},refresh:async()=>{data=await load(config.base);populate();}};
+    album.addEventListener('change',()=>{fields.album_id=album.value==='single'?null:album.value|| (config.importing?undefined:null);config.change?.();});subscribe(data,populate);populate();
+    return {detected(values){detected=values;populate();},values:()=>{const result={};if(fields.artist_id)result.artist_id=Number(fields.artist_id);if(fields.album_id!==undefined)result.album_id=fields.album_id?Number(fields.album_id):null;if(fields.album_id)result.album_artist_id=data.albums.find(a=>a.id===Number(fields.album_id))?.artist_id;return result;},set(values){Object.assign(fields,values);populate();},refresh:async()=>{data=await load(config.base);populate();}};
+  }
+  function picker(container,catalog,initial,config){
+    let fields={...initial},detected={},creating=false;
+    if(fields.artist_id)fields.artist_id=Number(fields.artist_id);if(fields.album_id){fields.album_id=Number(fields.album_id);fields.album_artist_id=catalog.albums.find(a=>a.id===fields.album_id)?.artist_id;}
+    const touched=new Set(),controls={};
+    const names={artist_id:'Artist',album_id:'Album'};
+    const valueText=key=>{
+      const id=fields[key],kind=key==='artist_id'?'artists':'albums';
+      if(id)return catalog[kind].find(row=>row.id===Number(id))?.name||'';
+      if(key==='album_id'&&id===null)return 'No album';
+      return '';
+    };
+    function paint(){for(const [key,{input,list}] of Object.entries(controls)){
+      if(document.activeElement!==input||list.hidden)input.value=valueText(key);
+      input.placeholder=!config.importing?`Search ${names[key].toLowerCase()}s`:config.batch&&!touched.has(key)?'Leave unchanged':`From file: ${detected[key==='artist_id'?'artist':'album']||'metadata'}`;
+    }}
+    function select(key,value){
+      const previousArtist=fields.artist_id;fields[key]=value;touched.add(key);
+      if(key==='artist_id'){
+        const album=catalog.albums.find(a=>a.id===fields.album_id);
+        if(album&&album.artist_id!==value&&(!previousArtist||album.artist_id===previousArtist)){delete fields.album_id;delete fields.album_artist_id;touched.add('album_id');}
+      } else if(value)fields.album_artist_id=catalog.albums.find(a=>a.id===value)?.artist_id;
+      else delete fields.album_artist_id;
+      controls[key].input.focus();controls[key].list.hidden=true;controls[key].input.setAttribute('aria-expanded','false');
+      controls[key].input.value=valueText(key);paint();config.change?.(key);
+    }
+    for(const [key,label] of Object.entries(names)){
+      const kind=key==='artist_id'?'artists':'albums',wrap=el('div',undefined,'catalog-field catalog-combobox'),notice=el('p',undefined,'catalog-error'),heading=el('label',label),input=el('input'),list=el('div',undefined,'catalog-options');
+      input.type='text';input.maxLength=200;input.autocomplete='off';input.setAttribute('aria-label',label);input.setAttribute('role','combobox');input.setAttribute('aria-autocomplete','list');input.setAttribute('aria-expanded','false');list.id='catalog-'+crypto.randomUUID();list.setAttribute('role','listbox');input.setAttribute('aria-controls',list.id);list.hidden=true;heading.append(input);notice.setAttribute('role','status');wrap.append(heading,list,notice);container.append(wrap);controls[key]={input,list};
+      function option(text,fn){const button=el('button',text);button.type='button';button.setAttribute('role','option');button.onmousedown=e=>e.preventDefault();button.onclick=()=>{fn();};list.append(button);return button;}
+      function suggestions(){
+        if(creating)return;list.replaceChildren();list.hidden=false;input.setAttribute('aria-expanded','true');
+        if(config.importing)option('Use file metadata',()=>select(key,undefined));
+        if(key==='album_id')option('No album / Single',()=>select(key,null));
+        const query=input.value.trim(),identity=s=>s.trim().replace(/\s+/g,' ').toLocaleLowerCase();
+        const rows=catalog[kind].filter(row=>row.name.toLocaleLowerCase().includes(query.toLocaleLowerCase()));
+        rows.slice(0,30).forEach(row=>option(row.name+(key==='album_id'?' · '+(catalog.artists.find(a=>a.id===row.artist_id)?.name||''):''),()=>select(key,row.id)));
+        if(query&&!rows.some(row=>identity(row.name)===identity(query))){
+          const button=option(`Create “${query}”`,async()=>{
+            if(creating)return;creating=true;button.disabled=true;notice.textContent='';
+            try{
+              let owner=fields.artist_id;
+              if(kind==='albums'&&!owner){
+                const name=detected.album_artist||detected.artist;
+                if(!name||name==='Unknown Artist')throw Error('Choose an artist before creating an album.');
+                const result=await api(config.base+'/artists',config.csrf,{name});upsert(catalog,'artists',result);owner=result.id;
+              }
+              const result=await api(config.base+'/'+kind,config.csrf,{name:query,artist_id:owner||''});
+              upsert(catalog,kind,result);select(key,result.id);config.message?.(`${label} selected${config.target?' for '+config.target:''}.`);
+            }catch(error){notice.textContent=error.message;button.disabled=false;}finally{creating=false;}
+          });button.setAttribute('aria-label',`Create ${label.toLowerCase()} ${query}`);
+        }
+      }
+      input.onfocus=()=>{input.select();suggestions();};input.oninput=suggestions;
+      input.onkeydown=e=>{
+        if(e.key==='Escape'){list.hidden=true;input.value=valueText(key);input.setAttribute('aria-expanded','false');}
+        if(e.key==='ArrowDown'){e.preventDefault();if(list.hidden)suggestions();list.querySelector('button')?.focus();}
+        if(e.key==='Enter'){e.preventDefault();const buttons=[...list.querySelectorAll('button')];const exact=buttons.find(b=>b.textContent===input.value.trim());(exact||buttons.at(-1))?.click();}
+      };
+      list.onkeydown=e=>{const buttons=[...list.querySelectorAll('button')],at=buttons.indexOf(document.activeElement);if(['ArrowDown','ArrowUp'].includes(e.key)){e.preventDefault();buttons[(at+(e.key==='ArrowDown'?1:buttons.length-1))%buttons.length]?.focus();}if(e.key==='Escape'){list.hidden=true;input.focus();list.hidden=true;input.setAttribute('aria-expanded','false');}};
+      wrap.addEventListener('focusout',e=>{if(!wrap.contains(e.relatedTarget)){list.hidden=true;input.value=valueText(key);input.setAttribute('aria-expanded','false');}});
+    }
+    const dispose=subscribe(catalog,paint);paint();
+    return {detected(data){detected=data||{};paint();},values(){const result={};if(fields.artist_id)result.artist_id=Number(fields.artist_id);if(fields.album_id!==undefined)result.album_id=fields.album_id;if(fields.album_artist_id&&fields.album_id)result.album_artist_id=fields.album_artist_id;return result;},
+      patch(){return Object.fromEntries([...touched].map(key=>[key,fields[key]??(key==='album_id'&&fields[key]===null?null:'file')]));},
+      set(values){fields={...values};paint();},reset(){fields={};touched.clear();paint();},destroy:dispose,refresh:()=>load(config.base)};
   }
   function chips(container,catalog,values={}){
-    const selected={tags:new Set(values.tags||[]),categories:new Set(values.categories||[])};
+    const selected={tags:new Set(values.tags||[]),categories:new Set(values.categories||[])},touched=new Set();
     for(const key of ['tags','categories']){const group=el('div',undefined,'music-toggle-group');group.setAttribute('role','group');group.setAttribute('aria-label',key);group.append(el('small',key));
-      for(const item of catalog[key]){const button=el('button',undefined,'music-toggle');button.type='button';const paint=()=>{button.textContent=(selected[key].has(item.id)?'✓ ':'+ ')+item.name;button.setAttribute('aria-pressed',selected[key].has(item.id)?'true':'false');};button.onclick=()=>{selected[key].has(item.id)?selected[key].delete(item.id):selected[key].add(item.id);paint();};paint();group.append(button);}container.append(group);}
-    return {values:()=>Object.fromEntries(Object.entries(selected).map(([key,value])=>[key,[...value]])),set(values){for(const key of ['tags','categories']){selected[key]=new Set(values[key]||[]);const buttons=container.querySelector(`[aria-label="${key}"]`).querySelectorAll('button');buttons.forEach((b,i)=>{const item=catalog[key][i];b.textContent=(selected[key].has(item.id)?'✓ ':'+ ')+item.name;b.setAttribute('aria-pressed',String(selected[key].has(item.id)));});}}};
+      for(const item of catalog[key]){const button=el('button',undefined,'music-toggle');button.type='button';const paint=()=>{button.textContent=(selected[key].has(item.id)?'✓ ':'+ ')+item.name;button.setAttribute('aria-pressed',selected[key].has(item.id)?'true':'false');};button.onclick=()=>{touched.add(key);container.dispatchEvent(new Event('classificationchange',{bubbles:true}));selected[key].has(item.id)?selected[key].delete(item.id):selected[key].add(item.id);paint();};paint();group.append(button);}container.append(group);}
+    return {touched:()=>[...touched],clearTouched:()=>touched.clear(),values:()=>Object.fromEntries(Object.entries(selected).map(([key,value])=>[key,[...value]])),set(values){for(const key of ['tags','categories']){selected[key]=new Set(values[key]||[]);const buttons=container.querySelector(`[aria-label="${key}"]`).querySelectorAll('button');buttons.forEach((b,i)=>{const item=catalog[key][i];b.textContent=(selected[key].has(item.id)?'✓ ':'+ ')+item.name;b.setAttribute('aria-pressed',String(selected[key].has(item.id)));});}}};
   }
-  function chooseCover(config,extra={}){
+  function chooseCover(config,extra={},initialFile=null){
     return new Promise(resolve=>{
       const dialog=el('dialog',undefined,'studio-dialog artwork-dialog'),file=el('input'),canvas=el('canvas'),status=el('p'),save=el('button','Save artwork'),cancel=el('button','Cancel');
       file.type='file';file.accept='image/jpeg,image/png';file.setAttribute('aria-label','Album artwork file');canvas.width=canvas.height=320;save.type=cancel.type='button';save.disabled=true;status.setAttribute('role','status');
@@ -59,6 +131,7 @@
       function geometry(){const side=Math.min(picture.width,picture.height)/Number(sliders.Zoom.value);return [(picture.width-side)*Number(sliders.Horizontal.value)/100,(picture.height-side)*Number(sliders.Vertical.value)/100,side];}
       function draw(){if(!picture)return;const [x,y,side]=geometry();canvas.getContext('2d').drawImage(picture,x,y,side,side,0,0,320,320);}
       async function read(f){if(!f)return;if(f.size>20*1024*1024){status.textContent='Choose artwork under 20 MB';return;}try{const next=await createImageBitmap(f,{imageOrientation:'from-image'});if(next.width>10000||next.height>10000){next.close();throw Error('Artwork must be no larger than 10000 pixels per side');}picture?.close();picture=next;sliders.Zoom.value=1;sliders.Horizontal.value=sliders.Vertical.value=50;draw();save.disabled=false;status.textContent=Math.min(picture.width,picture.height)<640?'Small artwork may look blurry. It will not be enlarged.':'';}catch(e){status.textContent=e.message||'Choose a valid JPEG or PNG';}}
+      if(initialFile)read(initialFile);
       file.onchange=()=>read(file.files[0]);dialog.ondragover=e=>e.preventDefault();dialog.ondrop=e=>{e.preventDefault();read(e.dataTransfer.files[0]);};
       const close=result=>{picture?.close();dialog.remove();resolve(result);};cancel.onclick=()=>close(null);dialog.oncancel=e=>{e.preventDefault();close(null);};scope.cleanup(()=>close(null));
       save.onclick=async()=>{save.disabled=true;try{const [x,y,side]=geometry(),out=el('canvas');out.width=out.height=Math.min(3000,Math.floor(side));out.getContext('2d').drawImage(picture,x,y,side,side,0,0,out.width,out.height);const blob=await new Promise(r=>out.toBlob(r,'image/jpeg',.93));const body=new FormData();body.append('file',blob,'cover.jpg');for(const [k,v] of Object.entries(extra))if(v)body.set(k,v);const result=await api(config.base.replace(/\/catalog$/,'/artwork'),config.csrf,body);close(result);}catch(e){status.textContent=e.message;save.disabled=false;}};

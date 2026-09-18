@@ -16,7 +16,7 @@
       const advanced=root.querySelector('details form');for(const key of ['title','artist','album','track_number'])if(advanced.elements[key])advanced.elements[key].value=next[key]??'';
       root.querySelector('[data-preview]').dataset.title=next.title;message('Saved');return true;
     }catch(e){message(e.message);return false;}finally{busy=false;}}
-  try{const catalog=await FreoCatalog.load(config.base);selectors=FreoCatalog.selectors($('editor-catalog'),catalog,{artist_id:config.artist,album_id:config.album||null},{...config,message});await refresh();}catch(e){message(e.message);return;}
+  try{const catalog=await FreoCatalog.load(config.base);selectors=FreoCatalog.selectors($('editor-catalog'),catalog,{artist_id:config.artist,album_id:config.album||null},{...config,message,searchable:true});await refresh();}catch(e){message(e.message);return;}
   $('song-details').onsubmit=e=>{e.preventDefault();save();};
   $('cover-edit').onclick=async()=>{if(await save()){const result=await FreoCatalog.chooseCover(config,{song_id:config.song});if(result){message('Artwork saved');refresh();}}};
   $('broadcast-toggle')?.addEventListener('click',async()=>{if(busy)return;busy=true;try{const enabling=!state.enabled&&state.analysis==='complete';paint(await FreoCatalog.api(config.songUrl,config.csrf,{data:JSON.stringify({enabled:enabling})}));message('Broadcast state saved');}catch(e){message(e.message);}finally{busy=false;}});

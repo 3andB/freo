@@ -1088,3 +1088,4 @@ from .scheduling import (ChannelSchedule, ScheduleComposition, ScheduleCompositi
                          ScheduleTransition, ScheduleCursor)
 from .statistics import (StatsState, AudienceSample, StatsBucket, AudiencePresence,
                          GeoBucket, GeoReach, StorageSnapshot, BroadcastIncident, FeedbackTransition)
+from .imports import MusicImportSession, MusicImportItem

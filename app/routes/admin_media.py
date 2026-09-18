@@ -101,7 +101,9 @@ def artist_detail(slug,artist_id):
 @admin_required
 def album_detail(slug,album_id):
     station=station_or_404(slug,require_enabled=False);album=albums_for(station.id).filter_by(id=album_id).first_or_404()
-    return render_template('admin/music_album.html',**page_context(station,album=album,visible_songs=tracks_for(station.id).filter_by(album_id=album.id).all(),**classification_context(station)))
+    songs=tracks_for(station.id).filter_by(album_id=album.id).all()
+    songs.sort(key=lambda song:(song.disc_number or 1,song.track_number or 999,song.title))
+    return render_template('admin/music_album.html',**page_context(station,album=album,visible_songs=songs,**classification_context(station)))
 
 @admin_media_blueprint.get('/admin/stations/<slug>/media/albums/<int:album_id>/artwork')
 @admin_required

@@ -2,7 +2,7 @@ from datetime import datetime, timedelta, timezone
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from app.extensions import db
-from app.models import AdminUser, MediaIngestJob, Station
+from app.models import AdminUser, MediaIngestJob, Station, MusicImportItem
 from tests.test_live_browser import booth, wait_text, open_import
 from tests.test_web import app as app_fixture
 
@@ -24,13 +24,13 @@ def test_daily_notice_cancel_and_all_file_extensions(booth):
       document.getElementById('media-file').files=data.files;
       document.getElementById('media-file').dispatchEvent(new Event('change',{bubbles:true}));
     """)
-    wait_text(driver, '#selection-summary', '4 selected for import')
+    wait_text(driver, '#selection-summary', '4 selected')
     cards = driver.find_elements(By.CSS_SELECTOR, '.import-card')
-    assert len(cards) == 5 and 'Choose WAV' in cards[-1].text
-    driver.find_element(By.CSS_SELECTOR, '#media-upload-form [type=submit]').click()
-    WebDriverWait(driver, 10).until(lambda d:sum('Waiting for audio processing' in card.text for card in d.find_elements(By.CSS_SELECTOR, '.import-card')) == 4)
+    assert len(cards) == 4
+    assert 'non-audio' in driver.find_element(By.ID,'import-message').text
+    WebDriverWait(driver, 10).until(lambda d:sum('Uploaded' in card.text for card in d.find_elements(By.CSS_SELECTOR, '.import-card')) == 4)
     with app.app_context():
-        assert MediaIngestJob.query.count() == 4
+        assert MusicImportItem.query.count() == 4 and MediaIngestJob.query.count() == 0
         AdminUser.query.first().import_notice_date = datetime.now(timezone.utc).date() - timedelta(days=1)
         db.session.commit()
     driver.get(base + '/admin/stations/second-station/media/upload')

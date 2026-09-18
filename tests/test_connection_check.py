@@ -284,7 +284,7 @@ def test_manual_check_migration_preserves_installation(app, monkeypatch):
         db.session.commit()
         CentralConnectionCheck.__table__.drop(db.engine)
     runner = app.test_cli_runner()
-    for args in (['db', 'stamp', 'd91f3a26b807'], ['db', 'upgrade']):
+    for args in (['db', 'stamp', 'd91f3a26b807'], ['db', 'upgrade', 'ab31e76f209d']):
         result = runner.invoke(args=args)
         assert result.exit_code == 0, result.output
     with app.app_context():

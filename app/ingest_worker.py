@@ -21,11 +21,16 @@ def cleanup_staging():
     root = upload_root()
     if not root.is_dir() or root.is_symlink():
         return
+    from app.services.import_sessions import cleanup_drafts, protected_staging_ids
+    cleanup_drafts()
+    protected = protected_staging_ids()
     cutoff = time.time() - 86400
     for index, path in enumerate(root.iterdir()):
         if index >= 1000:
             break
         if not JOB_ID.fullmatch(path.name):
+            continue
+        if path.name in protected:
             continue
         info = path.lstat()
         if not stat.S_ISREG(info.st_mode) or info.st_mtime >= cutoff:
@@ -41,7 +46,8 @@ def process_one():
            .with_for_update(skip_locked=True).first())
     if job is None:
         db.session.rollback()
-        return False
+        from app.services.import_sessions import prepare_one
+        return prepare_one()
     job.status = 'processing'
     job.started_at = datetime.now(timezone.utc)
     db.session.commit()
@@ -83,7 +89,7 @@ def process_one():
         else:
             track, duplicate = ingest(job.station.slug, path,
                                       original_filename=job.original_filename,
-                                      enabled=False, update_playlist=False, auto_enable_pending=True, import_metadata=job.import_metadata or {})
+                                      enabled=False, update_playlist=False, auto_enable_pending=not (job.import_metadata or {}).get('keep_disabled', False), import_metadata=job.import_metadata or {})
             job.status = 'duplicate' if duplicate else 'accepted'
             job.track_id = track.id
             if not duplicate:
@@ -113,7 +119,11 @@ def process_one():
         logger.exception('Media ingest failed for job=%s station=%s', job.id, job.station_id)
     finally:
         if path:
-            path.unlink(missing_ok=True)
+            from app.models import MusicImportItem
+            draft = db.session.get(MusicImportItem, job.id)
+            # Review imports retain staged bytes for retryable worker failures.
+            if not draft or job.status not in ('error', 'rejected'):
+                path.unlink(missing_ok=True)
     job.finished_at = datetime.now(timezone.utc)
     db.session.commit()
     return True
@@ -125,6 +135,8 @@ def main():
     with app.app_context():
         # A crash can leave processing rows; re-check staged bytes after restart.
         MediaIngestJob.query.filter_by(status='processing').update({'status': 'pending'})
+        from app.models import MusicImportItem
+        MusicImportItem.query.filter_by(status='preparing').update({'status': 'pending'})
         db.session.commit()
         recover_analysis()
         last_cleanup = 0

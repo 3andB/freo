@@ -168,7 +168,7 @@ def test_full_station_template_with_processing(app, tmp_path):
 
 def test_audio_migration_roundtrip_preserves_existing_data(app):
     runner=app.test_cli_runner()
-    for args in [('db','stamp','c84a2e019b36'),('db','downgrade','b185c9a027d6'),('db','upgrade')]:
+    for args in [('db','stamp','c84a2e019b36'),('db','downgrade','b185c9a027d6'),('db','upgrade','c84a2e019b36')]:
         result=runner.invoke(args=args)
         assert result.exit_code == 0, result.output
     with app.app_context():

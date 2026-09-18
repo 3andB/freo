@@ -15,7 +15,7 @@ from selenium.webdriver.common.by import By
 from selenium.common.exceptions import StaleElementReferenceException
 from selenium.webdriver.support.ui import WebDriverWait
 from app.extensions import db
-from app.models import AutomationState, SelectionDecision, Station, Track, LiveQueueSnapshot, LiveControlCommand, MediaIngestJob
+from app.models import AutomationState, SelectionDecision, Station, Track, LiveQueueSnapshot, LiveControlCommand, MediaIngestJob, MusicImportItem
 from tests.test_web import app as app_fixture
 
 
@@ -186,19 +186,15 @@ def test_file_picker_and_drop_import_results(booth):
     browser_audio=Path('/tmp')/upload_dir.name/audio.name if browser_tmp.exists() else audio
     driver.find_element(By.ID,'media-file').send_keys(str(browser_audio))
     wait_text(driver,'#selected-files','picked.mp3')
-    driver.find_element(By.CSS_SELECTOR,'#media-upload-form [type=submit]').click()
-    wait_text(driver,'.import-card:last-child','Waiting for audio processing')
+    wait_text(driver,'.import-card:last-child','Uploaded')
     shutil.rmtree(upload_dir)
-    with app.app_context():assert MediaIngestJob.query.count()==1
+    with app.app_context():assert MusicImportItem.query.count()==1 and MediaIngestJob.query.count()==0
     driver.execute_script("const data=new DataTransfer();data.items.add(new File(['drop audio'],'dropped.mp3',{type:'audio/mpeg'}));document.querySelector('.drop-zone').dispatchEvent(new DragEvent('drop',{dataTransfer:data,bubbles:true,cancelable:true}));")
+    wait_text(driver,'.import-card:last-child','Uploaded')
+    with app.app_context():assert MusicImportItem.query.count()==2
+    driver.refresh()
+    WebDriverWait(driver,8).until(lambda d:len(d.find_elements(By.CSS_SELECTOR,'.import-card'))==2)
     wait_text(driver,'#selected-files','dropped.mp3')
-    driver.find_element(By.CSS_SELECTOR,'#media-upload-form [type=submit]').click()
-    wait_text(driver,'.import-card:last-child','Waiting for audio processing')
-    with app.app_context():
-        jobs=MediaIngestJob.query.all();assert len(jobs)==2
-        jobs[-1].status='accepted';jobs[-1].track_id=Track.query.first().id;Track.query.first().analysis_status='complete';db.session.commit()
-    wait_text(driver,'#selected-files','Enabled for broadcast')
-    assert driver.find_element(By.CSS_SELECTOR,'#selected-files a').get_attribute('href').startswith(base+'/admin/stations/test-station/media/')
 
 
 def test_recursive_folder_drop_and_cancelled_song_drag(booth):
@@ -219,9 +215,9 @@ def test_recursive_folder_drop_and_cancelled_song_drag(booth):
       document.querySelector('.drop-zone').dispatchEvent(event);
     """)
     wait_text(driver,'#selected-files','nested.mp3')
-    driver.find_element(By.CSS_SELECTOR,'#media-upload-form [type=submit]').click()
-    wait_text(driver,'.import-card:last-child','Waiting for audio processing')
-    with app.app_context():assert MediaIngestJob.query.one().original_filename=='nested.mp3'
+    wait_text(driver,'.import-card:last-child','Uploaded')
+    with app.app_context():assert MusicImportItem.query.one().original_filename=='nested.mp3'
+
 
 
 

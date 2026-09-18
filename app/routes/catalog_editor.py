@@ -36,7 +36,7 @@ def cover_url(song):
 
 def state(song):
     eligible = song.enabled and not song.decommissioned_at and any(c.enabled for c in song.categories)
-    return dict(uuid=song.uuid, isrc=song.isrc, title=song.title, artist=song.artist, album=song.album, track_number=song.track_number, artist_id=song.artist_id, album_id=song.album_id,
+    return dict(uuid=song.uuid, isrc=song.isrc, title=song.title, artist=song.artist, album=song.album, track_number=song.track_number, disc_number=song.disc_number, release_year=song.release_year, artist_id=song.artist_id, album_id=song.album_id, album_artist_id=song.catalog_album.artist_id if song.catalog_album else None, album_artist=song.album_artist,
                 enabled=song.enabled, analysis=song.analysis_status, error=song.analysis_error,
                 processing_requested=song.analysis_requested, waveform=song.waveform, cover=cover_url(song),
                 tags=[t.id for t in song.tags], categories=[c.id for c in song.categories],
@@ -69,7 +69,7 @@ def create(slug, kind):
             row=album_for(station.id,artist,name,year=None)
         else: return jsonify(message='Unknown catalog type'),404
         audit('catalog_created',user_id=current_admin().id,station_id=station.id,target_type=kind,target_id=str(row.id),summary=name)
-        db.session.commit();return jsonify(id=row.id,name=name)
+        db.session.commit();return jsonify(id=row.id,name=row.name if kind=='artists' else row.title, **({'artist_id':row.artist_id,'cover_id':row.cover_id} if kind=='albums' else {}))
     except (ValueError,IntegrityError) as error:
         db.session.rollback();return jsonify(message=str(error) if isinstance(error,ValueError) else 'That entry already exists. Select it from the list.'),409
 
