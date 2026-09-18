@@ -84,3 +84,69 @@ def test_cue_auto_toggle_search_and_keyboard_reorder(booth):
     buttons = driver.find_elements(By.CSS_SELECTOR, '.cue-dialog-actions button')
     buttons[2].click()
     assert len(rows()) == 2
+
+
+def test_cue_light_follows_playback_and_connection(booth):
+    app, driver, base, tmp_path = booth
+    wait = WebDriverWait(driver, 12, ignored_exceptions=(StaleElementReferenceException,))
+    panel = driver.find_element(By.CSS_SELECTOR, '.cue-panel')
+    def activity(value):
+        wait.until(lambda d: panel.get_attribute('data-cue-activity') == value)
+    def glow_style(property):
+        return driver.execute_script('return getComputedStyle(arguments[0], "::before").getPropertyValue(arguments[1])', panel, property)
+    activity('idle')
+    driver.find_element(By.CSS_SELECTOR, '[data-add-cue]').click()
+    wait.until(lambda d: d.find_elements(By.CSS_SELECTOR, '#booth-cue-list [data-cue-entry]'))
+    wait_text(driver, '#cue-save-state', 'Saved')
+    driver.find_element(By.CSS_SELECTOR, '#booth-cue-list [data-load-deck="B"]').click()
+    apply_browser_command(app, 'LOAD', 'B')
+    wait_text(driver, '#cue-title', 'Verified Test Track')
+    activity('idle')  # Preparing a deck is not playback.
+    driver.find_element(By.CSS_SELECTOR, '[data-deck="B"][data-operation="PLAY"]').click()
+    apply_browser_command(app, 'PLAY', 'B')
+    activity('playing')
+    wait.until(lambda d: float(glow_style('opacity')) > .95)
+    assert glow_style('animation-name') == 'cue-warm-light'
+    assert glow_style('animation-duration') == '9s'
+    assert glow_style('pointer-events') == 'none'
+    driver.set_window_size(1440, 1000)
+    for theme in ('day', 'night'):
+        driver.execute_script('document.documentElement.dataset.theme=arguments[0]', theme)
+        assert driver.execute_script('return document.documentElement.scrollWidth <= innerWidth')
+        driver.save_screenshot('/tmp/freo-cue-glow-' + theme + '.png')
+    driver.set_window_size(390, 844)
+    panel.location_once_scrolled_into_view
+    assert driver.execute_script('return document.documentElement.scrollWidth <= innerWidth')
+    driver.save_screenshot('/tmp/freo-cue-glow-mobile.png')
+    driver.execute_cdp_cmd('Emulation.setEmulatedMedia', {'features': [{'name': 'prefers-reduced-motion', 'value': 'reduce'}]})
+    assert glow_style('animation-name') == 'none'
+    assert float(glow_style('opacity')) == 1
+    driver.execute_cdp_cmd('Emulation.setEmulatedMedia', {'features': []})
+    driver.set_window_size(1440, 1000)
+    # Reset the mobile scroll before clicking beneath the fixed desktop header.
+    driver.execute_script('window.scrollTo(0, 0)')
+    driver.find_element(By.CSS_SELECTOR, '[data-deck="B"][data-operation="PAUSE"]').click()
+    apply_browser_command(app, 'PAUSE', 'B')
+    activity('idle')
+    driver.find_element(By.ID, 'cue-auto').click()
+    activity('armed')
+    wait.until(lambda d: abs(float(glow_style('opacity')) - .4) < .01)
+    # A failed request must extinguish the glow and recover automatically.
+    driver.execute_cdp_cmd('Network.enable', {})
+    driver.execute_cdp_cmd('Network.emulateNetworkConditions', {'offline': True, 'latency': 0, 'downloadThroughput': -1, 'uploadThroughput': -1})
+    activity('idle')
+    driver.execute_cdp_cmd('Network.emulateNetworkConditions', {'offline': False, 'latency': 0, 'downloadThroughput': -1, 'uploadThroughput': -1})
+    activity('armed')
+    # A request that never settles must also lose its active indication.
+    driver.execute_script('''
+      window.cueOriginalFetch = window.fetch; window.cuePendingFetches = [];
+      window.fetch = (...args) => String(args[0]).includes('/live-status')
+        ? new Promise(resolve => window.cuePendingFetches.push(() => resolve(window.cueOriginalFetch(...args))))
+        : window.cueOriginalFetch(...args);
+    ''')
+    activity('idle')
+    driver.execute_script('window.fetch=window.cueOriginalFetch; window.cuePendingFetches.forEach(resume => resume());')
+    activity('armed')
+    driver.find_element(By.ID, 'cue-auto').click()
+    activity('idle')
+    wait.until(lambda d: float(glow_style('opacity')) < .01)

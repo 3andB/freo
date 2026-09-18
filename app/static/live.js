@@ -330,6 +330,7 @@
       window.dispatchEvent(new CustomEvent('freo-booth-refreshed'));
     }catch(_){
       if(version!==refreshVersion)return;
+      cueUI.disconnect();
       text('live-playout','Reconnecting — controls will recover automatically');
       if(state)state={...state,playout_error:'Connection delayed'};autoControls();paintCarts();systemStatus();
       text('morph-kicker','CONNECTION DELAY · LAST OBSERVED');programTarget=0;

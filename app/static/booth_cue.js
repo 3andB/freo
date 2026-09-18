@@ -4,6 +4,16 @@ window.FreoCue = {
     const $ = id => document.getElementById(id), list = $('booth-cue-list');
     const panel = root.querySelector('.cue-panel'), workspace = root.querySelector('.cue-workspace');
     let cue = null, latest = null, signature = '', saving = false, dragging = false, searchVersion = 0, searchTimer;
+    let lastObservation = -Infinity;
+    function paintActivity() {
+      const connected = performance.now() - lastObservation < 5000 && latest?.observation_fresh && !latest.playout_error &&
+        latest.desired_state === 'running' && latest.broadcast?.online !== false && latest.mode === 'DJ_BOOTH' && root.dataset.board !== 'LIVE_MIC';
+      const playing = connected && cue?.entries.some(song => song.decks.some(deck => deck.playing &&
+        latest.current?.decision_id === latest.mixer?.[deck.deck.toLowerCase()]?.decision_id));
+      panel.dataset.cueActivity = playing ? 'playing' : connected && cue?.auto_enabled ? 'armed' : 'idle';
+    }
+    function disconnect() {lastObservation = -Infinity; paintActivity();}
+    scope.interval(paintActivity, 500);
     let category = new URL(location.href).searchParams.get('category') || '', offset = 0;
     const time = ms => {const seconds = Math.round((ms || 0) / 1000); return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;};
     const el = (tag, text, cls) => {const node = document.createElement(tag); if (text !== undefined) node.textContent = text; if (cls) node.className = cls; return node;};
@@ -16,9 +26,11 @@ window.FreoCue = {
       return ok;
     }
     function render(state) {
+      if (state !== latest) lastObservation = performance.now();
       latest = state;
-      if (!state.cue_list) return;
+      if (!state.cue_list) {disconnect(); return;}
       cue = state.cue_list;
+      paintActivity();
       $('cue-name').textContent = cue.name; $('cue-name').title = cue.name;
       $('cue-total').textContent = cue.entries.length;
       $('cue-duration').textContent = time(cue.entries.reduce((sum, song) => sum + (song.duration_ms || 0), 0));
@@ -149,6 +161,7 @@ window.FreoCue = {
     searchSongs();
     return {
       render,
+      disconnect,
       add: (identifier, before = '') => edit('add', {identifier, before}),
       move: (entry_id, before = '') => entry_id !== before && edit('move', {entry_id, before}),
       drag(active) {dragging = active; if (!active && latest) render(latest);},

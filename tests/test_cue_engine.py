@@ -18,14 +18,16 @@ from tests.test_web import app
 pytestmark = pytest.mark.skipif(os.environ.get('FREO_ENGINE_TEST') != '1', reason='Explicit isolated Liquidsoap integration')
 
 
-def test_cue_cycles_from_manual_song_and_rotates_actual_end(app, tmp_path, monkeypatch):
+@pytest.mark.parametrize('reorder_during_playback', [False, True], ids=['cycle', 'reorder'])
+def test_cue_cycles_from_manual_song_and_rotates_actual_end(app, tmp_path, monkeypatch, reorder_during_playback):
     media = tmp_path/'media'; runtime = tmp_path/'runtime'; directory = runtime/'test-station'; directory.mkdir(parents=True)
     originals = media/'test-station'/'originals'; originals.mkdir(parents=True)
     monkeypatch.setenv('FREO_MEDIA_ROOT', str(media))
     monkeypatch.setenv('FREO_LIVE_MIC', '0')
     monkeypatch.setattr('app.services.playout_queue.SOCKET_ROOT', runtime)
     monkeypatch.setattr('app.automation_worker.EVENT_ROOT', runtime)
-    for key, frequency in [('a', 440), ('b', 880)]:
+    tones = [('a', 440), ('b', 880)] + ([('c', 1320)] if reorder_during_playback else [])
+    for key, frequency in tones:
         subprocess.run(['ffmpeg', '-v', 'error', '-f', 'lavfi', '-i', f'sine=frequency={frequency}:duration=6', '-y', str(originals/(key*32+'.mp3'))], check=True)
     with app.app_context():
         station = Station.query.filter_by(slug='test-station').one()
@@ -38,6 +40,10 @@ def test_cue_cycles_from_manual_song_and_rotates_actual_end(app, tmp_path, monke
             return mutate(station, user, dict(revision=str(cue.revision if cue else 0), nonce=str(uuid.uuid4()), **data))
         edit(operation='add', identifier=first.uuid)
         edit(operation='add', identifier=second.uuid)
+        if reorder_during_playback:
+            third = Track(station_id=station.id, uuid=str(uuid.uuid4()), title='Reordered cue song', artist='Test', original_filename='c.mp3', storage_key='c'*32+'.mp3', media_type='mp3', duration_ms=6000, sample_rate_hz=44100, channels=1, file_size_bytes=1000, checksum_sha256='c'*64, enabled=True, ingest_status='accepted')
+            db.session.add(third); db.session.commit()
+            edit(operation='add', identifier=third.uuid)
         cue = db.session.get(BoothCue, station.id)
         initial = [entry['id'] for entry in cue.entries]
         source = render_liquidsoap(station, 'a'*64).replace('/run/freo/playout/test-station', str(directory))
@@ -63,19 +69,34 @@ def test_cue_cycles_from_manual_song_and_rotates_actual_end(app, tmp_path, monke
                 cycle()
                 edit(operation='auto', enabled='true')
                 started = []
+                restarted_reader = False
                 deadline = time.monotonic()+50
                 while time.monotonic() < deadline:
                     observed = cycle()
                     current = observed['current']
                     if current and (not started or started[-1] != current['decision_id']):
                         started.append(current['decision_id'])
+                    if len(started) == 2 and not restarted_reader:
+                        # Recreate the worker reader while a Cue song is airing.
+                        # Its replay must not rotate or start the same entry twice.
+                        reader = EventReader()
+                        restarted_reader = True
+                        if reorder_during_playback:
+                            edit(operation='move', entry_id=initial[2], before=initial[1])
                     if len(started) >= 4:
                         break
                     time.sleep(.12)
                 assert len(started) >= 4, (started, cue.message, (directory/'events.log').read_text(), (tmp_path/'engine.log').read_text()[-2000:])
-                assert [db.session.get(SelectionDecision, key).track_id for key in started[:4]] == [first.id, first.id, second.id, first.id]
-                assert [entry['id'] for entry in cue.entries] == initial
+                expected_tracks = [first.id, first.id, third.id, second.id] if reorder_during_playback else [first.id, first.id, second.id, first.id]
+                assert [db.session.get(SelectionDecision, key).track_id for key in started[:4]] == expected_tracks
+                expected_order = [initial[1], initial[0], initial[2]] if reorder_during_playback else initial
+                assert [entry['id'] for entry in cue.entries] == expected_order
                 assert CuePlayback.query.filter(CuePlayback.completed_at.isnot(None)).count() >= 3
+                # Disarming must leave the current song on air.
+                edit(operation='auto', enabled='false')
+                still_playing = cycle()
+                assert still_playing['current']['decision_id'] == current['decision_id']
+                edit(operation='auto', enabled='true')
                 # Pause must freeze the song and disarm without rotating it.
                 current = observed['mixer']['a']
                 request_deck(station, user, 'A', 'PAUSE', '', str(current['decision_id']), str(uuid.uuid4()))
@@ -100,9 +121,9 @@ def test_cue_cycles_from_manual_song_and_rotates_actual_end(app, tmp_path, monke
         heard = set()
         for start in range(0, len(mono)-rate//5, rate//5):
             chunk = mono[start:start+rate//5]
-            for hz in (440, 880):
+            for _, hz in tones:
                 real = sum(value*math.cos(2*math.pi*hz*i/rate) for i, value in enumerate(chunk)) / len(chunk)
                 imaginary = sum(value*math.sin(2*math.pi*hz*i/rate) for i, value in enumerate(chunk)) / len(chunk)
                 if math.hypot(real, imaginary) > 100:
                     heard.add(hz)
-        assert heard == {440, 880}
+        assert heard == {hz for _, hz in tones}
