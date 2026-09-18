@@ -70,7 +70,7 @@ def state_json(station):
     snapshot=LiveQueueSnapshot.query.filter_by(station_id=station.id).first()
     current=SelectionDecision.query.filter_by(id=snapshot.current_decision_id,station_id=station.id).first() if snapshot and snapshot.current_decision_id else None
     playing_fallback=bool(current and current.reason=='default_playlist')
-    return dict(playing_fallback=playing_fallback,mode=row.mode if row else 'CALENDAR',activated=bool(row and row.activated),revision=row.revision if row else 1,
+    return dict(playing_fallback=playing_fallback,held=bool(station.automation and station.automation.hold),mode=row.mode if row else 'CALENDAR',activated=bool(row and row.activated),revision=row.revision if row else 1,
         calendar=row.calendar if row and row.calendar_saved else legacy_calendar(station) if not row or not row.activated else [],
         assignments=row.assignments if row else [],simple=row.simple if row else None,
         fallback=vs.fallback(station),transition=dict(id=command.id,state=command.state,mode=command.mode,error=command.error) if command else None,
@@ -119,7 +119,8 @@ def read(slug,action):
             from app.services.timed_events import _instants
             start=date.fromisoformat(request.args['date']);days=vs.integer(request.args.get('days','7'),1,42,'Days')
             zone=ZoneInfo(station.timezone)
-            begin=vs._wall_to_utc(datetime.combine(start,datetime.min.time()),zone);end=begin+timedelta(days=days)
+            begin=vs._wall_to_utc(datetime.combine(start,datetime.min.time()),zone)
+            end=vs._wall_to_utc(datetime.combine(start+timedelta(days=days),datetime.min.time()),zone)
             result=[]
             for event in TimedEvent.query.filter_by(station_id=station.id,enabled=True):
                 for at in _instants(event,begin,end):
@@ -139,7 +140,21 @@ def write(slug,action):
         data=json.loads(request.form.get('payload','{}'))
         if not isinstance(data,dict):raise ValueError('Invalid request')
         db.session.query(Station.id).filter_by(id=station.id).with_for_update().first()
-        if action=='composition':
+        if action=='block-workspace':
+            schedule=ChannelSchedule.query.filter_by(station_id=station.id).with_for_update().first() or vs.policy(station,True)
+            if schedule.revision!=data.get('revision'):
+                raise ValueError('Another editor changed this schedule. Reload before saving.')
+            if ScheduleTransition.query.filter_by(station_id=station.id).filter(ScheduleTransition.state.in_(('PENDING','PREPARING','FADING'))).first():
+                raise ValueError('Wait for the mode change to finish before editing.')
+            composition=data.get('composition')
+            if not isinstance(composition,dict) or composition.get('kind')!='BLOCK':
+                raise ValueError('Choose a Block')
+            row=vs.save_composition(station,composition)
+            db.session.flush()
+            schedule.assignments=vs.clean_document(station,data.get('items',[]),assignments=True)
+            schedule.revision+=1
+            output=dict(composition=vs.composition_json(row),revision=schedule.revision)
+        elif action=='composition':
             row=vs.save_composition(station,data);db.session.flush();output=vs.composition_json(row)
         elif action in ('apply-revision','apply-revision-preview'):
             composition=ScheduleComposition.query.filter_by(id=data.get('id'),station_id=station.id).first()

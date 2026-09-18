@@ -143,6 +143,8 @@ def clean_sections(station, sections, duration, kind):
         raise ValueError('Use at most 500 sections')
     result, ids = [], set()
     for item in sections:
+        if not isinstance(item, dict):
+            raise ValueError('Each section must be an object')
         identity = str(item.get('id') or uuid.uuid4())
         if len(identity)>36 or identity in ids:
             raise ValueError('Section identities must be unique')
@@ -158,7 +160,11 @@ def clean_sections(station, sections, duration, kind):
             ref['artists']=[member['id'] for member in members]
             ref['name']=' + '.join(member['name'] for member in members)
         inserts = []
+        if not isinstance(item.get('inserts', []), list):
+            raise ValueError('Inserts must be a list')
         for insert in item.get('inserts', []):
+            if not isinstance(insert, dict):
+                raise ValueError('Each insert must be an object')
             if len(inserts)>=100:
                 raise ValueError('Use at most 100 inserts per section')
             target = source(station, insert.get('source'), allow_show=False)
@@ -212,6 +218,11 @@ def clean_rule(rule):
         raise ValueError('End date is before start date')
     result = dict(frequency=frequency,anchor=anchor.isoformat(),until=until.isoformat() if until else None,
                   interval=integer(rule.get('interval',1),1,365,'Repeat interval'))
+    if rule.get('starts_on'):
+        starts_on=date.fromisoformat(rule['starts_on'])
+        if starts_on<anchor or until and starts_on>until:
+            raise ValueError('The series start must be between its anchor and end date')
+        result['starts_on']=starts_on.isoformat()
     result['weekdays'] = sorted({integer(i,0,6,'Weekday') for i in rule.get('weekdays',[anchor.weekday()])})
     if frequency=='weekly' and not result['weekdays']:
         raise ValueError('Choose repeat days')
@@ -228,7 +239,7 @@ def clean_rule(rule):
 
 def matches(rule, day):
     anchor = date.fromisoformat(rule['anchor'])
-    if day<anchor or rule.get('until') and day>date.fromisoformat(rule['until']) or day.isoformat() in rule.get('exceptions',[]):
+    if day<anchor or rule.get('starts_on') and day<date.fromisoformat(rule['starts_on']) or rule.get('until') and day>date.fromisoformat(rule['until']) or day.isoformat() in rule.get('exceptions',[]):
         return False
     frequency, interval = rule['frequency'],rule.get('interval',1)
     if frequency=='once': return day==anchor
@@ -258,6 +269,7 @@ def clean_document(station, data, assignments=False):
         raise ValueError('Use at most 1,000 schedule definitions')
     result=[]; ids=set()
     for item in data:
+        if not isinstance(item,dict):raise ValueError('Each schedule definition must be an object')
         identity=str(item.get('id') or uuid.uuid4())
         if len(identity)>36 or identity in ids:raise ValueError('Duplicate schedule identity')
         ids.add(identity)
@@ -271,22 +283,11 @@ def clean_document(station, data, assignments=False):
         else:
             value.update(start=integer(item.get('start'),0,86399,'Start'),end=integer(item.get('end'),1,172799,'End'))
             if not 0<value['end']-value['start']<=86400:raise ValueError('Intervals must be between one second and 24 hours')
-            value['source']=source(station,item.get('source'),allow_legacy=item.get('source',{}).get('kind')=='legacy')
+            ref=item.get('source')
+            value['source']=source(station,ref,allow_legacy=isinstance(ref,dict) and ref.get('kind')=='legacy')
         result.append(value)
-    # Reject same-level collisions across a year from each recurrence anchor.
-    # Runtime checks also fail closed instead of resolving ambiguous distant rules by ID.
-    anchors={date.fromisoformat(r['rule']['anchor']) for r in result}
-    check_days={anchor+timedelta(days=offset) for anchor in anchors for offset in range(370)}
-    if len(check_days)>10000:raise ValueError('Use a planning range of at most 10,000 distinct days per saved schedule.')
-    for day in sorted(check_days):
-        entries=day_entries(result,day,assignments=assignments)
-        levels={True:[],False:[]}
-        for entry in entries:
-            levels[entry['rule']['frequency'] in ('once','dates')].append(entry)
-        for rows in levels.values():
-            rows.sort(key=lambda r:r.get('start',0))
-            if any(b.get('start',0)<a.get('end',86400) for a,b in zip(rows,rows[1:])):
-                raise ValueError(f'Schedules overlap on {day}. Adjust the times or repeat rules.')
+    from app.services.schedule_conflicts import validate_overlaps
+    validate_overlaps(result, matches, assignments)
 
     return result
 
@@ -499,7 +500,7 @@ def transition_request(station,data):
     mode=data.get('mode')
     if mode not in MODES:raise ValueError('Choose Calendar, Blocks, or Simple')
     simple=source(station,data['simple']) if data.get('simple') else row.simple
-    if row.activated and mode==row.mode and (mode!='SIMPLE' or simple==row.live_simple):
+    if row.activated and mode==row.mode and (mode!='SIMPLE' or simple==row.live_simple) and not station.automation.hold:
         raise ValueError('This mode and selection are already active')
     resolved=resolve_visual(station,mode=mode,simple=simple,activation=identity)
     if not source_tracks(station,resolved['source']) and not source_tracks(station,fallback(station)):

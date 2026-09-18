@@ -1,0 +1,131 @@
+{
+  "recorded_at": "2026-09-17T22:45:44.631228+00:00",
+  "base_revision": "c9fb54b",
+  "distinct_pytest_tests_passed": 136,
+  "groups": {
+    "services_and_pure_editor": 122,
+    "browser": 8,
+    "postgres": 2,
+    "installed_engine": 1,
+    "scale": 2,
+    "continuous_playback": 1
+  },
+  "runs": {
+    "broad_services": {
+      "artifact": "/tmp/freo-scheduling-final-services.xml",
+      "tests": "119",
+      "failures": "0",
+      "errors": "0",
+      "skipped": "0",
+      "time": "271.194"
+    },
+    "browser": {
+      "artifact": "/tmp/freo-scheduling-browser-final8.xml",
+      "tests": "8",
+      "failures": "0",
+      "errors": "0",
+      "skipped": "0",
+      "time": "140.422"
+    },
+    "postgres": {
+      "artifact": "/tmp/freo-scheduling-fix-postgres.xml",
+      "tests": "2",
+      "failures": "0",
+      "errors": "0",
+      "skipped": "0",
+      "time": "5.214"
+    },
+    "engine_and_recovery": {
+      "artifact": "/tmp/freo-scheduling-final-checks.xml",
+      "tests": "17",
+      "failures": "0",
+      "errors": "0",
+      "skipped": "0",
+      "time": "77.280"
+    },
+    "scale": {
+      "artifact": "/tmp/freo-scheduling-scale-final.xml",
+      "tests": "2",
+      "failures": "0",
+      "errors": "0",
+      "skipped": "0",
+      "time": "17.939"
+    },
+    "continuous_playback": {
+      "artifact": "/tmp/freo-scheduling-soak-smoke.xml",
+      "tests": "1",
+      "failures": "0",
+      "errors": "0",
+      "skipped": "0",
+      "time": "88.147"
+    }
+  },
+  "extra_service_regressions": {
+    "artifact": "/tmp/freo-scheduling-final-regressions3.log",
+    "passed": 15,
+    "overlaps_other_runs": true
+  },
+  "health": {
+    "/health": 200,
+    "/ready": 200,
+    "/health/automation": 200,
+    "/health/icecast": 200,
+    "/health/playout": 200,
+    "/health/stream": 200
+  },
+  "deployment": {
+    "restarted": [
+      "freo.service",
+      "freo-automation.service"
+    ],
+    "audio_services_restarted": false,
+    "pending_switches_before_update": 0,
+    "rollback_source": "/tmp/freo-before-scheduling-fixes-20260917.tgz"
+  },
+  "soak": {
+    "seconds": 65,
+    "switches": [
+      [
+        "CALENDAR",
+        "SIMPLE"
+      ],
+      [
+        "SIMPLE",
+        "BLOCKS"
+      ],
+      [
+        "BLOCKS",
+        "CALENDAR"
+      ],
+      [
+        "CALENDAR",
+        "BLOCKS"
+      ],
+      [
+        "BLOCKS",
+        "SIMPLE"
+      ],
+      [
+        "SIMPLE",
+        "CALENDAR"
+      ],
+      [
+        "CALENDAR",
+        "SIMPLE"
+      ]
+    ],
+    "samples": 129,
+    "started": 20,
+    "max_switch_seconds": 3.101274345011916
+  },
+  "long_soak_completed": false,
+  "source_hashes": {
+    "app/static/schedule_editor.js": "3eab206c540a0d18b80696d32073a44e05ff82a6bd73512e8a3a1866d4b11e65",
+    "app/static/schedule_studio.js": "8de32654d4e9ad4199f211ae57409858079c9589777793859f9284c93104ba33",
+    "app/static/schedule_studio.css": "a798ba8ebd8ed9cd632ea693f465918df7c7e05b83d1d6bbcc38551fa211a225",
+    "app/services/schedule_conflicts.py": "fbdd2043b70268b6cc85939e91dd5263c468eb18a963624d6f77302e2778e9b2",
+    "app/services/visual_schedule.py": "2fe46cd82349b7aad861ddb05da39abe1b10cdbc10fb381aad194561a02889ef",
+    "app/services/schedule_switch.py": "cc9ebe19a2b1e6aeb9153fe928f6d01e5c619d1592a0653e4bcf769444d1c56f",
+    "app/routes/schedule_studio.py": "7a933b04e5b5a6416500aeed8bcc10b4c09221773238e59a015b5bed19124fe2"
+  }
+}

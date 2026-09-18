@@ -1,6 +1,6 @@
 # Music importer review and plan
 
-Date: 2026-09-18. Status: implemented in the working tree. See [implementation, testing and rollout](music-importer-testing.md). The findings below describe the original review.
+Date: 2026-09-18. Status: implemented, committed and deployed. See [implementation, testing and rollout](music-importer-testing.md). The findings below describe the original review.
 
 ## Outcome
 

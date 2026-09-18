@@ -53,7 +53,8 @@ def test_calendar_create_edit_and_mobile_layout(booth):
     driver.find_element(By.ID,'save-schedule').click()
     wait_text(driver,'#save-state','Saved')
     wait_text(driver,'#timeline','Verified Test Track')
-    driver.find_element(By.CSS_SELECTOR,'.timeline-section[aria-label^="Verified Test Track"]').click()
+    # Short tracks keep exact timeline bounds; their readable edit control is below it.
+    driver.find_element(By.XPATH,"//*[@id='short-sections']/button[contains(., 'Verified Test Track')]").click()
     assert 'Verified Test Track' in driver.find_element(By.ID,'section-source').get_attribute('value')
     driver.find_element(By.CSS_SELECTOR,'#section-inspector .dialog-close').click()
     for width in (430,820,1440):

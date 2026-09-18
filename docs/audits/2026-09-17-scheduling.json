@@ -1,0 +1,205 @@
+{
+  "date": "2026-09-17",
+  "source_revision": "c9fb54b",
+  "existing_tests_passed": 111,
+  "targeted_pytest_probes_passed": 4,
+  "application_changes": false,
+  "production_playback_audited": false,
+  "browser_observations": {
+    "overnight_inspector": {
+      "section-start": "00:00:00",
+      "section-end": "02:00:00",
+      "section-date": "2026-09-22"
+    },
+    "overnight_remove_exceptions": [
+      "2026-09-22"
+    ],
+    "series_noop_rule": {
+      "anchor": "2026-10-05",
+      "exceptions": [],
+      "frequency": "weekly",
+      "interval": 1,
+      "month_day": 5,
+      "nth": 0,
+      "until": null,
+      "weekday": 0,
+      "weekdays": [
+        0
+      ]
+    },
+    "stale_revision": {
+      "draft_revision": 5,
+      "remote_revision": 5,
+      "local_end": 36000
+    },
+    "stale_saved_end": 36000,
+    "viewports": [
+      {
+        "canvasRight": 290,
+        "pageWidth": 362,
+        "sliderRight": 278,
+        "width": 320
+      },
+      {
+        "canvasRight": 360,
+        "pageWidth": 375,
+        "sliderRight": 348,
+        "width": 390
+      },
+      {
+        "canvasRight": 706,
+        "pageWidth": 735,
+        "sliderRight": 694,
+        "width": 750
+      },
+      {
+        "canvasRight": 474,
+        "pageWidth": 753,
+        "sliderRight": 454,
+        "width": 768
+      },
+      {
+        "canvasRight": 474,
+        "pageWidth": 753,
+        "sliderRight": 454,
+        "width": 768
+      },
+      {
+        "canvasRight": 730,
+        "pageWidth": 1009,
+        "sliderRight": 710,
+        "width": 1024
+      },
+      {
+        "canvasRight": 936,
+        "pageWidth": 1265,
+        "sliderRight": 916,
+        "width": 1280
+      }
+    ],
+    "short_section": {
+      "columnBottom": 1033.828125,
+      "columnHeight": 21,
+      "overflow": 20.59375,
+      "sectionBottom": 1054.421875,
+      "sectionHeight": 22
+    }
+  },
+  "javascript_observations": {
+    "cancelled_overlap": {
+      "exceptions": [
+        "2026-09-21"
+      ],
+      "undoDepth": 0,
+      "dirty": false
+    },
+    "horizontal_only_drag": {
+      "markedMoved": false
+    }
+  },
+  "search_benchmark": {
+    "database": "isolated SQLite",
+    "tracks": 100000,
+    "median_ms": 8.3,
+    "p95_ms": 26.2,
+    "rows_per_response": 40
+  },
+  "runs": [
+    {
+      "artifact": "/tmp/freo-scheduling-audit-tests.xml",
+      "suite": [
+        {
+          "name": "pytest",
+          "errors": "3",
+          "failures": "0",
+          "skipped": "0",
+          "tests": "67",
+          "time": "247.493",
+          "timestamp": "2026-09-17T21:59:55.205320+00:00",
+          "hostname": "FreoWorld-Radio"
+        }
+      ]
+    },
+    {
+      "artifact": "/tmp/freo-scheduling-browser-audit.xml",
+      "suite": [
+        {
+          "name": "pytest",
+          "errors": "0",
+          "failures": "0",
+          "skipped": "0",
+          "tests": "4",
+          "time": "202.482",
+          "timestamp": "2026-09-17T22:02:10.080135+00:00",
+          "hostname": "FreoWorld-Radio"
+        }
+      ]
+    },
+    {
+      "artifact": "/tmp/freo-scheduling-integration-audit.xml",
+      "suite": [
+        {
+          "name": "pytest",
+          "errors": "0",
+          "failures": "0",
+          "skipped": "0",
+          "tests": "42",
+          "time": "125.471",
+          "timestamp": "2026-09-17T22:03:15.318485+00:00",
+          "hostname": "FreoWorld-Radio"
+        }
+      ]
+    },
+    {
+      "artifact": "/tmp/freo-scheduling-engine-scale.xml",
+      "suite": [
+        {
+          "name": "pytest",
+          "errors": "0",
+          "failures": "1",
+          "skipped": "0",
+          "tests": "2",
+          "time": "33.953",
+          "timestamp": "2026-09-17T22:00:20.700436+00:00",
+          "hostname": "FreoWorld-Radio"
+        }
+      ]
+    },
+    {
+      "artifact": "/tmp/freo-scheduling-engine-audit.xml",
+      "suite": [
+        {
+          "name": "pytest",
+          "errors": "0",
+          "failures": "0",
+          "skipped": "0",
+          "tests": "1",
+          "time": "26.546",
+          "timestamp": "2026-09-17T22:01:53.289582+00:00",
+          "hostname": "FreoWorld-Radio"
+        }
+      ]
+    },
+    {
+      "artifact": "/tmp/freo-scheduling-service-probes.xml",
+      "suite": [
+        {
+          "name": "pytest",
+          "errors": "0",
+          "failures": "0",
+          "skipped": "0",
+          "tests": "3",
+          "time": "21.944",
+          "timestamp": "2026-09-17T22:03:58.138664+00:00",
+          "hostname": "FreoWorld-Radio"
+        }
+      ]
+    }
+  ],
+  "notes": [
+    "Initial browser and engine socket errors were sandbox restrictions; subsequent runs with local socket access passed.",
+    "Browser viewport sampling was immediate after resizing; values are actual measured widths, not proof each requested target settled.",
+    "Targeted probes assert observed current defects or specified invariants, not successful repairs.",
+    "Two initial service probe assumptions were corrected: Playlist.enabled is derived, and the distant-collision fixture required monthly rather than annual recurrence."
+  ]
+}

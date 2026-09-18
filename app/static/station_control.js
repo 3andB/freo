@@ -31,7 +31,7 @@
       badge.textContent = badge.dataset.controlBadge === state.mode ? 'Current mode' : '';
     });
     root.querySelectorAll('[data-switch-mode]').forEach(button => {
-      const active = state.activated && button.dataset.switchMode === state.mode;
+      const active = state.activated && button.dataset.switchMode === state.mode && !state.held;
       button.disabled = busy || pending() || active;
       button.textContent = active ? 'Active mode' : `Use ${title(button.dataset.switchMode)}`;
     });

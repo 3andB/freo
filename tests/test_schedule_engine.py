@@ -30,10 +30,11 @@ def test_confirmed_switch_fades_immediately_and_retry_does_not_restart(app,tmp_p
         with (tmp_path/'engine.log').open('w') as log:
             proc=subprocess.Popen(['liquidsoap',str(config)],stdout=log,stderr=log)
             try:
-                for _ in range(300):
+                for _ in range(900):
                     if (directory/'control.sock').exists():break
                     if proc.poll() is not None:pytest.fail((tmp_path/'engine.log').read_text()[-3000:])
                     time.sleep(.1)
+                assert (directory/'control.sock').exists(),(tmp_path/'engine.log').read_text()[-3000:]
                 current=SelectionDecision(station_id=station.id,track_id=song.id,status='selected');db.session.add(current);db.session.commit()
                 current.liquidsoap_request_id=push_decision(current);current.socket_identity=socket_identity(station.slug);current.status='queued';db.session.commit()
                 reader=EventReader()
