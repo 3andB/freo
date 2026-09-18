@@ -121,7 +121,7 @@ def render_liquidsoap(station, password, audio_settings=None):
         '__EVENT_FILE__': json.dumps(f'/run/freo/playout/{slug}/events.log'),
         '__FREQUENCY__': str(frequency),
         '__OPERATOR_MODE__': json.dumps('DJ_BOOTH' if station.automation and station.automation.operator_mode == 'DJ_BOOTH' else 'AUTO'),
-        '__TITLE__': json.dumps(f'{station.name} Engine Test'),
+        '__TITLE__': json.dumps(f'{station.name} · Broadcast tone'),
         '__MOUNT__': json.dumps('/' + slug),
         '__SOURCE_PASSWORD__': json.dumps(password),
         '__NAME__': json.dumps(station.name),
@@ -209,6 +209,10 @@ def wait_audio_online(station, timeout=60):
     from app.routes.stations import observed_status
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
+        from app.extensions import db
+        db.session.refresh(station)
+        if station.desired_state != 'running':
+            raise RuntimeError('Master broadcast is OFF')
         status = observed_status(station)
         if status['playout'] == 'running' and status['stream'] == 'online':
             return
@@ -226,7 +230,9 @@ def restore_audio(station):
         target = CONFIGS / f'{validate_slug(station.slug)}.liq'
         staged = atomic_install(target, backup.read_text(), 0o640, 'root', 'freo-playout')
         os.replace(staged, target)
-        if station.desired_state == 'running' or service_action(station.slug, 'status'):
+        from app.extensions import db
+        db.session.refresh(station)
+        if station.desired_state == 'running':
             service_action(station.slug, 'restart')
             wait_audio_online(station)
         backup.unlink()
@@ -259,7 +265,7 @@ def apply_audio(station, values):
         if not backup.exists():
             saved = atomic_install(backup, target.read_text(), 0o640, 'root', 'freo-playout')
             os.replace(saved, backup)
-        running = service_action(slug, 'status') or station.desired_state == 'running'
+        running = station.desired_state == 'running'
         os.replace(staged, target)
         if running:
             service_action(slug, 'restart')

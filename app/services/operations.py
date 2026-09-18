@@ -70,6 +70,8 @@ def connection(stations, now):
 
 def snapshot(stations, now=None):
     now = time.time() if now is None else now
+    from app.services.broadcast_status import cached_status
+    broadcasts = cached_status(stations, now)
     station_ids = [station.id for station in stations]
     stats = {s.scope: s.data for s in StatsState.query.filter(StatsState.scope.in_([0, *station_ids]))}
     live = {s.station_id: s for s in LiveQueueSnapshot.query.filter(LiveQueueSnapshot.station_id.in_(station_ids))}
@@ -92,9 +94,8 @@ def snapshot(stations, now=None):
         sample = stats.get(station.id, {})
         observed = live.get(station.id)
         stats_fresh = fresh(sample.get('at'), now, 45)
-        broadcast_fresh = bool(observed and fresh(observed.broadcast_observed_at, now, 15))
-        online = sample.get('online') if stats_fresh else observed.broadcast_online if broadcast_fresh else None
-        listeners = sample.get('listeners') if stats_fresh else observed.listeners if broadcast_fresh else None
+        online = broadcasts[station.slug]['online']
+        listeners = broadcasts[station.slug]['listeners']
         reliable = bool(observed and fresh(observed.observed_at, now, 10) and not observed.error_code)
         playing = current.get(observed.current_decision_id) if reliable else None
         if playing and (playing.station_id != station.id or playing.status != 'started'):

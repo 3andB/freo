@@ -14,3 +14,11 @@
 #control-message:empty, #control-transition:empty { display: none; }
 #control-message.error { color: var(--theme-danger); }
 @media (max-width: 1100px) { .control-modes { grid-template-columns: 1fr; } }
+.master-broadcast { display:flex; flex-wrap:wrap; align-items:center; gap:20px; padding:24px; margin-bottom:20px; }
+.master-broadcast > div { flex:1 1 300px; }
+.master-broadcast h2 { margin:0; }
+.master-broadcast p { margin-bottom:0; }
+#master-broadcast-toggle { min-width:100px; padding:16px 24px; border:2px solid var(--theme-border); border-radius:28px; background:#080808; color:#fff; font:800 18px system-ui,sans-serif; cursor:pointer; }
+#master-broadcast-toggle[aria-checked="true"] { background:#c41626; border-color:#e52132; }
+#master-broadcast-toggle:disabled { opacity:.6; cursor:wait; }
+#broadcast-message { flex-basis:100%; }

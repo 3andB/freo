@@ -187,7 +187,7 @@ def program_decision_id(slug):
 def mixer_state(slug):
     import math
     parts = _command(slug, 'freo_mixer.state').split('|')
-    if len(parts) not in (9,13,16) or parts[0] not in ('AUTO','DJ_BOOTH') or any(value not in ('true','false') for value in parts[2:4]):
+    if len(parts) not in (9,13,16,17) or parts[0] not in ('AUTO','DJ_BOOTH') or any(value not in ('true','false') for value in parts[2:4]):
         raise RuntimeError('Invalid mixer state')
     numeric = [float(parts[index]) for index in (1,7,8)]
     if not all(math.isfinite(value) for value in numeric) or not 0 <= numeric[0] <= 1:
@@ -201,11 +201,15 @@ def mixer_state(slug):
             raise RuntimeError('Invalid deck transition')
         transition = dict(incoming=parts[9] or None,progress=levels[0],a_gain=levels[1],b_gain=levels[2])
     extra={}
-    if len(parts)==16:
+    if len(parts)>=16:
         gain=float(parts[15])
         if parts[13] not in ('true','false') or (parts[14] and not REQUEST_ID.fullmatch(parts[14])) or not math.isfinite(gain) or not 0<=gain<=1:
             raise RuntimeError('Invalid Auto source state')
         extra=dict(auto_standby=parts[13]=='true',auto_id=int(parts[14]) if parts[14] else None,auto_gain=gain)
+    if len(parts)==17:
+        if parts[16] not in ('true','false'):
+            raise RuntimeError('Invalid broadcast tone state')
+        extra['tone'] = parts[16] == 'true'
     return dict(**extra,transition=transition,mode=parts[0],crossfader=numeric[0],a_playing=parts[2]=='true',b_playing=parts[3]=='true',
                 a_id=int(parts[4]) if parts[4] else None,b_id=int(parts[5]) if parts[5] else None,
                 cart_id=int(parts[6]) if parts[6] else None,a_elapsed=max(0,numeric[1]),b_elapsed=max(0,numeric[2]))

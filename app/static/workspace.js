@@ -67,7 +67,7 @@
     if(audio.paused||monitorContext?.state!=='running'||!monitorAnalysers)return [0,0];
     return monitorAnalysers.map(({analyser,data})=>{analyser.getFloatTimeDomainData(data);return Math.sqrt(data.reduce((sum,value)=>sum+value*value,0)/data.length)*audio.volume;});
   };
-  let host = null, station = '', stationName = '', stream = '', wanted = false, state = 'off', attempt = 0;
+  let host = null, station = '', stationName = '', stream = '', wanted = false, state = 'off', attempt = 0, nowStation = '';
   const render = () => {
     if (!host) return;
     const button = host.querySelector('button');
@@ -75,6 +75,13 @@
     button.classList.toggle('is-listening', state === 'listening');
     host.querySelector('.monitor-state').textContent = `${stationName || 'Select a station'} · ${state}`;
     document.querySelectorAll('[data-monitor-toggle]').forEach(el => el.textContent = wanted ? 'MUTE MONITOR' : 'MONITOR');
+    document.querySelectorAll('[data-monitor-station]').forEach(row => {
+      const button = row.querySelector('[data-station-monitor-toggle]');
+      const listening = row.dataset.monitorStation === station && wanted;
+      button.disabled = !row.dataset.stream;
+      button.setAttribute('aria-pressed', String(listening));
+      button.textContent = listening ? 'MUTE MONITOR' : 'MONITOR';
+    });
   };
   const stop = () => {attempt++; wanted = false; audio.pause(); audio.removeAttribute('src'); audio.load(); state = 'off'; render();};
   const play = async () => {
@@ -102,7 +109,7 @@
   const refreshNow = async () => {
     clearTimeout(nowTimer);
     nowRequest?.abort();
-    const version = ++nowVersion, slug = station;
+    const version = ++nowVersion, slug = nowStation;
     if (!document.querySelector('[data-now-playing]')) return;
     if (!slug) {showNow('Select a station', null); return;}
     const controller = new AbortController(); nowRequest = controller;
@@ -132,6 +139,48 @@
       if (version === nowVersion) nowTimer = setTimeout(refreshNow, 3000);
     }
   };
+  const mountBroadcast = () => {
+    const strip = document.querySelector('[data-station-monitors]');
+    if (!strip) return;
+    const scope = window.FreoPage;
+    strip.querySelectorAll('[data-monitor-station]').forEach(row => {
+      scope.listen(row.querySelector('button'), 'click', () => {
+        if (wanted && station === row.dataset.monitorStation) {stop(); return;}
+        stop(); station = row.dataset.monitorStation; stationName = row.dataset.stationName;
+        stream = row.dataset.stream; play();
+      });
+    });
+    let pending = false;
+    const paint = stations => document.querySelectorAll('[data-broadcast-station]').forEach(el => {
+      const row = stations[el.dataset.broadcastStation];
+      const online = row?.online === true;
+      const description = row?.online === true ? (row.tone ? 'Online · Broadcasting tone' : 'Online')
+        : row?.online === false ? 'Offline' : 'Status unknown · observation unavailable';
+      el.classList.toggle('is-online', online);
+      el.title = description;
+      el.querySelector('[data-broadcast-description]').textContent = ' · ' + description;
+      const label = el.querySelector('[data-broadcast-label]');
+      if (label) label.textContent = online ? 'STATION LIVE' : 'NOT LIVE';
+    });
+    const refresh = async () => {
+      if (pending || document.hidden) return;
+      pending = true;
+      const controller = new AbortController();
+      const abort = () => controller.abort();
+      scope.signal.addEventListener('abort', abort, {once:true});
+      const timeout = setTimeout(abort, 6000);
+      try {
+        const response = await scope.fetch(strip.dataset.broadcastUrl, {cache:'no-store', signal:controller.signal});
+        if (!response.ok) throw Error('Status unavailable');
+        const data = await response.json();
+        if (!scope.signal.aborted) paint(data.stations);
+      } catch (_) { if (!scope.signal.aborted) paint({}); }
+      finally {clearTimeout(timeout); scope.signal.removeEventListener('abort', abort); pending = false;}
+    };
+    scope.interval(refresh, 4000);
+    scope.listen(document, 'visibilitychange', () => {if (!document.hidden) refresh();});
+    refresh();
+  };
   const mount = () => {
     const header = document.querySelector('.admin-topbar');
     if (header) {
@@ -144,7 +193,7 @@
     const placeholder = document.querySelector('[data-master-monitor]');
     if (!placeholder) {stop(); host?.remove(); clearTimeout(nowTimer); nowVersion++; nowRequest?.abort(); return;}
     const availableStations = placeholder.dataset.availableStations ? JSON.parse(placeholder.dataset.availableStations) : null;
-    const preserve = placeholder.hasAttribute('data-preserve-station') && (!availableStations || availableStations.includes(station));
+    const preserve = Boolean(station) && placeholder.hasAttribute('data-preserve-station') && (!availableStations || availableStations.includes(station));
     const next = preserve ? station : placeholder.dataset.station || '', nextStream = preserve ? stream : placeholder.dataset.stream || '';
     stationName = preserve ? stationName : placeholder.dataset.stationName || '';
     if (!host) {
@@ -160,11 +209,20 @@
       const resume = wanted; station = next; stream = nextStream;
       if (resume) {stop(); play();}
     }
+    const nextNow = placeholder.dataset.station || next;
+    if (nextNow !== nowStation) {lastPlaying = null; showNow('Checking playback…', null);}
+    nowStation = nextNow;
+    mountBroadcast();
     render();
     if (lastPlaying) showNow('Checking playback…', lastPlaying);
     refreshNow();
   };
-  window.FreoMonitor = {toggle: () => wanted ? stop() : play(), stop, audio, levels:monitorLevels};
+  window.FreoMonitor = {toggle: () => {
+    const selected = [...document.querySelectorAll('[data-monitor-station]')].find(row => row.dataset.monitorStation === nowStation);
+    if (selected && station !== nowStation) {
+      stop(); station = nowStation; stationName = selected.dataset.stationName; stream = selected.dataset.stream; play();
+    } else {wanted ? stop() : play();}
+  }, stop, audio, levels:monitorLevels};
 
   let navigating = false, dirty = false;
   // Browser fragment navigation also emits popstate. Track the rendered page,

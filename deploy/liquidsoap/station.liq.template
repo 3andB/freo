@@ -356,10 +356,8 @@ music_b = amplify({b_fade_gain() * b_mix() * main_gain() * mic_program_gain()}, 
 music_auto = amplify(override="freo_gain", 1.0, queue)
 music_auto = mksafe(switch(track_sensitive=false, [({auto_play() and main_active()}, music_auto)]))
 music_auto = amplify({auto_mix()*main_gain()*schedule_fade_gain()*mic_program_gain()}, music_auto)
-backup = mksafe(switch(track_sensitive=false, [({auto_play() and not queue.is_ready() and main_active()}, tone)]))
-backup = amplify({auto_mix()*main_gain()*mic_program_gain()}, backup)
 mic_audio = amplify({if cart_takeover() and cart.is_ready() then 0.0 else mic_gain()*main_gain() end}, mksafe(mic_input))
-radio = add(normalize=false, [music_auto, music_a, music_b, mksafe(cart), backup, mic_audio])
+radio = add(normalize=false, [music_auto, music_a, music_b, mksafe(cart), mic_audio])
 # Confirmed channel mode changes fade the complete outgoing program, including
 # a cart or DJ source, then atomically replace the queue with prepared audio.
 schedule_switch_token = ref("")
@@ -404,6 +402,16 @@ server.register(namespace="freo_schedule", "switch", fun (value) -> begin
 end)
 __AUDIO_PROCESSING__
 radio = amplify({if schedule_switch_end() > 0.0 then max(0.0, min(1.0, (schedule_switch_end()-time())/2.0)) else 1.0 end}, radio)
+# The complete program is protected, including empty/paused DJ decks and live
+# disconnects. Three seconds avoids tone during ordinary speech pauses/fades.
+tone_active = ref(true)
+program = blank.detect(max_blank=3.0, min_noise=0.1, threshold=-55.0, start_blank=true, track_sensitive=false,
+  on_noise={tone_active := false}, {tone_active := true}, radio)
+# Always consume the program so paused/empty sources can recover while tone is
+# audible. Making the already-safe mixer unavailable would stall its clock.
+backup = amplify({if tone_active() then 1.0 else 0.0 end}, tone)
+radio = add(normalize=false, [program, backup])
+def broadcasting_tone() = tone_active() end
 radio = limit(attack=1.0, release=100.0, threshold=-1.5, ratio=100.0, gain=0.0, radio)
 def current_auto()
   r = queue.current()
@@ -436,7 +444,7 @@ server.register(namespace="freo_program", "current", fun (_) ->
 server.register(namespace="freo_mixer", "state", fun (_) ->
   mode() ^ "|" ^ "0." ^ "|" ^ string(a_play()) ^ "|" ^ string(b_play()) ^ "|" ^ current_a() ^ "|" ^ current_b() ^ "|" ^ current_cart() ^ "|" ^ string.float(if current_a() == "" then 0.0 else deck_a.elapsed() end) ^ "|" ^ string.float(if current_b() == "" then 0.0 else deck_b.elapsed() end) ^ "|" ^
   (if transition_duration() > 0.0 and transition_fraction() < 1.0 and mode() == "DJ_BOOTH" then if a_to() > b_to() then "A" else "B" end else "" end) ^ "|" ^
-  string.float(transition_fraction()) ^ "|" ^ string.float(a_mix()*fade_gain()) ^ "|" ^ string.float(b_mix()*b_fade_gain()) ^ "|" ^ string(mode() == "DJ_BOOTH" and dj_waiting()) ^ "|" ^ current_auto() ^ "|" ^ string.float(auto_mix()))
+  string.float(transition_fraction()) ^ "|" ^ string.float(a_mix()*fade_gain()) ^ "|" ^ string.float(b_mix()*b_fade_gain()) ^ "|" ^ string(mode() == "DJ_BOOTH" and dj_waiting()) ^ "|" ^ current_auto() ^ "|" ^ string.float(auto_mix()) ^ "|" ^ string(broadcasting_tone()))
 # Prepared decks have not aired. Confirm only while playing.
 auto_confirmed = ref("")
 a_confirmed = ref("")

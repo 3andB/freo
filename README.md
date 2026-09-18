@@ -28,3 +28,5 @@ See [custom domain setup](docs/custom-domains.md) for verified station domains,
 DNS instructions, and HTTPS deployment with the existing Nginx/Certbot setup.
 
 Audio upload formats, stream quality, processing, and deployment: [Audio imports and station sound](docs/audio-import-and-processing.md).
+
+[Master broadcast control and station monitoring](docs/master-broadcast.md) covers the station ON/OFF switch, tone fallback, live indicators, and rollout checks.

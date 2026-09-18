@@ -13,7 +13,7 @@ def choose(driver, theme):
 def test_appearance_persistence_navigation_and_audio(booth):
     app, driver, base, tmp_path = booth
     choose(driver, 'day')
-    driver.find_element(By.CSS_SELECTOR, '.master-monitor button').click()
+    driver.find_element(By.CSS_SELECTOR, '[data-monitor-station="test-station"] button').click()
     WebDriverWait(driver, 10).until(lambda d: d.execute_script('return !FreoMonitor.audio.paused'))
     driver.execute_script('window.originalMonitor = FreoMonitor.audio')
     choose(driver, 'night')

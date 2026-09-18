@@ -50,7 +50,7 @@ def test_station_homepage_responsive_and_without_javascript(booth):
 def test_website_editor_publish_preview_and_workspace_monitor(booth):
     app,driver,base,tmp_path=booth
     wait=WebDriverWait(driver,15)
-    driver.find_element(By.CSS_SELECTOR,'.master-monitor button').click()
+    driver.find_element(By.CSS_SELECTOR,'[data-monitor-station="test-station"] button').click()
     wait.until(lambda d:d.execute_script('return !FreoMonitor.audio.paused'))
     driver.execute_script('window.originalAudio=FreoMonitor.audio;FreoWorkspace.navigate(arguments[0])',base+'/')
     wait.until(lambda d:d.find_elements(By.CSS_SELECTOR,'.station-header.enhanced'))

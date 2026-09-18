@@ -11,7 +11,7 @@ from tests.test_web import app as app_fixture
 
 def test_monitor_survives_navigation_and_preview_requires_reactivation(booth):
     app,driver,base,tmp_path=booth
-    driver.find_element(By.CSS_SELECTOR,'.master-monitor button').click()
+    driver.find_element(By.CSS_SELECTOR,'[data-monitor-station="test-station"] button').click()
     WebDriverWait(driver,10).until(lambda d:d.execute_script('return !FreoMonitor.audio.paused'))
     driver.execute_script('window.originalMonitor=FreoMonitor.audio')
     driver.find_element(By.CSS_SELECTOR,'.admin-nav a[href$="/categories"]').click()
@@ -23,7 +23,7 @@ def test_monitor_survives_navigation_and_preview_requires_reactivation(booth):
     driver.execute_script("const preview=document.createElement('audio');preview.src='/stream/test-station';document.body.append(preview);preview.play()")
     WebDriverWait(driver,8).until(lambda d:d.execute_script('return FreoMonitor.audio.paused'))
     driver.execute_script("document.querySelectorAll('audio').forEach(audio=>audio.pause())")
-    assert driver.find_element(By.CSS_SELECTOR,'.master-monitor button').get_attribute('aria-pressed')=='false'
+    assert driver.find_element(By.CSS_SELECTOR,'[data-monitor-station="test-station"] button').get_attribute('aria-pressed')=='false'
 
 
 def test_song_cart_assignment_description_and_modes_in_custom_dialog(booth):

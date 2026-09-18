@@ -34,3 +34,20 @@
 @media(min-width:851px){.sidebar-station-picker{grid-template-columns:minmax(0,1fr)}.sidebar-station-picker select{font-size:13px;padding:10px 8px}.sidebar-station-picker button{width:100%}}
 
 .ops-station-name{display:flex;align-items:center;gap:12px;margin-top:18px}.ops-station-name img{width:44px;height:44px;object-fit:contain;border-radius:8px}
+
+/* Shared station broadcast indicators and always-visible station monitors. */
+[data-station-monitors] { display:flex; flex-wrap:wrap; gap:10px; min-width:0; flex:1 1 340px; }
+.station-monitor { display:flex; align-items:center; flex-wrap:wrap; gap:8px; padding:8px 10px; border:1px solid var(--theme-border); border-radius:10px; min-width:0; }
+.station-monitor > strong { font-size:12px; overflow-wrap:anywhere; }
+.station-monitor button { font:700 11px system-ui,sans-serif; padding:7px 9px; cursor:pointer; border:1px solid var(--theme-border); border-radius:6px; background:var(--theme-raised); color:var(--theme-text); }
+.station-monitor button[aria-pressed="true"] { border-color:var(--theme-accent); color:var(--theme-accent); }
+.on-air-icon { display:inline-flex; align-items:center; gap:5px; white-space:nowrap; font:800 10px system-ui,sans-serif; letter-spacing:.06em; color:var(--theme-text); }
+.on-air-icon i { display:inline-block; width:11px; height:11px; flex:0 0 11px; border-radius:50%; background:#080808; border:1px solid #858585; }
+.on-air-icon.is-online i { background:#e52132; border-color:#ff6570; box-shadow:0 0 8px #e5213240; }
+.on-air-icon .sr-only { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip-path:inset(50%); white-space:nowrap; }
+.admin-topbar .master-monitor > button { display:none; }
+.admin-topbar { flex-wrap:wrap; }
+.station-live-icon i { animation:station-live-pulse 3s ease-in-out infinite; }
+@keyframes station-live-pulse { 0%,100% { opacity:1; } 50% { opacity:.35; } }
+@media (prefers-reduced-motion:reduce) { .station-live-icon i { animation:none; } }
+@media (max-width:700px) { [data-station-monitors] { flex-basis:100%; } .station-monitor { flex:1 1 150px; } }

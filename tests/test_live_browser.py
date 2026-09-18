@@ -125,7 +125,7 @@ def test_picker_load_clear_and_artwork_drag(booth):
     apply_browser_command(app,'LOAD','B')
     wait_text(driver,'#cue-title','Verified Test Track');wait_text(driver,'#deck-b-state','READY')
     for preview in ('A','B'):
-        driver.find_element(By.CSS_SELECTOR,'.master-monitor button').click()
+        driver.find_element(By.CSS_SELECTOR,'[data-monitor-station="test-station"] button').click()
         WebDriverWait(driver,8).until(lambda d:d.execute_script('return !FreoMonitor.audio.paused'))
         button=driver.find_element(By.CSS_SELECTOR,f'[data-preview-deck="{preview}"]');button.click()
         WebDriverWait(driver,8).until(lambda d:d.execute_script('return !document.getElementById("cue-monitor").paused && FreoMonitor.audio.paused'))
@@ -264,9 +264,9 @@ def test_program_and_persistent_monitor_meters(booth):
     with app.app_context():
         LiveQueueSnapshot.query.first().program_rms=.1;db.session.commit()
     WebDriverWait(driver,8).until(lambda d:d.execute_script("return document.getElementById('program-left').value>.5"))
-    driver.find_element(By.CSS_SELECTOR,'.master-monitor button').click()
+    driver.find_element(By.CSS_SELECTOR,'[data-monitor-station="test-station"] button').click()
     WebDriverWait(driver,10).until(lambda d:d.execute_script("return document.getElementById('monitor-left').value>.3 && document.getElementById('monitor-right').value>.3"))
-    driver.find_element(By.CSS_SELECTOR,'.master-monitor button').click()
+    driver.find_element(By.CSS_SELECTOR,'[data-monitor-station="test-station"] button').click()
     WebDriverWait(driver,8).until(lambda d:d.execute_script("return document.getElementById('monitor-left').value===0 && document.getElementById('monitor-right').value===0"))
 
 

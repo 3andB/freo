@@ -65,12 +65,13 @@ def legacy_calendar(station):
 
 
 def state_json(station):
+    from app.services.broadcast_status import cached_status
     row=vs.policy(station)
     command=ScheduleTransition.query.filter_by(station_id=station.id).order_by(ScheduleTransition.created_at.desc()).first()
     snapshot=LiveQueueSnapshot.query.filter_by(station_id=station.id).first()
     current=SelectionDecision.query.filter_by(id=snapshot.current_decision_id,station_id=station.id).first() if snapshot and snapshot.current_decision_id else None
     playing_fallback=bool(current and current.reason=='default_playlist')
-    return dict(playing_fallback=playing_fallback,held=bool(station.automation and station.automation.hold),mode=row.mode if row else 'CALENDAR',activated=bool(row and row.activated),revision=row.revision if row else 1,
+    return dict(broadcast=cached_status([station])[station.slug],playing_fallback=playing_fallback,held=bool(station.automation and station.automation.hold),mode=row.mode if row else 'CALENDAR',activated=bool(row and row.activated),revision=row.revision if row else 1,
         calendar=row.calendar if row and row.calendar_saved else legacy_calendar(station) if not row or not row.activated else [],
         assignments=row.assignments if row else [],simple=row.simple if row else None,
         fallback=vs.fallback(station),transition=dict(id=command.id,state=command.state,mode=command.mode,error=command.error) if command else None,
@@ -140,7 +141,13 @@ def write(slug,action):
         data=json.loads(request.form.get('payload','{}'))
         if not isinstance(data,dict):raise ValueError('Invalid request')
         db.session.query(Station.id).filter_by(id=station.id).with_for_update().first()
-        if action=='block-workspace':
+        if action=='broadcast':
+            if not can_control_playout(current_admin(),station):abort(403)
+            from app.services.master_broadcast import request_broadcast
+            request_broadcast(station,data.get('enabled'),data.get('revision'),current_admin())
+            db.session.commit()
+            return jsonify(state_json(station))
+        elif action=='block-workspace':
             schedule=ChannelSchedule.query.filter_by(station_id=station.id).with_for_update().first() or vs.policy(station,True)
             if schedule.revision!=data.get('revision'):
                 raise ValueError('Another editor changed this schedule. Reload before saving.')

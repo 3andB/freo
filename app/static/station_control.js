@@ -5,7 +5,7 @@
   const page = window.FreoPage;
   const $ = id => document.getElementById(id);
   const title = mode => mode.charAt(0) + mode.slice(1).toLowerCase();
-  let state = JSON.parse($('control-initial').value), busy = false, refreshing = false, refreshFailed = false;
+  let state = JSON.parse($('control-initial').value), busy = false, broadcastBusy = false, refreshing = false, refreshFailed = false;
   const pending = () => state.transition && ['PENDING', 'PREPARING', 'FADING'].includes(state.transition.state);
 
   async function api(action, data) {
@@ -20,6 +20,20 @@
     $('control-message').classList.toggle('error', error);
   }
   function render() {
+    const broadcast = state.broadcast;
+    const toggle = $('master-broadcast-toggle');
+    if (toggle) {
+      toggle.disabled = broadcastBusy;
+      toggle.setAttribute('aria-checked', String(broadcast.enabled));
+      toggle.textContent = broadcast.enabled ? 'ON' : 'OFF';
+    }
+    $('broadcast-retry').hidden = broadcast.status !== 'failed' || !toggle;
+    $('broadcast-retry').disabled = broadcastBusy;
+    $('broadcast-message').textContent = broadcast.error || (['pending', 'applying'].includes(broadcast.status)
+      ? (broadcast.enabled ? 'Starting broadcast…' : 'Stopping broadcast…')
+      : broadcast.online === null ? 'Broadcast status unavailable. Checking…'
+      : broadcast.online ? (broadcast.tone ? 'Broadcasting tone' : 'Station is broadcasting')
+      : broadcast.enabled ? 'Master is ON, but the stream is offline.' : 'Broadcast is OFF');
     $('control-status-heading').textContent = `System currently running in ${title(state.mode)} mode.`;
     $('control-transition').textContent = pending()
       ? `Switching to ${title(state.transition.mode)}… Waiting for the playback engine.`
@@ -32,20 +46,32 @@
     });
     root.querySelectorAll('[data-switch-mode]').forEach(button => {
       const active = state.activated && button.dataset.switchMode === state.mode && !state.held;
-      button.disabled = busy || pending() || active;
+      button.disabled = busy || broadcastBusy || pending() || active;
       button.textContent = active ? 'Active mode' : `Use ${title(button.dataset.switchMode)}`;
     });
     const label = document.querySelector('.schedule-mode-status');
     if (label) label.textContent = pending() ? `Switching ${title(state.mode)} → ${title(state.transition.mode)}…` : `Active mode: ${title(state.mode)}`;
   }
+  async function setBroadcast(enabled) {
+    if (broadcastBusy) return;
+    broadcastBusy = true; render(); message('');
+    try { state = await api('broadcast', {enabled, revision: state.broadcast.revision}); }
+    catch (error) { message(error.message, true); }
+    finally { broadcastBusy = false; if (!page.signal.aborted) render(); }
+  }
+  $('master-broadcast-toggle')?.addEventListener('click', () => setBroadcast(!state.broadcast.enabled));
+  $('broadcast-retry').addEventListener('click', () => setBroadcast(state.broadcast.enabled));
   async function refresh() {
-    if (busy || refreshing || document.hidden) return;
+    if (busy || broadcastBusy || refreshing || document.hidden) return;
     refreshing = true;
     try {
       const latest = await api('state');
-      if (!busy) { state = latest; render(); if (refreshFailed) message(''); refreshFailed = false; }
+      if (!busy && !broadcastBusy && latest.broadcast.revision >= state.broadcast.revision) { state = latest; render(); if (refreshFailed) message(''); refreshFailed = false; }
     }
-    catch { if (!busy) { refreshFailed = true; message('Unable to refresh station status. Retrying…', true); } }
+    catch { if (!busy && !broadcastBusy) {
+      refreshFailed = true; state.broadcast.online = null; state.broadcast.tone = null;
+      render(); message('Unable to refresh station status. Retrying…', true);
+    } }
     finally { refreshing = false; }
   }
   root.querySelectorAll('[data-switch-mode]').forEach(button => {

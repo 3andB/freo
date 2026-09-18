@@ -102,7 +102,7 @@ def test_stopped_station_stays_stopped(audio_runtime, monkeypatch):
     monkeypatch.setattr(runtime, 'service_action', Mock(return_value=False))
     queue(station);audio.process_audio(station)
     assert station.stream.bitrate == 96
-    assert [c.args[1] for c in runtime.service_action.call_args_list] == ['status']
+    assert not any(c.args[1] in ('start', 'restart') for c in runtime.service_action.call_args_list)
 
 
 def test_interrupted_apply_keeps_original_backup(audio_runtime, monkeypatch):

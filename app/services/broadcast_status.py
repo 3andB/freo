@@ -28,3 +28,34 @@ def observation(slug):
         listeners=int(source['listeners'])
         return True,listeners if listeners>=0 else None
     except (KeyError,ValueError,TypeError):return True,None
+
+
+def cached_status(stations, now=None):
+    """One freshness policy for Station Control, the banner and operations."""
+    from datetime import timezone
+    from app.models import LiveQueueSnapshot, StatsState
+    now = time.time() if now is None else now
+    ids = [station.id for station in stations]
+    samples = {row.scope: row.data for row in StatsState.query.filter(StatsState.scope.in_(ids))}
+    snapshots = {row.station_id: row for row in LiveQueueSnapshot.query.filter(LiveQueueSnapshot.station_id.in_(ids))}
+
+    def timestamp(at):
+        return at.replace(tzinfo=at.tzinfo or timezone.utc).timestamp() if at else 0
+
+    result = {}
+    for station in stations:
+        snapshot = snapshots.get(station.id)
+        sample = samples.get(station.id, {})
+        candidates = []
+        if 0 <= now - sample.get('at', 0) <= 45:
+            candidates.append((sample['at'], sample.get('online'), sample.get('listeners')))
+        at = timestamp(snapshot.broadcast_observed_at) if snapshot else 0
+        if 0 <= now - at <= 15:
+            candidates.append((at, snapshot.broadcast_online, snapshot.listeners))
+        at, online, listeners = max(candidates, key=lambda row: row[0]) if candidates else (None, None, None)
+        tone = ((snapshot.mixer or {}).get('tone') if snapshot and not snapshot.error_code
+                and 0 <= now - timestamp(snapshot.observed_at) <= 10 and online is True else None)
+        result[station.slug] = dict(online=online, listeners=listeners, observed_at=at, tone=tone,
+            enabled=station.desired_state == 'running', revision=station.broadcast_revision,
+            status=station.broadcast_status, error=station.broadcast_error)
+    return result

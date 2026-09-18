@@ -81,7 +81,7 @@ def test_manual_connection_check_without_javascript(booth):
 
 def test_operations_station_switch_back_and_mobile(booth):
     app, driver, base, tmp_path = booth
-    driver.find_element(By.CSS_SELECTOR, '.master-monitor button').click()
+    driver.find_element(By.CSS_SELECTOR, '[data-monitor-station="test-station"] button').click()
     WebDriverWait(driver, 10).until(lambda d: d.execute_script('return !FreoMonitor.audio.paused'))
     driver.execute_script('window.originalMonitor = FreoMonitor.audio')
     driver.find_element(By.CSS_SELECTOR, '.admin-nav a[href="/admin"]').click()
@@ -90,7 +90,7 @@ def test_operations_station_switch_back_and_mobile(booth):
     nav = driver.find_element(By.CSS_SELECTOR, '.admin-nav')
     assert nav.get_attribute('data-context') == 'operations'
     assert 'DJ Booth' not in nav.text and 'Operations Statistics' in nav.text
-    driver.find_element(By.CSS_SELECTOR, '.master-monitor button').click()
+    driver.find_element(By.CSS_SELECTOR, '[data-monitor-station="test-station"] button').click()
     Select(driver.find_element(By.ID, 'station-select')).select_by_value('second-station')
     assert driver.current_url == base + '/admin'
     assert driver.find_element(By.CSS_SELECTOR, '.admin-nav').get_attribute('data-context') == 'operations'

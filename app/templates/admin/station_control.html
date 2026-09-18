@@ -5,6 +5,13 @@
 <section id="station-control" data-api="{{ url_for('schedule_studio.read',slug=selected.slug,action='state')|replace('/state','/') }}" data-csrf="{{ csrf_token() }}">
   <input type="hidden" id="control-initial" value="{{ initial|tojson|forceescape }}">
   <header class="studio-heading"><div><span class="eyebrow">{{ selected.name }} / SYSTEM CONTROL</span><h1>Station Control</h1><p>Choose how your station runs and open its schedule.</p></div></header>
+  <section class="admin-card master-broadcast" aria-labelledby="master-broadcast-heading">
+    <div><h2 id="master-broadcast-heading">MASTER BROADCAST</h2><p>ON broadcasts your schedule, DJ or live audio. If no audio is available, the station broadcasts tone. OFF stops all broadcasting.</p></div>
+    {% if can_switch %}<button id="master-broadcast-toggle" type="button" role="switch" aria-checked="{{ 'true' if initial.broadcast.enabled else 'false' }}" aria-label="Master broadcast">{{ 'ON' if initial.broadcast.enabled else 'OFF' }}</button>{% endif %}
+    <span class="on-air-icon station-live-icon {{ 'is-online' if initial.broadcast.online else '' }}" data-broadcast-station="{{ selected.slug }}" data-live-label><i aria-hidden="true"></i><b data-broadcast-label>{{ 'STATION LIVE' if initial.broadcast.online else 'NOT LIVE' }}</b><span class="sr-only" data-broadcast-description> · {{ 'Online' if initial.broadcast.online else 'Offline' if initial.broadcast.online is sameas false else 'Status unknown' }}</span></span>
+    <p id="broadcast-message" role="status" aria-live="polite"></p>
+    <button id="broadcast-retry" type="button" hidden>Retry broadcast change</button>
+  </section>
   <section class="admin-card control-status" aria-labelledby="control-status-heading">
     <span class="eyebrow">CURRENT STATUS</span>
     <h2 id="control-status-heading" role="status">System currently running in {{ initial.mode|title }} mode.</h2>
@@ -28,4 +35,4 @@
   <p><a href="{{ url_for('station_settings.page',slug=selected.slug) }}#playback-settings">Manage the default playlist in Station settings →</a></p>
 </section>
 {% endblock %}
-{% block scripts %}{{ super() }}<script defer src="{{ url_for('static',filename='station_control.js',v='scheduling-20260917-2') }}"></script>{% endblock %}
+{% block scripts %}{{ super() }}<script defer src="{{ url_for('static',filename='station_control.js',v='broadcast-20260918') }}"></script>{% endblock %}

@@ -77,6 +77,8 @@ def process_station(station):
 
 def process_pending():
     runtime.require_root()
+    from app.services.master_broadcast import process_pending_broadcasts
+    process_pending_broadcasts()
     ids = [row.id for row in Station.query.filter(
         Station.lifecycle_state.in_(('pending_create', 'pending_delete'))).order_by(Station.id)]
     failures = []

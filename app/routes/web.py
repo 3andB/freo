@@ -127,6 +127,15 @@ def operations_snapshot():
     return response
 
 
+@web_blueprint.get('/admin/api/broadcast-status')
+@login_required
+def broadcast_snapshot():
+    from app.services.broadcast_status import cached_status
+    response = jsonify(stations=cached_status(admin_stations()))
+    response.headers['Cache-Control'] = 'private, no-store'
+    return response
+
+
 @web_blueprint.get('/admin/stations/<slug>')
 @login_required
 def admin_station(slug):
