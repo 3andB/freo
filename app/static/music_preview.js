@@ -3,6 +3,9 @@
   const player=document.getElementById('music-player');if(!player)return;
   const audio=document.getElementById('music-audio'),toggle=document.getElementById('preview-toggle');
   const seek=document.getElementById('preview-seek'),normalized=document.getElementById('preview-normalized');
+  const dockSpace=()=>document.documentElement.style.setProperty('--music-preview-space',player.hidden?'0px':(player.getBoundingClientRect().height+16)+'px');
+  const dockObserver=new ResizeObserver(dockSpace);dockObserver.observe(player);
+  scope.cleanup(()=>{dockObserver.disconnect();document.documentElement.style.removeProperty('--music-preview-space');});
   let current=null,context=null,gain=null,version=0;
   const clock=value=>`${Math.floor((value||0)/60)}:${String(Math.floor((value||0)%60)).padStart(2,'0')}`;
   const label=(id,value)=>document.getElementById(id).textContent=value;
@@ -25,7 +28,7 @@
       else if(!audio.paused){audio.pause();sync();return;}
       if(!current)return;
       if(!context){const AudioCtx=window.AudioContext||window.webkitAudioContext;if(AudioCtx){context=new AudioCtx();gain=context.createGain();context.createMediaElementSource(audio).connect(gain);gain.connect(context.destination);}else{normalized.checked=false;normalized.disabled=true;}}
-      FreoMonitor.stop();updateGain();await context?.resume();await audio.play();if(attempt!==version)return;sync();
+      FreoMonitor.stop();updateGain();await context?.resume();if(attempt!==version)return;await audio.play();if(attempt!==version)return;sync();
     }catch(_){if(attempt===version){error('Audio could not start. Check your connection and that the song is available.');sync();}}
   };
   scope.listen(document,'click',event=>{
@@ -34,6 +37,7 @@
     start({uuid:d.preview,title:d.title,artist:d.artist,audition:d.audition,gain:{factor:Number(d.gain||1),db:Number(d.gainDb||0),status:d.gainStatus}});
   });
   toggle.addEventListener('click',()=>start(current));normalized.addEventListener('change',updateGain);
+  document.getElementById('preview-close').addEventListener('click',()=>{version++;audio.pause();player.hidden=true;sync();});
   document.getElementById('preview-volume').addEventListener('input',event=>audio.volume=Number(event.target.value));audio.volume=.8;
   seek.addEventListener('input',()=>{if(Number.isFinite(audio.duration))audio.currentTime=audio.duration*Number(seek.value)/100;});
   audio.addEventListener('timeupdate',()=>{label('preview-elapsed',clock(audio.currentTime));label('preview-duration',clock(audio.duration));if(audio.duration)seek.value=audio.currentTime/audio.duration*100;});

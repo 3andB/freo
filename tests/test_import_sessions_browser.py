@@ -133,7 +133,7 @@ def test_bulk_reset_undo_keyboard_and_large_album(booth):
         db.session.commit()
     open_import(driver,base)
     assert len(driver.find_elements(By.CSS_SELECTOR,'.import-card'))==105
-    assert driver.find_element(By.CSS_SELECTOR,'#media-upload-form [type=submit]').text=='Import album · 105 songs'
+    assert driver.find_element(By.CSS_SELECTOR,'#media-upload-form [type=submit]').text=='Import 105 ready songs'
     click(driver,'.import-group-head button')
     field=driver.find_element(By.CSS_SELECTOR,'#batch-catalog input[aria-label=Artist]');field.click()
     # The first keyboard option restores file metadata, rather than leaving the old ID.
@@ -184,6 +184,45 @@ def test_interrupted_first_upload_restores_file_reselection(booth):
     wait_text(driver,'.import-card','Uploaded')
     assert len(driver.find_elements(By.CSS_SELECTOR,'.import-card'))==1
     with app.app_context():assert MusicImportItem.query.one().id==record['id']
+
+
+def test_upload_errors_keep_file_for_retry(booth, monkeypatch):
+    app,driver,base,tmp_path=booth;open_import(driver,base)
+    from werkzeug.wrappers import Response
+    from app.services.admin_media import staged_path
+    original=app.wsgi_app
+    failures=[
+        (Response('<html><h1>Too large</h1></html>',status=413,mimetype='text/html'),'server upload limit'),
+        (Response('<html>Bad gateway</html>',status=502,mimetype='text/html'),'HTTP 502'),
+        (Response('<html>Gateway timeout</html>',status=504,mimetype='text/html'),'HTTP 504'),
+        (Response(status=302,headers={'Location':'/admin/login'}),'session expired'),
+        (Response('<html>Forbidden</html>',status=403,mimetype='text/html'),'permission to upload'),
+        (Response('<html>Unexpected success page</html>',mimetype='text/html'),'HTTP 200'),
+        (Response('<html>Malformed JSON</html>',mimetype='application/json'),'invalid response'),
+        (Response('null',mimetype='application/json'),'invalid upload response'),
+        (Response('{"message":"Upload staging is unavailable"}',status=409,mimetype='application/json'),'Upload staging is unavailable'),
+    ]
+    pending=list(failures)
+    def intercept(environ,start_response):
+        if environ['REQUEST_METHOD']=='POST' and environ['PATH_INFO'].endswith('/files') and pending:
+            # Consume the request just as a real proxy would, then return its error.
+            environ['wsgi.input'].read(int(environ.get('CONTENT_LENGTH','0')))
+            return pending.pop(0)[0](environ,start_response)
+        return original(environ,start_response)
+    monkeypatch.setattr(app,'wsgi_app',intercept)
+    driver.execute_script("""const dt=new DataTransfer();dt.items.add(new File([new Uint8Array(100)],'retry.mp3'));
+      const input=document.getElementById('media-file');input.files=dt.files;input.dispatchEvent(new Event('change',{bubbles:true}));""")
+    for _,message in failures:
+        wait_text(driver,'.import-row-status',message)
+        assert len(driver.find_elements(By.CSS_SELECTOR,'.import-card'))==1
+        with app.app_context():assert MusicImportItem.query.count()==0
+        retry=next(button for button in driver.find_elements(By.CSS_SELECTOR,'.import-card > button') if button.text=='Retry')
+        driver.execute_script('arguments[0].click()',retry)
+    wait_text(driver,'.import-row-status','Uploaded')
+    with app.app_context():
+        item=MusicImportItem.query.one()
+        assert item.original_filename=='retry.mp3'
+        assert staged_path(item.id).read_bytes()==bytes(100)
 
 
 def test_delayed_poll_cannot_undo_edits_or_restore_previous_workspace(booth):

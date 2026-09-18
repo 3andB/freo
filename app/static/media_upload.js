@@ -2,15 +2,21 @@
 (async () => {
   const form=document.getElementById('media-upload-form');if(!form)return;
   const scope=FreoPage,$=id=>document.getElementById(id),{el,api}=FreoCatalog,config=form.dataset;
-  let session=null,catalog,items=new Map(),groups={},uploadQueue=[],uploading=false,finalizing=false,polling=false,batchSelectors,batchChips,batchCover=null,albumScope=null,undo=null,folderCover=null,folderCovers=new Map(),batchBusy=false,switching=false;
+  let session=null,catalog,items=new Map(),groups={},uploadQueue=[],uploading=false,finalizing=false,polling=false,batchSelectors,batchChips,batchCover=null,albumScope=null,undo=null,folderCover=null,folderCovers=new Map(),batchBusy=false,switching=false,authPaused=false,nextPollAt=0;
   const message=text=>{$('import-message').textContent=text;};
   const button=(text,fn)=>{const node=el('button',text);node.type='button';node.onclick=fn;return node;};
-  const jsonGet=async url=>{const response=await scope.fetch(url,{cache:'no-store'});if(!response.ok)throw Error('Could not load your import. Sign in or try again.');return response.json();};
+  const jsonGet=async url=>FreoCatalog.readResponse(await scope.fetch(url,{cache:'no-store',headers:{Accept:'application/json'}}),'load your import');
+  scope.listen(document,'freo:authentication-required',()=>{authPaused=true;$('import-auth').hidden=false;});
+  const isDuplicate=item=>!!item.remote?.duplicate||item.remote?.job_status==='duplicate';
+  let rotation='';
+  const rotationKey=config.imports+'/rotation';
+  try{rotation=localStorage.getItem(rotationKey)||'';}catch(_){}
+  const rotationChoices=()=>rotation?{categories:rotation==='library'?[]:[Number(rotation)]}:{};
   const post=(url,data)=>api(url,config.csrf,{data:JSON.stringify(data)});
   const itemUrl=item=>session.url+'/items/'+item.id;
   const localKey=()=>config.imports+'/'+session.id;
   function remember(){try{localStorage.setItem(localKey(),JSON.stringify([...items.values()].filter(i=>!i.remote).map(i=>({id:i.id,name:i.name,size:i.size,path:i.path,choices:i.choices}))));}catch(_){}}
-  const editable=item=>item.remote&&!['cancelled','expired'].includes(item.remote.status)&&(item.remote.status!=='finalized'||!!item.remote.song);
+  const editable=item=>!isDuplicate(item)&&item.remote&&!['cancelled','expired'].includes(item.remote.status)&&(item.remote.status!=='finalized'||!!item.remote.song);
   const pending=item=>item.remote?.status!=='finalized';
   const attention=item=>(!item.remote&&!item.file)||!!item.error||!!item.numberWarning||(item.remote?.status==='ready'&&effective(item).artist==='Unknown Artist')||['failed','expired'].includes(item.remote?.status)||['error','rejected'].includes(item.remote?.job_status)||item.remote?.song?.analysis==='failed';
   const sourceMetadata=item=>item.remote?.detected||{};
@@ -18,7 +24,7 @@
   function effective(item){const d=sourceMetadata(item),c=item.choices;return {...d,...c,artist:c.artist_id?catalog.artists.find(a=>a.id===c.artist_id)?.name||d.artist:c.artist_name||d.artist,album:c.album_id===null?'':c.album_id?catalog.albums.find(a=>a.id===c.album_id)?.name||d.album:c.album_name||d.album};}
   function songChoices(song){return {title:song.title,artist_id:song.artist_id,album_id:song.album_id,album_artist_id:song.album_artist_id,track_number:song.track_number,disc_number:song.disc_number,release_year:song.release_year,tags:song.tags,categories:song.categories};}
   function status(item){
-    if(item.error)return item.error;if(!item.remote)return item.file?'Waiting to upload for review…':'Reselect this file to finish uploading.';
+    if(item.error)return item.error;if(isDuplicate(item))return 'Already in library · skipped · existing details kept';if(item.uploading)return `Uploading for review · ${item.progress||0}%`;if(!item.remote)return item.file?'Waiting to upload for review…':'Reselect this file to finish uploading.';
     const r=item.remote;if(r.status==='finalized'){
       if(r.job_status==='duplicate')return 'Already in library · existing song kept';
       if(['error','rejected'].includes(r.job_status))return 'Import failed · '+(r.job_error||'retry with the source file');
@@ -28,23 +34,33 @@
     return {pending:'Uploaded · waiting to read details…',preparing:'Reading audio and metadata…',ready:'Ready to import'+(effective(item).artist==='Unknown Artist'?' · Artist not found. Choose an artist or import as Unknown Artist.':'')+(item.numberWarning?' · '+item.numberWarning:''),failed:r.error,expired:r.error}[r.status]||r.status;
   }
   function summary(){
-    const all=[...items.values()],selected=all.filter(i=>i.selected&&pending(i)),ready=selected.filter(i=>i.remote?.status==='ready'&&!i.error);
-    const imported=all.filter(i=>i.remote?.song).length,duplicates=all.filter(i=>i.remote?.job_status==='duplicate').length,failed=all.filter(attention).length;
+    const all=[...items.values()],selectable=all.filter(i=>pending(i)&&!isDuplicate(i)),selected=selectable.filter(i=>i.selected),ready=selected.filter(i=>i.remote?.status==='ready'&&(!i.error||i.errorMode==='save'));
+    const imported=all.filter(i=>i.remote?.song&&!isDuplicate(i)).length,duplicates=all.filter(isDuplicate).length,failed=all.filter(i=>!isDuplicate(i)&&attention(i)).length;
+    form.classList.toggle('has-files',!!all.length);
     $('import-tools').hidden=!all.length;$('selection-summary').textContent=all.length?`${selected.length} selected · ${ready.length} ready · ${all.length} files`:'Choose music to get started';
-    $('import-completion').textContent=[imported?`${imported} in your library`:'',duplicates?`${duplicates} already existed`:'',failed?`${failed} need attention`:'',uploading?'Uploading for review…':''].filter(Boolean).join(' · ');
-    const submit=form.querySelector('[type=submit]');submit.disabled=finalizing||batchBusy||!ready.length||ready.length!==selected.length;
-    const keys=new Set(ready.map(groupKey));submit.textContent=ready.length===1?'Import song':keys.size===1&&[...keys][0]!=='songs'?`Import album · ${ready.length} songs`:`Import ${ready.length} songs`;
-    $('select-all').checked=all.some(pending)&&all.filter(pending).every(i=>i.selected);
-    $('select-all').indeterminate=all.filter(pending).some(i=>i.selected)&&!$('select-all').checked;
+    $('import-completion').textContent=[imported?`${imported} in your library`:'',duplicates?`${duplicates} already in library · skipped`:'',failed?`${failed} need attention — ready songs can still be imported`:'',uploading?'Uploading for review…':''].filter(Boolean).join(' · ');
+    const submit=form.querySelector('[type=submit]');submit.disabled=finalizing||batchBusy||!ready.length;
+    submit.textContent=finalizing?'Starting import…':ready.length?`Import ${ready.length} ready ${ready.length===1?'song':'songs'}`:selectable.length?'Preparing songs…':'Import music';
+    if(!ready.length&&selectable.length&&!uploading&&!selectable.some(i=>['pending','preparing'].includes(i.remote?.status)))submit.textContent='Select ready songs';
+    const active=all.some(i=>!isDuplicate(i)&&(['pending','preparing'].includes(i.remote?.status)||['pending','processing'].includes(i.remote?.job_status)));
+    const processing=all.some(i=>!isDuplicate(i)&&['pending','processing'].includes(i.remote?.song?.analysis));
+    submit.hidden=!!all.length&&!selectable.length&&!active;
+    $('view-imported').hidden=!imported;$('view-imported').href=session?.library_url||config.libraryUrl;
+    if(all.length&&!selectable.length&&!active)$('selection-summary').textContent=failed?'Some songs need attention':processing?'Imported · finishing audio processing':'Import complete';
+    else if(active&&!selectable.length)$('selection-summary').textContent='Importing your songs…';
+    $('select-all').checked=!!selectable.length&&selectable.every(i=>i.selected);
+    $('select-all').indeterminate=selectable.some(i=>i.selected)&&!$('select-all').checked;
     $('edit-selected').disabled=!all.some(i=>i.selected&&editable(i)&&pending(i));
     $('new-import').disabled=uploading||finalizing||batchBusy||switching;$('import-sessions').disabled=uploading||finalizing||batchBusy||switching;
+    $('import-rotation').disabled=uploading||finalizing||batchBusy;
+    positionActions();
   }
   function drawRow(item){
     const value=item.remote?.song&&!item.dirty&&!item.saving?item.remote.song:effective(item);
     item.heading.textContent=(value.track_number?`${value.disc_number>1?value.disc_number+'.':''}${value.track_number} · `:'')+(value.title||item.name);
     item.subtitle.textContent=[value.artist,value.album,value.duration_ms?`${Math.floor(value.duration_ms/60000)}:${String(Math.floor(value.duration_ms/1000)%60).padStart(2,'0')}`:''].filter(Boolean).join(' · ')||item.name;
     item.status.textContent=status(item);item.status.classList.toggle('import-error',attention(item));
-    item.check.checked=item.selected;item.check.disabled=!pending(item)||finalizing;
+    item.check.checked=item.selected;item.check.disabled=!pending(item)||isDuplicate(item)||finalizing;
     item.editor.disabled=!editable(item)||finalizing;item.edit.disabled=!editable(item);
     item.card.hidden=$('attention-only').checked&&!attention(item);
     item.save.textContent=item.saving?'Saving…':item.dirty?'Save details':'Saved';item.save.disabled=!item.dirty||item.saving;
@@ -52,7 +68,8 @@
     item.retry.hidden=!((item.error&&item.errorMode!=='save')||(!item.remote&&!item.file)||['failed','expired'].includes(item.remote?.status)||['error','rejected'].includes(item.remote?.job_status)||item.remote?.song?.analysis==='failed');item.retry.textContent=item.remote?.song?'Retry processing':item.remote?.status==='failed'?'Retry preparation':!item.remote&&!item.file?'Choose file':'Retry';item.reload.hidden=!item.conflict;
     const r=item.remote;if(r?.song){item.preview.disabled=false;item.preview.onclick=()=>FreoPreview.play({uuid:r.song.uuid,title:r.song.title,artist:r.song.artist,audition:r.song.audition});item.review.href=r.review_url;item.review.hidden=false;item.review.textContent='View song';if(r.album_url){item.albumLink.href=r.album_url;item.albumLink.hidden=false;}}
     else{item.preview.disabled=!item.source&&!r?.preview_url;item.preview.onclick=()=>FreoPreview.play({uuid:item.id,title:value.title||item.name,artist:value.artist||'Import preview',audition:r?.preview_url||item.source});}
-    item.enableWrap.hidden=!pending(item);
+    if(r?.duplicate){item.review.href=r.duplicate.review_url;item.review.hidden=false;item.review.textContent='View existing song';}
+    item.enableWrap.hidden=!pending(item)||isDuplicate(item);
     const cover=item.coverUrl||r?.song?.cover||r?.cover_url;if(cover){item.image.src=cover;item.image.hidden=false;}else item.image.hidden=true;
   }
   function fill(item){
@@ -60,7 +77,7 @@
     item.title.value=c.title??value.title??'';item.number.value=c.track_number??value.track_number??'';item.disc.value=c.disc_number??value.disc_number??'';item.year.value=c.release_year??value.release_year??'';
     item.selectors.set(c);item.selectors.detected(sourceMetadata(item));item.chips.set(c);item.keepDisabled.checked=!!c.keep_disabled;
   }
-  function change(item){item.dirty=true;item.generation++;item.error='';clearTimeout(item.timer);item.timer=setTimeout(()=>save(item),600);drawRow(item);summary();}
+  function change(item){item.dirty=true;item.generation++;item.error='';clearTimeout(item.timer);item.timer=setTimeout(()=>{if(!batchBusy)save(item);},600);drawRow(item);summary();}
   async function save(item){
     clearTimeout(item.timer);if(!item.dirty||!editable(item)||item.conflict)return;if(item.saving){await item.saving;return save(item);}
     const generation=item.generation,snapshot=structuredClone(item.choices),revision=item.remote.revision;
@@ -69,9 +86,25 @@
     }catch(error){item.error=error.message;item.errorMode='save';if(error.message.includes('another tab'))item.conflict=true;}finally{item.saving=null;drawRow(item);summary();}})();
     drawRow(item);await item.saving;
   }
-  async function flush(){await Promise.all([...items.values()].map(save));if([...items.values()].some(i=>i.dirty))throw Error('Save or resolve the highlighted song details before continuing.');}
+  async function flush(targets=[...items.values()]){
+    for(const item of targets)clearTimeout(item.timer);
+    await Promise.all(targets.map(i=>i.saving));
+    const drafts=targets.filter(i=>i.dirty&&editable(i)&&pending(i)&&!i.conflict);
+    if(drafts.length>1){
+      const snapshots=drafts.map(i=>({id:i.id,revision:i.remote.revision,choices:structuredClone(i.choices),generation:i.generation}));
+      const saving=(async()=>{try{
+        const next=await post(session.url,{action:'save-items',items:snapshots.map(({generation,...data})=>data)});
+        for(const snapshot of snapshots){const item=items.get(snapshot.id),remote=next.items.find(i=>i.id===snapshot.id);if(!item||!remote)continue;item.remote=remote;if(item.generation===snapshot.generation){item.dirty=false;item.error='';}}
+      }catch(error){for(const item of drafts){item.error=error.message;item.errorMode='save';if(error.message.includes('another tab'))item.conflict=true;}}
+      finally{for(const item of drafts){item.saving=null;drawRow(item);}summary();}})();
+      for(const item of drafts)item.saving=saving;
+      await saving;
+    }
+    await Promise.all(targets.filter(i=>!drafts.includes(i)||drafts.length===1).map(save));
+    if(targets.some(i=>i.dirty))throw Error('Save or resolve the highlighted song details before continuing.');
+  }
   function makeItem(data,file=null){
-    const item={id:data.id,name:data.name,size:data.size,path:data.path||'',choices:structuredClone(data.choices||{}),remote:data.status?data:null,file,selected:true,dirty:false,generation:0};
+    const item={id:data.id,name:data.name,size:data.size,path:data.path||'',choices:structuredClone(data.choices||(file?rotationChoices():{})),remote:data.status?data:null,file,selected:!data.duplicate,dirty:false,generation:0};
     if(data.song)item.choices={...songChoices(data.song),group:groupKey(item)};
     item.source=file?URL.createObjectURL(file):null;
     const card=el('article',undefined,'import-card'),head=el('div',undefined,'import-card-head'),check=el('input'),copy=el('div',undefined,'import-row-copy'),heading=el('b'),subtitle=el('small');
@@ -83,7 +116,7 @@
     const fields=el('div',undefined,'import-song-fields');const input=(label,type='text')=>{const wrap=el('label',label),n=el('input');n.type=type;n.setAttribute('aria-label',`${label} for ${item.name}`);wrap.append(n);fields.append(wrap);return n;};
     const title=input('Song title');title.maxLength=200;const selectorHost=el('div',undefined,'import-row-catalog');fields.append(selectorHost);
     const number=input('Track number','number'),disc=input('Disc number','number'),year=input('Year','number');number.min=disc.min=1;number.max=999;disc.max=99;year.min=1000;year.max=3000;
-    const classifications=el('div');const selectors=FreoCatalog.selectors(selectorHost,catalog,item.choices,{...config,importing:true,target:item.name,message,change:changedKey=>{
+    const classifications=el('div');const selectors=FreoCatalog.selectors(selectorHost,catalog,item.choices,{...config,get csrf(){return form.dataset.csrf;},importing:true,target:item.name,message,change:changedKey=>{
       for(const key of ['artist_id','artist_name','album_id','album_name','album_artist_id'])delete item.choices[key];Object.assign(item.choices,selectors.values());
       const fileFields=new Set(item.choices.file_fields||[]);for(const key of ['artist_id','album_id'])if(item.choices[key]===undefined)fileFields.add(key);else fileFields.delete(key);item.choices.file_fields=[...fileFields];
       if(!pending(item)){const d=sourceMetadata(item);if(!item.choices.artist_id)item.choices.artist_name=d.artist||'Unknown Artist';if(item.choices.album_id===undefined){if(d.album){item.choices.album_name=d.album;item.choices.album_artist=d.album_artist||d.artist;}else item.choices.album_id=null;}}
@@ -139,32 +172,37 @@
     groups=next.groups||{};
     for(const data of next.items){let item=items.get(data.id);if(item?.remote&&data.revision<item.remote.revision)continue;if(!item){item=makeItem(data);item.inherited=true;}
       else if(!item.dirty&&!item.saving){const becameSong=!item.remote?.song&&data.song;const changed=JSON.stringify(item.remote?.detected)!==JSON.stringify(data.detected)||item.remote?.revision!==data.revision||becameSong;item.remote=data;item.error='';if(becameSong||data.song)item.choices={...songChoices(data.song),group:groupKey(item)};else item.choices=structuredClone(data.choices);if(changed)fill(item);}
-      else if(item.remote){const detectedChanged=JSON.stringify(item.remote.detected)!==JSON.stringify(data.detected);item.remote={...item.remote,status:data.status,detected:data.detected,song:data.song,job_status:data.job_status,job_error:data.job_error};if(detectedChanged)fill(item);}
-      inherit(item);drawRow(item);
+      else if(item.remote){const detectedChanged=JSON.stringify(item.remote.detected)!==JSON.stringify(data.detected);item.remote={...item.remote,status:data.status,detected:data.detected,song:data.song,job_status:data.job_status,job_error:data.job_error,duplicate:data.duplicate};if(detectedChanged)fill(item);}
+      if(isDuplicate(item)){item.selected=false;item.dirty=false;}else inherit(item);drawRow(item);
     }
     renderGroups();
   }
-  async function poll(){if(!session||polling||finalizing)return;polling=true;try{const next=await jsonGet(session.url);if(next.items.some(i=>i.song&&(!catalog.artists.some(a=>a.id===i.song.artist_id)||(i.song.album_id&&!catalog.albums.some(a=>a.id===i.song.album_id)))))await FreoCatalog.load(config.base);merge(next);}catch(e){message(e.message);}finally{polling=false;}}
-  async function sessionList(){const result=await jsonGet(config.imports);const select=$('import-sessions');select.replaceChildren();for(const row of result.sessions)select.append(new Option(`${new Date(row.created_at).toLocaleString()} · ${row.count} files`,row.id));if(session&&!result.sessions.some(s=>s.id===session.id))select.append(new Option('New import',session.id));if(session)select.value=session.id;return result.sessions;}
+  async function poll(){if(!session||polling||finalizing||switching||authPaused)return;polling=true;try{const next=await jsonGet(session.url);if(next.items.some(i=>i.song&&(!catalog.artists.some(a=>a.id===i.song.artist_id)||(i.song.album_id&&!catalog.albums.some(a=>a.id===i.song.album_id)))))await FreoCatalog.load(config.base);merge(next);return true;}catch(e){message(e.message);return false;}finally{polling=false;const busy=[...items.values()].some(i=>pending(i)&&!isDuplicate(i)||['pending','processing'].includes(i.remote?.job_status)||['pending','processing'].includes(i.remote?.song?.analysis));nextPollAt=Date.now()+(busy?2500:30000);}}
+  async function sessionList(){const result=await jsonGet(config.imports);if(result.csrf)config.csrf=result.csrf;const select=$('import-sessions');select.replaceChildren();for(const row of result.sessions)select.append(new Option(`${row.name||'Import'} · ${row.imported||0}/${row.count} submitted · ${new Date(row.created_at).toLocaleDateString()}`,row.id));if(session&&!result.sessions.some(s=>s.id===session.id))select.append(new Option('New import',session.id));if(session)select.value=session.id;return result.sessions;}
   async function openSession(identifier){
     if(switching)return;switching=true;form.inert=true;try{
-    await flush();for(const item of items.values()){clearTimeout(item.timer);item.selectors.destroy();if(item.source)URL.revokeObjectURL(item.source);}items=new Map();folderCover=null;folderCovers.clear();$('folder-artwork-choice').hidden=true;$('folder-artworks').replaceChildren();$('selected-files').replaceChildren();delete $('selected-files').dataset.layout;$('import-defaults').hidden=true;undo=null;$('undo-batch').hidden=true;
-    session=identifier?await jsonGet(config.imports+'/'+identifier):await post(config.imports,{});groups=session.groups||{};merge(session);if(items.size>1)for(const item of items.values())item.editor.hidden=true;
+    await flush();const next=identifier?await jsonGet(config.imports+'/'+identifier):await post(config.imports,{});for(const item of items.values()){clearTimeout(item.timer);item.selectors.destroy();if(item.source)URL.revokeObjectURL(item.source);}items=new Map();folderCover=null;folderCovers.clear();$('folder-artwork-choice').hidden=true;$('folder-artworks').replaceChildren();$('selected-files').replaceChildren();delete $('selected-files').dataset.layout;$('import-defaults').hidden=true;undo=null;$('undo-batch').hidden=true;
+    session=next;groups=session.groups||{};merge(session);if(items.size>1)for(const item of items.values())item.editor.hidden=true;
     try{const local=JSON.parse(localStorage.getItem(localKey())||'[]');for(const data of local)if(!items.has(data.id))makeItem(data);}catch(_){}
     renderGroups();await sessionList();
-    }finally{switching=false;form.inert=false;summary();}
+    }finally{if(session)$('import-sessions').value=session.id;switching=false;form.inert=false;summary();}
+  }
+  function uploadResult(xhr){
+    const result=FreoCatalog.decodeResponse(xhr.status,xhr.responseURL,xhr.getResponseHeader('Content-Type'),xhr.responseText,'upload');
+    if(!result||typeof result!=='object'||!result.id||!result.status)throw Error('The server returned an invalid upload response. Retry this file.');
+    return result;
   }
   async function pump(){
     if(uploading)return;uploading=true;summary();
     while(uploadQueue.length&&!scope.signal.aborted){const item=uploadQueue.shift();if(!items.has(item.id))continue;item.uploading=true;item.error='';
       try{
-        const data=await new Promise((resolve,reject)=>{const xhr=new XMLHttpRequest(),body=new FormData();body.set('id',item.id);body.set('path',item.path);body.set('csrf',config.csrf);body.append('file',item.file,item.name);xhr.open('POST',session.url+'/files');xhr.timeout=180000;const abort=()=>xhr.abort();scope.signal.addEventListener('abort',abort,{once:true});xhr.onloadend=()=>scope.signal.removeEventListener('abort',abort);
-          xhr.upload.onprogress=e=>{if(e.lengthComputable)item.status.textContent=`Uploading for review · ${Math.round(e.loaded/e.total*100)}%`;};
-          xhr.onload=()=>{try{const result=JSON.parse(xhr.responseText);if(xhr.status>=400)throw Error(result.message||'Could not upload. Retry this file.');resolve(result);}catch(e){reject(e);}};xhr.onerror=xhr.ontimeout=xhr.onabort=()=>reject(Error('Upload interrupted. Retry this file.'));xhr.send(body);
-        });item.remote=data;remember();fill(item);
+        const data=await new Promise((resolve,reject)=>{const xhr=new XMLHttpRequest(),body=new FormData();body.set('id',item.id);body.set('path',item.path);body.set('csrf',config.csrf);body.set('data',JSON.stringify(item.choices));body.append('file',item.file,item.name);xhr.open('POST',session.url+'/files');xhr.setRequestHeader('Accept','application/json');xhr.timeout=180000;const abort=()=>xhr.abort();scope.signal.addEventListener('abort',abort,{once:true});xhr.onloadend=()=>scope.signal.removeEventListener('abort',abort);
+          xhr.upload.onprogress=e=>{if(e.lengthComputable){item.progress=Math.round(e.loaded/e.total*100);drawRow(item);}};
+          xhr.onload=()=>{try{resolve(uploadResult(xhr));}catch(e){reject(e);}};xhr.onerror=xhr.ontimeout=xhr.onabort=()=>reject(Error('Upload interrupted. Retry this file.'));xhr.send(body);
+        });item.remote=data;if(isDuplicate(item))item.selected=false;remember();fill(item);
       }catch(e){item.errorMode='upload';if(e.message.includes('fresh file identifier')){items.delete(item.id);item.id=crypto.randomUUID();items.set(item.id,item);remember();item.error='Upload interrupted. Retry this file.';}else item.error=e.message;}finally{item.uploading=false;drawRow(item);summary();}
     }
-    uploading=false;summary();await sessionList();poll();
+    uploading=false;summary();try{await sessionList();await poll();}catch(e){message(e.message);}
   }
   function addFiles(files){
     let skipped=0;
@@ -183,7 +221,7 @@
   function openBatch(key=null){
     if(batchBusy)return;
     albumScope=key;$('group-selected').checked=!!key;batchSelectors.reset();batchChips.set({});batchChips.clearTouched();batchCover=null;
-    if(key)for(const item of items.values())item.selected=groupKey(item)===key&&pending(item);
+    if(key)for(const item of items.values())item.selected=groupKey(item)===key&&pending(item)&&!isDuplicate(item);
     const selected=[...items.values()].filter(i=>i.selected&&pending(i));$('preserve-artists').checked=new Set(selected.map(i=>effective(i).artist)).size>1;
     $('batch-heading').textContent=key?'Edit album details':`Edit ${selected.length} selected songs`;$('batch-status').textContent='';$('import-defaults').hidden=false;summary();for(const item of items.values())drawRow(item);$('import-defaults').scrollIntoView({block:'start',behavior:'instant'});
   }
@@ -208,37 +246,42 @@
       }
       if('album_id' in patch&&values.album_id){item.choices.album_artist_id=values.album_artist_id;shared.album_artist_id=values.album_artist_id;}
       for(const key of touched){const current=new Set(item.choices[key]||[]),chosen=classifications[key],op=$('classification-operation').value;
-        item.choices[key]=op==='replace'?chosen:op==='remove'?[...current].filter(id=>!chosen.includes(id)):[...new Set([...current,...chosen])];shared[key]=op==='remove'?(shared[key]||[]).filter(id=>!chosen.includes(id)):chosen;}
+        item.choices[key]=op==='replace'?chosen:op==='remove'?[...current].filter(id=>!chosen.includes(id)):[...new Set([...current,...chosen])];shared[key]=op==='replace'?chosen:op==='remove'?(shared[key]||[]).filter(id=>!chosen.includes(id)):[...new Set([...(shared[key]||[]),...chosen])];}
       if(batchCover){item.choices.cover_id=batchCover.id;item.coverUrl=batchCover.url;shared.cover_id=batchCover.id;}
       if(numbering)item.choices.track_number=index+1;
       fill(item);change(item);
     }
     try{await flush();if(albumScope){const result=await post(session.url,{action:'group',key:albumScope,choices:shared});groups=result.groups;} $('batch-status').textContent=`Updated ${selected.length} songs. You can still change individual details.`;$('undo-batch').hidden=false;renderGroups();}catch(e){message(e.message);}finally{batchBusy=false;$('apply-batch').disabled=$('number-tracks').disabled=$('undo-batch').disabled=false;summary();}
   }
-  function positionActions(){const bounds=form.getBoundingClientRect(),bar=form.querySelector('.import-action-bar');bar.style.left=Math.max(8,bounds.left)+'px';bar.style.width=Math.min(innerWidth-16,bounds.width)+'px';}
+  function positionActions(){const bounds=form.getBoundingClientRect(),bar=form.querySelector('.import-action-bar'),player=$('music-player'),height=player&&!player.hidden?player.getBoundingClientRect().height:0,left=Math.max(8,bounds.left);bar.style.left=left+'px';bar.style.width=Math.max(0,Math.min(innerWidth-left-8,bounds.width))+'px';bar.style.bottom=(height+12)+'px';const space=(bar.getBoundingClientRect().height+height+24)+'px';form.style.paddingBottom=space;form.style.setProperty('--import-dock-space',space);}
   positionActions();scope.listen(window,'resize',()=>scope.frame(positionActions));
+  const layoutObserver=new ResizeObserver(positionActions);layoutObserver.observe(form.querySelector('.import-action-bar'));if($('music-player'))layoutObserver.observe($('music-player'));scope.cleanup(()=>layoutObserver.disconnect());
   form.inert=true;
   try{
-    const response=await scope.fetch(config.noticeUrl,{method:'POST',body:new URLSearchParams({csrf:config.csrf})});if(!response.ok)throw Error('Could not open the importer. Refresh to retry.');
-    if((await response.json()).show&&!await FreoDialog.confirm({title:'Before importing music',message:'Only upload and broadcast material you own or are legally authorized to use. Uploading or broadcasting copyrighted material without the necessary rights can violate copyright law and lead to removal, legal action, or financial liability. You are responsible for obtaining the required permissions and licences.',confirmLabel:'Continue to import',signal:scope.signal})){FreoWorkspace.navigate(config.libraryUrl);return;}
-    catalog=await FreoCatalog.load(config.base);batchSelectors=FreoCatalog.selectors($('batch-catalog'),catalog,{}, {...config,importing:true,batch:true,message,target:'the selected songs'});batchChips=FreoCatalog.chips($('batch-classification'),catalog);
+    const response=await scope.fetch(config.noticeUrl,{method:'POST',body:new URLSearchParams({csrf:config.csrf})});
+    if((await FreoCatalog.readResponse(response,'open the importer')).show&&!await FreoDialog.confirm({title:'Before importing music',message:'Only upload and broadcast material you own or are legally authorized to use. Uploading or broadcasting copyrighted material without the necessary rights can violate copyright law and lead to removal, legal action, or financial liability. You are responsible for obtaining the required permissions and licences.',confirmLabel:'Continue to import',signal:scope.signal})){FreoWorkspace.navigate(config.libraryUrl);return;}
+    catalog=await FreoCatalog.load(config.base);batchSelectors=FreoCatalog.selectors($('batch-catalog'),catalog,{}, {...config,get csrf(){return form.dataset.csrf;},importing:true,batch:true,message,target:'the selected songs'});batchChips=FreoCatalog.chips($('batch-classification'),catalog);
+    const rotationSelect=$('import-rotation');for(const category of catalog.categories.filter(c=>c.enabled))rotationSelect.append(new Option('Rotation: '+category.name,String(category.id)));if(![...rotationSelect.options].some(o=>o.value===rotation))rotation='';rotationSelect.value=rotation;
     const list=await sessionList();await openSession(list[0]?.id);form.inert=false;
-  }catch(e){message(e.message);return;}
+  }catch(e){message(e.message);form.inert=false;const retry=button('Reload importer',()=>location.reload());$('import-message').append(document.createTextNode(' '),retry);return;}
   $('choose-files').onclick=()=>$('media-file').click();$('choose-folder').onclick=()=>$('media-folder').click();for(const id of ['media-file','media-folder'])$(id).onchange=e=>{addFiles([...e.target.files]);e.target.value='';};
   async function walk(entry,prefix=''){if(entry.isFile){const file=await new Promise((resolve,reject)=>entry.file(resolve,reject));Object.defineProperty(file,'webkitRelativePath',{value:prefix+file.name});return[file];}if(!entry.isDirectory)return[];const reader=entry.createReader();let result=[];while(true){const chunk=await new Promise((resolve,reject)=>reader.readEntries(resolve,reject));if(!chunk.length)return result;for(const child of chunk)result.push(...await walk(child,prefix+entry.name+'/'));}}
   const zone=form.querySelector('.drop-zone');zone.ondragover=e=>{e.preventDefault();zone.classList.add('is-dragging');};zone.ondragleave=()=>zone.classList.remove('is-dragging');zone.ondrop=async e=>{e.preventDefault();zone.classList.remove('is-dragging');const entries=[...e.dataTransfer.items].map(i=>i.webkitGetAsEntry?.()).filter(Boolean),files=[...e.dataTransfer.files];try{let found=[];if(entries.length)for(const entry of entries)found.push(...await walk(entry));else found=files;addFiles(found);}catch(_){message('Could not read the folder. Use Choose folder.');}};
   scope.listen(window,'dragover',e=>{if([...e.dataTransfer.types].includes('Files'))e.preventDefault();});scope.listen(window,'drop',e=>{if([...e.dataTransfer.types].includes('Files'))e.preventDefault();});
   $('new-import').onclick=()=>openSession().catch(e=>message(e.message));$('import-sessions').onchange=e=>openSession(e.target.value).catch(error=>message(error.message));
-  $('select-all').onchange=e=>{for(const item of items.values())if(pending(item))item.selected=e.target.checked;renderGroups();};$('attention-only').onchange=renderGroups;
+  $('select-all').onchange=e=>{for(const item of items.values())if(pending(item)&&!isDuplicate(item))item.selected=e.target.checked;renderGroups();};$('attention-only').onchange=renderGroups;
   $('edit-selected').onclick=()=>openBatch();$('close-batch').onclick=()=>{$('import-defaults').hidden=true;};
   $('folder-artwork').onclick=async()=>{folderCover=folderCovers.get($('folder-artworks').value);if(!folderCover)return;const cover=await FreoCatalog.chooseCover(config,{},folderCover);if(cover){const folder=folderCover.webkitRelativePath?.split('/').slice(0,-1).join('/');if(folder)for(const item of items.values())item.selected=pending(item)&&item.path.split('/').slice(0,-1).join('/')===folder;const selected=[...items.values()].filter(i=>i.selected&&pending(i));const keys=new Set(selected.map(groupKey));openBatch(keys.size===1&&[...keys][0]!=='songs'?[...keys][0]:null);batchCover=cover;$('batch-status').textContent='Folder artwork selected. Apply it to the selected songs.';}};
   $('batch-artwork').onclick=async()=>{batchCover=await FreoCatalog.chooseCover(config);if(batchCover)$('batch-status').textContent='Artwork selected. Apply it to the selected songs.';};
   $('apply-batch').onclick=()=>applyBatch();$('number-tracks').onclick=()=>applyBatch(true);
-  $('undo-batch').onclick=async()=>{if(!undo)return;for(const previous of undo.items){const item=items.get(previous.id);if(item&&pending(item)){item.choices=previous.choices;fill(item);change(item);}}try{await flush();if(undo.group){const result=await post(session.url,{action:'group',key:undo.group,choices:undo.defaults});groups=result.groups;}undo=null;$('undo-batch').hidden=true;renderGroups();message('Shared changes undone.');}catch(e){message(e.message);}};
-  form.onsubmit=async e=>{e.preventDefault();if(finalizing)return;try{await flush();const selected=[...items.values()].filter(i=>i.selected&&i.remote?.status==='ready');if(!selected.length)return;finalizing=true;summary();merge(await post(session.url,{action:'finalize',items:selected.map(i=>({id:i.id,revision:i.remote.revision}))}));message('Import started. You can add more music while these songs process.');$('import-defaults').hidden=true;$('undo-batch').hidden=true;}catch(error){message(error.message);}finally{finalizing=false;renderGroups();}};
+  $('undo-batch').onclick=async()=>{if(!undo||batchBusy)return;batchBusy=true;$('undo-batch').disabled=true;summary();for(const previous of undo.items){const item=items.get(previous.id);if(item&&pending(item)){item.choices=previous.choices;fill(item);change(item);}}try{await flush();if(undo.group){const result=await post(session.url,{action:'group',key:undo.group,choices:undo.defaults});groups=result.groups;}undo=null;$('undo-batch').hidden=true;renderGroups();message('Shared changes undone.');}catch(e){message(e.message);}finally{batchBusy=false;$('undo-batch').disabled=false;summary();}};
+  form.onsubmit=async e=>{e.preventDefault();if(finalizing)return;try{const selected=[...items.values()].filter(i=>i.selected&&!isDuplicate(i)&&i.remote?.status==='ready');if(!selected.length)return;await flush(selected);finalizing=true;summary();merge(await post(session.url,{action:'finalize',items:selected.map(i=>({id:i.id,revision:i.remote.revision}))}));message('Import started. You can add more music while these songs process.');$('import-defaults').hidden=true;$('undo-batch').hidden=true;}catch(error){message(error.message);}finally{finalizing=false;renderGroups();}};
   scope.beforeLeave=async()=>{if(uploading&&!await FreoDialog.confirm({title:'Leave while files upload?',message:'Uploaded files are saved. Unfinished uploads will need to be reselected when you return.',confirmLabel:'Leave import',signal:scope.signal}))return false;try{await flush();return true;}catch(e){message(e.message);return false;}};
   scope.listen(window,'beforeunload',e=>{if(uploading||[...items.values()].some(i=>i.dirty)){e.preventDefault();e.returnValue='';}});
   scope.cleanup(()=>{for(const item of items.values()){clearTimeout(item.timer);if(item.source)URL.revokeObjectURL(item.source);}});
   for(const id of ['media-file','media-folder'])if($(id).files.length){addFiles([...$(id).files]);$(id).value='';}
-  scope.interval(poll,2500);summary();
+  $('import-rotation').onchange=e=>{rotation=e.target.value;try{localStorage.setItem(rotationKey,rotation);}catch(_){}if(!rotation)return;for(const item of items.values())if(item.selected&&pending(item)&&!isDuplicate(item)){Object.assign(item.choices,rotationChoices());fill(item);if(item.remote)change(item);}remember();summary();};
+  $('resume-import').onclick=async()=>{try{await sessionList();authPaused=false;$('import-auth').hidden=true;await flush();if(await poll())message('Import resumed. Retry any interrupted uploads.');}catch(e){message(e.message);}};
+  scope.listen(document,'visibilitychange',()=>{if(!document.hidden)poll();});
+  scope.interval(()=>{if(!document.hidden&&Date.now()>=nextPollAt)poll();},2500);summary();
 })();

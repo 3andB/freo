@@ -9,7 +9,7 @@ from sqlalchemy import or_, func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import selectinload
 from app.extensions import db
-from app.models import Station, Track, MusicTag, MediaCategory, MusicEdit, song_tags, track_categories
+from app.models import Station, Track, MusicTag, MediaCategory, MusicEdit, song_tags, track_categories, MusicImportSession, MusicImportItem, MediaIngestJob
 from app.routes.web import station_or_404
 from app.services.admin_auth import admin_required, current_admin, require_csrf, can_manage_programming
 from app.services.admin_media import audit
@@ -57,6 +57,12 @@ def catalog(slug):
     station=station_or_404(slug,require_enabled=False)
     base=tracks_for(station.id).filter_by(decommissioned_at=None,ingest_status='accepted')
     query=base
+    if request.args.get('import_session'):
+        workspace=MusicImportSession.query.filter_by(id=request.args['import_session'],
+            station_id=station.id,admin_user_id=current_admin().id).first_or_404()
+        imported=db.select(MediaIngestJob.track_id).join(MusicImportItem,
+            MusicImportItem.job_id==MediaIngestJob.id).where(MusicImportItem.session_id==workspace.id)
+        query=query.filter(Track.id.in_(imported))
     flag_filter=request.args.get('flags','')
     if flag_filter:
         if flag_filter not in ('open','resolved'):abort(400)

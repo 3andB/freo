@@ -1,17 +1,30 @@
 (() => {
   const scope=FreoPage;
   const el=(tag,text,cls)=>{const n=document.createElement(tag);if(text!==undefined)n.textContent=text;if(cls)n.className=cls;return n;};
+  function decodeResponse(status,url,type,text,action='complete this request'){
+    if(status===413)throw Error('Upload exceeds the server upload limit. Your file is kept here; retry after the limit is corrected or choose a smaller file.');
+    if(status===401||new URL(url||location.href,location.href).pathname==='/admin/login'){
+      document.dispatchEvent(new Event('freo:authentication-required'));
+      throw Error('Your session expired. Sign in again, then resume your import.');
+    }
+    if(status===403)throw Error('You do not have permission to '+action+'. Check your access, then retry.');
+    const failed=`Could not ${action} (HTTP ${status}). Please retry.`;
+    if(!type?.toLowerCase().includes('application/json')){if(status===400){document.dispatchEvent(new Event('freo:authentication-required'));throw Error('Your page has expired. Sign in again, then resume your import.');}throw Error(failed);}
+    let result;try{result=JSON.parse(text);}catch(_){throw Error('The server returned an invalid response. Please retry.');}
+    if(status<200||status>=300)throw Error(typeof result?.message==='string'?result.message:failed);
+    return result;
+  }
+  const readResponse=async(response,action)=>decodeResponse(response.status,response.url,response.headers.get('content-type'),await response.text(),action);
   async function api(url,csrf,payload){
     const body=payload instanceof FormData?payload:new FormData();
     if(!(payload instanceof FormData))for(const [k,v] of Object.entries(payload))body.set(k,v);
     body.set('csrf',csrf);
     const response=await scope.fetch(url,{method:'POST',body,headers:{Accept:'application/json'}});
-    if(!response.headers.get('content-type')?.includes('application/json'))throw Error('Session unavailable. Sign in again to save.');
-    const result=await response.json();if(!response.ok)throw Error(result.message||'Unable to save');return result;
+    return readResponse(response,'save changes');
   }
   const stores=new Map(), listeners=new WeakMap();
   const notify=data=>(listeners.get(data)||[]).forEach(fn=>fn());
-  async function load(base){const response=await scope.fetch(base,{cache:'no-store'});if(!response.ok)throw Error('Catalog could not load');const next=await response.json();if(!stores.has(base))stores.set(base,next);else Object.assign(stores.get(base),next);const data=stores.get(base);notify(data);return data;}
+  async function load(base){const next=await readResponse(await scope.fetch(base,{cache:'no-store',headers:{Accept:'application/json'}}),'load the catalog');if(!stores.has(base))stores.set(base,next);else Object.assign(stores.get(base),next);const data=stores.get(base);notify(data);return data;}
   function subscribe(data,fn){if(!listeners.has(data))listeners.set(data,new Set());listeners.get(data).add(fn);const dispose=()=>listeners.get(data)?.delete(fn);scope.cleanup(dispose);return dispose;}
   function upsert(data,kind,row){const rows=data[kind];const index=rows.findIndex(r=>r.id===row.id);if(index<0)rows.push(row);else rows[index]=row;rows.sort((a,b)=>a.name.localeCompare(b.name));notify(data);}
 
@@ -137,6 +150,6 @@
       save.onclick=async()=>{save.disabled=true;try{const [x,y,side]=geometry(),out=el('canvas');out.width=out.height=Math.min(3000,Math.floor(side));out.getContext('2d').drawImage(picture,x,y,side,side,0,0,out.width,out.height);const blob=await new Promise(r=>out.toBlob(r,'image/jpeg',.93));const body=new FormData();body.append('file',blob,'cover.jpg');for(const [k,v] of Object.entries(extra))if(v)body.set(k,v);const result=await api(config.base.replace(/\/catalog$/,'/artwork'),config.csrf,body);close(result);}catch(e){status.textContent=e.message;save.disabled=false;}};
     });
   }
-  window.FreoCatalog={load,selectors,chips,chooseCover,api,el};
+  window.FreoCatalog={load,selectors,chips,chooseCover,api,el,readResponse,decodeResponse};
   const album=document.getElementById('album-cover-editor');if(album)document.getElementById('album-cover-button').onclick=async()=>{const result=await chooseCover(album.dataset,{album_id:album.dataset.album});if(result){let img=document.querySelector('.album-head img');if(!img){img=el('img',undefined,'catalog-art large');document.querySelector('.album-head .catalog-art').replaceWith(img);}img.src=result.url;document.getElementById('album-cover-status').textContent='Album artwork saved';}};
 })();

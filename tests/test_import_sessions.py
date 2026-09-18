@@ -213,7 +213,9 @@ def test_real_migration_upgrade_preserves_catalog(app,monkeypatch):
         before=Track.query.first().title
         MusicImportItem.__table__.drop(db.engine);MusicImportSession.__table__.drop(db.engine)
     runner=app.test_cli_runner()
-    for command in (['db','stamp','ab31e76f209d'],['db','upgrade']):
+    # This fixture already has the current catalog columns; exercise only the
+    # removed importer tables here. Full migration chains have separate coverage.
+    for command in (['db','stamp','ab31e76f209d'],['db','upgrade','e92b740a613f']):
         result=runner.invoke(args=command);assert result.exit_code==0,result.output
     with app.app_context():assert Track.query.first().title==before
     assert post(admin_client(app),BASE).status_code==201

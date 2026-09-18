@@ -1,7 +1,7 @@
 {% from 'admin/_music_macros.html' import play, toggles with context %}
 {% extends 'admin/base.html' %}
 {% block title %}{{ track.title }} · Freo media{% endblock %}
-{% block scripts %}{{ super() }}<script defer src="{{ url_for('static',filename='catalog_controls.js',v='imports-4') }}"></script><script defer src="{{ url_for('static',filename='media_editor.js',v='imports-4') }}"></script>{% endblock %}
+{% block scripts %}{{ super() }}<script defer src="{{ url_for('static',filename='catalog_controls.js',v='import-flow-20260918') }}"></script><script defer src="{{ url_for('static',filename='media_editor.js',v='imports-4') }}"></script>{% endblock %}
 {% block admin_content %}{% with sharing_kind='song',sharing_item=track %}{% include 'admin/_sharing.html' %}{% endwith %}<p class="song-plays"><strong>{{ play_count }} plays</strong> · Confirmed on-air starts</p><p>{{ votes.up }} thumbs up · {{ votes.down }} thumbs down · {{ votes.net }} net · {{ (votes.approval|string ~ '% approval') if votes.total else 'No votes' }} · <a href="{{ url_for('player_experience.inbox',slug=selected.slug,track=track.uuid) }}">{{ votes.comments }} listener comments</a></p>
 <div id="media-editor" data-base="{{ url_for('catalog_editor.catalog',slug=selected.slug) }}" data-song-url="{{ url_for('catalog_editor.song',slug=selected.slug,identifier=track.uuid) }}" data-csrf="{{ csrf_token() }}" data-artist="{{ track.artist_id or '' }}" data-album="{{ track.album_id or '' }}" data-song="{{ track.uuid }}">
 <div class="section-title"><div><span class="eyebrow">SONG</span><h1 id="editor-title">{{ track.title }}</h1><p id="editor-subtitle">{{ track.artist }} · {{ track.album or 'Single' }}</p></div><a href="{{ url_for('admin_media.library',slug=selected.slug) }}">← Music</a></div>

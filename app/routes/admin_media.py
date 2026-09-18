@@ -8,7 +8,7 @@ from flask import Blueprint, abort, current_app, flash, jsonify, redirect, rende
 from sqlalchemy import or_
 
 from app.extensions import db
-from app.models import Album,Artist,AuditEvent,MediaCategory,MusicTag,MediaIngestJob,SelectionDecision,Track
+from app.models import Album,Artist,AuditEvent,MediaCategory,MusicTag,MediaIngestJob,SelectionDecision,Track,MusicImportItem,MusicImportSession
 from app.services.admin_auth import admin_required, current_admin, media_mutation_required
 from app.services.admin_media import audit, stage_upload, track_for_station
 from app.services.automation import assign_track
@@ -41,6 +41,13 @@ def library(slug):
     view=request.args.get('view','songs')
     if view not in ('artists','albums','songs'): abort(400)
     query = tracks_for(station.id).filter_by(deleted_at=None)
+    import_id = request.args.get('import_session')
+    if import_id:
+        workspace = MusicImportSession.query.filter_by(id=import_id, station_id=station.id,
+            admin_user_id=current_admin().id).first_or_404()
+        imported = db.select(MediaIngestJob.track_id).join(MusicImportItem,
+            MusicImportItem.job_id == MediaIngestJob.id).where(MusicImportItem.session_id == workspace.id)
+        query = query.filter(Track.id.in_(imported))
     search = request.args.get('q', '').strip()[:100]
     if search:
         pattern = '%' + search.replace('\\', '\\\\').replace('%', '\\%').replace('_', '\\_') + '%'

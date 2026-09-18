@@ -31,7 +31,7 @@ def test_import_and_edit_catalog(booth, request):
     work(app,True)
     wait_text(driver,'.import-card','Ready to import')
     WebDriverWait(driver,8).until(lambda d:d.find_element(By.CSS_SELECTOR,'.import-song-fields input').get_attribute('value')=='My imported song')
-    driver.find_element(By.XPATH,"//button[text()='▶ Listen']").click()
+    click('.import-card-head button')
     WebDriverWait(driver,8).until(lambda d:d.execute_script('return !document.getElementById("music-audio").paused'))
     choose(driver,'.import-card','Artist','New browser artist',True)
     choose(driver,'.import-card','Album','New browser album',True)

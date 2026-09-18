@@ -77,3 +77,18 @@ html:has(#music-player:not([hidden])){scroll-padding-bottom:150px}
 .catalog-error:empty{display:none}.catalog-error{color:var(--theme-danger,#b3261e);font-size:.85rem}.import-group-head{flex-wrap:wrap}.import-group-head>div{flex:1;min-width:150px}
 #import-defaults{scroll-margin-block-start:210px}
 .import-workspace form{padding-bottom:145px}.import-action-bar{position:fixed;bottom:12px;right:auto;box-sizing:border-box;z-index:25;margin:0}@media(max-width:750px){.import-action-bar{bottom:8px}.import-workspace form{padding-bottom:185px}}
+
+/* Keep review focused on the songs, with a visible destination and clear actions. */
+.import-workspace .has-files .drop-zone{min-height:60px;padding:12px;flex-direction:row;gap:12px}
+.import-workspace .has-files .drop-zone span{font-size:.85rem}
+.import-destination{display:grid;grid-template-columns:auto minmax(180px,1fr);align-items:center;gap:8px 16px;padding:16px;background:var(--theme-accent-soft);border-radius:10px;margin:16px 0}
+.import-destination>label{font-weight:600}.import-destination>small{grid-column:1/-1;color:var(--theme-muted)}
+.import-workspace select{min-width:0}.import-row-copy{overflow-wrap:anywhere}
+.import-action-bar>[hidden]{display:none}.import-action-bar>a{white-space:nowrap}
+#preview-close{flex:none;min-width:36px;min-height:36px;font-size:1.35rem}
+@media(max-width:750px){.import-destination{grid-template-columns:1fr}.import-workspace .has-files .drop-zone{flex-direction:column;gap:4px}.import-action-bar>a{text-align:center}.import-row-copy{min-width:0;flex-basis:calc(100% - 40px)}}
+
+.import-workspace button,.import-workspace input,.import-workspace select,.import-workspace a{scroll-margin-bottom:var(--import-dock-space,150px);scroll-margin-top:240px}
+html:has(#music-player:not([hidden])){scroll-padding-bottom:var(--music-preview-space,120px)}
+.music-player{padding-right:62px}
+#preview-close{position:absolute;right:12px;top:12px}

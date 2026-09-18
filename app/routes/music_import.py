@@ -5,11 +5,12 @@ import stat
 import uuid
 from datetime import timedelta
 from flask import Blueprint, abort, jsonify, request, send_file, url_for
+from sqlalchemy.orm import joinedload, selectinload, load_only
 from app.extensions import db
-from app.models import MusicImportSession, MusicImportItem, MediaIngestJob, MusicArtwork
+from app.models import MusicImportSession, MusicImportItem, MediaIngestJob, MusicArtwork, Track
 from app.routes.web import station_or_404
 from app.routes.catalog_editor import state
-from app.services.admin_auth import admin_required, current_admin, require_csrf
+from app.services.admin_auth import admin_required, current_admin, require_csrf, csrf_token
 from app.services.admin_media import audit, staged_path
 from app.services.catalog_edit import validate_metadata, apply_metadata
 from app.services.import_sessions import stage, utcnow, DRAFT_DAYS
@@ -37,11 +38,15 @@ def session_for(slug, identifier, lock=False):
     return session
 
 
-def item_state(item, slug):
+def item_state(item, slug, duplicates=None):
     song = item.job.track if item.job and item.job.track and not item.job.track.deleted_at else None
-    song_data = state(song) if song else None
-    if song_data: song_data.pop('waveform', None)
+    song_data = state(song, include_waveform=False) if song else None
+    if duplicates is None:
+        duplicates = duplicate_songs([item], item.session.station_id)
+    duplicate = duplicates.get(item.checksum) if item.status != 'finalized' else None
     return dict(id=item.id, name=item.original_filename, path=item.relative_path, size=item.size_bytes,
+        duplicate=dict(uuid=duplicate.uuid, title=duplicate.title,
+            review_url=url_for('admin_media.track_detail', slug=slug, track_uuid=duplicate.uuid)) if duplicate else None,
         status=item.status, detected=item.detected, choices=item.choices, revision=item.revision,
         error=item.error, job_status=item.job.status if item.job else None,
         job_error=item.job.error_code if item.job else None, song=song_data,
@@ -52,9 +57,25 @@ def item_state(item, slug):
         cover_url=url_for('.artwork', slug=slug, identifier=item.session_id, item_id=item.id) if (item.detected or {}).get('has_artwork') else None)
 
 
+def duplicate_songs(items, station_id):
+    checksums = {i.checksum for i in items if i.status != 'finalized' and i.checksum}
+    if not checksums: return {}
+    return {song.checksum_sha256: song for song in Track.query.filter_by(
+        station_id=station_id, deleted_at=None, ingest_status='accepted').filter(
+        Track.checksum_sha256.in_(checksums)).options(
+        load_only(Track.uuid, Track.title, Track.checksum_sha256)).all()}
+
+
 def session_state(session, slug):
+    song = joinedload(MusicImportItem.job).joinedload(MediaIngestJob.track)
+    rows = MusicImportItem.query.filter_by(session_id=session.id, dismissed=False).options(
+        song.defer(Track.waveform), song.selectinload(Track.tags),
+        song.selectinload(Track.categories), song.joinedload(Track.catalog_album),
+        song.joinedload(Track.station)).order_by(MusicImportItem.created_at, MusicImportItem.id).all()
+    duplicates = duplicate_songs(rows, session.station_id)
     return dict(id=session.id, url=url_for('.session_detail', slug=slug, identifier=session.id),
-        items=[item_state(i, slug) for i in session.items if not i.dismissed], groups=session.groups, expires_days=DRAFT_DAYS)
+        library_url=url_for('admin_media.library', slug=slug, import_session=session.id),
+        items=[item_state(i, slug, duplicates) for i in rows], groups=session.groups, expires_days=DRAFT_DAYS)
 
 
 def choices(station_id, data):
@@ -93,10 +114,19 @@ def sessions(slug):
         db.session.add(session); db.session.commit()
         return jsonify(session_state(session, slug)), 201
     rows = (MusicImportSession.query.filter_by(station_id=station.id, admin_user_id=current_admin().id)
+            .options(selectinload(MusicImportSession.items).load_only(MusicImportItem.id,
+                MusicImportItem.original_filename, MusicImportItem.relative_path,
+                MusicImportItem.detected, MusicImportItem.dismissed, MusicImportItem.status))
             .filter(MusicImportSession.updated_at >= utcnow() - timedelta(days=DRAFT_DAYS))
             .order_by(MusicImportSession.updated_at.desc()).limit(20).all())
-    response = jsonify(sessions=[dict(id=s.id, created_at=s.created_at.isoformat(),
-        count=sum(not i.dismissed for i in s.items)) for s in rows])
+    def label(session):
+        visible = [i for i in session.items if not i.dismissed]
+        if not visible: return 'Empty import'
+        first = visible[0]
+        return (first.detected or {}).get('album') or first.relative_path.rpartition('/')[0] or first.original_filename
+    response = jsonify(csrf=csrf_token(), sessions=[dict(id=s.id, created_at=s.created_at.isoformat(),
+        name=label(s), count=sum(not i.dismissed for i in s.items),
+        imported=sum(not i.dismissed and i.status=='finalized' for i in s.items)) for s in rows])
     response.headers['Cache-Control'] = 'private, no-store'
     return response
 
@@ -108,6 +138,27 @@ def session_detail(slug, identifier):
     session = session_for(slug, identifier, lock=request.method=='POST')
     if request.method == 'POST':
         data = payload()
+        if data.get('action') == 'save-items':
+            selected = data.get('items')
+            if not isinstance(selected, list) or not 1 <= len(selected) <= 500:
+                raise ValueError('Select songs to save')
+            if any(not isinstance(row, dict) or not isinstance(row.get('id'), str) for row in selected):
+                raise ValueError('Invalid song selection')
+            identifiers = [row['id'] for row in selected]
+            rows = {row.id: row for row in MusicImportItem.query.filter(
+                MusicImportItem.session_id == session.id, MusicImportItem.id.in_(identifiers),
+                MusicImportItem.dismissed.is_(False)).with_for_update().all()}
+            if len(rows) != len(selected): raise ValueError('One or more songs are unavailable')
+            for selection in selected:
+                item = rows[selection['id']]
+                if item.revision != selection.get('revision'):
+                    raise ValueError('Details changed in another tab. Reload this import before saving.')
+                if item.status not in ('pending', 'preparing', 'ready', 'failed'):
+                    raise ValueError('This draft has expired or was imported. Reload its details.')
+                item.choices = choices(session.station_id, selection.get('choices', {}))
+                item.revision += 1
+            session.updated_at = utcnow(); db.session.commit()
+            return jsonify(session_state(session, slug))
         if data.get('action') == 'group':
             key = data.get('key')
             if not isinstance(key, str) or not key or len(key)>300: raise ValueError('Invalid album group')
@@ -153,7 +204,8 @@ def upload(slug, identifier):
     session = session_for(slug, identifier, lock=True)
     file = request.files.get('file')
     if not file: raise ValueError('Choose an audio file')
-    item = stage(session, request.form.get('id', ''), file, request.form.get('path', ''))
+    item = stage(session, request.form.get('id', ''), file, request.form.get('path', ''),
+                 choices=choices(session.station_id, payload()))
     return jsonify(item_state(item, slug)), 202
 
 
@@ -171,7 +223,10 @@ def edit_item(slug, identifier, item_id):
         item.dismissed = True
     elif action == 'retry':
         if item.status == 'finalized' and item.job and item.job.status in ('error', 'rejected'):
-            if not staged_path(item.id).is_file(): raise ValueError('Source file expired. Add the file again to retry.')
+            if not staged_path(item.id).is_file():
+                existing = Track.query.filter_by(station_id=session.station_id,
+                    checksum_sha256=item.checksum, deleted_at=None, ingest_status='accepted').first()
+                if not existing: raise ValueError('Source file expired. Add the file again to retry.')
             item.job.status, item.job.error_code = 'pending', None
         elif item.status == 'failed':
             item.status, item.error = 'pending', ''

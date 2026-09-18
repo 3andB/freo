@@ -65,3 +65,20 @@ def test_concurrent_finalize_is_idempotent(pg_app):
     with pg_app.app_context():
         from app.models import MediaIngestJob
         assert MediaIngestJob.query.count()==1
+
+
+def test_concurrent_album_save_and_single_edit_preserve_revision(pg_app):
+    client=admin_client(pg_app);session=post(client,BASE).json;identifier=str(uuid.uuid4())
+    with pg_app.app_context():
+        db.session.add(MusicImportItem(id=identifier,session_id=session['id'],original_filename='song.mp3',
+            relative_path='',size_bytes=1,checksum='c'*64,status='ready'))
+        db.session.commit()
+    def edit(index):
+        if index:
+            return post(admin_client(pg_app),session['url'],{'action':'save-items','items':[
+                {'id':identifier,'revision':1,'choices':{'title':'Album edit'}}]})
+        return post(admin_client(pg_app),session['url']+'/items/'+identifier,
+            {'revision':1,'choices':{'title':'Individual edit'}})
+    results=race(edit)
+    assert sorted(response.status_code for response in results)==[200,409]
+    with pg_app.app_context():assert db.session.get(MusicImportItem,identifier).revision==2

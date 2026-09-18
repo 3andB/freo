@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 
 from app import create_app
 from app.extensions import db
-from app.models import MediaIngestJob
+from app.models import MediaIngestJob, MusicImportItem, Track
 from app.services.analysis_queue import process_analysis, recover_analysis
 from app.services.admin_media import JOB_ID, audit, staged_path, upload_root
 from app.services.media import ingest, set_enabled_db, verify
@@ -87,11 +87,23 @@ def process_one():
                   target_type='imaging_asset', target_id=asset.uuid,
                   summary='Existing imaging reused' if duplicate else 'Imaging validated and accepted disabled')
         else:
-            track, duplicate = ingest(job.station.slug, path,
-                                      original_filename=job.original_filename,
-                                      enabled=False, update_playlist=False, auto_enable_pending=not (job.import_metadata or {}).get('keep_disabled', False), import_metadata=job.import_metadata or {})
+            # Older workers could remove staged bytes after ingest committed but
+            # before the job association committed. Recover only verified audio
+            # belonging to this draft's station and checksum.
+            draft = db.session.get(MusicImportItem, job.id)
+            track = (Track.query.filter_by(station_id=job.station_id,
+                checksum_sha256=draft.checksum, deleted_at=None, ingest_status='accepted').first()
+                if draft and not path.exists() else None)
+            if track:
+                verify(track)
+                duplicate = True
+            else:
+                track, duplicate = ingest(job.station.slug, path,
+                                          original_filename=job.original_filename,
+                                          enabled=False, update_playlist=False, auto_enable_pending=not (job.import_metadata or {}).get('keep_disabled', False), import_metadata=job.import_metadata or {})
             job.status = 'duplicate' if duplicate else 'accepted'
             job.track_id = track.id
+            job.error_code = None
             if not duplicate:
                 from app.services.audio_analysis import analyze_song,extract_artwork
                 extract_artwork(track)
@@ -117,15 +129,17 @@ def process_one():
         audit('imaging_ingest_rejected' if job.kind.startswith('img') or job.kind == 'imaging' else 'media_ingest_rejected', user_id=job.admin_user_id, station_id=job.station_id,
               target_type='ingest_job', target_id=job.id, summary='Processing failed')
         logger.exception('Media ingest failed for job=%s station=%s', job.id, job.station_id)
-    finally:
-        if path:
-            from app.models import MusicImportItem
-            draft = db.session.get(MusicImportItem, job.id)
-            # Review imports retain staged bytes for retryable worker failures.
-            if not draft or job.status not in ('error', 'rejected'):
-                path.unlink(missing_ok=True)
     job.finished_at = datetime.now(timezone.utc)
     db.session.commit()
+    # The committed result is the recovery boundary. Cleanup may safely repeat,
+    # but it must never remove a source before that result is durable.
+    if path:
+        draft = db.session.get(MusicImportItem, job.id)
+        if not draft or job.status not in ('error', 'rejected'):
+            try:
+                path.unlink(missing_ok=True)
+            except OSError:
+                logger.exception('Deferred staging cleanup for job=%s', job.id)
     return True
 
 

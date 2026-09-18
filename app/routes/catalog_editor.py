@@ -34,11 +34,11 @@ def cover_url(song):
     return None
 
 
-def state(song):
+def state(song, *, include_waveform=True):
     eligible = song.enabled and not song.decommissioned_at and any(c.enabled for c in song.categories)
     return dict(uuid=song.uuid, isrc=song.isrc, title=song.title, artist=song.artist, album=song.album, track_number=song.track_number, disc_number=song.disc_number, release_year=song.release_year, artist_id=song.artist_id, album_id=song.album_id, album_artist_id=song.catalog_album.artist_id if song.catalog_album else None, album_artist=song.album_artist,
                 enabled=song.enabled, analysis=song.analysis_status, error=song.analysis_error,
-                processing_requested=song.analysis_requested, waveform=song.waveform, cover=cover_url(song),
+                processing_requested=song.analysis_requested, **({'waveform':song.waveform} if include_waveform else {}), cover=cover_url(song),
                 tags=[t.id for t in song.tags], categories=[c.id for c in song.categories],
                 broadcast=('Decommissioned' if song.decommissioned_at else
                            'Enabled for broadcast' if eligible else 'Enabled — choose an active category for rotation' if song.enabled else

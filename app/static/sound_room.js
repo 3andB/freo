@@ -4,6 +4,7 @@
   const $=id=>document.getElementById(id), selected=new Set();
   let data=null,active=null,activeSong=null,page=1,filter={},version=0,busy=false,undo=null,drag=null,editing=null,notesDirty=false,editingCategory=null,suppressClickUntil=0;
   const initial=new URLSearchParams(location.search);active=initial.get('song');
+  if(initial.get('import_session')){filter.import_session=initial.get('import_session');$('collection-title').textContent='Imported songs';}
   const el=(tag,text,cls)=>{const node=document.createElement(tag);if(text!==undefined)node.textContent=text;if(cls)node.className=cls;return node;};
   const button=(text,fn,cls)=>{const node=el('button',text,cls);node.type='button';node.addEventListener('click',fn);return node;};
   function fitWorkspace(){

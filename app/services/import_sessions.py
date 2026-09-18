@@ -2,6 +2,7 @@
 from datetime import datetime, timedelta, timezone
 import hashlib
 import json
+import logging
 import os
 import stat
 import subprocess
@@ -34,7 +35,7 @@ def create_review_preview(source, target):
                    check=True, capture_output=True, timeout=10)
 
 
-def stage(session, identifier, file, relative_path=''):
+def stage(session, identifier, file, relative_path='', choices=None):
     if str(uuid.UUID(identifier)) != identifier:
         raise ValueError('Invalid file identifier')
     existing = db.session.get(MusicImportItem, identifier)
@@ -78,7 +79,7 @@ def stage(session, identifier, file, relative_path=''):
             raise ValueError('Choose a nonempty audio file')
         item = MusicImportItem(id=identifier, session=session, original_filename=name,
                                relative_path=str(relative_path)[:1000], size_bytes=total,
-                               checksum=digest.hexdigest())
+                               checksum=digest.hexdigest(), choices=choices or {})
         db.session.add(item)
         session.updated_at = utcnow()
         db.session.commit()
@@ -162,6 +163,7 @@ def prepare_one():
             item.status, item.error = 'ready', ''
         db.session.commit()
     except Exception as error:
+        logging.getLogger('freo.ingest').exception('Import preparation failed for item=%s session=%s', item.id, item.session_id)
         db.session.rollback()
         item = db.session.get(MusicImportItem, item.id)
         if item.status == 'preparing':
