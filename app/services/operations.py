@@ -5,11 +5,12 @@ from datetime import datetime, timezone
 from sqlalchemy.orm import joinedload
 
 from app.extensions import db
-from app.models import (AutomationHeartbeat, BroadcastIncident, CentralInstallation, CentralStationState,
+from app.models import (AutomationHeartbeat, BroadcastIncident, CentralInstallation, CentralConnectionCheck, CentralStationState,
                         LiveQueueSnapshot, SelectionDecision, Station, StatsState, StorageSnapshot)
 from app.services.admin_view import aware, format_station_time
 from app.services.statistics import aggregate
 from app.services.schedule import resolve
+from app.version import VERSION
 
 
 def fresh(at, now, seconds):
@@ -21,23 +22,45 @@ def fresh(at, now, seconds):
 def connection(stations, now):
     from app.services.central_api import metadata, digest
     from app.services.central_api.client import timestamp
+    from app.services.central_api.connection_check import check_status
     row = db.session.get(CentralInstallation, 1)
     state = row.state if row else {}
     receipt = state.get('last_heartbeat', {})
     last = receipt.get('server_time')
     try:
-        recent = fresh(timestamp(last), now, 3900)
+        last_at = timestamp(last)
+        recent = fresh(last_at, now, 3900)
     except (ValueError, TypeError):
+        last_at = 0
         recent = False
+    manual = db.session.get(CentralConnectionCheck, 1)
+    failed_check = bool(manual and manual.status == 'failed' and (manual.finished_at or 0) >= last_at)
     connected = bool(recent and row and not row.last_error
-                     and row.registration_state != 'credentials_rejected')
+                     and row.registration_state != 'credentials_rejected' and not failed_check)
     status = ('Connection to mother ship established' if connected else
-              'Connection needs attention' if row and row.last_error else
+              'Connection needs attention' if failed_check or row and row.last_error else
               'Connection stale' if last else 'Awaiting first connection')
     synced = {s.station_id: s.synced_digest for s in CentralStationState.query.all()}
     synced_count = sum(synced.get(s.id) == digest(metadata(s)) for s in stations)
     entitlement = (row.license_cache or {}).get('entitlement', {}) if row else {}
+    version = receipt
+    version_source = 'Heartbeat' if last else 'Not yet checked'
+    version_checked_at = last or 'Not yet checked'
+    available = receipt.get('update_available')
+    if receipt.get('freo_version') != VERSION or state.get('report', {}).get('failures') or failed_check:
+        available = None
+    if (manual and (manual.finished_at or 0) >= last_at
+            and manual.result.get('version_source') == 'public'):
+        version = manual.result
+        available = version.get('update_available') if version.get('freo_version') == VERSION else None
+        version_source = 'Public release discovery'
+        version_checked_at = datetime.fromtimestamp(version['checked_at'], timezone.utc).isoformat()
+    update_status = ('Update available' if available is True else
+                     'No newer version available' if available is False else 'Unknown')
     return dict(status=status, connected=connected, last_contact=last or 'Not yet observed',
+                installed_version=VERSION, latest_version=version.get('latest_version') or 'Unknown',
+                update_status=update_status, version_source=version_source, version_checked_at=version_checked_at,
+                check=check_status(now),
                 synced=f'{synced_count} / {len(stations)} stations up to date',
                 plan=entitlement.get('plan', 'Awaiting verification'),
                 entitlement_status=entitlement.get('status', 'Unverified'),

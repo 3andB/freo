@@ -2,7 +2,7 @@
 import re
 import click
 import time
-from flask import Blueprint, current_app, flash, redirect, render_template, request, url_for
+from flask import Blueprint, current_app, flash, jsonify, redirect, render_template, request, url_for
 from app.extensions import db
 from app.version import VERSION
 from app.routes.web import admin_stations
@@ -13,8 +13,27 @@ from app.services.central_api.client import APIError, uuid_string, timestamp
 from app.services.central_api.identity import IdentityStore
 from app.services.central_api.licensing import effective_time
 from app.services.central_api.releases import check_version
+from app.services.central_api.connection_check import queue_check, check_status
 
 central_api = Blueprint('central_api', __name__)
+
+
+@central_api.post('/admin/installation/check-connection')
+@admin_required
+def request_connection_check():
+    require_csrf()
+    queued = queue_check()
+    if queued:
+        audit('central_api_check_requested', user_id=current_admin().id,
+              target_type='installation', target_id='1', summary='Manual connection check requested')
+        db.session.commit()
+    if request.accept_mimetypes.best == 'application/json':
+        response = jsonify(check_status())
+        response.status_code = 202 if queued else 200
+        response.headers['Cache-Control'] = 'private, no-store'
+        return response
+    flash('Connection check queued.' if queued else 'A check is pending or available again shortly.', 'success')
+    return redirect(url_for('web.admin_home'))
 
 
 def queue_activation(code):
@@ -166,18 +185,25 @@ def run(once):
     reporter = Reporter()
     try:
         with reporter.store.lock():
+            next_tick = 0
             while True:
                 started = time.monotonic()
+                poll_interval = 2
                 try:
-                    reporter.tick()
+                    checked = reporter.process_connection_check()
+                    if not checked and started >= next_tick:
+                        reporter.tick()
+                    if checked or started >= next_tick:
+                        next_tick = time.monotonic() + 60
                 except Exception as error:
                     db.session.rollback()
+                    poll_interval = 60
                     # Even DB/OS failures never propagate into broadcast workers.
                     current_app.logger.error('Central API reporter tick failed (%s)', type(error).__name__)
                 finally:
                     db.session.remove()
                 if once:
                     break
-                time.sleep(max(1, 60 - (time.monotonic() - started)))
+                time.sleep(max(0.1, poll_interval - (time.monotonic() - started)))
     except APIError as error:
         raise click.ClickException(error.code) from None

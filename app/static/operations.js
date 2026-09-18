@@ -5,8 +5,55 @@
   const scope = window.FreoPage;
   let pending = false;
   const value = (v, fallback = '—') => v == null || v === '' ? fallback : String(v);
+  const checkForm = root.querySelector('#connection-check');
+  const checkMessage = root.querySelector('#connection-check-status');
+  const checkButton = checkForm.querySelector('button');
+  let submitting = false;
+  let checkGeneration = 0;
+  let busy = ['queued', 'checking'].includes(checkMessage.dataset.checkStatus);
+  let retryAt = Number(checkMessage.dataset.retryAt || 0);
+  function updateButton() {
+    checkButton.disabled = submitting || busy || Date.now() / 1000 < retryAt;
+    checkButton.textContent = submitting ? 'Requesting…' : busy ?
+      (checkMessage.dataset.checkStatus === 'checking' ? 'Checking…' : 'Queued') : 'Check connection now';
+  }
+  function renderCheck(check) {
+    busy = check.busy;
+    retryAt = check.retry_at || 0;
+    checkMessage.dataset.checkStatus = check.status;
+    checkMessage.textContent = check.message;
+    if (!busy && retryAt > Date.now() / 1000) {
+      checkMessage.textContent += ` Available again at ${new Date(retryAt * 1000).toLocaleTimeString()}.`;
+    }
+    updateButton();
+  }
+  scope.listen(checkForm, 'submit', async event => {
+    event.preventDefault();
+    if (submitting || busy || Date.now() / 1000 < retryAt) return;
+    submitting = true;
+    checkGeneration += 1;
+    updateButton();
+    const controller = new AbortController();
+    const abort = () => controller.abort();
+    scope.signal.addEventListener('abort', abort, {once: true});
+    const timeout = setTimeout(abort, 10000);
+    try {
+      const response = await scope.fetch(checkForm.action, {method: 'POST', body: new FormData(checkForm),
+        headers: {Accept: 'application/json'}, signal: controller.signal});
+      if (!response.ok || !response.headers.get('content-type')?.includes('application/json')) throw new Error('Unavailable');
+      renderCheck(await response.json());
+    } catch {
+      if (!scope.signal.aborted) checkMessage.textContent = 'Could not confirm the request. Refreshing its status; previous results are still shown.';
+    } finally {
+      clearTimeout(timeout);
+      scope.signal.removeEventListener('abort', abort);
+      submitting = false;
+      if (!scope.signal.aborted) {updateButton(); refresh();}
+    }
+  });
   async function refresh() {
     if (pending || document.hidden) return;
+    const generation = checkGeneration;
     pending = true;
     const controller = new AbortController();
     const abort = () => controller.abort();
@@ -19,6 +66,8 @@
       if (scope.signal.aborted) return;
       root.querySelectorAll('[data-summary]').forEach(el => {el.textContent = value(data.summary[el.dataset.summary]);});
       root.querySelectorAll('[data-connection]').forEach(el => {el.textContent = value(data.connection[el.dataset.connection], '');});
+      // A snapshot started before a click must not replace its queued response.
+      if (!submitting && generation === checkGeneration) renderCheck(data.connection.check);
       root.querySelector('[data-storage]').textContent = data.summary.storage == null ? 'Not yet measured' : `${(data.summary.storage / 1000000).toLocaleString(undefined, {maximumFractionDigits: 1})} MB`;
       root.querySelectorAll('[data-ops-station]').forEach(card => {
         const row = data.stations[card.dataset.opsStation];
@@ -40,5 +89,7 @@
     } finally {clearTimeout(timeout); scope.signal.removeEventListener('abort', abort); pending = false;}
   }
   scope.interval(refresh, 15000);
+  scope.interval(() => {updateButton(); if (busy) refresh();}, 2000);
+  updateButton();
   scope.listen(document, 'visibilitychange', () => {if (!document.hidden) refresh();});
 })();

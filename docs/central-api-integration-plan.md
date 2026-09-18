@@ -159,3 +159,45 @@ timeouts, TLS verification and response-size limit. No additional polling is
 introduced: normal discovery comes from existing hourly heartbeats, and admin
 page rendering uses cached data only. Nothing downloads, installs or rolls back
 releases, and failures never control broadcasts or replace cached entitlements.
+
+## Manual connection checks
+
+Operations overview → **Check connection now** requests an early check by the
+existing reporter. The panel shows queued/checking/completed status, installed
+and published versions, update availability, the version source and check time,
+alongside the existing heartbeat, synchronization and entitlement information.
+The form requires an authenticated administrator and CSRF token; the web process
+never reads reporter credentials or contacts the API. It also works without
+JavaScript, with a page refresh to view completion.
+
+A separate `central_connection_check` singleton stores a request UUID and its
+result. Atomic insertion/replacement coalesces concurrent clicks; requests have
+a 60-second cooldown. The reporter checks this queue every two seconds under its
+existing process lock. Normal sampling still runs every minute, and successful
+reports schedule the next heartbeat approximately an hour later. Manual checks
+refresh license information, synchronize changed station metadata and send a
+heartbeat early, while retaining failure backoff, server `Retry-After`, blocked
+credentials and the hourly request budget. A queued request survives restarts;
+an interrupted in-progress request is marked failed for an explicit retry.
+
+Only a heartbeat accepted during that request establishes manual-check success.
+License-refresh failure can coexist with an accepted heartbeat and is shown as
+a partial result. If connection reporting fails, a bounded unauthenticated
+release lookup can provide version information, but does not establish a
+successful installation connection. Both forms of failure retain existing
+credentials, cached entitlements and the last successful heartbeat. No check
+changes station runtime or invokes systemd.
+
+Deployment requires migration `ab31e76f209d` (`flask --app app:create_app db upgrade`)
+before restarting the web app and `freo-central-api.service`. It only adds the
+manual-request table; no existing installation, license or station data is
+rewritten. Playout and automation do not need a restart for this change.
+
+Fresh-VM validation: upgrade a disposable database from `d91f3a26b807`, verify
+the existing installation/entitlement records remain intact, then start web and
+reporter services. Queue a check with and without JavaScript, verify version and
+heartbeat results, and test an unavailable API, a stopped/restarted reporter,
+repeated clicks and `Retry-After`. Confirm streaming and the ordinary hourly
+schedule continue throughout. The client tests cover queue races, migration
+upgrade/downgrade, request validation, failures and browser progress using
+isolated storage and fake API responses.

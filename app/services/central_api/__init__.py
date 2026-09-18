@@ -7,13 +7,14 @@ import time
 from flask import current_app
 from sqlalchemy.exc import IntegrityError
 from app.extensions import db
-from app.models import CentralInstallation, Station, CentralHourlyMetric
+from app.version import VERSION
+from app.models import CentralInstallation, CentralConnectionCheck, Station, CentralHourlyMetric
 from app.services.station_domains import preferred_url
 from .client import APIError, Client, MAX_BYTES, identity_response, license_response, timestamp, uuid_string
 from .identity import IdentityStore
 from .licensing import checkpoint
 from .metrics import machine_snapshot, sample, station_state, wire_metric, observe_station
-from .releases import heartbeat_release
+from .releases import heartbeat_release, check_version
 
 
 def installation():
@@ -287,8 +288,88 @@ class Reporter:
             self.heartbeat(row, client, [])
         self.success(row, 'report', now)
 
-    def tick(self, now=None):
+    def reserve_calls(self, row, now, count):
+        window = int(now // 3600)
+        budget = row.state.get('budget', {})
+        reserved = budget.get('reserved', 0) if budget.get('hour') == window else 0
+        if reserved + count > 90:
+            return False
+        self.save_state(row, budget={'hour': window, 'reserved': reserved + count})
+        return True
+
+    def process_connection_check(self, now=None):
+        """Called under the reporter's existing process lock, never by the web app."""
         now = time.time() if now is None else now
+        request = db.session.get(CentralConnectionCheck, 1)
+        if request is None or request.status not in ('queued', 'checking'):
+            return False
+        request_id = request.request_id
+        if request.status == 'checking':
+            # Only one reporter holds the identity lock. A surviving in-flight
+            # marker means its previous process stopped before saving the result.
+            request.status, request.finished_at = 'failed', now
+            request.result = {'message': 'The previous check was interrupted. Please try again.'}
+            db.session.commit()
+            return True
+        request.status, request.started_at = 'checking', now
+        db.session.commit()
+        try:
+            outcome = self.tick(now, manual=True)
+            row = installation()
+            result = {'freo_version': VERSION}
+            if outcome['heartbeat']:
+                receipt = row.state['last_heartbeat']
+                result.update(heartbeat_release(receipt), version_source='heartbeat',
+                              checked_at=receipt['server_time'])
+                result['message'] = 'Connected. Heartbeat accepted.'
+                if outcome.get('license_error'):
+                    result['message'] += ' License refresh unavailable; previous license information retained.'
+                status = 'succeeded'
+            else:
+                status = 'failed'
+                error = outcome.get('error') or row.last_error or 'retry_pending'
+                messages = {
+                    'credentials_rejected': 'Credentials were rejected. Review installation settings.',
+                    'credentials_missing_recovery_required': 'Installation credentials need recovery. Review installation settings.',
+                    'retry_pending': 'Connection check deferred by the retry schedule.',
+                    'rate_limited': 'Connection check deferred by the API request limit.',
+                }
+                result['message'] = messages.get(error, 'Connection check failed. Previous connection information retained.')
+                retry_at = row.state.get('retry_after', 0)
+                for name in ('enrollment', 'license', 'report'):
+                    state = row.state.get(name, {})
+                    if state.get('failures'):
+                        retry_at = max(retry_at, state.get('due', 0))
+                if error == 'rate_limited':
+                    retry_at = max(retry_at, (int(now // 3600) + 1) * 3600)
+                result['retry_at'] = retry_at
+                # Public discovery is useful even when credentials/enrollment fail.
+                # It never proves that an installation heartbeat was accepted.
+                if now >= row.state.get('retry_after', 0) and self.reserve_calls(row, now, 1):
+                    try:
+                        result.update(check_version(current_app.config['FREO_API_URL'], self.client_factory),
+                                      version_source='public', checked_at=time.time())
+                        result['message'] += ' Public release information refreshed.'
+                    except APIError as error:
+                        if error.retry_after:
+                            retry_at = max(retry_at, now + error.retry_after)
+                            self.save_state(row, retry_after=retry_at)
+                            result['retry_at'] = retry_at
+                        result['message'] += ' Version check unavailable; update status unknown.'
+        except Exception as error:
+            db.session.rollback()
+            status = 'failed'
+            result = {'message': 'Connection check unavailable. Please try again.'}
+            current_app.logger.warning('Manual connection check failed (%s)', type(error).__name__)
+        # Match the request ID so a result can only complete its own request.
+        CentralConnectionCheck.query.filter_by(id=1, request_id=request_id).update(
+            dict(status=status, finished_at=time.time(), result=result), synchronize_session=False)
+        db.session.commit()
+        return True
+
+    def tick(self, now=None, manual=False):
+        now = time.time() if now is None else now
+        outcome = {'heartbeat': False}
         row = installation()
         checkpoint(row, now)
         db.session.commit()
@@ -298,36 +379,42 @@ class Reporter:
             row.last_error = error.code
             db.session.commit()
             current_app.logger.warning('Central API registration/storage needs attention (%s)', error.code)
-            return
+            return dict(outcome, error=error.code)
         if not credentials:
-            return
+            return outcome
         if row.registration_state == 'credentials_rejected':
-            return
+            return dict(outcome, error='credentials_rejected')
         self.activate(row, credentials)
         if row.registration_state == 'credentials_rejected':
-            return
+            return dict(outcome, error='credentials_rejected')
         on_air = sample(now)
         client = self.client_factory(current_app.config['FREO_API_URL'], credentials['access_token'])
         # A process start refreshes the license, while honoring persisted backoff.
         if self.startup and not row.state.get('license', {}).get('failures'):
             self.save_state(row, license={'due': 0})
         self.startup = False
+        if manual:
+            # Bypass the normal interval, but never a failure backoff, blocked
+            # credential or server Retry-After. Normal success schedules the next hour.
+            for name in ('license', 'report'):
+                state = row.state.get(name, {})
+                if not state.get('failures') and not state.get('blocked'):
+                    self.save_state(row, **{name: {'due': 0}})
         # Bound total API calls across retries and frequent process restarts.
         if not any(self.due(row, name, now) for name in ('license', 'report')):
-            return
-        window = int(now // 3600)
-        budget = row.state.get('budget', {})
-        if budget.get('hour') != window:
-            budget = {'hour': window, 'reserved': 0}
-        if budget['reserved'] >= 90:
-            return
-        self.save_state(row, budget={'hour': window, 'reserved': budget['reserved'] + 9})
+            return dict(outcome, error='retry_pending')
+        if not self.reserve_calls(row, now, 9):
+            return dict(outcome, error='rate_limited')
         for name, operation in [('license', lambda: self.license(row, client, now)),
                                 ('report', lambda: self.report(row, client, now, on_air))]:
             if not self.due(row, name, now):
+                if manual and name == 'license':
+                    outcome['license_error'] = 'retry_pending'
                 continue
             try:
                 operation()
+                if name == 'report':
+                    outcome['heartbeat'] = True
             except APIError as error:
                 if error.code == 'station_not_synced':
                     for station in Station.query:
@@ -335,5 +422,7 @@ class Reporter:
                     db.session.commit()
                     error = APIError('station_not_synced')  # Sync before the next conservative retry.
                 self.failure(row, name, now, error)
+                outcome['license_error' if name == 'license' else 'error'] = error.code
                 if error.status == 401 or error.retry_after:
                     break
+        return outcome

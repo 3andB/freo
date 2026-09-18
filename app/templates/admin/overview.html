@@ -1,6 +1,6 @@
 {% extends 'admin/base.html' %}
 {% block title %}Overview · Radio Station Ops · Freo{% endblock %}
-{% block scripts %}{{ super() }}<script defer src="{{ url_for('static',filename='operations.js',v='1') }}"></script>{% endblock %}
+{% block scripts %}{{ super() }}<script defer src="{{ url_for('static',filename='operations.js',v='2') }}"></script>{% endblock %}
 {% block admin_content %}
 <div id="operations" data-url="{{ url_for('web.operations_snapshot') }}">
   <header class="ops-heading"><div><span class="eyebrow">RADIO STATION OPS / ALL STATIONS</span><h1>Operations overview</h1><p>Your stations, audience, and system in one place.</p></div><a class="admin-primary" href="#add-station">Add station</a></header>
@@ -14,10 +14,21 @@
     <section class="admin-card ops-connection"><span class="eyebrow">FREO.LIVE / MOTHER SHIP</span><h2 data-connection="status">{{ ops.connection.status }}</h2><dl class="detail-list">
       <div><dt>Last successful heartbeat</dt><dd data-connection="last_contact">{{ ops.connection.last_contact }}</dd></div>
       <div><dt>Station synchronization</dt><dd data-connection="synced">{{ ops.connection.synced }}</dd></div>
+      <div><dt>Installed version</dt><dd data-connection="installed_version">{{ ops.connection.installed_version }}</dd></div>
+      <div><dt>Latest published version</dt><dd data-connection="latest_version">{{ ops.connection.latest_version }}</dd></div>
+      <div><dt>Update status</dt><dd data-connection="update_status">{{ ops.connection.update_status }}</dd></div>
+      <div><dt>Version source</dt><dd data-connection="version_source">{{ ops.connection.version_source }}</dd></div>
+      <div><dt>Version checked at</dt><dd data-connection="version_checked_at">{{ ops.connection.version_checked_at }}</dd></div>
       <div><dt>Plan</dt><dd data-connection="plan">{{ ops.connection.plan }}</dd></div>
       <div><dt>License status</dt><dd data-connection="entitlement_status">{{ ops.connection.entitlement_status }}</dd></div>
       <div><dt>Enabled station limit</dt><dd data-connection="channel_limit">{{ ops.connection.channel_limit or 'Awaiting verification' }}</dd></div>
-    </dl><p data-connection="error" class="quiet">{{ ops.connection.error }}</p><a href="{{ url_for('central_api.settings') }}">Installation and connection settings →</a></section>
+    </dl><p data-connection="error" class="quiet">{{ ops.connection.error }}</p>
+      <form id="connection-check" method="post" action="{{ url_for('central_api.request_connection_check') }}">
+        <input type="hidden" name="csrf" value="{{ csrf_token() }}">
+        <button type="submit" class="admin-primary" {% if ops.connection.check.busy or ops.connection.check.retry_at > ops.generated_at %}disabled{% endif %}>Check connection now</button>
+      </form>
+      <p id="connection-check-status" role="status" aria-live="polite" data-check-status="{{ ops.connection.check.status }}" data-retry-at="{{ ops.connection.check.retry_at }}">{{ ops.connection.check.message }}</p>
+      <a href="{{ url_for('central_api.settings') }}">Installation and connection settings →</a></section>
     <section class="admin-card"><span class="eyebrow">SYSTEM / OPERATIONS</span><h2>System health</h2><dl class="detail-list">
       <div><dt>Web and database</dt><dd>Available</dd></div>
       <div><dt>Automation worker</dt><dd data-summary="automation">{{ ops.summary.automation }}</dd></div>

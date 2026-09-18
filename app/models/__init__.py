@@ -1053,6 +1053,19 @@ class CentralInstallation(db.Model):
     last_error = db.Column(db.String(64), nullable=False, default='')
 
 
+class CentralConnectionCheck(db.Model):
+    """One durable manual request, separate from reporter-owned installation state."""
+    __tablename__ = 'central_connection_check'
+    __table_args__ = (db.CheckConstraint('id = 1', name='ck_central_connection_check_singleton'),)
+    id = db.Column(db.Integer, primary_key=True, default=1)
+    request_id = db.Column(db.String(36), nullable=False)
+    status = db.Column(db.String(16), nullable=False)
+    requested_at = db.Column(db.Float, nullable=False)
+    started_at = db.Column(db.Float)
+    finished_at = db.Column(db.Float)
+    result = db.Column(db.JSON, nullable=False, default=dict)
+
+
 class CentralStationState(db.Model):
     __tablename__ = 'central_station_state'
     station_id = db.Column(db.Integer, db.ForeignKey('stations.id', ondelete='CASCADE'), primary_key=True)

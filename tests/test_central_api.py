@@ -41,6 +41,7 @@ class FakeAPI:
         self.entitlement = license_payload()
         self.token = TOKEN
         self.heartbeat_fields = {}
+        self.release = {'latest_version': '0.1.0'}
 
     def factory(self, url, token=None):
         outer = self
@@ -49,6 +50,9 @@ class FakeAPI:
                 outer.calls.append((method, path, payload, token))
                 if path in outer.fail:
                     raise outer.fail[path]
+                if path == '/v1/releases/latest':
+                    assert token is None and method == 'GET' and payload is None
+                    return outer.release
                 if path == '/v1/register':
                     return dict(installation_id=INSTALLATION_ID, access_token=TOKEN,
                         token_type='Bearer', server_time=iso(time.time()), heartbeat_interval_seconds=3600)

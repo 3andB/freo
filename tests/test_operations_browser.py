@@ -4,6 +4,81 @@ from selenium.webdriver.support.ui import Select, WebDriverWait
 from tests.test_live_browser import booth, app_fixture, wait_text
 
 
+def test_manual_connection_check_progress_and_version_result(booth, monkeypatch):
+    from threading import Event, Thread
+    from app.extensions import db
+    from app.models import CentralConnectionCheck
+    from app.services.central_api import Reporter
+    from tests.test_central_api import FakeAPI
+    app, driver, base, tmp_path = booth
+    app.config['FREO_API_STATE_DIR'] = str(tmp_path / 'central-identity')
+    monkeypatch.setattr('app.services.central_api.metrics.observation', lambda slug: (True, 4))
+    api = FakeAPI()
+    api.heartbeat_fields = {'latest_version': '0.2.0', 'update_available': True}
+    entered, release = Event(), Event()
+    errors = []
+    def worker():
+        try:
+            with app.app_context():
+                reporter = Reporter(api.factory)
+                tick = reporter.tick
+                def paused_tick(*args, **kwargs):
+                    entered.set()
+                    assert release.wait(15)
+                    return tick(*args, **kwargs)
+                reporter.tick = paused_tick
+                with reporter.store.lock():
+                    reporter.process_connection_check()
+        except Exception as error:
+            errors.append(error)
+    driver.get(base + '/admin')
+    driver.execute_script('window.connectionPageMarker = true')
+    button = driver.find_element(By.CSS_SELECTOR, '#connection-check button')
+    button.click()
+    wait_text(driver, '#connection-check-status', 'Queued')
+    assert not button.is_enabled()
+    with app.app_context():
+        check = db.session.get(CentralConnectionCheck, 1)
+        assert check.status == 'queued'
+        request_id = check.request_id
+    thread = Thread(target=worker)
+    thread.start()
+    try:
+        assert entered.wait(5)
+        wait_text(driver, '#connection-check-status', 'Checking connection')
+    finally:
+        release.set()
+        thread.join(timeout=20)
+    assert not errors and not thread.is_alive()
+    wait_text(driver, '#connection-check-status', 'Heartbeat accepted')
+    wait_text(driver, '[data-connection="installed_version"]', '0.1.0')
+    wait_text(driver, '[data-connection="latest_version"]', '0.2.0')
+    wait_text(driver, '[data-connection="update_status"]', 'Update available')
+    assert driver.execute_script('return window.connectionPageMarker === true')
+    with app.app_context():
+        assert db.session.get(CentralConnectionCheck, 1).request_id == request_id
+    assert not button.is_enabled()  # Server cooldown remains visible after success.
+    for width in (390, 820, 1440):
+        driver.set_window_size(width, 1000)
+        assert driver.execute_script('return document.documentElement.scrollWidth <= innerWidth + 1')
+
+
+def test_manual_connection_check_without_javascript(booth):
+    from app.extensions import db
+    from app.models import CentralConnectionCheck
+    app, driver, base, tmp_path = booth
+    driver.execute_cdp_cmd('Emulation.setScriptExecutionDisabled', {'value': True})
+    try:
+        driver.get(base + '/admin')
+        driver.find_element(By.CSS_SELECTOR, '#connection-check button').click()
+        wait_text(driver, '#connection-check-status', 'Queued')
+        assert driver.current_url == base + '/admin'
+        with app.app_context():
+            assert db.session.get(CentralConnectionCheck, 1).status == 'queued'
+    finally:
+        driver.execute_cdp_cmd('Emulation.setScriptExecutionDisabled', {'value': False})
+
+
 def test_operations_station_switch_back_and_mobile(booth):
     app, driver, base, tmp_path = booth
     driver.find_element(By.CSS_SELECTOR, '.master-monitor button').click()
