@@ -431,11 +431,13 @@ def status(station):
         playout_error=live_error, recent=[safe_item(row) for row in recent],
         clock=programming.clock.name if programming.clock else None,
         next_transition=programming.next_transition.isoformat() if programming.next_transition else None,
-        local_time=programming.local_time.isoformat(), timed_events='PAUSED' if state and state.operator_mode == 'DJ_BOOTH' and not (snapshot_mixer or {}).get('auto_standby') else 'ACTIVE',
-        active_block=(dict(id=active_block.id,name=active_block.block.name,state=active_block.state,
+        local_time=programming.local_time.isoformat(), timed_events='DJ_POLICY' if state and state.operator_mode == 'DJ_BOOTH' and not (snapshot_mixer or {}).get('auto_standby') else 'ACTIVE',
+        active_block=(dict(id=active_block.id,name=active_block.name,state=active_block.state,
             source=active_block.source,completed_items=len([i for i in active_block.items if i.state in ('COMPLETED','SKIPPED')]),total_items=len(active_block.items)) if active_block else None),
         next_event=(dict(id=next_event.id, name=next_event.event.name,
             timing_mode=next_event.event.timing_mode, state=next_event.state,
+            interrupt_dj=next_event.event.interrupt_dj, waiting_for=next_event.failure_reason,
+            timezone=station.timezone, content_name=next_event.event.content_name,
             scheduled_for=next_event.scheduled_for_utc.isoformat(), estimated_current_overrun_seconds=overrun_seconds) if next_event else None))
 
 

@@ -187,6 +187,11 @@ def mutate(slug,action):
             by_uuid={song.uuid:song for song in songs};songs=list(dict.fromkeys(by_uuid[x] for x in data['songs']))
             undo,count=playlist_service.membership(row,songs,data.get('operation'),current_admin().id)
             message=f'{count} song(s) updated · {row.name}'
+        elif action=='classify':
+            from app.services.audio_classification import classify
+            songs=selected_songs(station,data)
+            for song in songs: classify(song,data.get('audio_kind'),data.get('audio_subtype',''),song.cart_code,station_id=station.id)
+            message=f'{len(songs)} audio items classified'
         elif action=='assign':
             songs=selected_songs(station,data);kind=data.get('kind');target=target_for(station,kind,data.get('target'))
             if data.get('operation') not in ('add','remove'):raise ValueError('Choose add or remove')

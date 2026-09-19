@@ -180,6 +180,7 @@
   $('room-unfinished').addEventListener('click',()=>{$('room-search').elements.analysis.value='unfinished';setFilter({},'Needs processing');});
   $('room-select-all').addEventListener('change',event=>{data.songs.forEach(song=>event.target.checked?selected.add(song.uuid):selected.delete(song.uuid));selection();});
   $('room-clear-selection').addEventListener('click',()=>{selected.clear();selection();});
+  $('classify-selected').onclick=async()=>{if(await post('classify',{songs:[...selected],audio_kind:$('bulk-audio-kind').value,audio_subtype:$('bulk-audio-kind').value==='STATION'?$('bulk-audio-subtype').value:''}))load();};
   $('process-selected').addEventListener('click',()=>process([...selected]));
   $('room-prev').addEventListener('click',()=>{page--;load();});$('room-next').addEventListener('click',()=>{page++;load();});
   $('room-undo').addEventListener('click',async()=>{if(undo&&await post('undo',{id:undo}))load();});

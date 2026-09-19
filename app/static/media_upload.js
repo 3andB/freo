@@ -103,8 +103,9 @@
     await Promise.all(targets.filter(i=>!drafts.includes(i)||drafts.length===1).map(save));
     if(targets.some(i=>i.dirty))throw Error('Save or resolve the highlighted song details before continuing.');
   }
+  for(const id of ['import-audio-kind','import-audio-subtype'])$(id).onchange=()=>{for(const item of items.values()){if(item.selected&&pending(item)&&editable(item)){item.choices.audio_kind=$('import-audio-kind').value;item.choices.audio_subtype=item.choices.audio_kind==='STATION'?$('import-audio-subtype').value:'';change(item);}}};
   function makeItem(data,file=null){
-    const item={id:data.id,name:data.name,size:data.size,path:data.path||'',choices:structuredClone(data.choices||(file?rotationChoices():{})),remote:data.status?data:null,file,selected:!data.duplicate,dirty:false,generation:0};
+    const item={id:data.id,name:data.name,size:data.size,path:data.path||'',choices:structuredClone(data.choices||(file?{...rotationChoices(),audio_kind:$('import-audio-kind').value,audio_subtype:$('import-audio-kind').value==='STATION'?$('import-audio-subtype').value:''}:{})),remote:data.status?data:null,file,selected:!data.duplicate,dirty:false,generation:0};
     if(data.song)item.choices={...songChoices(data.song),group:groupKey(item)};
     item.source=file?URL.createObjectURL(file):null;
     const card=el('article',undefined,'import-card'),head=el('div',undefined,'import-card-head'),check=el('input'),copy=el('div',undefined,'import-row-copy'),heading=el('b'),subtitle=el('small');

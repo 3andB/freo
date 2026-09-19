@@ -41,7 +41,7 @@ def test_crud_membership_order_undo_and_no_audio_deletion(app):
     base='/admin/api/stations/test-station/playlists'
     assert client.get('/admin/stations/test-station/playlists').status_code == 200
     assert client.get('/admin/stations/test-station/sound-room').location.endswith('/playlists')
-    assert len(client.get(base).json['playlists']) == 2
+    assert len(client.get(base).json['playlists']) == 4
     detail=client.get(f'{base}/{identifier}').json
     assert detail['count']==4 and detail['duration_ms']==80000
     duplicate=action(client,'assign',dict(kind='playlist',target=identifier,songs=ids,operation='add'))
@@ -96,11 +96,11 @@ def test_station_scope_csrf_deleted_members_and_conflicting_undo(app):
     assert action(client,'playlist-remove',dict(id=identifier,songs=[ids[2]])).status_code==200
 
 
-def test_new_station_gets_two_starters(app):
+def test_new_station_gets_four_starters(app):
     from app.services.stations import create_station
     with app.app_context():
         station=create_station('New station','new-station')
-        assert [row.name for row in service.listing(station.id)]==['Playlist 1','Playlist 2']
+        assert [row.name for row in service.listing(station.id)]==['Playlist 1','Playlist 2','STATION','COMMERCIALS']
         assert all(not row.items for row in service.listing(station.id))
 
 

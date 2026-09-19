@@ -13,6 +13,8 @@ from app.services.availability import tracks_for, available, playable, artists_f
 def seed_playlists(station_id):
     for number in (1, 2):
         db.session.add(Playlist(station_id=station_id, name=f'Playlist {number}'))
+    from app.services.audio_classification import defaults
+    defaults(station_id)
 
 
 def listing(station_id):
@@ -30,7 +32,7 @@ def get_playlist(station_id, identifier):
 
 def summary(row):
     return dict(id=row.id, name=row.name, description=row.description, mode=row.mode,
-                revision=row.revision, count=len(row.items),
+                purpose=row.purpose, system_key=row.system_key, revision=row.revision, count=len(row.items),
                 duration_ms=sum(item.track.duration_ms or 0 for item in row.items))
 
 
@@ -62,6 +64,14 @@ def replace_order(row, ids):
 def membership(row, songs, operation, user_id):
     if operation not in ('add', 'remove'):
         raise ValueError('Choose add or remove')
+    if row.system_key:
+        if operation == 'remove':
+            raise ValueError('Reclassify this audio in its editor to remove it from the system collection')
+        from app.services.audio_classification import classify
+        before = len(row.items)
+        for song in songs:
+            classify(song, row.purpose, song.audio_subtype if row.purpose == 'STATION' else '', song.cart_code, station_id=row.station_id)
+        return None, len(row.items) - before
     before = ordered_ids(row)
     selected = list(dict.fromkeys(song.id for song in songs))
     existing, chosen = set(before), set(selected)
@@ -119,6 +129,11 @@ def source_songs(station_id, kind, identifier):
 
 
 def delete_playlist(row):
+    from app.models import TimedEvent
+    if row.system_key:
+        raise ValueError('STATION and COMMERCIALS are permanent audio collections')
+    if TimedEvent.query.filter_by(playlist_id=row.id).first():
+        raise ValueError('Remove this playlist from its events before deleting it')
     slots = ClockSlot.query.filter_by(playlist_id=row.id).all()
     clock_ids = [slot.clock_id for slot in slots]
     if clock_ids and (ScheduleProgram.query.filter(ScheduleProgram.clock_id.in_(clock_ids), ScheduleProgram.enabled.is_(True)).first()
@@ -177,7 +192,15 @@ def select_playlist(station, slot, storage, now, context):
     if cursor.occurrence_key != context['schedule_occurrence']:
         cursor.occurrence_key = context['schedule_occurrence']
         cursor.state = {}
-    track, cursor.state = advance(row, tracks, cursor.state)
+    if row.legacy_imaging_group_id:
+        from datetime import timedelta
+        history = SelectionDecision.query.filter_by(station_id=station.id,status='started').filter(SelectionDecision.track_id.in_([t.id for t in tracks])).order_by(SelectionDecision.started_at.desc()).all()
+        last = {}
+        for decision in history: last.setdefault(decision.track_id,decision.started_at.replace(tzinfo=decision.started_at.tzinfo or timezone.utc))
+        eligible = [t for t in tracks if t.id not in last or now-last[t.id] >= timedelta(seconds=row.minimum_separation_seconds)] or tracks
+        track = min(eligible,key=lambda t:(last.get(t.id,datetime.min.replace(tzinfo=timezone.utc)),t.id))
+    else:
+        track, cursor.state = advance(row, tracks, cursor.state)
     decision = SelectionDecision(station_id=station.id, selected_at=now, track_id=track.id,
         status='selected', selection_method='playlist', candidate_count=len(tracks), relaxation='none', **context)
     db.session.add(decision)

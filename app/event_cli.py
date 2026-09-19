@@ -1,6 +1,7 @@
 """Recovery and inspection CLI for timed events."""
 import json
 from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 
 import click
 from flask import Blueprint
@@ -32,7 +33,7 @@ def occurrences(station):
     row = get_station(station)
     if not row: raise click.ClickException('Station not found')
     generate_occurrences(row)
-    for item in upcoming(row): click.echo(f'{item.id} {item.scheduled_for_utc.isoformat()} {item.state} {item.event.name}')
+    for item in upcoming(row): click.echo(f'{item.id} {item.scheduled_for_utc.replace(tzinfo=item.scheduled_for_utc.tzinfo or timezone.utc).astimezone(ZoneInfo(row.timezone)).isoformat()} {item.state} {item.event.name}')
 
 
 @event_group.command('preview')
@@ -41,37 +42,47 @@ def occurrences(station):
 def preview_events(station, hours):
     row = get_station(station)
     if not row: raise click.ClickException('Station not found')
-    generate_occurrences(row, horizon_hours=hours)
-    end = datetime.now(timezone.utc) + timedelta(hours=hours)
-    for item in upcoming(row, limit=200):
-        when = item.scheduled_for_utc.replace(tzinfo=item.scheduled_for_utc.tzinfo or timezone.utc)
-        if when <= end: click.echo(f'{when.isoformat()} {item.event.timing_mode} {item.event.name}')
+    from app.services.timed_events import projected_occurrences
+    now=datetime.now(timezone.utc)
+    for item in projected_occurrences(row,now,now+timedelta(hours=hours)):
+        click.echo(f'{item.scheduled_for_utc.astimezone(ZoneInfo(row.timezone)).isoformat()} {item.event.timing_mode} {item.event.name}')
 
 
 @event_group.command('create')
 @click.option('--station', required=True)
 @click.option('--name', required=True)
-@click.option('--mode', type=click.Choice(['soft','hard','non_interrupting']), required=True)
+@click.option('--mode', type=click.Choice(['soft','hard','non_interrupting']), default='soft')
 @click.option('--at', 'at_value', help='Station-local YYYY-MM-DDTHH:MM:SS')
 @click.option('--weekly', type=click.IntRange(0,6))
 @click.option('--time', 'time_value')
 @click.option('--track')
-@click.option('--imaging')
+@click.option('--playlist')
+@click.option('--recurrence',type=click.Choice(['quarter_hour','hourly','daily','weekly','monthly']))
+@click.option('--days',multiple=True,type=click.IntRange(0,6))
+@click.option('--hours',multiple=True,type=click.IntRange(0,23))
+@click.option('--starts-on')
+@click.option('--ends-on')
+@click.option('--month-day',default=1,type=click.IntRange(1,31))
+@click.option('--month-nth',default=0,type=click.IntRange(-2,5))
+@click.option('--month-weekday',default=0,type=click.IntRange(0,6))
+@click.option('--interrupt-dj',is_flag=True,default=False)
+@click.option('--playlist-playback',type=click.Choice(['one','all']))
 @click.option('--block')
-@click.option('--late', default=10, type=click.IntRange(1,86400))
+@click.option('--late', default=300, type=click.IntRange(1,86400))
 @click.option('--missed', type=click.Choice(['skip','play_late']), default='skip')
 @click.option('--interrupt', type=click.Choice(['never','music_only']), default='never')
 @click.option('--priority', default=100, type=click.IntRange(0,1000))
-def create_event(station, name, mode, at_value, weekly, time_value, track, imaging, block, late, missed, interrupt, priority):
-    if bool(at_value) == (weekly is not None): raise click.ClickException('Choose exactly one of --at or --weekly')
-    if sum(bool(value) for value in (track,imaging,block)) != 1: raise click.ClickException('Choose exactly one of --track, --imaging, or --block')
-    date, at = (at_value.split('T',1) if at_value and 'T' in at_value else (None, time_value))
+def create_event(station, name, mode, at_value, weekly, time_value, track, playlist, block, late, missed, interrupt, priority, recurrence,days,hours,starts_on,ends_on,month_day,month_nth,month_weekday,interrupt_dj,playlist_playback):
+    if bool(at_value) == bool(recurrence or weekly is not None): raise click.ClickException('Choose --at or a repeating rule')
+    if sum(bool(value) for value in (track,playlist,block)) != 1: raise click.ClickException('Choose one of --track, --playlist, or --block')
+    day, at = (at_value.split('T',1) if at_value and 'T' in at_value else (None,time_value))
     try:
-        row = save_event(station, name=name, timing_mode=mode.upper(), recurrence_type='ONE_TIME' if at_value else 'WEEKLY',
-            content_type='TRACK' if track else 'IMAGING_ASSET' if imaging else 'EVENT_BLOCK', content_identifier=track or imaging or block,
-            local_date=date, local_time=at, weekday=weekly, late_tolerance_seconds=late,
-            missed_policy=missed.upper(), interrupt_policy=interrupt.upper(), priority=priority)
-    except ValueError as error: raise click.ClickException(str(error)) from error
+        row=save_event(station,name=name,timing_mode=mode.upper(),recurrence_type='ONE_TIME' if at_value else (recurrence or 'weekly').upper(),
+            content_type='TRACK' if track else 'PLAYLIST' if playlist else 'EVENT_BLOCK',content_identifier=track or playlist or block,
+            local_date=day,local_time=at,weekday=weekly,weekdays=list(days) or None,repeat_hours=list(hours) or None,starts_on=starts_on,ends_on=ends_on,
+            month_day=month_day,month_nth=month_nth,month_weekday=month_weekday,interrupt_dj=interrupt_dj,playlist_playback=playlist_playback.upper() if playlist_playback else None,
+            late_tolerance_seconds=late,missed_policy=missed.upper(),interrupt_policy=interrupt.upper(),priority=priority)
+    except ValueError as error:raise click.ClickException(str(error)) from error
     click.echo(f'Created event {row.uuid}')
 
 

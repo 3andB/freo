@@ -76,7 +76,7 @@ def preview_days(station, first, days):
                 warnings.append(f'{row.event.name}: an earlier event may delay this start.')
                 if busy_until > target + timedelta(seconds=row.event.late_tolerance_seconds):
                     warnings.append(f'{row.event.name}: preceding events may exceed its late allowance.')
-            duration = (row.event.track or row.event.imaging_asset or row.event.event_block)
+            duration = (row.event.track or row.event.imaging_asset or row.event.event_block or row.event.playlist)
             seconds = duration.duration_ms / 1000 if duration else 0
             busy_until = max(target, busy_until or target) + timedelta(seconds=seconds)
         output.append(dict(date=day, coverage=intervals, events=daily, warnings=list(dict.fromkeys(warnings))))

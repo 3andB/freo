@@ -155,5 +155,100 @@ def confirm_item_started(decision, now):
     if execution.state!='STARTED': execution.state='STARTED'; execution.started_at=now
     occurrence=execution.timed_event_occurrence
     if occurrence and occurrence.state!='STARTED': occurrence.state='STARTED'; occurrence.started_at=now; occurrence.failure_reason=None
+    if occurrence and execution.playlist and occurrence.runtime.get('playlist_cursor'):
+        occurrence.event.playlist_state = occurrence.runtime['playlist_cursor']
     from app.services.traffic import reconcile_placement
     reconcile_placement(item)
+
+
+def create_playlist_execution(occurrence, storage=None):
+    """Freeze a finite run; the cursor commits only when its item starts."""
+    import random
+    from app.services.playlists import playable_tracks, advance
+    event = occurrence.event
+    existing = EventBlockExecution.query.filter_by(timed_event_occurrence_id=occurrence.id).first()
+    if existing: return existing
+    tracks = playable_tracks(event.playlist, event.station_id, storage or LocalMediaStorage())
+    if not tracks: raise ValueError('Playlist has no playable audio')
+    if event.playlist_playback == 'ONE':
+        track, cursor = advance(event.playlist, tracks, event.playlist_state)
+        tracks = [track]
+        occurrence.runtime = {**(occurrence.runtime or {}), 'playlist_cursor':cursor}
+    elif event.playlist.mode == 'RANDOM': random.shuffle(tracks)
+    execution = EventBlockExecution(station_id=event.station_id, playlist=event.playlist,
+        playlist_revision=event.playlist.revision, source='TIMED_EVENT', timed_event_occurrence=occurrence)
+    db.session.add(execution)
+    for position, track in enumerate(tracks, 1):
+        execution.items.append(EventBlockItemExecution(position=position,item_type='TRACK',track=track,
+            label=track.title[:120],failure_policy='SKIP_FAILED_ITEM'))
+    db.session.flush()
+    return execution
+
+
+def confirm_finished(station, decision_id, at, identity):
+    """Only matching engine EOF completes event audio; replay is harmless."""
+    from app.models import TimedEventOccurrence
+    decision = SelectionDecision.query.filter_by(id=decision_id,station_id=station.id,status='started',socket_identity=identity).first()
+    if not decision: return
+    occurrence = decision.timed_event_occurrence
+    item = decision.block_item_execution
+    if item:
+        item.state, item.completed_at = 'COMPLETED', at
+        execution = item.execution
+        if all(i.state in ('COMPLETED','SKIPPED','FAILED') for i in execution.items):
+            execution.state, execution.completed_at = 'COMPLETED', at
+            occurrence = execution.timed_event_occurrence
+    if occurrence and (not item or item.execution.state == 'COMPLETED'):
+        occurrence.state, occurrence.completed_at = 'COMPLETED', at
+    db.session.commit()
+
+
+def submit_snapshot(execution, now):
+    """Stage every finite event item before releasing the sequence to the engine."""
+    from app.services.playout_queue import push_sequence, socket_identity
+    from app.services.availability import playable
+    decisions=[];items=[]
+    for item in execution.items:
+        if item.state!='PENDING':continue
+        target=item.track or item.imaging_asset
+        valid=target and (playable(target,execution.station_id) if item.track else target.enabled and target.ingest_status=='accepted' and not target.decommissioned_at)
+        if valid:
+            try:
+                storage=LocalMediaStorage()
+                (storage.regular_file if item.track else storage.imaging_file)(target.station.slug,target.storage_key)
+            except (OSError,ValueError):valid=False
+        if not valid:
+            item.state='FAILED';item.failure_reason='content_unavailable';item.failed_at=now
+            if item.failure_policy=='ABORT_BLOCK':
+                execution.state='FAILED';execution.failure_reason='content_unavailable'
+                if execution.timed_event_occurrence:
+                    execution.timed_event_occurrence.state='FAILED';execution.timed_event_occurrence.failure_reason='content_unavailable'
+                db.session.commit();return
+            continue
+        decision=item.selection_decision
+        if not decision:
+            decision=SelectionDecision(station_id=execution.station_id,track_id=item.track_id,imaging_asset_id=item.imaging_asset_id,selection_method='event_block',status='submitting',selected_at=now,reason=f'block:{execution.id}:item:{item.position}')
+            db.session.add(decision);db.session.flush();item.selection_decision=decision
+        decision.status='submitting';decisions.append(decision);items.append(item)
+    if not decisions:
+        execution.state='FAILED';execution.failure_reason='no_playable_items'
+        if execution.timed_event_occurrence:execution.timed_event_occurrence.state='FAILED'
+        db.session.commit();return
+    db.session.commit()
+    try:
+        request_ids=push_sequence(decisions)
+    except (ValueError,RuntimeError):
+        for item,decision in zip(items,decisions):
+            item.state='FAILED';item.failure_reason='sequence_unavailable';decision.status='failed';decision.reason='sequence_unavailable'
+        execution.state='FAILED';execution.failure_reason='sequence_unavailable'
+        if execution.timed_event_occurrence:execution.timed_event_occurrence.state='FAILED';execution.timed_event_occurrence.failure_reason='sequence_unavailable'
+        db.session.commit();return
+    identity=socket_identity(execution.station.slug)
+    from app.services.traffic import placement_queued
+    for item,decision,rid in zip(items,decisions,request_ids):
+        decision.status='queued';decision.liquidsoap_request_id=rid;decision.socket_identity=identity
+        item.state='QUEUED';item.queued_at=now;placement_queued(item)
+    execution.state='QUEUED'
+    if execution.timed_event_occurrence:
+        execution.timed_event_occurrence.state='QUEUED';execution.timed_event_occurrence.queued_at=now
+    db.session.commit()

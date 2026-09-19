@@ -1,8 +1,11 @@
+from datetime import timezone
+from zoneinfo import ZoneInfo
 """Authenticated traffic planning UI over the traffic service."""
 import csv,io
 from datetime import date,datetime
 from flask import Blueprint,abort,flash,make_response,redirect,render_template,request,url_for
 from app.extensions import db
+from app.models import Track
 from app.models import Advertiser,Campaign,CampaignScheduleRule,CommercialCreative,ImagingAsset,TrafficLog,TrafficPlacement,TrafficStopset
 from app.routes.web import admin_stations,station_or_404
 from app.services.admin_auth import admin_required,can_manage_traffic,current_admin,require_csrf
@@ -22,7 +25,7 @@ def back(slug):return redirect(url_for('.page',slug=slug),code=303)
 def page(slug):
     s=station_for(slug);logs=TrafficLog.query.filter_by(station_id=s.id).order_by(TrafficLog.log_date.desc()).limit(31).all();campaigns=Campaign.query.filter_by(station_id=s.id).order_by(Campaign.name).all()
     delivery={c.id:{'scheduled':TrafficPlacement.query.filter_by(campaign_id=c.id).filter(TrafficPlacement.status.in_(('PLANNED','MATERIALIZED','QUEUED','AIRED'))).count(),'aired':TrafficPlacement.query.filter_by(campaign_id=c.id,status='AIRED').count(),'missed':TrafficPlacement.query.filter_by(campaign_id=c.id,status='MISSED').count(),'makegoods':TrafficPlacement.query.filter_by(campaign_id=c.id,is_makegood=True).filter(TrafficPlacement.status!='AIRED').count()} for c in campaigns}
-    return render_template('admin/traffic.html',stations=admin_stations(),selected=s,page='traffic',advertisers=Advertiser.query.filter_by(station_id=s.id).order_by(Advertiser.name).all(),campaigns=campaigns,delivery=delivery,stopsets=TrafficStopset.query.filter_by(station_id=s.id).order_by(TrafficStopset.local_time).all(),logs=logs,commercials=ImagingAsset.query.filter_by(station_id=s.id,asset_type='COMMERCIAL',ingest_status='accepted',decommissioned_at=None).all())
+    return render_template('admin/traffic.html',stations=admin_stations(),selected=s,page='traffic',advertisers=Advertiser.query.filter_by(station_id=s.id).order_by(Advertiser.name).all(),campaigns=campaigns,delivery=delivery,stopsets=TrafficStopset.query.filter_by(station_id=s.id).order_by(TrafficStopset.local_time).all(),logs=logs,commercials=Track.query.filter_by(station_id=s.id,audio_kind='COMMERCIALS',ingest_status='accepted',decommissioned_at=None,deleted_at=None).all())
 @admin_traffic_blueprint.get('/admin/stations/<slug>/traffic/logs/<log_date>')
 @admin_required
 def log_detail(slug,log_date):
@@ -113,5 +116,5 @@ def mutate(slug,action):
 @admin_required
 def csv_report(slug,log_date):
     s=station_for(slug);log=TrafficLog.query.filter_by(station_id=s.id,log_date=date.fromisoformat(log_date)).first_or_404();out=io.StringIO();w=csv.writer(out);w.writerow(['Date','Scheduled UTC','Actual UTC','Advertiser','Campaign','Creative','Cart Code','Duration Seconds','Status','Makegood For'])
-    for p in sorted(log.placements,key=lambda x:(x.scheduled_for_utc,x.position)):w.writerow([log.log_date,p.scheduled_for_utc.isoformat(),p.confirmed_started_at.isoformat() if p.confirmed_started_at else '',p.advertiser_name,p.campaign_name,p.creative_name,p.creative.imaging_asset.cart_code or '',round(p.creative.imaging_asset.duration_ms/1000,3),p.status,p.makegood_for_id or ''])
+    for p in sorted(log.placements,key=lambda x:(x.scheduled_for_utc,x.position)):w.writerow([log.log_date,p.scheduled_for_utc.replace(tzinfo=p.scheduled_for_utc.tzinfo or timezone.utc).astimezone(ZoneInfo(s.timezone)).isoformat(),p.confirmed_started_at.replace(tzinfo=p.confirmed_started_at.tzinfo or timezone.utc).astimezone(ZoneInfo(s.timezone)).isoformat() if p.confirmed_started_at else '',p.advertiser_name,p.campaign_name,p.creative_name,p.creative.audio.cart_code or '',round(p.creative.audio.duration_ms/1000,3),p.status,p.makegood_for_id or ''])
     response=make_response(out.getvalue());response.headers['Content-Type']='text/csv; charset=utf-8';response.headers['Content-Disposition']=f'attachment; filename="traffic-{log.log_date}.csv"';return response

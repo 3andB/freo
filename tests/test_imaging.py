@@ -105,33 +105,21 @@ def test_cross_station_imaging_clock_targets_rejected(world):
         set_group_membership('one', 'ids', asset.uuid, True)
 
 
-def test_imaging_routes_require_auth_and_csrf(world):
+def test_retired_imaging_redirects_and_rejects_writes(world):
     app, one, _, storage = world
     asset = imaging(one, storage)
     client = app.test_client()
-    assert client.get('/admin/stations/one/imaging').status_code == 302
-    assert client.post(f'/admin/stations/one/imaging/{asset.uuid}/disable').status_code == 302
+    assert client.get('/admin/stations/one/imaging').headers['Location'].endswith('/admin/login')
     user = AdminUser(email='test@example.com', password_hash='unused', active=True)
     db.session.add(user); db.session.commit()
     with client.session_transaction() as session:
         session['admin_user_id'] = user.id
         session['admin_csrf'] = 'test-csrf'
-    assert client.get('/admin/stations/one/imaging').status_code == 200
-    assert client.get(f'/admin/stations/one/imaging/{asset.uuid}').status_code == 200
-    assert client.post(f'/admin/stations/one/imaging/{asset.uuid}/disable').status_code == 400
-    assert client.post(f'/admin/stations/one/imaging/{asset.uuid}/disable', data={'csrf':'test-csrf'}).status_code == 303
-    assert not db.session.get(ImagingAsset, asset.id).enabled
-    assert client.get(f'/admin/stations/two/imaging/{asset.uuid}').status_code == 404
-    assert client.post(f'/admin/stations/two/imaging/{asset.uuid}/disable', data={'csrf':'test-csrf'}).status_code == 404
-    assert client.get(f'/admin/stations/one/imaging/{asset.uuid}/disable').status_code == 405
-    response = client.get('/api/stations/one/history')
-    assert response.status_code == 200
-    assert '/originals/' not in response.get_data(as_text=True) and '/imaging/' not in response.get_data(as_text=True)
-    app.config['MAX_CONTENT_LENGTH'] = 100
-    too_large = client.post('/admin/stations/one/imaging/upload', data={'csrf':'test-csrf',
-        'asset_type':'CART', 'file':(io.BytesIO(b'x'*200), 'large.mp3')}, content_type='multipart/form-data')
-    assert too_large.status_code == 413
-    assert b'Upload exceeds' in too_large.data
+    for path in ('', '/'+asset.uuid, '/upload', '/groups'):
+        response=client.get('/admin/stations/one/imaging'+path)
+        assert response.status_code==302 and response.headers['Location'].endswith('/playlists')
+    assert client.post(f'/admin/stations/one/imaging/{asset.uuid}/disable',data={'csrf':'test-csrf'}).status_code in (404,405)
+    assert db.session.get(ImagingAsset,asset.id).enabled
 
 
 def test_clock_editor_rejects_cross_station_imaging_target(world):
@@ -179,43 +167,13 @@ def test_imaging_metadata_cannot_inject_queue_commands():
     assert _metadata('Émission — nuit', 'ID') == 'Emission nuit'
 
 
-def test_web_imaging_ingest_duplicate_and_invalid(world, tmp_path, monkeypatch):
-    app, one, _, storage = world
-    # The managed test namespace cannot chown temp files; only that OS boundary is stubbed.
-    monkeypatch.setattr('os.chown', lambda *args: None)
-    stage = tmp_path / 'uploads'; stage.mkdir()
-    app.config['FREO_UPLOAD_ROOT'] = stage
-    fixture = tmp_path / 'legal.mp3'
-    subprocess.run(['/usr/bin/ffmpeg', '-hide_banner', '-loglevel', 'error', '-f', 'lavfi',
-        '-i', 'sine=frequency=440:duration=1', '-codec:a', 'libmp3lame', '-qscale:a', '8', str(fixture)], check=True)
-    user = AdminUser(email='ingest@example.com', password_hash='unused', active=True)
-    db.session.add(user); db.session.commit()
-    client = app.test_client()
+def test_retired_imaging_upload_cannot_create_jobs(world):
+    app, one, _, storage=world
+    user=AdminUser(email='ingest@example.com',password_hash='unused',active=True)
+    db.session.add(user);db.session.commit()
+    client=app.test_client()
     with client.session_transaction() as session:
-        session['admin_user_id'] = user.id
-        session['admin_csrf'] = 'csrf'
-    endpoint = '/admin/stations/one/imaging/upload'
-    def upload_audio(payload, filename):
-        response = client.post(endpoint, data={'csrf':'csrf', 'asset_type':'STATION_ID',
-            'name':'Top of Hour', 'cart_code':'ID-TOH', 'file':(io.BytesIO(payload), filename)},
-            content_type='multipart/form-data')
-        assert response.status_code == 303
-        return MediaIngestJob.query.order_by(MediaIngestJob.created_at.desc(), MediaIngestJob.id.desc()).first()
-    data = fixture.read_bytes()
-    first = upload_audio(data, 'one.mp3')
-    assert process_one()
-    db.session.refresh(first)
-    assert first.status == 'accepted'
-    assert not first.imaging_asset.enabled
-    assert storage.imaging_file('one', first.imaging_asset.storage_key).exists()
-    second = upload_audio(data, 'duplicate.mp3')
-    assert process_one()
-    db.session.refresh(second)
-    assert second.status == 'duplicate'
-    assert ImagingAsset.query.filter_by(station_id=one.id).count() == 1
-    assert len(list((storage.station_dir('one') / 'imaging').glob('*.mp3'))) == 1
-    third = upload_audio(b'not audio', 'pretend.mp3')
-    assert process_one()
-    db.session.refresh(third)
-    assert third.status == 'rejected'
-    assert ImagingAsset.query.filter_by(station_id=one.id).count() == 1
+        session['admin_user_id']=user.id;session['admin_csrf']='csrf'
+    response=client.post('/admin/stations/one/imaging/upload',data={'csrf':'csrf','file':(io.BytesIO(b'audio'),'id.mp3')},content_type='multipart/form-data')
+    assert response.status_code==405
+    assert MediaIngestJob.query.count()==0 and ImagingAsset.query.count()==0

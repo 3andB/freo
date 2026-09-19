@@ -216,9 +216,14 @@ class Track(db.Model):
         db.Index('ix_tracks_title_id', 'title', 'id'),
         db.UniqueConstraint('freo_track_id', name='uq_tracks_freo_track_id'),
         db.CheckConstraint("ingest_status IN ('accepted','rejected')", name='ck_tracks_ingest_status'),
+        db.CheckConstraint("audio_kind IN ('MUSIC','STATION','COMMERCIALS')", name='ck_track_audio_kind'),
         db.CheckConstraint('duration_ms > 0', name='ck_tracks_duration'),
         db.CheckConstraint('file_size_bytes > 0', name='ck_tracks_size'),
     )
+    audio_kind = db.Column(db.String(12), nullable=False, default='MUSIC', server_default='MUSIC', index=True)
+    audio_subtype = db.Column(db.String(24), nullable=False, default='', server_default='')
+    cart_code = db.Column(db.String(40))
+    legacy_imaging_id = db.Column(db.Integer, unique=True)
     available_to_all = db.Column(db.Boolean, nullable=False, default=False, server_default=db.false())
     id = db.Column(db.Integer, primary_key=True)
     station_id = db.Column(db.Integer, db.ForeignKey('stations.id', ondelete='RESTRICT'), nullable=False, index=True)
@@ -481,8 +486,15 @@ class Campaign(db.Model):
 
 class CommercialCreative(db.Model):
     __tablename__='commercial_creatives'; __table_args__=(db.UniqueConstraint('station_id','creative_code',name='uq_creative_station_code'),)
-    id=db.Column(db.Integer,primary_key=True); station_id=db.Column(db.Integer,db.ForeignKey('stations.id',ondelete='CASCADE'),nullable=False,index=True); campaign_id=db.Column(db.Integer,db.ForeignKey('campaigns.id',ondelete='RESTRICT'),nullable=False); imaging_asset_id=db.Column(db.Integer,db.ForeignKey('imaging_assets.id',ondelete='RESTRICT'),nullable=False)
+    id=db.Column(db.Integer,primary_key=True); station_id=db.Column(db.Integer,db.ForeignKey('stations.id',ondelete='CASCADE'),nullable=False,index=True); campaign_id=db.Column(db.Integer,db.ForeignKey('campaigns.id',ondelete='RESTRICT'),nullable=False); imaging_asset_id=db.Column(db.Integer,db.ForeignKey('imaging_assets.id',ondelete='RESTRICT'),nullable=True)
     name=db.Column(db.String(120),nullable=False); creative_code=db.Column(db.String(40),nullable=False); enabled=db.Column(db.Boolean,nullable=False,default=True); start_date=db.Column(db.Date); end_date=db.Column(db.Date); created_at=db.Column(db.DateTime(timezone=True),nullable=False,default=lambda:datetime.now(timezone.utc)); updated_at=db.Column(db.DateTime(timezone=True),nullable=False,default=lambda:datetime.now(timezone.utc),onupdate=lambda:datetime.now(timezone.utc)); campaign=db.relationship('Campaign',backref='creatives'); imaging_asset=db.relationship('ImagingAsset')
+
+    track_id = db.Column(db.Integer, db.ForeignKey('tracks.id', ondelete='RESTRICT'))
+    track = db.relationship('Track')
+
+    @property
+    def audio(self):
+        return self.track or self.imaging_asset
 
 class CampaignScheduleRule(db.Model):
     __tablename__='campaign_schedule_rules'; __table_args__=(db.CheckConstraint('target_spots_per_day > 0',name='ck_rule_target_positive'),db.CheckConstraint('start_time < end_time',name='ck_rule_daypart'))
@@ -493,8 +505,15 @@ class TrafficStopset(db.Model):
     id=db.Column(db.Integer,primary_key=True); station_id=db.Column(db.Integer,db.ForeignKey('stations.id',ondelete='CASCADE'),nullable=False,index=True); name=db.Column(db.String(120),nullable=False); slug=db.Column(db.String(64),nullable=False); weekdays=db.Column(db.String(20),nullable=False); local_time=db.Column(db.Time,nullable=False); capacity_seconds=db.Column(db.Integer,nullable=False); max_spots=db.Column(db.Integer); timing_mode=db.Column(db.String(20),nullable=False,default='SOFT'); enabled=db.Column(db.Boolean,nullable=False,default=True); created_at=db.Column(db.DateTime(timezone=True),nullable=False,default=lambda:datetime.now(timezone.utc)); updated_at=db.Column(db.DateTime(timezone=True),nullable=False,default=lambda:datetime.now(timezone.utc),onupdate=lambda:datetime.now(timezone.utc)); station=db.relationship('Station'); template_items=db.relationship('TrafficStopsetItem',back_populates='stopset',order_by='TrafficStopsetItem.position',cascade='all,delete-orphan')
 
 class TrafficStopsetItem(db.Model):
-    __tablename__='traffic_stopset_items'; __table_args__=(db.UniqueConstraint('traffic_stopset_id','position',name='uq_stopset_item_position'),db.CheckConstraint("(item_type='FIXED_IMAGING' AND imaging_asset_id IS NOT NULL) OR (item_type='COMMERCIAL_SLOT' AND imaging_asset_id IS NULL)",name='ck_stopset_item_target'))
+    __tablename__='traffic_stopset_items'; __table_args__=(db.UniqueConstraint('traffic_stopset_id','position',name='uq_stopset_item_position'),db.CheckConstraint("(item_type='FIXED_IMAGING' AND imaging_asset_id IS NOT NULL AND track_id IS NULL) OR (item_type='FIXED_AUDIO' AND track_id IS NOT NULL AND imaging_asset_id IS NULL) OR (item_type='COMMERCIAL_SLOT' AND imaging_asset_id IS NULL AND track_id IS NULL)",name='ck_stopset_item_target'))
     id=db.Column(db.Integer,primary_key=True); traffic_stopset_id=db.Column(db.Integer,db.ForeignKey('traffic_stopsets.id',ondelete='CASCADE'),nullable=False); position=db.Column(db.Integer,nullable=False); item_type=db.Column(db.String(20),nullable=False); imaging_asset_id=db.Column(db.Integer,db.ForeignKey('imaging_assets.id',ondelete='RESTRICT')); stopset=db.relationship('TrafficStopset',back_populates='template_items'); imaging_asset=db.relationship('ImagingAsset')
+
+    track_id = db.Column(db.Integer, db.ForeignKey('tracks.id', ondelete='RESTRICT'))
+    track = db.relationship('Track')
+
+    @property
+    def audio(self):
+        return self.track or self.imaging_asset
 
 class TrafficLog(db.Model):
     __tablename__='traffic_logs'; __table_args__=(db.UniqueConstraint('station_id','log_date',name='uq_traffic_log_date'),db.CheckConstraint("status IN ('DRAFT','GENERATED','FINALIZED','RECONCILED')",name='ck_traffic_log_status'))
@@ -687,12 +706,12 @@ class TimedEvent(db.Model):
     __table_args__ = (
         db.UniqueConstraint('uuid', name='timed_events_uuid_key'),
         db.CheckConstraint("timing_mode IN ('SOFT','HARD','NON_INTERRUPTING')", name='ck_timed_event_mode'),
-        db.CheckConstraint("recurrence_type IN ('ONE_TIME','WEEKLY')", name='ck_timed_event_recurrence'),
-        db.CheckConstraint("content_type IN ('TRACK','IMAGING_ASSET','EVENT_BLOCK')", name='ck_timed_event_content_type'),
+        db.CheckConstraint("recurrence_type IN ('ONE_TIME','QUARTER_HOUR','HOURLY','DAILY','WEEKLY','MONTHLY')", name='ck_timed_event_recurrence'),
+        db.CheckConstraint("content_type IN ('TRACK','IMAGING_ASSET','EVENT_BLOCK','PLAYLIST')", name='ck_timed_event_content_type'),
         db.CheckConstraint("missed_policy IN ('SKIP','PLAY_LATE')", name='ck_timed_event_missed'),
         db.CheckConstraint("interrupt_policy IN ('NEVER','MUSIC_ONLY')", name='ck_timed_event_interrupt'),
-        db.CheckConstraint("(content_type='TRACK' AND track_id IS NOT NULL AND imaging_asset_id IS NULL AND event_block_id IS NULL) OR (content_type='IMAGING_ASSET' AND imaging_asset_id IS NOT NULL AND track_id IS NULL AND event_block_id IS NULL) OR (content_type='EVENT_BLOCK' AND event_block_id IS NOT NULL AND track_id IS NULL AND imaging_asset_id IS NULL)", name='ck_timed_event_content'),
-        db.CheckConstraint("(recurrence_type='ONE_TIME' AND scheduled_at_utc IS NOT NULL AND weekday IS NULL AND local_time IS NULL) OR (recurrence_type='WEEKLY' AND scheduled_at_utc IS NULL AND weekday BETWEEN 0 AND 6 AND local_time IS NOT NULL)", name='ck_timed_event_schedule'),
+        db.CheckConstraint("(content_type='TRACK' AND track_id IS NOT NULL AND imaging_asset_id IS NULL AND event_block_id IS NULL AND playlist_id IS NULL) OR (content_type='IMAGING_ASSET' AND imaging_asset_id IS NOT NULL AND track_id IS NULL AND event_block_id IS NULL AND playlist_id IS NULL) OR (content_type='EVENT_BLOCK' AND event_block_id IS NOT NULL AND track_id IS NULL AND imaging_asset_id IS NULL AND playlist_id IS NULL) OR (content_type='PLAYLIST' AND playlist_id IS NOT NULL AND track_id IS NULL AND imaging_asset_id IS NULL AND event_block_id IS NULL)", name='ck_timed_event_content'),
+        db.CheckConstraint("(recurrence_type='ONE_TIME' AND scheduled_at_utc IS NOT NULL AND weekday IS NULL) OR (recurrence_type!='ONE_TIME' AND scheduled_at_utc IS NULL AND local_time IS NOT NULL)", name='ck_timed_event_schedule'),
         db.CheckConstraint('early_tolerance_seconds BETWEEN 0 AND 3600 AND late_tolerance_seconds BETWEEN 1 AND 86400', name='ck_timed_event_window'),
     )
     id = db.Column(db.Integer, primary_key=True)
@@ -706,6 +725,17 @@ class TimedEvent(db.Model):
     track_id = db.Column(db.Integer, db.ForeignKey('tracks.id', ondelete='RESTRICT'))
     imaging_asset_id = db.Column(db.Integer, db.ForeignKey('imaging_assets.id', ondelete='RESTRICT'))
     event_block_id = db.Column(db.Integer, db.ForeignKey('event_blocks.id', ondelete='RESTRICT'))
+    playlist_id = db.Column(db.Integer, db.ForeignKey('playlists.id', ondelete='RESTRICT'))
+    playlist = db.relationship('Playlist')
+    playlist_playback = db.Column(db.String(8), nullable=False, default='ONE', server_default='ONE')
+    playlist_state = db.Column(db.JSON, nullable=False, default=dict, server_default='{}')
+    interrupt_dj = db.Column(db.Boolean, nullable=False, default=False, server_default=db.false())
+    revision = db.Column(db.Integer, nullable=False, default=1, server_default='1')
+    month_day = db.Column(db.Integer)
+    month_nth = db.Column(db.Integer)
+    month_weekday = db.Column(db.Integer)
+    local_date = db.Column(db.Date)
+    generated_until = db.Column(db.DateTime(timezone=True))
     recurrence_type = db.Column(db.String(12), nullable=False)
     scheduled_at_utc = db.Column(db.DateTime(timezone=True))
     weekday = db.Column(db.Integer)
@@ -728,6 +758,16 @@ class TimedEvent(db.Model):
     occurrences = db.relationship('TimedEventOccurrence', back_populates='event', cascade='all, delete-orphan')
 
     @property
+    def content_name(self):
+        target = self.playlist or self.track or self.imaging_asset or self.event_block
+        return getattr(target, 'title', None) or getattr(target, 'name', 'Unavailable audio')
+
+    @property
+    def recurrence_summary(self):
+        from app.services.timed_events import recurrence_summary
+        return recurrence_summary(self)
+
+    @property
     def repeat_days(self):
         return [int(day) for day in self.weekdays.split(',')] if self.weekdays else ([self.weekday] if self.weekday is not None else [])
 
@@ -736,7 +776,7 @@ class TimedEventOccurrence(db.Model):
     __tablename__ = 'timed_event_occurrences'
     __table_args__ = (
         db.UniqueConstraint('timed_event_id', 'scheduled_for_utc', name='uq_timed_occurrence_instant'),
-        db.CheckConstraint("state IN ('PENDING','READY','QUEUED','STARTED','MISSED','FAILED','CANCELLED')", name='ck_timed_occurrence_state'),
+        db.CheckConstraint("state IN ('PENDING','READY','QUEUED','STARTED','COMPLETED','MISSED','FAILED','CANCELLED')", name='ck_timed_occurrence_state'),
     )
     id = db.Column(db.Integer, primary_key=True)
     timed_event_id = db.Column(db.Integer, db.ForeignKey('timed_events.id', ondelete='CASCADE'), nullable=False, index=True)
@@ -748,6 +788,11 @@ class TimedEventOccurrence(db.Model):
     selection_decision_id = db.Column(db.Integer, db.ForeignKey('selection_decisions.id', ondelete='SET NULL'), unique=True)
     queued_at = db.Column(db.DateTime(timezone=True))
     started_at = db.Column(db.DateTime(timezone=True))
+    completed_at = db.Column(db.DateTime(timezone=True))
+    boundary_reserved = db.Column(db.Boolean, nullable=False, default=False, server_default=db.false())
+    cancelled_by_user = db.Column(db.Boolean, nullable=False, default=False, server_default=db.false())
+    revision = db.Column(db.Integer, nullable=False, default=1, server_default='1')
+    runtime = db.Column(db.JSON, nullable=False, default=dict, server_default='{}')
     missed_at = db.Column(db.DateTime(timezone=True))
     failure_reason = db.Column(db.String(80))
     created_at = db.Column(db.DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
@@ -772,7 +817,10 @@ class EventBlockExecution(db.Model):
         db.CheckConstraint("source IN ('TIMED_EVENT','CLOCK','MANUAL')", name='ck_block_execution_source'))
     id = db.Column(db.Integer, primary_key=True)
     station_id = db.Column(db.Integer, db.ForeignKey('stations.id', ondelete='CASCADE'), nullable=False, index=True)
-    event_block_id = db.Column(db.Integer, db.ForeignKey('event_blocks.id', ondelete='RESTRICT'), nullable=False)
+    event_block_id = db.Column(db.Integer, db.ForeignKey('event_blocks.id', ondelete='RESTRICT'), nullable=True)
+    playlist_id = db.Column(db.Integer, db.ForeignKey('playlists.id', ondelete='RESTRICT'))
+    playlist = db.relationship('Playlist')
+    playlist_revision = db.Column(db.Integer)
     timed_event_occurrence_id = db.Column(db.Integer, db.ForeignKey('timed_event_occurrences.id', ondelete='SET NULL'), unique=True)
     clock_slot_id = db.Column(db.Integer, db.ForeignKey('clock_slots.id', ondelete='SET NULL'))
     admin_user_id = db.Column(db.Integer, db.ForeignKey('admin_users.id', ondelete='SET NULL'))
@@ -782,6 +830,10 @@ class EventBlockExecution(db.Model):
     updated_at = db.Column(db.DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
     station = db.relationship('Station'); block = db.relationship('EventBlock'); clock_slot = db.relationship('ClockSlot'); operator = db.relationship('AdminUser')
     timed_event_occurrence = db.relationship('TimedEventOccurrence', backref=db.backref('block_execution', uselist=False))
+    @property
+    def name(self):
+        return self.playlist.name if self.playlist else self.block.name
+
     items = db.relationship('EventBlockItemExecution', back_populates='execution', order_by='EventBlockItemExecution.position', cascade='all, delete-orphan')
 
 
@@ -891,17 +943,27 @@ class SongFlag(db.Model):
 
 class Playlist(db.Model):
     __tablename__ = 'playlists'
-    __table_args__ = (db.CheckConstraint("mode IN ('STRAIGHT','RANDOM')", name='ck_playlist_mode'),)
+    __table_args__ = (db.CheckConstraint("mode IN ('STRAIGHT','RANDOM')", name='ck_playlist_mode'),
+        db.UniqueConstraint('station_id', 'system_key', name='uq_playlist_system_key'),
+        db.CheckConstraint("purpose IN ('GENERAL','STATION','COMMERCIALS')", name='ck_playlist_purpose'))
     id = db.Column(db.Integer, primary_key=True)
     station_id = db.Column(db.Integer, db.ForeignKey('stations.id', ondelete='CASCADE'), nullable=False, index=True)
     name = db.Column(db.String(120), nullable=False)
     description = db.Column(db.String(500), nullable=False, default='')
+    purpose = db.Column(db.String(12), nullable=False, default='GENERAL', server_default='GENERAL')
+    system_key = db.Column(db.String(12))
+    legacy_imaging_group_id = db.Column(db.Integer, unique=True)
+    minimum_separation_seconds = db.Column(db.Integer, nullable=False, default=0, server_default='0')
     mode = db.Column(db.String(12), nullable=False, default='STRAIGHT')
     revision = db.Column(db.Integer, nullable=False, default=1)
     deleted_at = db.Column(db.DateTime(timezone=True))
     station = db.relationship('Station')
     items = db.relationship('PlaylistItem', order_by='PlaylistItem.position', cascade='all, delete-orphan', back_populates='playlist')
     tracks = db.relationship('Track', secondary='playlist_items', viewonly=True, backref=db.backref('playlists', viewonly=True))
+
+    @property
+    def duration_ms(self):
+        return sum(item.track.duration_ms or 0 for item in self.items)
 
     @property
     def enabled(self):
@@ -1093,3 +1155,11 @@ from .statistics import (StatsState, AudienceSample, StatsBucket, AudiencePresen
                          GeoBucket, GeoReach, StorageSnapshot, BroadcastIncident, FeedbackTransition)
 from .imports import MusicImportSession, MusicImportItem
 from .cue import BoothCue, SavedBoothCue, CuePlayback, CueMutation
+
+
+class EventQueueCancellation(db.Model):
+    __tablename__ = 'event_queue_cancellations'
+    decision_id = db.Column(db.Integer, db.ForeignKey('selection_decisions.id', ondelete='CASCADE'), primary_key=True)
+    station_id = db.Column(db.Integer, db.ForeignKey('stations.id', ondelete='CASCADE'), nullable=False, index=True)
+    processed = db.Column(db.Boolean, nullable=False, default=False)
+    decision = db.relationship('SelectionDecision')

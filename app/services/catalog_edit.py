@@ -21,6 +21,10 @@ def validate_metadata(station_id, data):
     if not isinstance(data, dict):
         raise ValueError('Invalid song details')
     result = {}
+    if 'audio_kind' in data:
+        from app.services.audio_classification import validate
+        kind, subtype, code = validate(data['audio_kind'], data.get('audio_subtype', ''), data.get('cart_code'))
+        result.update(audio_kind=kind, audio_subtype=subtype, cart_code=code)
     if "isrc" in data:
         from app.services.copyright import normalize_isrc
         result["isrc"] = normalize_isrc(data["isrc"])
@@ -102,4 +106,7 @@ def apply_metadata(song, data, station_id=None):
         if key in data:
             preserved = [row for row in getattr(song, key) if row.station_id != station_id]
             setattr(song, key, preserved + [owned(model, station_id, identifier) for identifier in data[key]])
+    if 'audio_kind' in data:
+        from app.services.audio_classification import classify
+        classify(song, data['audio_kind'], data['audio_subtype'], data['cart_code'], station_id=station_id)
     return song

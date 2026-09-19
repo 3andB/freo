@@ -7,9 +7,9 @@ from app.models import Track, Artist, Album
 
 
 def shared(track):
-    return bool(track.available_to_all or
+    return bool((track.audio_kind or 'MUSIC') == 'MUSIC' and (track.available_to_all or
                 (track.catalog_artist and track.catalog_artist.available_to_all) or
-                (track.catalog_album and track.catalog_album.available_to_all))
+                (track.catalog_album and track.catalog_album.available_to_all)))
 
 
 def available(track, station_id):
@@ -24,9 +24,9 @@ def playable(track, station_id):
 
 def track_scope(station_id):
     return Track.deleted_at.is_(None) & or_(
-        Track.station_id == station_id, Track.available_to_all.is_(True),
+        Track.station_id == station_id, (Track.audio_kind == 'MUSIC') & or_(Track.available_to_all.is_(True),
         Track.catalog_artist.has(Artist.available_to_all.is_(True)),
-        Track.catalog_album.has(Album.available_to_all.is_(True)))
+        Track.catalog_album.has(Album.available_to_all.is_(True))))
 
 
 def tracks_for(station_id):
@@ -51,6 +51,8 @@ def set_sharing(row, enabled, user_id=None):
     from app.models import Station, SelectionDecision
     from app.services.admin_media import audit
     from app.services.stations import allocation_lock
+    if isinstance(row, Track) and row.audio_kind != 'MUSIC' and enabled:
+        raise ValueError('STATION and COMMERCIALS audio belongs to its station')
     if not isinstance(enabled, bool):
         raise ValueError('Choose enabled or disabled')
     allocation_lock()

@@ -437,6 +437,7 @@ def source_tracks(station, ref, storage=None):
                 for part in slot.rotation.slots:
                     if part.enabled:found+=source_tracks(station,dict(kind='category',id=part.category_id),storage)
         return found
+    if kind in ('artist','album','category'):q=q.filter_by(audio_kind='MUSIC')
     if kind=='song':q=q.filter(Track.id==identifier)
     elif kind=='artist':q=q.filter(Track.artist_id.in_(ref.get('artists',[identifier])))
     elif kind=='album':q=q.filter(Track.album_id==identifier)

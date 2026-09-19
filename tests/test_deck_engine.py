@@ -226,7 +226,8 @@ def test_auto_and_dj_crossfade(app,tmp_path,monkeypatch,deck,direction):
 
 
 @pytest.mark.parametrize('future_count', [2, 6])
-def test_soft_insert_preserves_current_song_and_all_future_requests(app,tmp_path,monkeypatch,future_count):
+@pytest.mark.parametrize('batch',[False,True])
+def test_soft_insert_preserves_current_song_and_all_future_requests(app,tmp_path,monkeypatch,future_count,batch):
     """Actual engine proof: current song → inserted event → all future music."""
     from app.services.playout_queue import _command, queued_order
     media=tmp_path/'media';runtime=tmp_path/'runtime';directory=runtime/'test-station';directory.mkdir(parents=True)
@@ -251,22 +252,25 @@ def test_soft_insert_preserves_current_song_and_all_future_requests(app,tmp_path
             enqueue('a',1)
             def starts():
                 file=directory/'events.log'
-                return [(int(line.split()[0]),float(line.split()[1])) for line in file.read_text().splitlines()] if file.exists() else []
+                return [(int(line.split()[0]),float(line.split()[1])) for line in file.read_text().splitlines() if not line.startswith('END ')] if file.exists() else []
             for _ in range(60):
                 if starts():break
                 time.sleep(.1)
             assert starts()[0][0] == 1
             future=[enqueue('b' if i%2==0 else 'c',i+2) for i in range(future_count)]
             event_decision=future_count+2
-            event=enqueue('d',event_decision,'insert')
-            assert queued_order('test-station') == [event,*future]
+            if batch:
+                uris=[f'annotate:freo_decision={event_decision+i}:{originals/("d"*32+".mp3")}' for i in range(2)]
+                events=[int(v) for v in _command('test-station','freo_queue.insert_many '+'|'.join(uris)).split()]
+            else:events=[enqueue('d',event_decision,'insert')]
+            assert queued_order('test-station') == [*events,*future]
             assert [identifier for identifier,_ in starts()] == [1]
             deadline=time.monotonic()+10+2*future_count
             while time.monotonic()<deadline:
-                if len(starts()) >= future_count+2:break
+                if len(starts()) >= future_count+1+len(events):break
                 time.sleep(.1)
             actual=starts()
-            assert [identifier for identifier,_ in actual] == [1,event_decision,*range(2,future_count+2)]
+            assert [identifier for identifier,_ in actual] == [1,*range(event_decision,event_decision+len(events)),*range(2,future_count+2)]
             assert actual[1][1]-actual[0][1] >= 4.5
         finally:
             proc.terminate()
@@ -344,3 +348,52 @@ def test_auto_skip_advances_once_and_counts_only_engine_starts(app,tmp_path,monk
                 proc.terminate()
                 try:proc.wait(timeout=5)
                 except subprocess.TimeoutExpired:proc.kill();proc.wait()
+
+
+@pytest.mark.parametrize('deck',['A','B'])
+def test_event_bus_waits_for_dj_boundary_and_preserves_mode(app,tmp_path,monkeypatch,deck):
+    from app.services.playout_queue import _command,event_bus
+    directory=tmp_path/'runtime'/'test-station';directory.mkdir(parents=True)
+    media=tmp_path/'media';originals=media/'test-station'/'originals';originals.mkdir(parents=True)
+    for key,seconds in [('a',6),('b',2)]:
+        subprocess.run(['ffmpeg','-v','error','-f','lavfi','-i',f'sine=frequency=440:duration={seconds}','-y',str(originals/(key*32+'.mp3'))],check=True)
+    monkeypatch.setenv('FREO_MEDIA_ROOT',str(media));monkeypatch.setattr('app.services.playout_queue.SOCKET_ROOT',directory.parent)
+    with app.app_context():
+        station=Station.query.filter_by(slug='test-station').one();station.automation.operator_mode='DJ_BOOTH'
+        source=render_liquidsoap(station,'a'*64).replace('/run/freo/playout/test-station',str(directory))
+    config=tmp_path/'dj-event.liq';config.write_text('settings.init.allow_root := true\n'+source[:source.index('output.icecast(')]+f'output.file(%wav, "{tmp_path}/event.wav", radio)\n')
+    with (tmp_path/'event.log').open('w') as log:
+        proc=subprocess.Popen(['liquidsoap',str(config)],stdout=log,stderr=log)
+        try:
+            for _ in range(300):
+                if (directory/'control.sock').exists():break
+                if proc.poll() is not None:pytest.fail((tmp_path/'event.log').read_text()[-2500:])
+                time.sleep(.2)
+            def records():
+                file=directory/'events.log'
+                return [line.split() for line in file.read_text().splitlines()] if file.exists() else []
+            _command('test-station',f'freo_{deck.lower()}.push annotate:freo_decision=1:{originals/("a"*32+".mp3")}')
+            _command('test-station',f'freo_deck.take_{deck.lower()} 0.000')
+            for _ in range(60):
+                if any(r[0]=='1' for r in records()):break
+                time.sleep(.1)
+            assert any(r[0]=='1' for r in records())
+            uris=[f'annotate:freo_decision={identifier}:{originals/("b"*32+".mp3")}' for identifier in (2,3)]
+            assert len(_command('test-station','freo_event.load_many '+'|'.join(uris)).split())==2
+            assert event_bus('test-station','arm',123)=='OK'
+            assert event_bus('test-station').endswith('|WAITING')
+            for _ in range(120):
+                if any(r[:2]==['END','3'] for r in records()):break
+                time.sleep(.1)
+            starts={int(r[0]):float(r[1]) for r in records() if r[0]!='END'}
+            assert 2 in starts and starts[2]-starts[1]>=5.5,records()
+            assert any(r[:2]==['END','2'] for r in records())
+            assert any(r[:2]==['END','3'] for r in records())
+            assert 1.5 <= starts[3]-starts[2] <= 2.5,records()
+            assert _command('test-station','freo_mixer.state').startswith('DJ_BOOTH|')
+            assert event_bus('test-station','release',123)=='OK'
+            assert event_bus('test-station')=='|WAITING'
+        finally:
+            proc.terminate()
+            try:proc.wait(timeout=5)
+            except subprocess.TimeoutExpired:proc.kill();proc.wait()

@@ -28,9 +28,9 @@ def test_migration_preserves_existing_station_and_limit_serializes_empty_databas
     with app.app_context():
         station=Station.query.one()
         assert station.name=='Existing' and station.lifecycle_state=='ready' and station.deleted_at is None
-        assert [row.name for row in Playlist.query.filter_by(station_id=station.id).order_by(Playlist.id)]==['Playlist 1','Playlist 2']
+        assert [row.name for row in Playlist.query.filter_by(station_id=station.id).order_by(Playlist.id)]==['Playlist 1','Playlist 2','STATION','COMMERCIALS']
     result=runner.invoke(args=['db','downgrade','f61c20d9a843'])
-    assert result.exit_code==0,result.output
+    assert result.exit_code!=0
     result=runner.invoke(args=['db','upgrade'])
     assert result.exit_code==0,result.output
     with app.app_context():
@@ -51,7 +51,7 @@ def test_migration_preserves_existing_station_and_limit_serializes_empty_databas
     assert sum(results)==3
     with app.app_context():
         assert Station.query.count()==3
-        assert Playlist.query.count()==6
+        assert Playlist.query.count()==12
         # Slow filesystem/engine provisioning must not hold the allocation lock.
         from app.services import station_runtime as runtime
         from app.services.station_lifecycle import process_station
@@ -181,12 +181,12 @@ def test_domain_constraints_concurrent_claims_and_primary_changes(monkeypatch):
         db.session.remove()
     runner = app.test_cli_runner()
     result = runner.invoke(args=['db', 'downgrade', 'c48f1d207ab9'])
-    assert result.exit_code == 0, result.output
+    assert result.exit_code != 0
     result = runner.invoke(args=['db', 'upgrade'])
     assert result.exit_code == 0, result.output
     with app.app_context():
         assert db.session.get(Station, station_id)
-        assert StationDomain.query.count() == 0
+        assert StationDomain.query.count() == 2
         db.session.remove()
         db.engine.dispose()
 

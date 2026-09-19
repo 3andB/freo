@@ -36,6 +36,7 @@
     }
   }
   function renderSongs() {
+    $('playlist-delete').disabled=!!current.system_key;
     const list = $('playlist-songs'); list.replaceChildren();
     const term = $('playlist-search').value.trim().toLowerCase();
     const songs = current.songs.filter(s => `${s.title} ${s.artist} ${s.album}`.toLowerCase().includes(term));

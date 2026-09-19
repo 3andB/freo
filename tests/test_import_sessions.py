@@ -236,3 +236,20 @@ def test_worker_inherits_album_defaults_without_browser_and_respects_file_choice
     assert 'artist_id' not in by_name['song-2.mp3']['choices']
     assert by_name['song-2.mp3']['choices']['title']=='Individual override'
     assert finalize(client,review).status_code==200
+
+
+@pytest.mark.parametrize('kind,subtype',[('STATION','station_id'),('COMMERCIALS','')])
+def test_import_audio_classification_reaches_system_playlist(app,tmp_path,kind,subtype):
+    from app.models import Playlist
+    from app.ingest_worker import process_one
+    client=admin_client(app);session=post(client,BASE).json
+    upload(client,session,audio(tmp_path))
+    review=prepare(app,client,session);item=review['items'][0]
+    response=post(client,session['url']+'/items/'+item['id'],{'revision':item['revision'],'choices':{'audio_kind':kind,'audio_subtype':subtype,'cart_code':'ID-ONE'}})
+    assert response.status_code==200
+    assert finalize(client,client.get(session['url']).json).status_code==200
+    with app.app_context():
+        assert process_one()
+        song=Track.query.filter_by(audio_kind=kind).one()
+        assert song.audio_subtype==subtype and song.cart_code=='ID-ONE' and not song.available_to_all
+        assert [i.track_id for i in Playlist.query.filter_by(station_id=song.station_id,system_key=kind).one().items]==[song.id]

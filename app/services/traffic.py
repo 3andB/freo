@@ -5,7 +5,7 @@ from datetime import datetime, time, timezone
 from zoneinfo import ZoneInfo
 from app.extensions import db
 from app.models import (Advertiser,Campaign,CampaignScheduleRule,CommercialCreative,EventBlock,EventBlockItem,
-    EventBlockItemExecution,ImagingAsset,TrafficLog,TrafficPlacement,TrafficStopset,TrafficStopsetItem)
+    EventBlockItemExecution,ImagingAsset,Track,TrafficLog,TrafficPlacement,TrafficStopset,TrafficStopsetItem)
 from app.services.event_blocks import validate_block
 from app.services.schedule import _wall_to_utc
 from app.services.stations import get_station
@@ -42,10 +42,10 @@ def update_campaign(row,name,start_date,end_date,target=None,priority=100,notes=
     if start_date>end_date: raise ValueError('Campaign start date must not follow end date')
     row.name=clean(name,120,True);row.start_date=start_date;row.end_date=end_date;row.target_spot_count=int(target) if target not in (None,'') else None;row.priority=int(priority);row.notes=clean(notes,1000);return row
 def attach_creative(campaign,asset_uuid,name,creative_code):
-    asset=ImagingAsset.query.filter_by(station_id=campaign.station_id,uuid=asset_uuid).first()
+    asset=Track.query.filter_by(station_id=campaign.station_id,uuid=asset_uuid,deleted_at=None).first() or ImagingAsset.query.filter_by(station_id=campaign.station_id,uuid=asset_uuid).first()
     if not asset or asset.ingest_status!='accepted' or asset.decommissioned_at: raise ValueError('Creative audio is unavailable or cross-station')
-    if asset.asset_type!='COMMERCIAL': raise ValueError('Creative audio must use COMMERCIAL imaging type')
-    row=CommercialCreative(station_id=campaign.station_id,campaign_id=campaign.id,imaging_asset_id=asset.id,name=clean(name,120,True),creative_code=clean(creative_code,40,True));db.session.add(row);db.session.commit();return row
+    if (asset.audio_kind if isinstance(asset,Track) else asset.asset_type) not in ('COMMERCIALS','COMMERCIAL'): raise ValueError('Creative audio must use COMMERCIALS')
+    row=CommercialCreative(station_id=campaign.station_id,campaign_id=campaign.id,track_id=asset.id if isinstance(asset,Track) else None,imaging_asset_id=asset.id if isinstance(asset,ImagingAsset) else None,name=clean(name,120,True),creative_code=clean(creative_code,40,True));db.session.add(row);db.session.commit();return row
 def add_rule(campaign,days,start,end,target,minimum=0,maximum=None,priority=100):
     if start>=end: raise ValueError('Daypart start must precede end')
     row=CampaignScheduleRule(campaign_id=campaign.id,station_id=campaign.station_id,weekdays=weekdays(days),start_time=start,end_time=end,target_spots_per_day=int(target),minimum_separation_seconds=int(minimum),maximum_spots_per_day=maximum,priority=int(priority));db.session.add(row);db.session.commit();return row
@@ -54,12 +54,15 @@ def create_stopset(code,name,days,local_time,capacity,max_spots=None,timing_mode
     if timing_mode not in ('SOFT','HARD','NON_INTERRUPTING') or int(capacity)<=0: raise ValueError('Invalid stopset settings')
     row=TrafficStopset(station_id=s.id,name=clean(name,120,True),slug=slug(name),weekdays=weekdays(days),local_time=local_time,capacity_seconds=int(capacity),max_spots=max_spots,timing_mode=timing_mode);db.session.add(row);db.session.commit();return row
 def add_template_item(stopset,item_type,asset_uuid=None):
-    if item_type=='FIXED_IMAGING':
+    if item_type=='FIXED_AUDIO':
+        asset=Track.query.filter_by(station_id=stopset.station_id,uuid=asset_uuid,enabled=True,ingest_status='accepted',deleted_at=None,decommissioned_at=None).first()
+        if not asset: raise ValueError('Fixed audio is unavailable or cross-station')
+    elif item_type=='FIXED_IMAGING':
         asset=ImagingAsset.query.filter_by(station_id=stopset.station_id,uuid=asset_uuid,enabled=True,ingest_status='accepted').first()
         if not asset: raise ValueError('Fixed imaging is unavailable or cross-station')
     elif item_type=='COMMERCIAL_SLOT': asset=None
     else: raise ValueError('Unsupported stopset item type')
-    row=TrafficStopsetItem(stopset=stopset,position=len(stopset.template_items)+1,item_type=item_type,imaging_asset_id=asset.id if asset else None);db.session.add(row);db.session.commit();return row
+    row=TrafficStopsetItem(stopset=stopset,position=len(stopset.template_items)+1,item_type=item_type,track_id=asset.id if isinstance(asset,Track) else None,imaging_asset_id=asset.id if isinstance(asset,ImagingAsset) else None);db.session.add(row);db.session.commit();return row
 
 def _instant(station,date,at): return _wall_to_utc(datetime.combine(date,at),ZoneInfo(station.timezone))
 def generate_log(code,date):
@@ -73,7 +76,7 @@ def generate_log(code,date):
     for campaign in campaigns:
         rules=[r for r in campaign.rules if r.enabled and date.weekday() in dayset(r.weekdays)]
         requested=sum(min(r.target_spots_per_day,r.maximum_spots_per_day or r.target_spots_per_day) for r in rules); scheduled=0
-        creatives=[c for c in campaign.creatives if c.enabled and c.imaging_asset.enabled and (not c.start_date or c.start_date<=date) and (not c.end_date or c.end_date>=date)]
+        creatives=[c for c in campaign.creatives if c.enabled and c.audio.enabled and (not c.start_date or c.start_date<=date) and (not c.end_date or c.end_date>=date)]
         creatives.sort(key=lambda c:(TrafficPlacement.query.filter_by(commercial_creative_id=c.id,status='AIRED').count(),c.id))
         candidates=[]
         for rule in sorted(rules,key=lambda r:(-r.priority,r.id)):
@@ -86,9 +89,9 @@ def generate_log(code,date):
             if scheduled>=requested or not creatives or used[(stop.id,'campaign',campaign.id)]: continue
             existing=TrafficPlacement.query.filter_by(traffic_log_id=log.id,traffic_stopset_id=stop.id).all()
             if stop.max_spots and len(existing)>=stop.max_spots: continue
-            creative=creatives[scheduled%len(creatives)]; duration=creative.imaging_asset.duration_ms/1000
-            fixed=sum(i.imaging_asset.duration_ms/1000 for i in stop.template_items if i.imaging_asset)
-            placed=sum(p.creative.imaging_asset.duration_ms/1000 for p in existing)
+            creative=creatives[scheduled%len(creatives)]; duration=creative.audio.duration_ms/1000
+            fixed=sum(i.audio.duration_ms/1000 for i in stop.template_items if i.audio)
+            placed=sum(p.creative.audio.duration_ms/1000 for p in existing)
             when=_instant(station,date,stop.local_time)
             prior=last.get(campaign.id)
             if prior and (when-prior).total_seconds()<rule.minimum_separation_seconds: continue
@@ -110,9 +113,9 @@ def finalize_log(log):
         block=EventBlock(station_id=log.station_id,name=f'{stop.name} {log.log_date}',slug=f'traffic-{log.log_date}-{stop.slug}',description='Finalized traffic materialization',block_type='STOPSET',enabled=True,failure_policy='SKIP_FAILED_ITEM');db.session.add(block);db.session.flush(); pi=iter(sorted(placements,key=lambda p:p.position));position=0
         for template in stop.template_items:
             creative=next(pi,None) if template.item_type=='COMMERCIAL_SLOT' else None
-            asset=template.imaging_asset if template.item_type=='FIXED_IMAGING' else creative.creative.imaging_asset if creative else None
+            asset=template.audio if template.item_type in ('FIXED_IMAGING','FIXED_AUDIO') else creative.creative.audio if creative else None
             if not asset: continue
-            position+=1;item=EventBlockItem(event_block_id=block.id,position=position,item_type='IMAGING_ASSET',imaging_asset_id=asset.id,enabled=True,label=creative.creative_name if creative else asset.name);db.session.add(item);db.session.flush()
+            position+=1;item=EventBlockItem(event_block_id=block.id,position=position,item_type='TRACK' if isinstance(asset,Track) else 'IMAGING_ASSET',track_id=asset.id if isinstance(asset,Track) else None,imaging_asset_id=asset.id if isinstance(asset,ImagingAsset) else None,enabled=True,label=creative.creative_name if creative else getattr(asset,'title',None) or asset.name);db.session.add(item);db.session.flush()
             if creative: creative.event_block_item_id=item.id;creative.status='MATERIALIZED'
         if validate_block(block): raise ValueError('Materialized stopset is invalid')
         save_event(log.station.slug,name=f'Traffic: {stop.name}',timing_mode=stop.timing_mode,recurrence_type='ONE_TIME',content_type='EVENT_BLOCK',content_identifier=block.slug,local_date=log.log_date.isoformat(),local_time=stop.local_time.isoformat(),late_tolerance_seconds=300,missed_policy='SKIP',interrupt_policy='NEVER',priority=200)
@@ -143,8 +146,8 @@ def _editable(log):
 
 def _stop_capacity(log,stopset,exclude=None):
     rows=[p for p in log.placements if p.traffic_stopset_id==stopset.id and p.id!=(exclude.id if exclude else None) and p.status!='CANCELLED']
-    fixed=sum(i.imaging_asset.duration_ms for i in stopset.template_items if i.imaging_asset)/1000
-    used=sum(p.creative.imaging_asset.duration_ms for p in rows)/1000
+    fixed=sum(i.audio.duration_ms for i in stopset.template_items if i.audio)/1000
+    used=sum(p.creative.audio.duration_ms for p in rows)/1000
     return rows,fixed+used
 
 def _validate_draft_placement(log,stopset,creative,exclude=None):
@@ -155,12 +158,12 @@ def _validate_draft_placement(log,stopset,creative,exclude=None):
     if not campaign.enabled or campaign.status!='ACTIVE' or not campaign.start_date<=log.log_date<=campaign.end_date: raise ValueError('Campaign is not active on this log date')
     rules=[r for r in campaign.rules if r.enabled and log.log_date.weekday() in dayset(r.weekdays) and r.start_time<=stopset.local_time<r.end_time]
     if not rules: raise ValueError('Stopset is outside the campaign daypart')
-    if not creative.enabled or not creative.imaging_asset.enabled or creative.imaging_asset.ingest_status!='accepted': raise ValueError('Creative is unavailable')
+    if not creative.enabled or not creative.audio.enabled or creative.audio.ingest_status!='accepted': raise ValueError('Creative is unavailable')
     rows,used=_stop_capacity(log,stopset,exclude)
     if any(p.campaign_id==campaign.id for p in rows): raise ValueError('Campaign already has a placement in this stopset')
     slots=sum(i.item_type=='COMMERCIAL_SLOT' for i in stopset.template_items)
     if len(rows)>=slots or stopset.max_spots and len(rows)>=stopset.max_spots: raise ValueError('Stopset has no remaining commercial inventory')
-    if used+creative.imaging_asset.duration_ms/1000>stopset.capacity_seconds: raise ValueError('Placement does not fit stopset capacity')
+    if used+creative.audio.duration_ms/1000>stopset.capacity_seconds: raise ValueError('Placement does not fit stopset capacity')
     when=_instant(log.station,log.log_date,stopset.local_time)
     minimum=max(r.minimum_separation_seconds for r in rules)
     for p in log.placements:

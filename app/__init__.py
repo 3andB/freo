@@ -30,7 +30,6 @@ from .routes.admin_traffic import admin_traffic_blueprint
 from .event_cli import event_cli
 from .block_cli import block_cli
 from .traffic_cli import traffic_cli
-from .imaging_cli import imaging_cli
 
 
 def create_app(config_name=None):
@@ -110,7 +109,8 @@ def create_app(config_name=None):
     app.register_blueprint(event_cli, cli_group=None)
     app.register_blueprint(block_cli, cli_group=None)
     app.register_blueprint(traffic_cli, cli_group=None)
-    app.register_blueprint(imaging_cli, cli_group=None)
+    from .audio_migration_cli import audio_migration_cli
+    app.register_blueprint(audio_migration_cli, cli_group=None)
     try:
         upload_limit = int(os.environ.get('MAX_MEDIA_UPLOAD_BYTES', 128 * 1024 * 1024))
     except ValueError as error:

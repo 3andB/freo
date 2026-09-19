@@ -173,7 +173,7 @@ def ingest(slug, source, title=None, artist=None, album=None, storage=None, *,
 
 def approved_tracks(slug):
     station = station_for_media(slug)
-    return tracks_for(station.id).filter_by(ingest_status='accepted', enabled=True, decommissioned_at=None).order_by(Track.id).all()
+    return tracks_for(station.id).filter_by(audio_kind='MUSIC', ingest_status='accepted', enabled=True, decommissioned_at=None).order_by(Track.id).all()
 
 
 def refresh_playlist(slug, storage=None):

@@ -168,3 +168,8 @@ textarea[rows="2"] {min-height:76px}
 @media(min-width:851px) {
   .room-destinations,.song-inspector {top:calc(var(--header-height,96px) + 104px)}
 }
+
+.event-audio-browser { grid-column: 1 / -1; padding: 1rem; border: 1px solid var(--theme-border, #777); border-radius: .6rem; }
+.event-audio-result { display:flex; align-items:center; gap:.6rem; padding:.6rem 0; flex-wrap:wrap; border-bottom:1px solid var(--theme-border, #777); }
+.event-audio-result small { flex:1; min-width:10rem; }
+.event-form-grid [hidden] { display:none !important; }

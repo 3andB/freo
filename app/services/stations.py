@@ -103,7 +103,11 @@ def update_station(station, *, name, description, public_slug, timezone_name, us
         if previous and not db.session.get(StationAlias, previous):
             db.session.add(StationAlias(slug=previous, station_id=station.id))
     station.name, station.description = name, description
+    previous_timezone = station.timezone
     station.public_slug, station.timezone = public_slug, timezone_name
+    if previous_timezone != timezone_name:
+        from app.services.timed_events import timezone_changed
+        timezone_changed(station, previous_timezone)
     audit('station_details_updated', user_id=user.id, station_id=station.id, target_type='station', target_id=station.slug,
           summary='Station details and public URL updated; previous URLs retained')
     if commit:

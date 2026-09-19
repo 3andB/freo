@@ -315,7 +315,7 @@ def select_next(slug, storage=None, now=None, programming_signature=None, *, pro
 
 def _recent(station, state, now):
     recent_since = now - timedelta(seconds=max(state.track_separation_seconds, state.artist_separation_seconds, 3600))
-    return SelectionDecision.query.filter(SelectionDecision.station_id == station.id,
+    return SelectionDecision.query.filter(SelectionDecision.track.has(Track.audio_kind == 'MUSIC'), SelectionDecision.station_id == station.id,
         SelectionDecision.selected_at >= recent_since).order_by(SelectionDecision.id.desc()).limit(500).all()
 
 
@@ -346,7 +346,7 @@ def _select_category(station, category, state, storage, now, context, rotation=N
     if not category.enabled or category.station_id != station.id:
         reason, tracks = 'disabled_category', []
     else:
-        tracks = [track for track in category.tracks if playable(track, station.id)]
+        tracks = [track for track in category.tracks if track.audio_kind == 'MUSIC' and playable(track, station.id)]
         tracks = [track for track in tracks if _exists(storage, track.station.slug, track.storage_key)]
         reason = 'empty_category' if not tracks else ''
     base = dict(station_id=station.id, rotation_id=rotation.id if rotation else None,
@@ -438,7 +438,7 @@ def preview(slug, count=10, storage=None, now=None, rotation_slug=None):
     for index in range(count):
         slot = slots[cursor % len(slots)]
         cursor += 1
-        tracks = [track for track in slot.category.tracks if slot.category.enabled and playable(track, station.id) and _exists(storage, track.station.slug, track.storage_key)]
+        tracks = [track for track in slot.category.tracks if slot.category.enabled and track.audio_kind == 'MUSIC' and playable(track, station.id) and _exists(storage, track.station.slug, track.storage_key)]
         track, relaxation, candidates = _choose(tracks, history, now, state.track_separation_seconds, state.artist_separation_seconds)
         output.append({'slot': slot.position, 'category': slot.category.slug,
                        'track': track.uuid if track else None, 'relaxation': relaxation,
