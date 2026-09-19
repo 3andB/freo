@@ -305,6 +305,16 @@ def remove(station):
         if backup.is_symlink():
             raise ValueError('Symlink audio backup is forbidden')
         backup.unlink(missing_ok=True)
+    # The renderer preserves existing mounts; remove only this deleted station.
+    import xml.etree.ElementTree as ET
+    from app.services.icecast_directory import parse_config
+    path = ROOT / 'radio/icecast.xml'
+    root = parse_config(path.read_bytes())
+    for mount in root.findall('mount'):
+        if mount.findtext('mount-name') == '/' + slug:
+            root.remove(mount)
+    staged = atomic_install(path, ET.tostring(root, encoding='unicode'), 0o640, 'root', 'icecast')
+    os.replace(staged, path)
     run_checked(['/opt/freo/venv/bin/python', str(SOURCE / 'scripts/render-radio-config.py')])
     run_checked(['/usr/sbin/nginx', '-t'])
     run_checked(['/bin/systemctl', 'reload', 'icecast2.service'])

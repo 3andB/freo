@@ -6,6 +6,8 @@ The public URL opens the Freo listening page. Changing its name preserves previo
 
 Logos accept JPEG, PNG, or WebP up to 10 MB and 3000 pixels on either side. A square image is recommended. The server decodes and re-encodes the image, strips metadata, and stores an original-size PNG and a thumbnail up to 512 pixels. Replace or remove the logo from Settings.
 
+**Public radio directories** offers an explicit **List My Station** action for Radio Browser and an independent **Public Directory Listing OFF / ON** setting for Internet-Radio.com through Icecast YP. Both start unpublished. See [setup, status, recovery and testing](public-radio-directories.md). These local client integrations are independent of the Freo directory and freo.live.
+
 ## Auto playback
 
 Beside Monitor, **Skip to next** advances the current item through the automation worker. **Next** displays the first observed queued item, including imaging when that comes before a song. Empty queues and lost connections are stated explicitly. Skipping an empty queue can lead to fallback audio while automation refills it.

@@ -18,6 +18,50 @@ from app.services.visual_schedule import policy
 station_settings = Blueprint('station_settings', __name__)
 
 
+@station_settings.post('/admin/stations/<slug>/settings/directories/<directory>')
+@admin_required
+def directory(slug, directory):
+    require_csrf()
+    if directory not in ('radio-browser', 'internet-radio'):
+        abort(404)
+    station = station_or_404(slug, require_enabled=False)
+    from app.services.radio_directories import submit_radio_browser, queue_internet_radio
+    try:
+        if directory == 'radio-browser':
+            submit_radio_browser(station, current_admin())
+            flash('Station listed in Radio Browser.', 'success')
+        elif directory == 'internet-radio':
+            value = request.form.get('enabled')
+            if value not in ('yes', 'no'):
+                raise ValueError('Choose ON or OFF for the public directory listing.')
+            changed = queue_internet_radio(station, value == 'yes', current_admin())
+            db.session.commit()
+            flash('Directory change queued. Refresh this page to check its status.' if changed else 'Directory setting is already up to date.', 'success')
+    except ValueError as error:
+        db.session.rollback()
+        flash(str(error), 'error')
+    except Exception as error:
+        db.session.rollback()
+        current_app.logger.error('Directory action failed: station_id=%s error_type=%s', station.id, type(error).__name__)
+        flash('Directory action could not be saved. Refresh this page to check its status.', 'error')
+    return redirect(url_for('.page', slug=slug) + '#public-directories', code=303)
+
+
+@station_settings.get('/<slug>')
+def directory_stream(slug):
+    from app.services.stations import get_station
+    try:
+        station = get_station(slug)
+    except ValueError:
+        station = None
+    if (not station or not station.enabled or not station.stream.enabled or station.lifecycle_state != 'ready'
+            or not (station.internet_radio_enabled or station.internet_radio_pending is True)):
+        abort(404)
+    response = redirect('/stream/' + station.slug, code=307)
+    response.headers['Cache-Control'] = 'no-store'
+    return response
+
+
 def decode_logo(upload, output_limit=None):
     raw = upload.read(10 * 1024 * 1024 + 1)
     if len(raw) > 10 * 1024 * 1024:

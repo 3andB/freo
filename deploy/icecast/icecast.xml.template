@@ -26,6 +26,8 @@
     <client-address>127.0.0.1</client-address>
   </listen-socket>
   <fileserve>0</fileserve>
+  <!-- Sources cannot opt themselves in to public directory advertising. -->
+  <mount type="default"><public>0</public></mount>
   <paths>
     <basedir>/usr/share/icecast2</basedir>
     <logdir>/var/log/icecast2</logdir>

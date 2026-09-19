@@ -109,11 +109,12 @@ def preferred_url(station):
     if primary:
         return 'https://' + primary.hostname + '/'
     base = current_app.config.get('PUBLIC_BASE_URL', '').rstrip('/')
-    return base + url_for('web.player', slug=station.public_slug or station.slug)
+    # Also used by root provisioning without an HTTP request or SERVER_NAME.
+    return base + '/player/' + (station.public_slug or station.slug)
 
 
 def route_public_host():
-    endpoints = {'web.homepage', 'web.stations', 'web.player', 'web.listen_alias', 'station_settings.logo', 'player_experience.asset', 'player_experience.public_state', 'player_experience.public_schedule', 'player_experience.feedback', 'player_experience.artwork', 'statistics.visitor_presence', 'website.asset', 'website.theme'}
+    endpoints = {'web.homepage', 'web.stations', 'web.player', 'web.listen_alias', 'station_settings.logo', 'station_settings.directory_stream', 'player_experience.asset', 'player_experience.public_state', 'player_experience.public_schedule', 'player_experience.feedback', 'player_experience.artwork', 'statistics.visitor_presence', 'website.asset', 'website.theme'}
     if request.endpoint not in endpoints:
         return None
     try:

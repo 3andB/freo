@@ -29,6 +29,36 @@
 <p><button type="button" id="copy-station-url">Copy URL</button> <a href="{{ public_url }}">Open station ↗</a><span id="copy-url-status" role="status"></span></p>
 <button class="admin-primary" type="submit">Save station settings</button>
 </form></section>
+<section class="admin-card station-settings" id="public-directories">
+<h2>Public radio directories</h2>
+<h3>Radio Browser</h3>
+<p>List this station in the public Radio Browser directory using its saved station details and public stream URL.</p>
+<p role="status">Status: <strong>{{ 'Listed' if selected.radio_browser_uuid else 'Not Listed' if selected.radio_browser_status == 'not_listed' else 'Error' if selected.radio_browser_status in ['error','uncertain'] else 'Not Listed' }}</strong></p>
+{% if selected.radio_browser_uuid %}
+<p>Listing active. Station UUID: <code>{{ selected.radio_browser_uuid }}</code></p>
+{% elif selected.radio_browser_status == 'submitting' %}
+<p>Submission in progress. Refresh to check its result. If it remains here, ask the operator to reconcile the listing before trying again.</p>
+{% endif %}
+{% if selected.radio_browser_error %}<p class="admin-notice error" role="alert">{{ selected.radio_browser_error }}</p>{% endif %}
+{% if not selected.radio_browser_uuid and selected.radio_browser_status in ['not_listed','error'] %}
+<form method="post" action="{{ url_for('station_settings.directory',slug=selected.slug,directory='radio-browser') }}">
+<input type="hidden" name="csrf" value="{{ csrf_token() }}">
+<button type="submit" class="admin-primary">List My Station</button>
+</form>
+{% endif %}
+<h3>Internet-Radio.com</h3>
+<p>Advertise this station through Icecast’s public directory support. The directory decides when the listing appears or is removed.</p>
+<p role="status">Public Directory Listing: <strong>{{ 'ON' if selected.internet_radio_enabled else 'OFF' }}</strong>
+{% if selected.internet_radio_status in ['pending','applying'] %} — Change {{ selected.internet_radio_status }}. Refresh to check its result.{% endif %}</p>
+{% if selected.internet_radio_error %}<p class="admin-notice error" role="alert">{{ selected.internet_radio_error }}</p>{% endif %}
+<form method="post" action="{{ url_for('station_settings.directory',slug=selected.slug,directory='internet-radio') }}">
+<input type="hidden" name="csrf" value="{{ csrf_token() }}">
+<fieldset {% if selected.internet_radio_status in ['pending','applying'] %}disabled{% endif %}>
+<legend>Public Directory Listing</legend>
+<label><select name="enabled"><option value="no" {% if not selected.internet_radio_enabled %}selected{% endif %}>OFF</option><option value="yes" {% if selected.internet_radio_enabled %}selected{% endif %}>ON</option></select></label>
+<button type="submit">Save directory setting</button>
+</fieldset></form>
+</section>
 <section class="admin-card station-settings" id="audio-settings" data-audio-api="{{ url_for('station_settings.audio',slug=selected.slug) }}">
 <h2>Stream quality & audio processing</h2>
 <p>Broadcasting at <strong id="audio-active-bitrate">{{ selected.stream.bitrate }}</strong> kbps MP3. Uploads keep their original quality.</p>

@@ -191,6 +191,13 @@ def test_runtime_cleanup_failure_can_resume_without_touching_neighbors(app,tmp_p
     for slug in ('delete-me','survivor'):
         for name,suffix in [('SNIPPETS','.conf'),('CONFIGS','.liq'),('SECRETS','.json')]:
             (getattr(module,name)/(slug+suffix)).write_text('safe test fixture')
+    (tmp_path/'radio').mkdir()
+    (tmp_path/'radio/icecast.xml').write_text('<icecast><mount><mount-name>/delete-me</mount-name></mount><mount><mount-name>/survivor</mount-name></mount></icecast>')
+    def stage(path, data, *args):
+        target = path.with_suffix('.staged')
+        target.write_text(data)
+        return target
+    monkeypatch.setattr(module, 'atomic_install', stage)
     from types import SimpleNamespace
     station=SimpleNamespace(slug='delete-me')
     with pytest.raises(OSError):REAL_REMOVE(station)
