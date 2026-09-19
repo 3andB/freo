@@ -72,7 +72,7 @@ def test_deleted_song_can_be_intentionally_reimported(app,tmp_path):
     client=admin_client(app);session=post(client,BASE).json;path=audio(tmp_path)
     upload(client,session,path);finalize(client,prepare(app,client,session))
     with app.app_context():
-        process_one();song=Track.query.filter_by(title='Song 1').one();old_id=song.id
+        process_one();song=Track.query.filter_by(title='Song 1').one();old_uuid=song.uuid
         # Disposable stations are stopped so deletion does not require engine observations.
         Station.query.update({'desired_state':'stopped'})
         delete_audio(song);db.session.commit()
@@ -81,7 +81,7 @@ def test_deleted_song_can_be_intentionally_reimported(app,tmp_path):
     with app.app_context():
         process_one()
         song=Track.query.filter_by(title='Song 1',deleted_at=None).one()
-        assert song.id!=old_id
+        assert song.uuid!=old_uuid
     assert client.get(second['url']).json['items'][0]['job_status']=='accepted'
 
 

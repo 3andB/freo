@@ -2,6 +2,7 @@
   const scope = window.FreoPage;
   const root=document.getElementById('sound-room');if(!root)return;
   const $=id=>document.getElementById(id), selected=new Set();
+  const processing=new Set();
   let data=null,active=null,activeSong=null,page=1,filter={},version=0,busy=false,undo=null,drag=null,editing=null,notesDirty=false,editingCategory=null,suppressClickUntil=0;
   const initial=new URLSearchParams(location.search);active=initial.get('song');
   if(initial.get('import_session')){filter.import_session=initial.get('import_session');$('collection-title').textContent='Imported songs';}
@@ -84,11 +85,12 @@
       const handle=el('span','⠿','song-drag');handle.title='Drag song to a category or tag';handle.setAttribute('aria-hidden','true');
       const copy=el('div',undefined,'song-row-copy');copy.append(el('b',song.title),el('span',song.artist),el('small',`${song.album||'Single'} · ${duration(song.duration_ms)} · ${song.play_count} plays · ↑ ${song.votes?.up||0} ↓ ${song.votes?.down||0}`));
       copy.append(FreoMusicToggles.create(song,data,root.dataset));
-      const status=el('div',undefined,'song-row-status');status.append(el('span',song.analysis==='pending'?(song.requested?'Queued':'Waiting'):song.analysis),el('small',song.lufs===null?'LUFS pending':`${song.lufs.toFixed(1)} LUFS`));
+      const status=el('div',undefined,'song-row-status');const progress=el('span',processing.has(song.uuid)?'Queuing…':song.analysis==='pending'?(song.requested?'Queued':'Waiting'):song.analysis==='processing'?'Processing…':song.analysis==='complete'?'Complete':song.analysis==='failed'?'Processing failed':song.analysis);progress.setAttribute('role','status');status.append(progress,el('small',song.lufs===null?'LUFS pending':`${song.lufs.toFixed(1)} LUFS`));
       status.append(button(song.flag?(song.flag.resolved?'💬 Resolved':'💬 Flagged'):'💬 Flag',()=>window.FreoSongFlags.open(song),'song-flag-button'));
       if(!song.enabled)status.append(el('small','Needs review'));
       const menu=el('details',undefined,'song-menu'),summary=el('summary','⋯');summary.setAttribute('aria-label',`Song menu: ${song.title}`);menu.append(summary);
-      const link=el('a','Edit song');link.href=song.detail;menu.append(link,button('Process song',()=>process([song.uuid])),button('Permanently delete',()=>deleteSong(song),'delete-song'));
+      const link=el('a','Edit song');link.href=song.detail;const processButton=button(processing.has(song.uuid)?'Queuing…':song.requested?'Queued…':song.analysis==='processing'?'Processing…':song.analysis==='failed'?'Retry processing':'Process song',()=>process([song.uuid]));processButton.disabled=processing.has(song.uuid)||song.requested||song.analysis==='processing';menu.append(link,processButton,button('Permanently delete',()=>deleteSong(song),'delete-song'));
+      menu.addEventListener('click',event=>{if(event.target.closest('a,button'))menu.open=false;});menu.addEventListener('toggle',()=>{if(menu.open)root.querySelectorAll('.song-menu[open]').forEach(other=>{if(other!==menu)other.open=false;});});
       row.append(check,handle,preview(song),copy,status,menu);
       row.addEventListener('click',event=>{if(!event.target.closest('button,input,a,summary,details'))inspect(song.uuid);});
       row.addEventListener('keydown',event=>{if(event.target===row&&event.key==='Enter')inspect(song.uuid);});list.append(row);
@@ -109,6 +111,7 @@
     panel.append(art,el('span','SELECTED SONG','eyebrow'));
     const heading=el('div',undefined,'inspector-heading');heading.append(preview(song),el('h2',song.title));panel.append(heading,el('p',song.artist,'inspector-artist'));
     const link=el('a','Edit song ↗','inspector-link');link.href=song.detail;panel.append(link);
+    if(song.availability&&window.FreoAvailability)panel.append(button('Channel availability',()=>FreoAvailability.open(song,root.dataset.csrf),'availability-shortcut'));
     panel.append(button(song.flag?'💬 Review flag':'💬 Flag song',()=>window.FreoSongFlags.open(song),'song-flag-button'));
     const metrics=el('div',undefined,'inspector-metrics');
     for(const [name,value] of [['Confirmed plays',song.play_count],['Listener votes',`↑ ${song.votes?.up||0} · ↓ ${song.votes?.down||0}`],['Approval',song.votes?.total?`${song.votes.approval}% (${song.votes.total} votes)`:'No votes'],['Net score',song.votes?.net||0],['Loudness',song.lufs===null?'Not measured':`${song.lufs.toFixed(1)} LUFS`],['Playback gain',`${song.gain.db} dB`],['Target',`${song.gain.target} LUFS`],['Status',song.gain.status]]){const cell=el('div');cell.append(el('small',name),el('b',value));metrics.append(cell);}panel.append(metrics);if(song.feedback_url){const feedback=el('a',`${song.votes?.comments||0} listener comments →`,'inspector-link');feedback.href=song.feedback_url;panel.append(feedback);}
@@ -164,7 +167,16 @@
     try{const response=await scope.fetch(root.dataset.catalog+'?'+params,{cache:'no-store'});if(!response.ok||!response.headers.get('content-type')?.includes('application/json'))throw Error();const next=await response.json();if(attempt!==version||FreoMusicToggles.pending||drag)return;data=next;destinations();rows();fitWorkspace();if(editingCategory&&!notesDirty){const category=data.categories.find(x=>x.id===editingCategory);if(category)categoryInspector(category);}else if(active&&!notesDirty)await inspect(active);}
     catch(_){message('Music could not load. Check your connection or refresh to sign in again.',true);}
   }
-  async function process(ids){if(!ids.length)return;const result=await post('process',{songs:ids});if(result)load();}
+  async function process(ids){
+    if(!ids.length||busy)return;ids.forEach(id=>processing.add(id));message('Queuing audio processing…');
+    $('room-songs').dataset.render='';rows();
+    try{const result=await post('process',{songs:ids});if(result)await load();}
+    finally{ids.forEach(id=>processing.delete(id));$('room-songs').dataset.render='';rows();}
+  }
+  const closeMenus=()=>root.querySelectorAll('.song-menu[open]').forEach(menu=>menu.open=false);
+  scope.listen(document,'click',event=>{if(!event.target.closest('.song-menu'))closeMenus();});
+  scope.listen(document,'keydown',event=>{if(event.key==='Escape'){const menu=root.querySelector('.song-menu[open]');closeMenus();menu?.querySelector('summary').focus();}});
+  scope.listen(document,'music-availability-saved',()=>load());
   function openDestination(kind,item=null){editing={kind,item};$('destination-title').textContent=`${item?'Edit':'Create'} ${kind}`;const form=$('destination-form');form.elements.name.value=item?.name||'';form.elements.color.value=item?.color||'#b9e79b';form.elements.description.value=item?.description||'';$('tag-color-label').hidden=kind!=='tag';$('destination-error').textContent='';$('destination-dialog').showModal();form.elements.name.focus();}
   root.querySelectorAll('[data-create]').forEach(node=>node.addEventListener('click',()=>openDestination(node.dataset.create)));
   $('destination-form').addEventListener('submit',async event=>{event.preventDefault();const form=event.currentTarget;const action=editing.item?'edit-tag':`create-${editing.kind}`;const result=await post(action,{name:form.elements.name.value,color:form.elements.color.value,description:form.elements.description.value,id:editing.item?.id});if(result){$('destination-dialog').close();load();}else $('destination-error').textContent=$('room-message-text').textContent;});
@@ -215,8 +227,15 @@
   scope.listen(document,'pointercancel',cleanDrag);scope.listen(window,'blur',cleanDrag);scope.listen(document,'keydown',event=>{if(event.key==='Escape')cleanDrag();});
 
   async function deleteSong(song){
-    if(!await FreoDialog.confirm({title:`Delete “${song.title}”?`,message:'The audio will be deleted and the song removed from Music. Past play history remains. This cannot be undone.',confirmLabel:'Delete song'}))return;
-    if(await post('delete',{songs:[song.uuid],confirm:song.uuid})){selected.delete(song.uuid);if(active===song.uuid){active=null;notesDirty=false;$('song-inspector').replaceChildren(el('p','Deletion queued.','room-empty'));}load();}
+    if(!await FreoDialog.confirm({title:`Delete “${song.title}”?`,message:'Permanently removes this song and its audio from all channels, including Events, Blocks, playlists, carts, queues, and play history. This cannot be undone.',confirmLabel:'Delete song',signal:scope.signal}))return;
+    const result=await post('delete',{songs:[song.uuid],confirm:song.uuid});
+    if(result){selected.delete(song.uuid);document.dispatchEvent(new CustomEvent('music-song-deleted',{detail:{uuid:song.uuid}}));if(active===song.uuid){active=null;activeSong=null;notesDirty=false;$('song-inspector').replaceChildren(el('p','Song removed.','room-empty'));}load();watchDeletion(result);}
   }
-  load();scope.interval(()=>{if(!drag&&!busy&&!document.hidden&&!document.querySelector('dialog[open]')&&!root.querySelector('.song-menu[open]'))load();},10000);
+  function watchDeletion(result){
+    if(!result.status_url)return;
+    const notice=el('p','Finishing permanent deletion…','deletion-progress');notice.setAttribute('role','status');root.before(notice);let done=false,polling=false;
+    const poll=async()=>{if(done||polling)return;polling=true;try{const response=await scope.fetch(result.status_url,{headers:{Accept:'application/json'},cache:'no-store'});if(!response.ok)throw Error();const job=await response.json();if(job.status==='accepted'){notice.textContent='Song permanently deleted from all channels.';done=true;}else if(['error','rejected'].includes(job.status)){done=true;notice.textContent='Song removed from Music, but file cleanup failed. ';const retry=el('a','Review and retry deletion');retry.href=result.job_url;notice.append(retry);}else notice.textContent='Song removed. Clearing playback and deleting files…';}catch(_){notice.textContent='Deletion status unavailable. ';const link=el('a','Check deletion status');link.href=result.job_url;notice.append(link);}finally{polling=false;}};
+    poll();scope.interval(poll,2000);
+  }
+  load();scope.interval(()=>{if(!drag&&!busy&&!document.hidden&&!document.querySelector('dialog[open]')&&!root.querySelector('.song-menu[open]'))load();},2000);
 })();

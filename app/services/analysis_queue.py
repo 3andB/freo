@@ -8,7 +8,7 @@ from app.services.audio_analysis import analyze_song, extract_artwork
 
 def process_analysis(requested=False):
     now=datetime.now(timezone.utc)
-    query=Track.query.filter_by(ingest_status='accepted',decommissioned_at=None,analysis_requested=requested)
+    query=Track.query.filter_by(ingest_status='accepted',decommissioned_at=None,deleted_at=None,analysis_requested=requested)
     query=query.filter(Track.analysis_status.in_(('pending','failed')),Track.analysis_attempts<3,
         or_(Track.analysis_retry_at.is_(None),Track.analysis_retry_at<=now))
     song=query.order_by(Track.created_at,Track.id).with_for_update(skip_locked=True).first()

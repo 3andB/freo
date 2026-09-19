@@ -1,6 +1,6 @@
 # Radio music library
 
-Freo models music as `Artist → Album → Song`. The long-lived `tracks` row remains the Song playback identity so automation, queue requests, timed events, blocks, and confirmed history retain stable foreign keys. First-class Artist and Album records are created or reused from normalized embedded metadata. Legacy artist and album strings remain compatibility snapshots.
+Freo models music as `Artist → Album → Song`. The `tracks` row is the Song playback identity used by automation, queue requests, timed events, blocks, and confirmed history. Master-library permanent deletion removes the song and its music references across channels; decommissioning retains its identity and history. First-class Artist and Album records are created or reused from normalized embedded metadata. Legacy artist and album strings remain compatibility snapshots.
 
 Station programming stays on the Song layer. Categories, tags, enable state, cue/segue values, scheduling restrictions, and confirmed play history do not alter Artist or Album identity. Catalog records remain station scoped. ImagingAsset remains the separate domain for IDs, carts, sweepers, promos, and commercials.
 

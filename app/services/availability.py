@@ -13,7 +13,7 @@ def shared(track):
 
 
 def available(track, station_id):
-    return bool(not track.deleted_at and
+    return bool(track is not None and not track.deleted_at and
                 (track.station_id == station_id or shared(track)))
 
 

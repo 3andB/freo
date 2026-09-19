@@ -41,19 +41,33 @@ def cleanup_staging():
 
 
 def process_one():
+    from sqlalchemy import or_
+    from app.models import EventQueueCancellation, SelectionDecision, Station
+    waiting = db.select(SelectionDecision.track_id).join(EventQueueCancellation,
+        EventQueueCancellation.decision_id == SelectionDecision.id).join(Station,
+        Station.id == EventQueueCancellation.station_id).where(
+        EventQueueCancellation.processed.is_(False), SelectionDecision.track_id.isnot(None),
+        Station.enabled.is_(True), Station.desired_state == 'running', Station.deleted_at.is_(None))
     job = (MediaIngestJob.query.filter_by(status='pending')
-           .order_by(MediaIngestJob.created_at, MediaIngestJob.id)
+           .filter(or_(MediaIngestJob.kind != 'delete', MediaIngestJob.track_id.is_(None),
+                       MediaIngestJob.track_id.notin_(waiting)))
+           .order_by(MediaIngestJob.kind != 'delete', MediaIngestJob.created_at, MediaIngestJob.id)
            .with_for_update(skip_locked=True).first())
     if job is None:
         db.session.rollback()
         from app.services.import_sessions import prepare_one
         return prepare_one()
+    if job.kind == 'delete' and job.track:
+        from app.services.music_delete import playback_cleanup_pending
+        if playback_cleanup_pending(job.track):
+            db.session.rollback()
+            return False
     job.status = 'processing'
     job.started_at = datetime.now(timezone.utc)
     db.session.commit()
     path = staged_path(job.id) if job.kind in ('ingest', 'imaging') else None
     try:
-        if job.station.deleted_at or job.station.lifecycle_state in ('pending_delete', 'delete_failed'):
+        if job.kind != 'delete' and (job.station.deleted_at or job.station.lifecycle_state in ('pending_delete', 'delete_failed')):
             raise MediaValidationError('Station is being deleted')
         if job.kind not in ('ingest', 'verify', 'enable', 'imaging', 'img_verify', 'img_enable', 'delete'):
             raise MediaValidationError('Unsupported media operation')

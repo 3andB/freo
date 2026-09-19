@@ -131,7 +131,8 @@ def ingest(slug, source, title=None, artist=None, album=None, storage=None, *,
             create_preview(temp, preview)
         playout_gid = __import__('grp').getgrnam('freo-playout').gr_gid
         if os.geteuid() == 0:
-            os.chown(temp, 0, playout_gid)
+            import pwd
+            os.chown(temp, pwd.getpwnam('freo-ingest').pw_uid, playout_gid)
         elif temp.stat().st_gid != playout_gid:
             raise PermissionError('Staged media does not have the playout-read group')
         grant_playout_read(temp)

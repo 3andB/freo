@@ -1,6 +1,7 @@
 """Resumable offline conversion of retired Imaging audio; originals are retained."""
 import hashlib
 import os
+import pwd
 import shutil
 import tempfile
 import uuid
@@ -68,7 +69,8 @@ def convert(station, storage=None, mapping=None):
                         try:
                             with os.fdopen(fd,'wb') as out,source.open('rb') as src:
                                 shutil.copyfileobj(src,out);out.flush();os.fsync(out.fileno())
-                            os.chown(name,-1,source.stat().st_gid);grant_playout_read(name);os.replace(name,target)
+                            owner = pwd.getpwnam('freo-ingest').pw_uid if os.geteuid() == 0 else -1
+                            os.chown(name,owner,source.stat().st_gid);grant_playout_read(name);os.replace(name,target)
                         finally:Path(name).unlink(missing_ok=True)
                 track=m.Track(station_id=station.id,uuid=asset.uuid if not m.Track.query.filter_by(uuid=asset.uuid).first() else str(uuid.uuid4()),title=asset.name,artist=station.name,album='',original_filename=asset.original_filename,storage_key=key,media_type=asset.media_type,duration_ms=asset.duration_ms,bitrate_kbps=asset.bitrate_kbps,sample_rate_hz=asset.sample_rate_hz,channels=asset.channels,file_size_bytes=asset.file_size_bytes,checksum_sha256=asset.checksum_sha256,enabled=asset.enabled,ingest_status=asset.ingest_status,decommissioned_at=asset.decommissioned_at,notes=asset.description,analysis_status='pending')
                 db.session.add(track);db.session.flush()

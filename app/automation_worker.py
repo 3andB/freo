@@ -574,6 +574,13 @@ def process_event_cancellations(station):
     from app.services.playout_queue import _command
     jobs = EventQueueCancellation.query.filter_by(station_id=station.id,processed=False).all()
     if not jobs: return
+    from app.services.music_delete import clear_deleted_playback
+    deleted = [job for job in jobs if job.decision.track and job.decision.track.deleted_at]
+    if deleted:
+        clear_deleted_playback(station, deleted)
+        db.session.commit()
+    jobs = [job for job in jobs if job not in deleted]
+    if not jobs: return
     token, _ = _command(station.slug,'freo_event.state').split('|')
     dj_queue = {int(v) for v in _command(station.slug,'freo_event.queue').split()}
     auto_queue = queued_ids(station.slug)

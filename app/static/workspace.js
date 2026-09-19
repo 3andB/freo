@@ -26,7 +26,7 @@
 
   window.FreoDialog = {
     notify(options) {return this.confirm({...options,confirmLabel:"OK",notification:true});},
-    confirm({title = 'Confirm change', message, confirmLabel = 'Continue', notification = false, signal}) {
+    confirm({title = 'Confirm change', message, confirmLabel = 'Continue', notification = false, signal = window.FreoPage.signal}) {
       return new Promise(resolve => {
         if(signal?.aborted){resolve(false);return;}
         const dialog = document.createElement('dialog'); dialog.className = 'freo-dialog';
@@ -43,6 +43,7 @@
         signal?.addEventListener('abort',abort,{once:true});
         cancel.addEventListener('click', () => finish(false)); accept.addEventListener('click', () => finish(true));
         dialog.addEventListener('cancel', event => {event.preventDefault(); finish(false);});
+        dialog.addEventListener('click', event => {if(event.target!==dialog)return;const r=dialog.getBoundingClientRect();if(event.clientX<r.left||event.clientX>r.right||event.clientY<r.top||event.clientY>r.bottom)finish(false);});
         if(!notification)actions.append(cancel);actions.append(accept); dialog.append(heading, copy, actions); document.body.append(dialog); dialog.showModal(); (notification ? accept : cancel).focus();
       });
     }
@@ -224,7 +225,8 @@
     } else {wanted ? stop() : play();}
   }, stop, audio, levels:monitorLevels};
 
-  let navigating = false, dirty = false;
+  let navigating = false;
+  const dirtyForms = new Set();
   // Browser fragment navigation also emits popstate. Track the rendered page,
   // since location has already changed by the time a history event arrives.
   let renderedPage = location.pathname + location.search;
@@ -234,7 +236,7 @@
     if (navigating) return;
     if (!options.submitted && window.FreoPage.beforeLeave) {
       if (!await window.FreoPage.beforeLeave()) return;
-    } else if (dirty && !options.submitted && !await FreoDialog.confirm({title: 'Leave unsaved changes?', message: 'Your edits on this page have not been saved. Leave this page and discard them?', confirmLabel: 'Leave page'})) return;
+    } else if (dirtyForms.size && !options.submitted && !await FreoDialog.confirm({title: 'Leave unsaved changes?', message: 'Your edits on this page have not been saved. Leave this page and discard them?', confirmLabel: 'Leave page'})) return;
     navigating = true; document.documentElement.classList.add('is-navigating');
     try {
       const response = await fetch(url, {credentials: 'same-origin', ...options.request});
@@ -259,7 +261,7 @@
       renderedPage = destination.pathname + destination.search;
       window.FreoTheme?.sync();
       if (!options.pop) history.pushState({freo: true, scroll: 0}, '', destination.href);
-      dirty = false; mount(); prepareForms();
+      dirtyForms.clear(); mount(); prepareForms();
       for (const src of scripts) await new Promise((resolve, reject) => {
         const script = document.createElement('script'); script.src = src; script.onload = resolve; script.onerror = reject; document.body.append(script);
       });
@@ -272,7 +274,8 @@
     } finally {navigating = false; document.documentElement.classList.remove('is-navigating');}
   }
   const prepareForms = () => document.querySelectorAll('form').forEach(form => {form.noValidate = true;});
-  document.addEventListener('input', event => {if (event.target.closest('form[method="post"]')) dirty = true;});
+  document.addEventListener('input', event => {const form=event.target.closest('form[method="post"]');if(form)dirtyForms.add(form);});
+  document.addEventListener('freo:form-saved', event => dirtyForms.delete(event.detail.form));
   document.addEventListener('click', event => {
     const link = event.target.closest('a[href]');
     if (!link || event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || link.target || link.hasAttribute('download')) return;

@@ -15,7 +15,7 @@ from app.services.admin_auth import admin_required, current_admin, require_csrf,
 from app.services.admin_media import audit
 from app.services.analysis_queue import request_analysis
 from app.services.loudness import gain_for
-from app.routes.catalog_editor import cover_url, context_slug
+from app.routes.catalog_editor import cover_url, context_slug, availability_data
 from app.services.airplay import play_counts
 from app.models import SongFlag
 from app.routes.song_flags import flag_data
@@ -30,7 +30,7 @@ def song_data(song, plays=None, station=None, flags=None, ratings=None):
     station = station or song.station
     from app.services.player import vote_stats, EMPTY_STATS
     rating=(ratings if ratings is not None else vote_stats(station.id,[song.id])).get(song.id,EMPTY_STATS)
-    return dict(uuid=song.uuid,title=song.title,artist=song.artist,album=song.album,
+    return dict(availability=availability_data(song), uuid=song.uuid,title=song.title,artist=song.artist,album=song.album,
         votes=rating, feedback_url=url_for('player_experience.inbox',slug=station.slug,track=song.uuid),
         flag=flag_data(flags.get(song.id) if flags is not None else SongFlag.query.filter_by(station_id=station.id,track_id=song.id).first()),
         play_count=play_counts(station.id, 'track', [song.id]).get(song.id, 0) if plays is None else plays,
@@ -94,7 +94,7 @@ def catalog(slug):
     try: page=max(1,min(int(request.args.get('page',1)),100000))
     except ValueError:abort(400)
     total=query.count()
-    songs=query.options(selectinload(Track.playlists),selectinload(Track.tags),selectinload(Track.categories),selectinload(Track.station),selectinload(Track.catalog_album)).order_by(Track.artist,Track.title,Track.id).offset((page-1)*50).limit(50).all()
+    songs=query.options(selectinload(Track.playlists),selectinload(Track.tags),selectinload(Track.categories),selectinload(Track.station),selectinload(Track.catalog_artist),selectinload(Track.catalog_album)).order_by(Track.artist,Track.title,Track.id).offset((page-1)*50).limit(50).all()
     category_counts=dict(db.session.query(track_categories.c.category_id,func.count()).join(Track,Track.id==track_categories.c.track_id).filter(track_scope(station.id),Track.decommissioned_at.is_(None)).group_by(track_categories.c.category_id).all())
     tag_counts=dict(db.session.query(song_tags.c.tag_id,func.count()).join(Track,Track.id==song_tags.c.track_id).filter(track_scope(station.id),Track.decommissioned_at.is_(None)).group_by(song_tags.c.tag_id).all())
     song_plays = play_counts(station.id, 'track', [x.id for x in songs])
@@ -253,8 +253,8 @@ def mutate(slug,action):
             songs=selected_songs(station,data)
             if len(songs)!=1 or data.get('confirm')!=songs[0].uuid:raise ValueError('Confirm deletion of one song')
             from app.services.music_delete import queue_delete
-            job=queue_delete(songs[0],current_admin());db.session.commit()
-            return jsonify(message='Permanent deletion queued. Open deletion status to confirm completion.',job_url=url_for('admin_media.job_status',slug=slug,job_id=job.id))
+            job=queue_delete(songs[0],current_admin(),station);db.session.commit()
+            return jsonify(message='Song removed from Music. Finishing permanent deletion…',job_url=url_for('admin_media.job_status',slug=slug,job_id=job.id),status_url=url_for('admin_media.job_json',slug=slug,job_id=job.id))
         elif action=='notes':
             songs=selected_songs(station,data)
             if len(songs)!=1:raise ValueError('Select one song to edit notes')

@@ -101,8 +101,8 @@ paused decks). Stop the consuming channel and clear queued selections first.
 Existing category/event/block references remain, but availability is checked
 before future selection and again before the engine receives audio. Unavailable
 references are reported by the existing validation/playback status. Shared music
-cannot be permanently deleted through the song-delete action until sharing and
-foreign channel dependencies are removed.
+can be permanently deleted through the master-library song-delete action, which
+removes its song-level references across all channels automatically.
 
 ## Verification
 

@@ -546,6 +546,20 @@ def current_cart()
   r = cart.current()
   if null.defined(r) then decision(request.metadata(null.get(r))) else "" end
 end
+# Master-library deletion removes only requests carrying this decision identity.
+# Check identity inside the engine so a natural track boundary cannot skip the
+# next, unrelated song between a worker read and its cleanup command.
+server.register(namespace="freo_music", "remove", fun (target) -> begin
+  def remove_from(source)
+    source.set_queue(list.filter(fun (r) -> decision(request.metadata(r)) != target, source.queue()))
+    current = source.current()
+    if null.defined(current) and decision(request.metadata(null.get(current))) == target then source.skip() end
+  end
+  if current_a() == target then a_generation := a_generation() + 1; a_play := false; a_decision := "" end
+  if current_b() == target then b_generation := b_generation() + 1; b_play := false; b_decision := "" end
+  remove_from(queue); remove_from(deck_a); remove_from(deck_b); remove_from(cart); remove_from(event_audio)
+  "OK"
+end)
 # Prefetched, paused requests are current() before request.on_air reports them.
 server.register(namespace="freo_deck", "requests", fun (_) -> string.concat(separator=" ", list.map(fun (r) -> string(request.id(r)), list.filter_map(fun (r) -> r, [queue.current(), deck_a.current(), deck_b.current(), cart.current(), event_audio.current()]))))
 server.register(namespace="freo_program", "current", fun (_) ->

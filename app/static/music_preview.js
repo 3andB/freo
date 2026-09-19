@@ -31,6 +31,7 @@
       FreoMonitor.stop();updateGain();await context?.resume();if(attempt!==version)return;await audio.play();if(attempt!==version)return;sync();
     }catch(_){if(attempt===version){error('Audio could not start. Check your connection and that the song is available.');sync();}}
   };
+  scope.listen(document,'music-song-deleted',event=>{if(current?.uuid===event.detail.uuid){version++;audio.pause();audio.removeAttribute('src');audio.load();current=null;player.hidden=true;sync();}});
   scope.listen(document,'click',event=>{
     const button=event.target.closest('[data-preview]');if(!button)return;
     event.stopPropagation();const d=button.dataset;

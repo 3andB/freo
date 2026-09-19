@@ -96,7 +96,7 @@ def test_analysis_failure_is_retried_with_backoff(app,monkeypatch):
         assert song.enabled
 
 
-def test_permanent_delete_removes_audio_retains_history_and_requires_confirmation(app,tmp_path,monkeypatch):
+def test_permanent_delete_removes_audio_and_history_and_requires_confirmation(app,tmp_path,monkeypatch):
     media=tmp_path/'media';originals=media/'test-station'/'originals';originals.mkdir(parents=True)
     key='a'*32+'.mp3';audio=originals/key;audio.write_bytes(b'private audio')
     monkeypatch.setenv('FREO_MEDIA_ROOT',str(media))
@@ -108,21 +108,21 @@ def test_permanent_delete_removes_audio_retains_history_and_requires_confirmatio
     assert audio.exists()
     from app.ingest_worker import process_one
     with app.app_context():
-        assert process_one();song=Track.query.filter_by(uuid=identifier).one()
-        assert song.deleted_at and not audio.exists()
-        assert SelectionDecision.query.filter_by(track_id=song.id).count()==1
+        assert process_one();assert Track.query.filter_by(uuid=identifier).first() is None
+        assert not audio.exists()
+        assert SelectionDecision.query.count()==0
         assert MediaIngestJob.query.filter_by(kind='delete').one().status=='accepted'
     assert client.get('/admin/api/stations/test-station/music').json['total']==0
     assert client.get('/admin/stations/test-station/media/'+identifier).status_code==404
     assert client.get('/admin/stations/test-station/media/'+identifier+'/audition').status_code==404
 
 
-def test_delete_blocks_pending_playback_and_allows_detail_form(app):
+def test_delete_accepts_pending_playback_and_requires_confirmation(app):
     with app.app_context():
         song=Track.query.first();song.station.desired_state='stopped';identifier=song.uuid
         SelectionDecision.query.first().status='queued';db.session.commit()
     client=admin_client(app)
-    assert action(client,'delete',{'songs':[identifier],'confirm':identifier}).status_code==409
     page=client.get('/admin/stations/test-station/media/'+identifier)
     assert b'Permanently delete song' in page.data and b'data-preview=' in page.data
     assert client.post('/admin/stations/test-station/media/'+identifier+'/delete',data={'csrf':'test-admin-csrf-token'}).status_code==400
+    assert action(client,'delete',{'songs':[identifier],'confirm':identifier}).status_code==200

@@ -1,6 +1,6 @@
 """Bounded offline analysis for accepted songs; failure never invalidates audio."""
 from array import array
-import re, subprocess, uuid
+import logging, re, subprocess, uuid
 from app.services.media_storage import LocalMediaStorage
 
 
@@ -27,8 +27,17 @@ def analyze_song(song, storage=None, timeout=120):
         try: song.waveform = waveform(path, song.duration_ms, timeout)
         except (OSError,subprocess.SubprocessError,ValueError): pass
         song.analysis_status='complete';song.analysis_error=''
-    except (OSError,subprocess.SubprocessError,ValueError,KeyError):
-        song.analysis_status='failed';song.analysis_error='Audio analysis failed. Check the file and retry.'
+    except (OSError,subprocess.SubprocessError,ValueError,KeyError) as error:
+        logging.getLogger(__name__).exception('Audio analysis failed for song=%s', song.uuid)
+        song.analysis_status='failed'
+        if isinstance(error, PermissionError) or (isinstance(error, subprocess.CalledProcessError) and 'Permission denied' in str(error.stderr)):
+            song.analysis_error='The processing worker cannot read this audio file. Repair its file permissions, then retry.'
+        elif isinstance(error, FileNotFoundError):
+            song.analysis_error='The audio file is missing. Restore the file or delete and reimport this song.'
+        elif isinstance(error, subprocess.TimeoutExpired):
+            song.analysis_error='Audio processing timed out. Retry processing; if it repeats, check the source file.'
+        else:
+            song.analysis_error='Audio analysis failed. Check the file and retry.'
     return song
 
 

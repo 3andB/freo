@@ -429,3 +429,46 @@ def test_event_bus_waits_for_dj_boundary_and_preserves_mode(app,tmp_path,monkeyp
             proc.terminate()
             try:proc.wait(timeout=5)
             except subprocess.TimeoutExpired:proc.kill();proc.wait()
+
+
+def test_master_delete_removes_loaded_and_future_requests_only(app,tmp_path,monkeypatch):
+    from app.services.playout_queue import _command, mixer_state, queued_order, request_decision_id
+    media=tmp_path/'media';runtime=tmp_path/'runtime';directory=runtime/'test-station';directory.mkdir(parents=True)
+    originals=media/'test-station'/'originals';originals.mkdir(parents=True)
+    audio=originals/('a'*32+'.mp3')
+    subprocess.run(['ffmpeg','-v','error','-f','lavfi','-i','sine=frequency=440:duration=60','-y',str(audio)],check=True)
+    monkeypatch.setenv('FREO_MEDIA_ROOT',str(media));monkeypatch.setattr('app.services.playout_queue.SOCKET_ROOT',runtime)
+    with app.app_context():
+        station=Station.query.filter_by(slug='test-station').one();station.automation.operator_mode='DJ_BOOTH'
+        source=render_liquidsoap(station,'a'*64).replace('/run/freo/playout/test-station',str(directory))
+    source='settings.init.allow_root := true\n'+source[:source.index('output.icecast(')]+f'output.file(%wav, "{tmp_path}/delete.wav", radio)\n'
+    config=tmp_path/'delete.liq';config.write_text(source)
+    with (tmp_path/'delete.log').open('w') as log:
+        proc=subprocess.Popen(['liquidsoap',str(config)],stdout=log,stderr=log)
+        try:
+            for _ in range(300):
+                if (directory/'control.sock').exists():break
+                if proc.poll() is not None:pytest.fail((tmp_path/'delete.log').read_text()[-2500:])
+                time.sleep(.2)
+            def push(bus,identifier):return _command('test-station',f'freo_{bus}.push annotate:freo_decision={identifier}:{audio}')
+            push('a',1);push('b',2);time.sleep(.5)
+            assert mixer_state('test-station')['a_id']==1
+            _command('test-station','freo_music.remove 1');time.sleep(.5)
+            observed=mixer_state('test-station');assert observed['a_id'] is None and observed['b_id']==2
+            _command('test-station','freo_mixer.mode AUTO')
+            push('queue',3);push('queue',4);push('queue',5);time.sleep(.5)
+            _command('test-station','freo_music.remove 4');time.sleep(.3)
+            ids=[request_decision_id('test-station',rid) for rid in queued_order('test-station')]
+            assert 4 not in ids and 5 in ids
+            assert mixer_state('test-station')['auto_id']==3
+            _command('test-station','freo_music.remove 3');time.sleep(.5)
+            assert mixer_state('test-station')['auto_id']==5
+            _command('test-station','freo_music.remove 3');time.sleep(.3)
+            assert mixer_state('test-station')['auto_id']==5
+            push('cart',6);time.sleep(.3)
+            _command('test-station','freo_music.remove 6');time.sleep(.5)
+            assert mixer_state('test-station')['cart_id'] is None
+        finally:
+            proc.terminate()
+            try:proc.wait(timeout=5)
+            except subprocess.TimeoutExpired:proc.kill();proc.wait()

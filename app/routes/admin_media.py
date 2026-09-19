@@ -207,7 +207,20 @@ def job_json(slug, job_id):
     job = MediaIngestJob.query.filter_by(station_id=station.id, id=job_id).first_or_404()
     from app.routes.catalog_editor import state
     return jsonify(status=job.status, error=job.error_code, song=state(job.track) if job.track and not job.track.deleted_at else None,
-        review_url=url_for('.track_detail', slug=slug, track_uuid=job.track.uuid) if job.track else None)
+        review_url=url_for('.track_detail', slug=slug, track_uuid=job.track.uuid) if job.track and not job.track.deleted_at else None)
+
+
+@admin_media_blueprint.post('/admin/stations/<slug>/media/jobs/<job_id>/retry-delete')
+@media_mutation_required
+def retry_delete(slug, job_id):
+    station = station_or_404(slug, require_enabled=False)
+    job = MediaIngestJob.query.filter_by(station_id=station.id, id=job_id, kind='delete').first_or_404()
+    if job.status in ('error', 'rejected'):
+        job.status = 'pending'
+        job.error_code = None
+        job.finished_at = None
+        db.session.commit()
+    return redirect(url_for('.job_status', slug=slug, job_id=job.id), code=303)
 
 
 @admin_media_blueprint.get('/admin/stations/<slug>/media/jobs/<job_id>')
@@ -406,7 +419,7 @@ def delete_track(slug,track_uuid):
     if request.form.get('confirm')!=track.uuid:abort(400)
     try:
         from app.services.music_delete import queue_delete
-        job=queue_delete(track,current_admin());db.session.commit()
+        job=queue_delete(track,current_admin(),station);db.session.commit()
         return redirect(url_for('admin_media.job_status',slug=slug,job_id=job.id),code=303)
     except ValueError as error:
         db.session.rollback();flash(str(error),'error')
@@ -443,8 +456,12 @@ def sharing(slug, kind, identifier):
     try:
         set_sharing(row, request.form.get('available_to_all') == 'on', current_admin().id)
         db.session.commit()
-        flash('Channel availability saved. Existing scheduling rules remain in place and are checked before playback.', 'success')
+        if request.accept_mimetypes.best == 'application/json':
+            return jsonify(message='Channel availability saved.')
+        flash('Channel availability saved.', 'success')
     except ValueError as error:
         db.session.rollback()
+        if request.accept_mimetypes.best == 'application/json':
+            return jsonify(message=str(error)), 409
         flash(str(error), 'error')
     return redirect(media_url(station), code=303)

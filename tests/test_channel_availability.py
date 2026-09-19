@@ -139,7 +139,7 @@ def test_sharing_controls_and_authentication(app,library):
     owner,other,songs=library;song=songs[0];client=admin_client(app)
     for kind,row,page in [('song',song,song.uuid),('artist',song.catalog_artist,f'artists/{song.artist_id}'),('album',song.catalog_album,f'albums/{song.album_id}')]:
         url=f'/admin/stations/owner/media/sharing/{kind}/{row.id}'
-        assert b'MAKE AVAILABLE TO ALL CHANNELS' in client.get('/admin/stations/owner/media/'+page).data
+        assert b'Available to all channels' in client.get('/admin/stations/owner/media/'+page).data
         assert app.test_client().post(url).status_code==302
         assert client.post(url).status_code==400
         result=client.post(url,data={'csrf':'test-admin-csrf-token','available_to_all':'on'})
@@ -147,12 +147,11 @@ def test_sharing_controls_and_authentication(app,library):
         db.session.refresh(row);assert row.available_to_all
 
 
-def test_shared_song_not_permanently_deletable(app,library):
+def test_shared_song_can_be_permanently_deleted(app,library):
     from app.services.music_delete import ensure_deletable
     owner,other,songs=library
     set_sharing(songs[0].catalog_artist,True);db.session.commit()
-    with pytest.raises(ValueError,match='sharing'):
-        ensure_deletable(songs[0])
+    ensure_deletable(songs[0])
 
 
 def test_auto_events_and_blocks_select_shared_audio_after_owner_deletion(app,library):
