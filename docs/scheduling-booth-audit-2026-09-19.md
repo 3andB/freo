@@ -3,7 +3,7 @@
 Starting revision: `13c87ff`. Scope: scheduling editors and resolution, worker execution,
 Events, Booth/Cue/decks/carts, public playback status, persistence, recovery and audio.
 Active tests use isolated databases, media, sockets and Liquidsoap processes.
-Installation checks are read-only. These repairs require coordinated activation of
+Initial installation checks were read-only. These repairs require coordinated activation of
 the application, worker and rendered station engine configurations.
 
 ## Reproduced findings and repairs
@@ -123,3 +123,33 @@ Liquidsoap template and restart the affected engines alongside the application a
 worker. No schema migration is required by these repairs. Keep a paired source and
 engine-configuration backup for rollback; verify the observed output, modes, worker
 heartbeat and Event history after activation.
+
+## Production activation — September 19
+
+The owner authorized committing, pushing and activating the release after the audit.
+Code commit `784a879` was pushed to `origin/main`. The deployed application, tests and
+engine template matched the audited source hashes. Both station configurations were
+rendered with their existing credentials and passed `liquidsoap --check` before installation.
+
+At 13:47 UTC the automation worker was stopped, the validated configurations were
+installed atomically, and the web application and both managed station engines were
+restarted. The worker was then started on the new code. All four processes have new
+PIDs and are active. Confirmed music starts followed at 13:47:49 and 13:47:51 UTC.
+
+At 13:48 UTC all six health endpoints returned HTTP 200/OK. Both station streams
+returned MPEG audio, with two queued requests, fresh observations, nonzero program
+levels and no pending switches or playout errors. Legacy/AUTO and Simple/AUTO modes
+were preserved. The public player reports the active programs correctly, including
+“Playlist 1” for the second station. Both engines expose scheduling status and match
+the installed configuration hashes. The warning-level service journal has no entries
+since activation.
+
+The restarted worker reconciled Event occurrences 12, 13 and 14 to COMPLETED using
+their existing September 15 completion timestamps. No schema migration was needed.
+The isolated 48-hour soak remains running; production activation does not turn that
+pending check into a passing result.
+
+Protected backups and deployment evidence are under `/tmp/freo-release-20260919-1344`:
+`source-before.tar`, the `before` configuration directory, `restart.json`,
+`health-after.json`, `engine-after.json`, `player-after.json` and the validation logs.
+Configuration backups contain station credentials and must retain restricted access.
