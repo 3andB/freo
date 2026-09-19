@@ -1,6 +1,6 @@
 # Station audio and Events implementation
 
-Implemented in the working tree; the running installation, database, and station engine configurations have not been changed.
+Activated on 19 September 2026. Application commit `9a7c02a` was pushed to `origin/main`; the database and both running station engines have been upgraded.
 
 ## Operator workflow
 
@@ -43,4 +43,16 @@ Final verification: **270 distinct tests passed**.
 - Disposable PostgreSQL migration and station/scheduling concurrency checks: 8 passed.
 - Isolated Liquidsoap audio sequencing: 6 passed, covering insertion with two or six queued songs, atomic full sequences, and two-item DJ event sequences on decks A and B.
 
-Python compilation, JavaScript syntax checks, and `git diff --check` passed. Remaining warnings are the existing playlist fixture's SQLAlchemy session warning and the migration tooling's deprecated `get_engine` API. These tests validate repository behavior; deployment and an on-air acceptance check remain activation steps.
+Python compilation, JavaScript syntax checks, and `git diff --check` passed. Remaining warnings are the existing playlist fixture's SQLAlchemy session warning and the migration tooling's deprecated `get_engine` API. These tests validate repository behavior. Deployment checks are recorded below.
+
+
+## Deployment — 19 September 2026
+
+- Backups: `/var/backups/freo/events-20260919T014709Z`. Includes a verified custom-format database dump taken after pausing writers, the previous committed application, media/configuration archive, and original station states.
+- Applied migration `e28a91bc7304`. Converted five verified Imaging assets on Freo Demo into four STATION items and one COMMERCIALS item. All five retained their disabled state; original files remain preserved. Legacy reference counts are zero. Freo Demo Two had no Imaging assets to convert.
+- Both stations now have Playlist 1, Playlist 2, STATION, and COMMERCIALS. Freo Demo retained America/Denver; Freo Demo Two retained UTC. Both retained running/AUTO state.
+- Rendered and validated both Liquidsoap configurations. Restarted the web, automation, ingest, central API, statistics, and both station playout services; resumed maintenance timers.
+- Re-ran 30 focused event/browser tests before deployment: all passed.
+- Post-restart checks passed for HTTP health/readiness, automation, Icecast, public station data, updated JavaScript, authenticated Events/create/playlist pages, Imaging redirects, prioritized audio search, and recurring local-time previews.
+- Both live engines answered the new event protocol, delivered 8,192 MP3 stream bytes, and had fresh worker heartbeats. Web, automation, ingest, and both station engines reported active with zero restart loops. The converted disabled audio was not aired as part of validation.
+- Full installation validation passed. The previously failed statistics inventory completed successfully after retry; no Freo service units remained failed.
