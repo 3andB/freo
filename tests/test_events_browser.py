@@ -1,6 +1,7 @@
 """Event creation through the real browser, with station-local previews."""
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import Select, WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
 from app.extensions import db
 from app.models import Station, Track, TimedEvent
 from app.services.audio_classification import classify
@@ -67,7 +68,9 @@ def test_all_recurrences_save_reload_and_search_within(booth):
         with app.app_context():
             row=TimedEvent.query.filter_by(name='Saved '+kind).one()
             assert row.recurrence_type==kind and not row.interrupt_dj
+    previous=driver.find_element(By.CSS_SELECTOR,'#event-audio-results article')
     query=driver.find_element(By.ID,'event-audio-search');query.send_keys('STATION')
+    wait.until(EC.staleness_of(previous))
     wait.until(lambda d:'STATION' in d.find_element(By.ID,'event-audio-results').text)
     wait.until(lambda d:d.find_elements(By.XPATH,"//div[@id='event-audio-results']//button[text()='Search within']"))[0].click()
     wait.until(lambda d:'Verified Test Track' in d.find_element(By.ID,'event-audio-results').text)

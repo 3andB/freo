@@ -32,8 +32,23 @@ def signature(station,now=None):
     # Include category members even when their availability has just been revoked.
     members=m.track_categories
     values.append([list(row) for row in db.session.execute(select(members).join(m.MediaCategory,m.MediaCategory.id==members.c.category_id).where(m.MediaCategory.station_id==station.id).order_by(members.c.category_id,members.c.track_id))])
+    # Visual schedules can select songs, artists and albums without any legacy
+    # category or playlist membership. Include their current candidates, even
+    # disabled ones, so availability and ordering edits invalidate lookahead.
+    visual_ref = programming.visual.get('source') if programming.visual else None
+    visual_scope = m.Track.id.in_([])
+    if visual_ref:
+        kind, identifier = visual_ref['kind'], visual_ref['id']
+        if kind == 'song':
+            visual_scope = m.Track.id == identifier
+        elif kind == 'artist':
+            visual_scope = m.Track.artist_id.in_(visual_ref.get('artists', [identifier]))
+        elif kind == 'album':
+            visual_scope = m.Track.album_id == identifier
     tracks=db.session.query(m.Track.id,m.Track.enabled,m.Track.decommissioned_at,m.Track.ingest_status,m.Track.storage_key,
-        m.Track.artist,m.Track.title,m.Track.duration_ms,m.Track.loudness_lufs,m.Track.true_peak_db).filter(track_scope(station.id),db.or_(
+        m.Track.artist,m.Track.title,m.Track.duration_ms,m.Track.loudness_lufs,m.Track.true_peak_db,
+        m.Track.audio_kind,m.Track.artist_id,m.Track.album_id,m.Track.disc_number,m.Track.track_number).filter(track_scope(station.id),db.or_(
+            visual_scope,
             m.Track.id.in_(select(m.PlaylistItem.track_id).join(m.Playlist,m.Playlist.id==m.PlaylistItem.playlist_id).where(m.Playlist.station_id==station.id)),
             m.Track.categories.any(m.MediaCategory.station_id==station.id),
             m.Track.id.in_(select(m.EventBlockItem.track_id).join(m.EventBlock,m.EventBlock.id==m.EventBlockItem.event_block_id).where(m.EventBlock.station_id==station.id)),

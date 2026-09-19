@@ -1,5 +1,10 @@
 # Scheduling repairs and repeatable verification
 
+The [September 19 scheduling and DJ Booth audit](scheduling-booth-audit-2026-09-19.md)
+records the subsequent integration repairs and verification. Those repairs include
+a Liquidsoap template change and require coordinated application, worker and engine
+activation; the deployment notes below describe the earlier September 17 change.
+
 The September 17 audit is in [scheduling-audit-2026-09-17.md](scheduling-audit-2026-09-17.md). This change addresses its twelve findings: canonical overnight editing, atomic edit proposals and cancellation, recurrence phase and exceptions, insert transformations, stale-save protection, save-in-progress tracking, responsive timeline bounds, drag coordinates, complete recurrence collision validation, atomic Block saves, Event visibility, and bounded transition recovery.
 
 The editor keeps its loaded document revision separate from live status polling. A stale page or recovered draft cannot silently adopt a newer revision and overwrite it. Changes made while a save is pending remain unsaved, and double submission is disabled. Blocks save composition and assignments in one transaction; assigned revisions remain pinned and are displayed explicitly. Apply to future uses remains an explicit action.
@@ -20,6 +25,8 @@ From the repository root:
 venv/bin/pytest -q tests/test_schedule_editor.py tests/test_schedule_regressions.py tests/test_schedule.py tests/test_visual_schedule.py tests/test_timed_events.py tests/test_event_blocks.py tests/test_programming_harmonization.py tests/test_programming_refresh.py tests/test_automation.py tests/test_playlists.py tests/test_traffic.py tests/test_player_experience.py
 venv/bin/pytest -q tests/test_schedule_editor_browser.py tests/test_schedule_studio_browser.py
 FREO_ENGINE_TEST=1 venv/bin/pytest -q tests/test_schedule_engine.py
+venv/bin/pytest -q tests/test_schedule_booth_integration.py
+FREO_ENV_FILE=/dev/null FREO_ENGINE_TEST=1 venv/bin/pytest -q tests/test_schedule_booth_engine.py --basetemp=/tmp/freo-mixed
 FREO_SCHEDULE_SCALE=1 venv/bin/pytest -q -s tests/test_schedule_scale.py
 bash scripts/test-scheduling-postgres.sh
 ```

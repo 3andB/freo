@@ -197,16 +197,32 @@ def confirm_finished(station, decision_id, at, identity):
     occurrence = decision.timed_event_occurrence
     item = decision.block_item_execution
     if item:
+        if item.state != 'STARTED': return
         item.state, item.completed_at = 'COMPLETED', at
         execution = item.execution
-        if execution.state in ('ABORTED','CANCELLED'):
+        if execution.state in ('ABORTED','CANCELLED','FAILED'):
             db.session.commit();return
         if all(i.state in ('COMPLETED','SKIPPED','FAILED') for i in execution.items):
             finish_execution(execution,at)
             occurrence = execution.timed_event_occurrence
-    if occurrence and (not item or item.execution.state == 'COMPLETED'):
+    if occurrence and occurrence.state == 'STARTED' and (not item or item.execution.state == 'COMPLETED'):
         occurrence.state, occurrence.completed_at = 'COMPLETED', at
     db.session.commit()
+
+
+def reconcile_occurrences(station_id):
+    """Repair stale Playing labels from durable, already finished sequences."""
+    from app.models import TimedEventOccurrence
+    executions = EventBlockExecution.query.join(EventBlockExecution.timed_event_occurrence).filter(
+        EventBlockExecution.station_id == station_id,
+        EventBlockExecution.state.in_(('COMPLETED', 'FAILED', 'ABORTED', 'CANCELLED')),
+        TimedEventOccurrence.state.in_(('QUEUED', 'STARTED'))).all()
+    for execution in executions:
+        occurrence = execution.timed_event_occurrence
+        occurrence.state = 'FAILED' if execution.state == 'ABORTED' else execution.state
+        occurrence.completed_at = execution.completed_at
+        occurrence.failure_reason = execution.failure_reason or ('sequence_aborted' if execution.state == 'ABORTED' else None)
+    return len(executions)
 
 
 def finish_execution(execution, at):

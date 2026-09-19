@@ -240,6 +240,13 @@ def now_playing(station):
                          if mixer.get(deck+'_playing') and mixer.get('transition',{}).get(deck+'_gain',1)>0]
             if mixer.get('auto_standby') and mixer.get('auto_gain',0)>0:
                 identifiers.append(mixer.get('auto_id'))
+            # A DJ Event pauses the decks without clearing their transport
+            # intent. The final-output observation identifies the audible Event.
+            event = SelectionDecision.query.filter_by(id=snapshot.current_decision_id,
+                station_id=station.id, status='started').filter(
+                    SelectionDecision.selection_method.in_(('timed_event', 'event_block'))).first() if snapshot.current_decision_id else None
+            if event:
+                identifiers = [event.id]
         elif snapshot.current_decision_id:
             identifiers=[snapshot.current_decision_id]
         if mixer.get('cart_id'):
@@ -268,7 +275,7 @@ def now_playing(station):
         stream_online=snapshot.broadcast_online if snapshot and fresh(snapshot.broadcast_observed_at) else None,
         mode=mode,observed_at=snapshot.observed_at.isoformat() if snapshot else None,
         timezone=station.timezone,local_date=now.astimezone(ZoneInfo(station.timezone)).date().isoformat(),
-        program='Live DJ' if mode=='DJ_BOOTH' else resolution.program.name if resolution.program else resolution.clock.name if resolution.clock else 'Station mix')
+        program='Live DJ' if mode=='DJ_BOOTH' else resolution.visual['label'] if resolution.visual is not None else resolution.program.name if resolution.program else resolution.clock.name if resolution.clock else 'Station mix')
 
 
 def refresh_public_schedules():

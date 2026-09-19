@@ -338,10 +338,11 @@ def request_abort_block(station, user, execution_id):
 
 def safe_item(row):
     source = 'CART' if row.playback_bus == 'CART' else 'BLOCK' if row.selection_method == 'event_block' else 'EVENT' if row.selection_method == 'timed_event' else 'CUE' if row.selection_method == 'cue_auto' else 'MANUAL' if row.admin_user_id else 'AUTO'
+    started_at = row.started_at.replace(tzinfo=row.started_at.tzinfo or timezone.utc).isoformat() if row.started_at else None
     if row.track:
         return dict(decision_id=row.id, kind='track', title=row.track.title,
                     artist=row.track.artist,album=row.track.album,category=row.category.name if row.category else None,source=source,
-                    started_at=row.started_at.isoformat() if row.started_at else None,
+                    started_at=started_at,
                     duration_ms=row.track.duration_ms, uuid=row.track.uuid,
                     bpm=row.track.bpm, genre=row.track.genre,
                     year=row.track.release_year, loudness_lufs=row.track.loudness_lufs,
@@ -352,7 +353,7 @@ def safe_item(row):
         return dict(decision_id=row.id, kind='imaging', title=asset.name,
                     artist=asset.asset_type.replace('_', ' ').title(), cart_code=asset.cart_code,
                     source=source,
-                    started_at=row.started_at.isoformat() if row.started_at else None,
+                    started_at=started_at,
                     duration_ms=asset.duration_ms, uuid=asset.uuid)
     return dict(decision_id=row.id, kind='unavailable', title='Unavailable item', artist='', source='UNKNOWN')
 
@@ -423,7 +424,7 @@ def status(station):
         cart_result=dict(id=last_cart.id,status=last_cart.status,error=last_cart.reason) if last_cart else None,
         broadcast=dict(online=snapshot.broadcast_online if broadcast_fresh else None,listeners=snapshot.listeners if broadcast_fresh else None),
         desired_state=station.desired_state,
-        program=programming.program.name if programming.program else programming.clock.name if programming.clock else state.default_clock.name if state and state.default_clock else state.active_rotation.name if state and state.active_rotation else None,
+        program=programming.visual['label'] if programming.visual is not None else programming.program.name if programming.program else programming.clock.name if programming.clock else state.default_clock.name if state and state.default_clock else state.active_rotation.name if state and state.active_rotation else None,
         program_rms=snapshot.program_rms if fresh else None,
         fallback='Possible' if not current and not live_error and station.desired_state == 'running' else 'Not observed',
         playout_error=live_error, recent=[safe_item(row) for row in recent],

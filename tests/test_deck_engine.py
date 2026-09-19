@@ -278,7 +278,8 @@ def test_soft_insert_preserves_current_song_and_all_future_requests(app,tmp_path
             except subprocess.TimeoutExpired:proc.kill();proc.wait()
 
 
-def test_auto_skip_advances_once_and_counts_only_engine_starts(app,tmp_path,monkeypatch):
+@pytest.mark.parametrize('event_audio', [False, True])
+def test_auto_skip_advances_once_and_counts_only_engine_starts(app,tmp_path,monkeypatch,event_audio):
     """Real Auto queue, worker skip, observer ordering and confirmed airplay."""
     from app.services.playout_queue import push_decision, socket_identity
     from app.services.live_assist import request_skip
@@ -322,6 +323,14 @@ def test_auto_skip_advances_once_and_counts_only_engine_starts(app,tmp_path,monk
                 observed=wait_current(rows[0].id)
                 assert [item['decision_id'] for item in observed['queue']]==[row.id for row in rows[1:]]
                 assert play_counts(station.id,'track')[track.id]==baseline+1
+                if event_audio:
+                    from app.services.timed_events import save_event
+                    event=save_event(station.slug,name='Skipped event',recurrence_type='DAILY',
+                        content_type='TRACK',content_identifier=track.uuid,local_time='12:00')
+                    occurrence=event.occurrences[-1]
+                    occurrence.selection_decision=rows[0];occurrence.state='STARTED'
+                    occurrence.started_at=rows[0].started_at
+                    rows[0].selection_method='timed_event';db.session.commit()
                 command=request_skip(station,user,rows[0].id,str(uuid.uuid4()))
                 assert request_skip(station,user,rows[0].id,str(uuid.uuid4())).id==command.id
                 from app.services.playout_queue import program_rms
@@ -344,6 +353,9 @@ def test_auto_skip_advances_once_and_counts_only_engine_starts(app,tmp_path,monk
                 assert play_counts(station.id,'track')[track.id]==baseline+2
                 assert play_counts(station.id,'category')[category.id]==category_baseline+2
                 assert rows[2].status=='queued'
+                if event_audio:
+                    assert occurrence.state=='FAILED' and occurrence.failure_reason=='operator_skip'
+                    assert occurrence.completed_at is None and rows[0].status=='started'
             finally:
                 proc.terminate()
                 try:proc.wait(timeout=5)
@@ -390,12 +402,15 @@ def test_event_bus_waits_for_dj_boundary_and_preserves_mode(app,tmp_path,monkeyp
                 _command('test-station','freo_deck.take_a 0.000')
             elif operation=='CLEAR':_command('test-station','freo_deck.clear_b')
             elif operation=='MODE':_command('test-station','freo_mixer.mode AUTO')
-            cart_sent=False
+            cart_sent=False;cart_observed=False
             for _ in range(160):
                 if operation in ('TAKEOVER','OVER') and not cart_sent and any(r[0]=='2' for r in records()):
                     _command('test-station','freo_mixer.cart_mode '+operation)
                     _command('test-station',f'freo_cart.push annotate:freo_decision=4:{originals/("b"*32+".mp3")}')
                     cart_sent=True
+                if cart_sent and not cart_observed and _command('test-station','freo_mixer.state').split('|')[6]=='4':
+                    assert _command('test-station','freo_program.current')==('4' if operation=='TAKEOVER' else '2')
+                    cart_observed=True
                 if any(r[:2]==['END','3'] for r in records()):break
                 time.sleep(.1)
             starts={int(r[0]):float(r[1]) for r in records() if r[0]!='END'}
@@ -406,6 +421,7 @@ def test_event_bus_waits_for_dj_boundary_and_preserves_mode(app,tmp_path,monkeyp
             assert any(r[:2]==['END','3'] for r in records())
             if operation=='TAKEOVER':assert 3.5 <= starts[3]-starts[2] <= 4.8,records()
             else:assert 1.5 <= starts[3]-starts[2] <= 2.5,records()
+            if operation in ('TAKEOVER','OVER'):assert cart_observed
             assert _command('test-station','freo_mixer.state').startswith('AUTO|' if operation=='MODE' else 'DJ_BOOTH|')
             assert event_bus('test-station','release',123)=='OK'
             assert event_bus('test-station')=='|WAITING'

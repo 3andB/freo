@@ -89,14 +89,15 @@ def process_transition(station, reader):
             state=station.automation;state.enabled=True;state.hold=False;state.operator_mode='AUTO'
             # The explicit handoff interrupts active Events and sequences. Keep confirmed
             # starts as historical facts and record the interruption without fabricated completion.
-            for row in TimedEventOccurrence.query.filter_by(station_id=station.id).filter(TimedEventOccurrence.state.in_(('QUEUED','STARTED')),TimedEventOccurrence.selection_decision_id.in_(command.interrupted_ids)):
-                if row.selection_decision_id!=decision.id:
-                    if row.state=='QUEUED':row.state='FAILED'
-                    row.failure_reason='interrupted_by_mode_change'
+            for row in TimedEventOccurrence.query.filter_by(station_id=station.id).filter(TimedEventOccurrence.state.in_(('QUEUED','STARTED'))):
+                row.state='FAILED'
+                row.failure_reason='interrupted_by_mode_change'
             for row in EventBlockExecution.query.filter_by(station_id=station.id).filter(EventBlockExecution.state.in_(('PENDING','QUEUED','STARTED'))):
                 row.state='ABORTED';row.aborted_at=command.completed_at;row.failure_reason='mode_change'
                 for item in row.items:
                     if item.state in ('PENDING','QUEUED'):item.state='SKIPPED';item.failure_reason='mode_change'
+                    elif item.state=='STARTED':
+                        item.state='FAILED';item.failed_at=command.completed_at;item.failure_reason='mode_change'
             for row in SelectionDecision.query.filter_by(station_id=station.id).filter(SelectionDecision.status.in_(('selected','submitting','queued')),SelectionDecision.id!=decision.id):
                 row.status='failed';row.reason='mode_change'
             for row in LiveControlCommand.query.filter_by(station_id=station.id,status='pending'):

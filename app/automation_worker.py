@@ -152,6 +152,10 @@ def refill_station(slug, reader, target_depth=2):
 
 def reconcile_requests(slug):
     identity = socket_identity(slug)
+    from app.services.event_blocks import reconcile_occurrences
+    station = Station.query.filter_by(slug=slug).one()
+    if reconcile_occurrences(station.id):
+        db.session.commit()
     live = queued_ids(slug) | active_ids(slug)
     complete_inventory = True
     from app.services.playout_queue import channel_queue
@@ -404,6 +408,9 @@ def process_manual(station, reader):
                 if current.block_item_execution and current.block_item_execution.state == 'STARTED':
                     current.block_item_execution.state = 'SKIPPED'
                     current.block_item_execution.failure_reason = 'operator_skip'
+                if current.timed_event_occurrence and current.timed_event_occurrence.state == 'STARTED':
+                    current.timed_event_occurrence.state = 'FAILED'
+                    current.timed_event_occurrence.failure_reason = 'operator_skip'
                 command.status = 'sent'
             command.processed_at = datetime.now(timezone.utc)
             db.session.commit()

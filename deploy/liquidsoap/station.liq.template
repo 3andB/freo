@@ -77,6 +77,7 @@ event_release_pending = ref(false)
 event_wait_a = ref(false)
 event_wait_b = ref(false)
 event_wait_auto = ref(false)
+schedule_interrupted = ref([])
 mode = ref(__OPERATOR_MODE__)
 a_play = ref(false)
 auto_play = ref(true)
@@ -431,7 +432,7 @@ def main_gain() = if cart.is_ready() and not cart_takeover() then 1.0-duck() els
 # takeovers. The worker rejects interrupted requests and consumes each EOF once.
 def cue_finished(_, metadata)
   value = decision(metadata)
-  if value != "" then
+  if value != "" and not list.mem(value, schedule_interrupted()) then
     file.write(append=true, perms=0o640, __EVENT_FILE__, data="END " ^ value ^ " " ^ string.float(time()) ^ "\n")
   end
 end
@@ -484,6 +485,16 @@ server.register(namespace="freo_schedule", "switch", fun (value) -> begin
       thread.run(delay=2.0, {
         if schedule_switch_token() == token then
           if mic_active() then mic_phase := "FAILED" end
+          # source.on_end also fires on skip. These sources are being cut,
+          # so their callbacks must not claim natural completion or rotate Cue.
+          outgoing = list.filter(fun (r) -> string(request.id(r)) != rid,
+            list.filter_map(fun (r) -> r, [queue.current(), deck_a.current(), deck_b.current(), cart.current(), event_audio.current()]))
+          schedule_interrupted := list.map(fun (r) -> decision(request.metadata(r)), outgoing)
+          # A schedule handoff owns every outgoing source, including a DJ
+          # event waiting for a boundary or currently pausing the main bus.
+          event_token := ""; event_playing := false; event_release_pending := false
+          event_wait_a := false; event_wait_b := false; event_wait_auto := false
+          event_audio.set_queue([]); event_audio.skip()
           deck_a.set_queue([]); deck_a.skip(); a_play := false
           deck_b.set_queue([]); deck_b.skip(); b_play := false
           cart.set_queue([]); cart.skip()
@@ -538,7 +549,7 @@ end
 # Prefetched, paused requests are current() before request.on_air reports them.
 server.register(namespace="freo_deck", "requests", fun (_) -> string.concat(separator=" ", list.map(fun (r) -> string(request.id(r)), list.filter_map(fun (r) -> r, [queue.current(), deck_a.current(), deck_b.current(), cart.current(), event_audio.current()]))))
 server.register(namespace="freo_program", "current", fun (_) ->
-  if event_playing() and current_event() != "" then current_event()
+  if event_playing() and not mic_active() and not (cart_takeover() and cart.is_ready()) and current_event() != "" then current_event()
   elsif current_cart() != "" then current_cart()
   elsif mic_phase() == "LIVE" then ""
   elsif auto_play() and auto_mix() >= max(a_mix(), b_mix()) and current_auto() != "" then current_auto()

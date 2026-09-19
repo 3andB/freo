@@ -43,11 +43,11 @@ def test_continuous_scheduling_soak(app,tmp_path,monkeypatch):
         with (tmp_path/'engine.log').open('w') as log:
             proc=subprocess.Popen(['liquidsoap',str(config)],stdout=log,stderr=log)
             try:
-                for _ in range(400):
-                    if (directory/'control.sock').exists():break
-                    if proc.poll() is not None:pytest.fail((tmp_path/'engine.log').read_text()[-3000:])
+                startup_deadline=time.monotonic()+120
+                while not (directory/'control.sock').exists():
+                    if proc.poll() is not None or time.monotonic()>=startup_deadline:
+                        pytest.fail((tmp_path/'engine.log').read_text()[-3000:] or 'Isolated engine startup timed out')
                     time.sleep(.1)
-                assert (directory/'control.sock').exists()
                 reader=EventReader();began=time.monotonic();next_switch=began;command=None;switch_at=None;last_audio=began
                 modes=['SIMPLE','BLOCKS','CALENDAR','BLOCKS','SIMPLE','CALENDAR'];index=0
                 while time.monotonic()-began<SECONDS:
