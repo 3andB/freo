@@ -1,6 +1,7 @@
 """Context switching and operation forms through persistent document navigation."""
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import Select, WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
 from tests.test_live_browser import booth, app_fixture, wait_text
 
 
@@ -70,7 +71,10 @@ def test_manual_connection_check_without_javascript(booth):
     driver.execute_cdp_cmd('Emulation.setScriptExecutionDisabled', {'value': True})
     try:
         driver.get(base + '/admin')
+        document = driver.find_element(By.TAG_NAME, 'html')
         driver.find_element(By.CSS_SELECTOR, '#connection-check button').click()
+        # Read status only after the native form replaces the old document.
+        WebDriverWait(driver, 10).until(EC.staleness_of(document))
         wait_text(driver, '#connection-check-status', 'Queued')
         assert driver.current_url == base + '/admin'
         with app.app_context():

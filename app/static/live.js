@@ -80,7 +80,6 @@
     if(button.hasAttribute('data-add-cue'))cueUI.add(card.dataset.id);
     else choose(card.dataset.id,button.dataset.loadDeck,card.dataset.cueEntry||'');
   });
-  root.querySelectorAll('[data-fire-imaging]').forEach(button=>button.addEventListener('click',()=>post('queue-imaging',{identifier:button.dataset.fireImaging,nonce:nonce()})));
 
   // One pointer gesture owns the drag, including drags beginning on artwork.
   let drag=null;
@@ -160,16 +159,6 @@
     const slot=button.closest('[data-role]');localCart={role:slot.dataset.role,position:slot.dataset.position};paintCarts();
     await post('fire-cart',{...localCart,nonce:nonce()});localCart=null;paintCarts();
   }));
-  // Native imaging payloads are separate from the song pointer gesture.
-  let imaging=null;
-  root.querySelectorAll('[data-kind="imaging"]').forEach(button=>{
-    button.addEventListener('dragstart',event=>{imaging=button.dataset.id;event.dataTransfer.setData('text/plain',imaging);});
-    button.addEventListener('dragend',()=>{imaging=null;});
-  });
-  root.querySelectorAll('.hot-cart,.id-cart').forEach(slot=>{
-    slot.addEventListener('dragover',event=>{if(imaging)event.preventDefault();});
-    slot.addEventListener('drop',event=>{if(!imaging)return;event.preventDefault();post('assign-cart',{identifier:imaging,role:slot.dataset.role,position:slot.dataset.position});});
-  });
   const songDialog=document.getElementById('song-picker-dialog'),songSearch=document.getElementById('song-picker-search'),songResults=document.getElementById('song-picker-results');
   let searchTimer,searchVersion=0,pickerTarget='cue';
   const searchSongs=async()=>{
@@ -267,7 +256,7 @@
       text('live-clock',state.clock||'None');
       text('auto-program','Following Auto schedule: '+(state.program||'No active program'));
       const aired=state.current;
-      text('auto-category',state.playout_error?'Now playing category: Unavailable':aired?.source==='CART'?'Now playing: Cart':aired?.kind==='imaging'?'Now playing: Imaging':aired?.category?'Now playing category: '+aired.category:aired?'Now playing: '+(aired.source==='MANUAL'?'Manual selection':aired.source==='EVENT'?'Timed event':aired.source==='BLOCK'?'Scheduled block':'Uncategorized song'):'Now playing: No confirmed item');
+      text('auto-category',state.playout_error?'Now playing category: Unavailable':aired?.source==='CART'?'Now playing: Cart':aired?.kind==='imaging'?'Now playing: Station audio':aired?.category?'Now playing category: '+aired.category:aired?'Now playing: '+(aired.source==='MANUAL'?'Manual selection':aired.source==='EVENT'?'Timed event':aired.source==='BLOCK'?'Scheduled block':'Uncategorized song'):'Now playing: No confirmed item');
       text('auto-song',state.playout_error?'Playback connection unavailable':aired?[aired.artist,aired.title].filter(Boolean).join(' — '):'Waiting for playback');
       systemStatus();
       text('live-transition',state.next_transition||'None');text('live-playout',state.playout_error||'Connected');

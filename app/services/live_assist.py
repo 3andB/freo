@@ -71,6 +71,10 @@ def pending_cart(station):
 def queue_playable(station, user, kind, identifier, nonce, *, bus='A', cart_mode='OVER', duck_percent=50, cart_role=None, cart_position=None):
     from app.services.stations import allocation_lock
     allocation_lock()
+    if kind == 'imaging':
+        from app.services.audio_classification import migrated_audio
+        identifier = migrated_audio(station.id,identifier).uuid
+        kind = 'track'
     nonce = _nonce(nonce)
     if bus not in ('A','B','CART'):
         raise ValueError('Invalid broadcast destination')
@@ -94,18 +98,13 @@ def queue_playable(station, user, kind, identifier, nonce, *, bus='A', cart_mode
         raise ValueError('Station is not running')
     if kind == 'track':
         playable = tracks_for(station.id).filter_by(uuid=identifier).first()
-    elif kind == 'imaging':
-        playable = ImagingAsset.query.filter_by(station_id=station.id, uuid=identifier).first()
     else:
         raise ValueError('Invalid playable type')
     if playable is None or not playable.enabled or playable.ingest_status != 'accepted' or playable.decommissioned_at:
         raise ValueError('Playable is unavailable for this station')
     storage = LocalMediaStorage()
     try:
-        if kind == 'track':
-            storage.regular_file(playable.station.slug, playable.storage_key)
-        else:
-            storage.imaging_file(station.slug, playable.storage_key)
+        storage.regular_file(playable.station.slug, playable.storage_key)
     except (OSError, ValueError) as error:
         raise ValueError('Approved audio is unavailable') from error
     # This cap includes worker-submitted and browser-pending requests. The worker
@@ -245,27 +244,26 @@ def assign_cart(station, user, role, position, identifier, label='', description
     if playback_mode not in ('OVER','TAKEOVER') or not 0 <= int(duck_percent) <= 100:
         raise ValueError('Choose play over or take over and a volume reduction from 0 to 100%')
     identifier = (identifier or '').removeprefix('track:').removeprefix('imaging:')
-    asset = ImagingAsset.query.filter_by(station_id=station.id, uuid=identifier, enabled=True, ingest_status='accepted', decommissioned_at=None).first()
-    track = tracks_for(station.id).filter_by(uuid=identifier, enabled=True, ingest_status='accepted', decommissioned_at=None).first() if not asset else None
-    if not asset and not track:
-        raise ValueError('Cart audio is unavailable for this station')
+    track = tracks_for(station.id).filter_by(uuid=identifier, enabled=True, ingest_status='accepted', decommissioned_at=None).first()
+    if not track:
+        from app.services.audio_classification import migrated_audio
+        track = migrated_audio(station.id,identifier)
+        if not track.enabled or track.ingest_status != 'accepted' or track.decommissioned_at:
+            raise ValueError('Cart audio is unavailable for this station')
     try:
-        if track:
-            LocalMediaStorage().regular_file(track.station.slug, track.storage_key)
-        else:
-            LocalMediaStorage().imaging_file(station.slug, asset.storage_key)
+        LocalMediaStorage().regular_file(track.station.slug, track.storage_key)
     except (OSError, ValueError) as error:
         raise ValueError('Cart audio is unavailable') from error
     slot = LiveCartSlot.query.filter_by(station_id=station.id, role=role, position=position).first()
     if slot is None:
         slot = LiveCartSlot(station_id=station.id, role=role, position=position)
-    slot.imaging_asset_id, slot.track_id = asset.id if asset else None, track.id if track else None
+    slot.imaging_asset_id, slot.track_id = None, track.id
     slot.label = clean_text(label, 40)
     slot.description = clean_text(description, 500)
     slot.playback_mode, slot.duck_percent = playback_mode, int(duck_percent)
     db.session.add(slot)
     audit('live_cart_assigned', user_id=user.id, station_id=station.id,
-        target_type='track' if track else 'imaging_asset', target_id=identifier, summary=f'{role} cart {position} assigned')
+        target_type='track', target_id=track.uuid, summary=f'{role} cart {position} assigned')
     db.session.commit()
     return slot
 

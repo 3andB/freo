@@ -7,6 +7,17 @@ KINDS = ('MUSIC', 'STATION', 'COMMERCIALS')
 SUBTYPES = ('', 'station_id', 'promo', 'announcement', 'jingle', 'sweeper', 'liner', 'cart', 'generic')
 
 
+def migrated_audio(station_id, identifier):
+    """Resolve an old identity without creating any new Imaging references."""
+    from app.models import ImagingAsset
+    track = Track.query.join(ImagingAsset, Track.legacy_imaging_id == ImagingAsset.id).filter(
+        Track.station_id == station_id, ImagingAsset.station_id == station_id,
+        ImagingAsset.uuid == identifier, Track.deleted_at.is_(None)).first()
+    if track is None:
+        raise ValueError('Imaging is retired or unavailable/cross-station. Migrate this audio and select it from STATION or COMMERCIALS.')
+    return track
+
+
 def validate(kind, subtype='', code=None):
     if kind not in KINDS or subtype not in SUBTYPES:
         raise ValueError('Choose Music, STATION or COMMERCIALS and a valid station audio label')

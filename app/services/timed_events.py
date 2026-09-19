@@ -3,9 +3,10 @@ import calendar
 import uuid
 from datetime import date, datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
+from types import SimpleNamespace
 from app.extensions import db
-from app.models import (EventBlock, ImagingAsset, Playlist, SelectionDecision, Station,
-                        TimedEvent, TimedEventOccurrence, Track, EventQueueCancellation)
+from app.models import (EventBlock, SelectionDecision, Station,
+                        TimedEvent, TimedEventOccurrence, EventQueueCancellation)
 from app.services.availability import available, tracks_for
 from app.services.media_storage import LocalMediaStorage
 from app.services.schedule import _wall_to_utc, utc_instant, validate_timezone
@@ -13,7 +14,7 @@ from app.services.stations import get_station
 
 MODES = ('SOFT', 'HARD', 'NON_INTERRUPTING')
 RECURRENCES = ('ONE_TIME', 'QUARTER_HOUR', 'HOURLY', 'DAILY', 'WEEKLY', 'MONTHLY')
-CONTENTS = ('PLAYLIST', 'TRACK', 'EVENT_BLOCK', 'IMAGING_ASSET')
+CONTENTS = ('PLAYLIST', 'TRACK', 'EVENT_BLOCK')
 MISSED = ('SKIP', 'PLAY_LATE')
 INTERRUPTS = ('NEVER', 'MUSIC_ONLY')
 
@@ -42,7 +43,6 @@ def _target(station, kind, identifier):
         from app.services.playlists import get_playlist
         row = get_playlist(station.id, identifier)
     elif kind == 'EVENT_BLOCK': row = EventBlock.query.filter_by(station_id=station.id, slug=identifier).first()
-    elif kind == 'IMAGING_ASSET': row = ImagingAsset.query.filter_by(station_id=station.id, uuid=identifier).first()
     else: raise ValueError('Unsupported event content type')
     if row is None: raise ValueError('Event content belongs to another station or does not exist')
     return row
@@ -68,7 +68,71 @@ def _date(value):
     except (TypeError, ValueError) as error: raise ValueError('Enter a valid local date') from error
 
 
+def recurrence_rule(station, recurrence_type, *, local_time, local_date=None,
+                    weekday=None, weekdays=None, repeat_hours=None, starts_on=None,
+                    ends_on=None, month_day=None, month_nth=None, month_weekday=None):
+    """One recurrence contract for saves, previews and CLI callers.
+
+    Ignore values belonging to hidden controls when switching recurrence types.
+    """
+    if recurrence_type not in RECURRENCES:
+        raise ValueError('Choose a recurrence')
+    at = parse_event_time(local_time)
+    once = recurrence_type == 'ONE_TIME'
+    local_day = _date(local_date) if once else None
+    if once and local_day is None:
+        raise ValueError('Enter a valid station-local date and time')
+    first, last = (None, None) if once else (_date(starts_on), _date(ends_on))
+    if first and last and last < first:
+        raise ValueError('End date is before start date')
+    days, hours = list(range(7)), None
+    if recurrence_type in ('WEEKLY', 'HOURLY', 'QUARTER_HOUR'):
+        days = sorted({_integer(v,0,6,'Weekday') for v in weekdays}) if weekdays is not None else ([_integer(weekday,0,6,'Weekday')] if weekday is not None else days)
+        if not days:
+            raise ValueError('Choose at least one repeat day')
+        hours = sorted({_integer(h,0,23,'Hour') for h in repeat_hours}) if repeat_hours is not None else None
+        if hours == []:
+            raise ValueError('Choose at least one hour')
+    day, nth, dow = 1, 0, 0
+    if recurrence_type == 'MONTHLY':
+        nth = _integer(month_nth or 0,-2,5,'Week of month')
+        if nth == 0:
+            day = _integer(month_day or 1,1,31,'Day of month')
+        elif nth != -2:
+            dow = _integer(month_weekday or 0,0,6,'Weekday')
+    return SimpleNamespace(station=station, recurrence_type=recurrence_type,
+        local_time=at, local_date=local_day, starts_on=first, ends_on=last,
+        repeat_days=days, repeat_hours=hours, month_day=day, month_nth=nth,
+        month_weekday=dow, scheduled_at_utc=_wall_to_utc(datetime.combine(local_day, at),
+            ZoneInfo(validate_timezone(station.timezone))) if once else None)
+
+
+def next_instants(event, now=None, limit=10):
+    """Expand in small windows until the requested runs or the rule's end."""
+    start = utc_instant(now)
+    if event.recurrence_type == 'ONE_TIME':
+        instant = aware(event.scheduled_at_utc)
+        return [instant] if instant >= start else []
+    zone = ZoneInfo(event.station.timezone)
+    if event.starts_on:
+        start = max(start, _wall_to_utc(datetime.combine(event.starts_on, datetime.min.time()), zone))
+    # Even fifth-weekday monthly rules supply ten runs within ten years.
+    end = start + timedelta(days=min(3660, (date.max-start.date()).days-2))
+    if event.ends_on:
+        end = min(end, _wall_to_utc(datetime.combine(event.ends_on, datetime.max.time()), zone))
+    values = []
+    while start <= end and len(values) < limit:
+        stop = min(start+timedelta(days=31), end)
+        values.extend(_instants(event,start,stop))
+        start = stop+timedelta(microseconds=1)
+    return values[:limit]
+
+
 def cancel_occurrence(occurrence, *, user=False):
+    db.session.query(Station.id).filter_by(id=occurrence.station_id).with_for_update().first()
+    db.session.refresh(occurrence)
+    if occurrence.state == 'CANCELLED' and occurrence.cancelled_by_user:
+        return
     if occurrence.state in ('STARTED', 'COMPLETED', 'MISSED', 'FAILED'):
         return
     decisions = [occurrence.selection_decision] if occurrence.selection_decision else []
@@ -116,19 +180,14 @@ def save_event(slug, *, identifier=None, name, description='', timing_mode='SOFT
     if identifier and commercial_log(row): raise ValueError('Finalized commercial events are managed through Commercials')
     if revision is not None and _integer(revision,1,2147483647,'Revision') != row.revision:
         raise ValueError('This event changed elsewhere. Reload before saving')
+    if content_type == 'IMAGING_ASSET':
+        from app.services.audio_classification import migrated_audio
+        content_identifier = migrated_audio(station.id,content_identifier).uuid
+        content_type = 'TRACK'
     target = _target(station, content_type, content_identifier)
-    at = parse_event_time(local_time)
-    local_day = _date(local_date)
-    first, last = _date(starts_on), _date(ends_on)
-    if first and last and last < first: raise ValueError('End date is before start date')
-    selected_days = sorted({_integer(v,0,6,'Weekday') for v in weekdays}) if weekdays is not None else ([_integer(weekday,0,6,'Weekday')] if weekday is not None else list(range(7)))
-    if recurrence_type != 'ONE_TIME' and not selected_days: raise ValueError('Choose at least one repeat day')
-    hours = sorted({_integer(h,0,23,'Hour') for h in repeat_hours}) if repeat_hours is not None else None
-    if hours == []: raise ValueError('Choose at least one hour')
-    if recurrence_type == 'ONE_TIME' and local_day is None: raise ValueError('Enter a valid station-local date and time')
-    day = _integer(month_day or (local_day.day if local_day else 1), 1, 31, 'Day of month')
-    nth = _integer(month_nth or 0,-2,5,'Week of month')
-    dow = _integer(month_weekday or 0,0,6,'Weekday')
+    rule = recurrence_rule(station,recurrence_type,local_time=local_time,local_date=local_date,
+        weekday=weekday,weekdays=weekdays,repeat_hours=repeat_hours,starts_on=starts_on,
+        ends_on=ends_on,month_day=month_day,month_nth=month_nth,month_weekday=month_weekday)
     playback = playlist_playback or ('ALL' if content_type == 'PLAYLIST' and target.purpose == 'COMMERCIALS' else 'ONE')
     if playback not in ('ONE','ALL'): raise ValueError('Choose one next item or the entire playlist')
     if content_type == 'PLAYLIST' and playback == 'ALL' and len(target.items)>500 or content_type == 'EVENT_BLOCK' and len(target.items)>500:
@@ -146,20 +205,15 @@ def save_event(slug, *, identifier=None, name, description='', timing_mode='SOFT
     row.event_block = target if content_type == 'EVENT_BLOCK' else None
     row.playlist = target if content_type == 'PLAYLIST' else None
     row.playlist_playback, row.interrupt_dj = playback, interrupt_dj
-    row.local_date = local_day
-    row.scheduled_at_utc = _wall_to_utc(datetime.combine(local_day, at), ZoneInfo(validate_timezone(station.timezone))) if recurrence_type == 'ONE_TIME' else None
-    row.local_time = at
-    row.weekday = None if recurrence_type == 'ONE_TIME' else selected_days[0]
-    row.weekdays = None if recurrence_type == 'ONE_TIME' else ','.join(map(str,selected_days))
-    row.repeat_hours = hours if recurrence_type in ('WEEKLY','HOURLY','QUARTER_HOUR') else None
-    row.starts_on, row.ends_on = first, last
-    row.month_day, row.month_nth, row.month_weekday = day, nth, dow
+    for field in ('local_date','scheduled_at_utc','local_time','repeat_hours','starts_on','ends_on','month_day','month_nth','month_weekday'):
+        setattr(row,field,getattr(rule,field))
+    row.weekday = None if recurrence_type == 'ONE_TIME' else rule.repeat_days[0]
+    row.weekdays = None if recurrence_type == 'ONE_TIME' else ','.join(map(str,rule.repeat_days))
     row.early_tolerance_seconds, row.late_tolerance_seconds = early, late
     row.missed_policy, row.interrupt_policy, row.priority = missed_policy, interrupt_policy, rank
     db.session.add(row)
     db.session.flush()
-    if row.playlist and not any(item.track.enabled and item.track.ingest_status == 'accepted' and available(item.track,station.id) and not item.track.decommissioned_at for item in row.playlist.items):
-        raise ValueError('Choose a playlist with playable audio')
+    validate_content(row, check_files=False)
     db.session.commit()
     generate_occurrences(station)
     return row
@@ -168,6 +222,7 @@ def save_event(slug, *, identifier=None, name, description='', timing_mode='SOFT
 def set_enabled(row, enabled):
     if commercial_log(row): raise ValueError('Finalized commercial events are managed through Commercials')
     db.session.query(Station.id).filter_by(id=row.station_id).with_for_update().first()
+    if enabled: validate_content(row,check_files=False)
     invalidate(row)
     row.enabled = bool(enabled)
     db.session.commit()
@@ -238,20 +293,23 @@ def generate_occurrences(station, now=None, horizon_hours=192):
     return created
 
 
-def validate_content(event, storage=None):
+def validate_content(event, storage=None, *, check_files=True):
     storage = storage or LocalMediaStorage()
     if event.playlist:
         from app.services.playlists import playable_tracks
-        if not playable_tracks(event.playlist,event.station_id,storage): raise ValueError('Playlist has no playable audio')
+        from app.services.availability import playable
+        tracks = playable_tracks(event.playlist,event.station_id,storage) if check_files else [i.track for i in event.playlist.items if playable(i.track,event.station_id)]
+        if not event.playlist.enabled or not tracks: raise ValueError('Playlist has no playable audio')
         return event.playlist
     if event.event_block:
         from app.services.event_blocks import validate_block
-        if not event.event_block.enabled or validate_block(event.event_block,storage): raise ValueError('Event block is disabled or invalid')
+        if not event.event_block.enabled or validate_block(event.event_block,storage,check_files=check_files): raise ValueError('Event block is disabled or invalid')
         return event.event_block
     playable = event.track or event.imaging_asset
     if playable is None or (not available(playable,event.station_id) if event.track else playable.station_id != event.station_id) or not playable.enabled or playable.ingest_status != 'accepted' or playable.decommissioned_at:
         raise ValueError('Event content is disabled or unavailable')
-    (storage.regular_file if event.track else storage.imaging_file)(playable.station.slug,playable.storage_key)
+    if check_files:
+        (storage.regular_file if event.track else storage.imaging_file)(playable.station.slug,playable.storage_key)
     return playable
 
 
@@ -271,6 +329,30 @@ def upcoming(station, now=None, limit=20):
     return TimedEventOccurrence.query.join(TimedEventOccurrence.event).filter(
         TimedEventOccurrence.station_id == station.id,TimedEventOccurrence.state.in_(('PENDING','READY','QUEUED')),TimedEvent.enabled.is_(True)).order_by(
         TimedEventOccurrence.scheduled_for_utc,TimedEvent.priority.desc(),TimedEventOccurrence.id).limit(limit).all()
+
+
+def expire_due(station, now, reason='deadline_exceeded'):
+    """Clear stale backlog independently of the worker's candidate page size."""
+    from sqlalchemy.orm import aliased
+    db.session.query(Station.id).filter_by(id=station.id).with_for_update().first()
+    later = aliased(TimedEventOccurrence)
+    newer = db.session.query(later.id).filter(
+        later.timed_event_id == TimedEventOccurrence.timed_event_id,
+        later.scheduled_for_utc > TimedEventOccurrence.scheduled_for_utc,
+        later.scheduled_for_utc <= now,
+        later.state.in_(('PENDING','READY','QUEUED','STARTED','COMPLETED'))).exists()
+    base = TimedEventOccurrence.query.filter_by(station_id=station.id,boundary_reserved=False).filter(
+        TimedEventOccurrence.state.in_(('PENDING','READY')))
+    cases = [(base.filter(TimedEventOccurrence.deadline_at_utc < now),reason),
+        (base.filter(TimedEventOccurrence.scheduled_for_utc <= now,newer,
+            TimedEventOccurrence.event.has(db.and_(TimedEvent.recurrence_type != 'ONE_TIME',TimedEvent.missed_policy == 'SKIP'))),'superseded_repeat')]
+    for query, failure in cases:
+        decisions = query.with_entities(TimedEventOccurrence.selection_decision_id).subquery()
+        SelectionDecision.query.filter(SelectionDecision.id.in_(db.select(decisions)),SelectionDecision.status=='selected').update(
+            {SelectionDecision.status:'failed',SelectionDecision.reason:failure},synchronize_session='fetch')
+        query.update({TimedEventOccurrence.state:'MISSED',TimedEventOccurrence.missed_at:now,
+            TimedEventOccurrence.failure_reason:failure},synchronize_session='fetch')
+    db.session.commit()
 
 
 def recurrence_summary(event):

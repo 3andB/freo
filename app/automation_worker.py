@@ -5,6 +5,7 @@ from pathlib import Path
 import time
 from datetime import datetime, timedelta, timezone
 import math
+from contextlib import contextmanager
 
 from app import create_app
 from app.extensions import db
@@ -15,6 +16,27 @@ from app.services.schedule import resolve, usable_clock
 
 logger = logging.getLogger('freo.automation')
 EVENT_ROOT = Path('/run/freo/playout')
+
+
+@contextmanager
+def worker_lease():
+    """Only one refiller may hand audio to this installation's engines."""
+    if db.engine.dialect.name != 'postgresql':
+        yield
+        return
+    from sqlalchemy import text
+    # Keep a dedicated connection: session-level ownership must survive the
+    # many ORM commits between preparing, submitting and confirming a request.
+    with db.engine.connect() as connection:
+        acquired = connection.scalar(text('SELECT pg_try_advisory_lock(741902, 1)'))
+        connection.commit()
+        if not acquired:
+            raise RuntimeError('Another automation worker owns this installation')
+        try:
+            yield connection
+        finally:
+            connection.execute(text('SELECT pg_advisory_unlock(741902, 1)'))
+            connection.commit()
 
 
 class EventReader:
@@ -131,13 +153,43 @@ def refill_station(slug, reader, target_depth=2):
 def reconcile_requests(slug):
     identity = socket_identity(slug)
     live = queued_ids(slug) | active_ids(slug)
+    complete_inventory = True
     from app.services.playout_queue import channel_queue
     try:
         from app.services.playout_queue import _command
         live |= {int(v) for v in _command(slug,'freo_event.queue').split()}
         live |= set(channel_queue(slug, 'A')) | set(channel_queue(slug, 'B')) | set(channel_queue(slug, 'CART'))
     except (OSError, RuntimeError, ValueError):
-        pass
+        complete_inventory = False
+    # A confirmed start remains airplay history, but an engine restart cannot
+    # leave its occurrence or sequence permanently marked Playing.
+    interrupted = SelectionDecision.query.join(SelectionDecision.station).outerjoin(
+        TimedEventOccurrence,TimedEventOccurrence.selection_decision_id == SelectionDecision.id).outerjoin(
+        EventBlockItemExecution,EventBlockItemExecution.selection_decision_id == SelectionDecision.id).filter(
+        Station.slug == slug, SelectionDecision.status == 'started',
+        SelectionDecision.socket_identity.isnot(None),
+        db.or_(TimedEventOccurrence.state == 'STARTED',EventBlockItemExecution.state == 'STARTED'),
+        SelectionDecision.selection_method.in_(('timed_event','event_block'))).all()
+    now = datetime.now(timezone.utc)
+    for decision in interrupted:
+        reason = 'playout_restarted' if decision.socket_identity != identity else None
+        audio = decision.track or decision.imaging_asset
+        # A missing END is failure, not evidence of successful playback. Never
+        # time out a paused request still retained by the engine, or infer
+        # absence from an incomplete socket inventory.
+        if not reason and complete_inventory and audio and decision.started_at and decision.liquidsoap_request_id not in live:
+            began = decision.started_at.replace(tzinfo=decision.started_at.tzinfo or timezone.utc)
+            if now >= began + timedelta(milliseconds=audio.duration_ms,seconds=120):
+                reason = 'missing_end_confirmation'
+        if not reason: continue
+        item = decision.block_item_execution
+        if item and item.state == 'STARTED':
+            item.state='FAILED';item.failure_reason=reason
+            item.failed_at=now
+        occurrence = decision.timed_event_occurrence
+        if occurrence and occurrence.state == 'STARTED':
+            occurrence.state='FAILED';occurrence.failure_reason=reason
+    if interrupted: db.session.commit()
     rows = SelectionDecision.query.join(SelectionDecision.station).filter(
         SelectionDecision.status == 'queued', Station.slug == slug).all()
     changed = 0
@@ -166,17 +218,19 @@ def reconcile_requests(slug):
 
 def process_block(station, reader, now=None):
     """Own a station queue while one durable block snapshot is active."""
-    from app.services.event_blocks import active_execution, prepare_next
+    from app.services.event_blocks import active_execution, prepare_next, finish_execution, cancel_future_items
     now = now or datetime.now(timezone.utc)
     execution = active_execution(station.id)
     if execution is None:
         return False
     reader.collect(station.slug); reconcile_requests(station.slug)
     if execution.abort_requested:
-        interrupt_for_event(station.slug)
-        for item in execution.items:
-            if item.state in ('PENDING','QUEUED'): item.state='SKIPPED'; item.failure_reason='operator_abort'
+        cancel_future_items(execution,'operator_abort')
+        if execution.timed_event_occurrence:
+            execution.timed_event_occurrence.state='CANCELLED'
+            execution.timed_event_occurrence.failure_reason='operator_abort'
         execution.state='ABORTED'; execution.aborted_at=now; execution.failure_reason='operator_abort'; db.session.commit()
+        process_event_cancellations(station)
         return False
     for item in execution.items:
         if item.state == 'PENDING' and item.selection_decision and item.selection_decision.status == 'queued':
@@ -199,17 +253,16 @@ def process_block(station, reader, now=None):
             if item.failure_policy == 'ABORT_BLOCK':
                 execution.state, execution.failure_reason = 'FAILED', item.failure_reason
     if execution.state == 'FAILED':
+        cancel_future_items(execution,execution.failure_reason or 'sequence_failed')
         if execution.timed_event_occurrence:
             execution.timed_event_occurrence.state='FAILED'
             execution.timed_event_occurrence.failure_reason=execution.failure_reason
-        db.session.commit(); return False
+        db.session.commit(); process_event_cancellations(station); return False
     started = next((i for i in reversed(execution.items) if i.state == 'STARTED'), None)
     pending = next((i for i in execution.items if i.state == 'PENDING'), None)
     queued = next((i for i in execution.items if i.state == 'QUEUED'), None)
     if not started and not pending and not queued:
-        execution.state='COMPLETED'; execution.completed_at=now
-        if execution.timed_event_occurrence:
-            execution.timed_event_occurrence.state='COMPLETED'; execution.timed_event_occurrence.completed_at=now
+        finish_execution(execution,now)
         db.session.commit(); return False
     if pending and not queued:
         item = prepare_next(execution, now)
@@ -229,16 +282,17 @@ def process_block(station, reader, now=None):
                 decision.status='failed'; decision.reason='block_queue_failed'; item.state='FAILED'; item.failed_at=now; item.failure_reason='queue_failed'
                 if item.failure_policy == 'ABORT_BLOCK': execution.state='FAILED'; execution.failure_reason='queue_failed'
                 db.session.commit()
-    # Final item completion is inferred only after its known duration elapsed
-    # and Liquidsoap no longer reports its exact request as active.
+    # Timed executions require END evidence. A missing END eventually fails
+    # visibly; elapsed duration alone cannot prove a paused song completed.
     if started and not pending and not queued and all(i.state in ('COMPLETED','SKIPPED','FAILED') or i is started for i in execution.items):
         duration_ms = (started.track or started.imaging_asset).duration_ms
         began = started.started_at.replace(tzinfo=started.started_at.tzinfo or timezone.utc)
         active = active_ids(station.slug)
-        if now >= began + timedelta(milliseconds=max(0, duration_ms-500)) and started.selection_decision.liquidsoap_request_id not in active:
-            started.state='COMPLETED'; started.completed_at=now; execution.state='COMPLETED'; execution.completed_at=now
-            if execution.timed_event_occurrence:
-                execution.timed_event_occurrence.state='COMPLETED'; execution.timed_event_occurrence.completed_at=now
+        if now >= began + timedelta(milliseconds=max(0, duration_ms-500),seconds=120 if execution.timed_event_occurrence else 0) and started.selection_decision.liquidsoap_request_id not in active:
+            started.state='FAILED' if execution.timed_event_occurrence else 'COMPLETED'
+            started.failure_reason='missing_end_confirmation' if execution.timed_event_occurrence else None
+            started.completed_at=now
+            finish_execution(execution,now)
             db.session.commit(); return False
     return execution.state in ('PENDING','QUEUED','STARTED')
 
@@ -497,14 +551,14 @@ def _queue_event(occurrence, slug, now):
 
 
 def automatic_future_only(station):
-    """Unknown/manual/event requests must never be displaced by scheduling."""
+    """Permit insertion ahead of normal audio, preserving its relative order."""
     requests = queued_ids(station.slug)
     if not requests:
         return True
     rows = SelectionDecision.query.filter_by(station_id=station.id, socket_identity=socket_identity(station.slug)).filter(
         SelectionDecision.liquidsoap_request_id.in_(requests)).all()
     return {row.liquidsoap_request_id for row in rows} == requests and all(
-        row.admin_user_id is None and row.selection_method not in ('timed_event', 'event_block')
+        row.selection_method not in ('timed_event', 'event_block')
         and row.playback_bus in (None, 'A') for row in rows)
 
 
@@ -514,13 +568,19 @@ def process_event_cancellations(station):
     jobs = EventQueueCancellation.query.filter_by(station_id=station.id,processed=False).all()
     if not jobs: return
     token, _ = _command(station.slug,'freo_event.state').split('|')
-    dj_queue = {int(v) for v in _command(station.slug,'freo_event.queue').split()} if token else set()
+    dj_queue = {int(v) for v in _command(station.slug,'freo_event.queue').split()}
+    auto_queue = queued_ids(station.slug)
+    uncertain = {job.decision_id for job in jobs if job.decision.liquidsoap_request_id is None}
+    recovered = {request_decision_id(station.slug,rid):rid for rid in dj_queue | auto_queue} if uncertain else {}
     if token and any(job.decision.socket_identity == socket_identity(station.slug) and job.decision.liquidsoap_request_id in dj_queue for job in jobs):
         _command(station.slug,'freo_event.cancel '+token)
     for job in jobs:
         row = job.decision
-        if row.socket_identity == socket_identity(station.slug) and row.liquidsoap_request_id in queued_ids(station.slug):
-            _command(station.slug, f'freo_queue.remove {row.liquidsoap_request_id}')
+        rid = recovered.get(row.id) if row.liquidsoap_request_id is None else row.liquidsoap_request_id if row.socket_identity == socket_identity(station.slug) else None
+        if rid in auto_queue:
+            _command(station.slug, f'freo_queue.remove {rid}')
+        if rid in dj_queue:
+            _command(station.slug, f'freo_event.remove {rid}')
         if row.status != 'started': row.status, row.reason = 'failed', 'event_cancelled'
         job.processed = True
     db.session.commit()
@@ -528,7 +588,7 @@ def process_event_cancellations(station):
 
 def process_dj_events(station, reader, now=None, allow_new=True):
     """Reserve a DJ boundary without changing mode, deck positions, or cue state."""
-    from app.services.timed_events import generate_occurrences, upcoming, prepare_decision, aware
+    from app.services.timed_events import generate_occurrences, upcoming, prepare_decision, aware, expire_due
     from app.services.playout_queue import event_bus
     from app.services.event_blocks import create_execution, create_playlist_execution
     from app.models import TimedEvent
@@ -537,6 +597,7 @@ def process_dj_events(station, reader, now=None, allow_new=True):
     now = now or datetime.now(timezone.utc)
     reader.collect(station.slug)
     generate_occurrences(station,now)
+    expire_due(station,now,'dj_control')
     token, phase = event_bus(station.slug).split('|')
     if token:
         occurrence = db.session.get(TimedEventOccurrence,int(token))
@@ -579,13 +640,13 @@ def process_dj_events(station, reader, now=None, allow_new=True):
 
 def process_timed_events(station, reader, now=None):
     """Prepare and execute durable occurrences; returns seconds to next event."""
-    from app.services.timed_events import generate_occurrences, prepare_decision, upcoming
+    from app.services.timed_events import generate_occurrences, prepare_decision, upcoming, expire_due
     now = now or datetime.now(timezone.utc)
     # A request can transiently disappear between queue prefetch and on-air
     # observation. The later authoritative on_track confirmation wins.
     confirmed = TimedEventOccurrence.query.join(TimedEventOccurrence.selection_decision).filter(
         TimedEventOccurrence.station_id == station.id,
-        SelectionDecision.status == 'started', ~TimedEventOccurrence.state.in_(('STARTED','COMPLETED'))).all()
+        SelectionDecision.status == 'started', TimedEventOccurrence.state.in_(('PENDING','READY','QUEUED'))).all()
     for occurrence in confirmed:
         occurrence.state = 'STARTED'
         occurrence.started_at = occurrence.selection_decision.started_at
@@ -593,6 +654,7 @@ def process_timed_events(station, reader, now=None):
     if confirmed:
         db.session.commit()
     generate_occurrences(station, now)
+    expire_due(station,now)
     process_event_cancellations(station)
     rows = upcoming(station, now, 500)
     from app.services.event_blocks import active_execution
@@ -848,8 +910,14 @@ def main():
     logging.basicConfig(level=os.environ.get('LOG_LEVEL', 'INFO'))
     app = create_app()
     reader = EventReader()
-    with app.app_context():
+    with app.app_context(), worker_lease() as lease:
         while True:
+            if lease is not None:
+                # A lost lease connection stops this process before it can
+                # reconnect the ORM and compete with a replacement worker.
+                from sqlalchemy import text
+                lease.scalar(text('SELECT 1'))
+                lease.commit()
             try:
                 tick(reader)
             except Exception:

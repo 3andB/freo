@@ -76,6 +76,7 @@ event_playing = ref(false)
 event_release_pending = ref(false)
 event_wait_a = ref(false)
 event_wait_b = ref(false)
+event_wait_auto = ref(false)
 mode = ref(__OPERATOR_MODE__)
 a_play = ref(false)
 auto_play = ref(true)
@@ -129,6 +130,14 @@ def cancel_transition()
   transition_generation := transition_generation()+1
   transition_duration := 0.0
 end
+def event_boundary(deck)
+  if event_token() != "" and not event_playing() then
+    if deck == "A" then event_wait_a := false
+    elsif deck == "B" then event_wait_b := false
+    else event_wait_auto := false end
+    if not event_wait_a() and not event_wait_b() and not event_wait_auto() then event_playing := true end
+  end
+end
 def take_deck(deck, value)
   duration = if value == "" then 3.0 else float_of_string(default=-1.0, value) end
   if mode() != "DJ_BOOTH" then "ERROR DJ control required"
@@ -148,7 +157,7 @@ def take_deck(deck, value)
     auto_to := 0.0
     dj_waiting := false
     if event_token() != "" and not event_playing() then
-      event_wait_a := deck == "A"; event_wait_b := deck == "B"
+      event_wait_a := deck == "A"; event_wait_b := deck == "B"; event_wait_auto := false
     end
     a_from := gain_a
     b_from := gain_b
@@ -202,8 +211,15 @@ def set_mode(value)
             a_play := false; b_play := false
             deck_a.set_queue([]); deck_a.skip(); a_decision := ""
             deck_b.set_queue([]); deck_b.skip(); b_decision := ""
+            event_boundary("A"); event_boundary("B")
           end
         })
+      end
+      if event_token() != "" and not event_playing() then
+        event_wait_a := value == "AUTO" and gain_a > 0.001 and a_decision() != ""
+        event_wait_b := value == "AUTO" and gain_b > 0.001 and b_decision() != ""
+        event_wait_auto := auto_play() and null.defined(queue.current())
+        if not event_wait_a() and not event_wait_b() and not event_wait_auto() then event_playing := true end
       end
       mode := value
     end
@@ -254,7 +270,7 @@ end)
 server.register(namespace="freo_deck", "clear_a", fun (_) -> begin
   if mode() != "DJ_BOOTH" then "ERROR DJ control required" else
     if a_play() then cancel_transition() end
-    a_generation := a_generation() + 1; fade_end := 0.0; a_play := false; deck_a.set_queue([]); deck_a.skip(); a_decision := ""
+    a_generation := a_generation() + 1; fade_end := 0.0; a_play := false; deck_a.set_queue([]); deck_a.skip(); a_decision := ""; event_boundary("A")
     "OK"
   end
 end)
@@ -268,7 +284,7 @@ server.register(namespace="freo_deck", "fade_a", fun (value) -> begin
     generation = a_generation()
     a_fade_duration := duration
     fade_end := time()+duration
-    thread.run(delay=duration, {if a_generation() == generation then a_play := false; deck_a.set_queue([]); deck_a.skip(); a_decision := ""; fade_end := 0.0 end})
+    thread.run(delay=duration, {if a_generation() == generation then a_play := false; deck_a.set_queue([]); deck_a.skip(); a_decision := ""; fade_end := 0.0; event_boundary("A") end})
     "OK"
   end
 end)
@@ -289,7 +305,7 @@ end)
 server.register(namespace="freo_deck", "clear_b", fun (_) -> begin
   if mode() != "DJ_BOOTH" then "ERROR DJ control required" else
     if b_play() then cancel_transition() end
-    b_generation := b_generation() + 1; b_fade_end := 0.0; b_play := false; deck_b.set_queue([]); deck_b.skip(); b_decision := ""
+    b_generation := b_generation() + 1; b_fade_end := 0.0; b_play := false; deck_b.set_queue([]); deck_b.skip(); b_decision := ""; event_boundary("B")
     "OK"
   end
 end)
@@ -303,7 +319,7 @@ server.register(namespace="freo_deck", "fade_b", fun (value) -> begin
     generation = b_generation()
     b_fade_duration := duration
     b_fade_end := time()+duration
-    thread.run(delay=duration, {if b_generation() == generation then b_play := false; deck_b.set_queue([]); deck_b.skip(); b_decision := ""; b_fade_end := 0.0 end})
+    thread.run(delay=duration, {if b_generation() == generation then b_play := false; deck_b.set_queue([]); deck_b.skip(); b_decision := ""; b_fade_end := 0.0; event_boundary("B") end})
     "OK"
   end
 end)
@@ -386,7 +402,8 @@ server.register(namespace="freo_event", "arm", fun (token) -> begin
       event_token := token
       event_wait_a := a_play() and a_mix() > 0.001 and a_decision() != ""
       event_wait_b := b_play() and b_mix() > 0.001 and b_decision() != ""
-      event_playing := not event_wait_a() and not event_wait_b()
+      event_wait_auto := auto_play() and auto_mix() > 0.001 and null.defined(queue.current())
+      event_playing := not event_wait_a() and not event_wait_b() and not event_wait_auto()
     end
     "OK"
   end
@@ -394,7 +411,7 @@ end)
 server.register(namespace="freo_event", "release", fun (token) -> begin
   if event_token() == token or event_token() == "" then
     event_release_pending := false
-    event_token := ""; event_playing := false; event_wait_a := false; event_wait_b := false
+    event_token := ""; event_playing := false; event_wait_a := false; event_wait_b := false; event_wait_auto := false
     event_audio.set_queue([])
   end
   "OK"
@@ -403,17 +420,11 @@ server.register(namespace="freo_event", "cancel", fun (token) -> begin
   if event_token() == token then
     event_audio.set_queue([])
     if event_playing() and null.defined(event_audio.current()) then event_release_pending := true
-    else event_token := ""; event_playing := false; event_wait_a := false; event_wait_b := false end
+    else event_token := ""; event_playing := false; event_wait_a := false; event_wait_b := false; event_wait_auto := false end
   end
   "OK"
 end)
 server.register(namespace="freo_event", "state", fun (_) -> event_token() ^ "|" ^ (if event_playing() then "PLAYING" else "WAITING" end))
-def event_boundary(deck)
-  if event_token() != "" and not event_playing() then
-    if deck == "A" then event_wait_a := false else event_wait_b := false end
-    if not event_wait_a() and not event_wait_b() then event_playing := true end
-  end
-end
 def main_active() = not event_playing() and mic_program_gain() > 0.0 and not (cart_takeover() and cart.is_ready()) end
 def main_gain() = if cart.is_ready() and not cart_takeover() then 1.0-duck() else 1.0 end end
 # A zero-delay end callback follows rendered audio, including pauses and cart
@@ -432,7 +443,7 @@ music_a = mksafe(switch(track_sensitive=false, [({a_play() and main_active()}, m
 music_b = mksafe(switch(track_sensitive=false, [({b_play() and main_active()}, music_b)]))
 music_a = amplify({fade_gain() * a_mix() * main_gain() * mic_program_gain()}, music_a)
 music_b = amplify({b_fade_gain() * b_mix() * main_gain() * mic_program_gain()}, music_b)
-music_auto = source.on_end(delay=0.0, queue, cue_finished)
+music_auto = source.on_end(delay=0.0, queue, fun (remaining, metadata) -> begin cue_finished(remaining, metadata); event_boundary("AUTO") end)
 music_auto = amplify(override="freo_gain", 1.0, music_auto)
 music_auto = mksafe(switch(track_sensitive=false, [({auto_play() and main_active()}, music_auto)]))
 music_auto = amplify({auto_mix()*main_gain()*schedule_fade_gain()*mic_program_gain()}, music_auto)
@@ -442,11 +453,12 @@ event_output = source.on_end(delay=0.0, event_audio, fun (remaining, metadata) -
   cue_finished(remaining, metadata)
   if event_release_pending() then
     event_release_pending := false; event_playing := false; event_token := ""
-    event_wait_a := false; event_wait_b := false
+    event_wait_a := false; event_wait_b := false; event_wait_auto := false
   end
 end)
 event_output = amplify(override="freo_gain", 1.0, event_output)
-event_output = mksafe(switch(track_sensitive=false, [({event_playing() and not mic_active()}, event_output)]))
+event_output = mksafe(switch(track_sensitive=false, [({event_playing() and not mic_active() and not (cart_takeover() and cart.is_ready())}, event_output)]))
+event_output = amplify({main_gain()}, event_output)
 radio = add(normalize=false, [music_auto, music_a, music_b, mksafe(cart), mic_audio, event_output])
 # Confirmed channel mode changes fade the complete outgoing program, including
 # a cart or DJ source, then atomically replace the queue with prepared audio.

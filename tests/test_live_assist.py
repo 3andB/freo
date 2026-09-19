@@ -82,7 +82,10 @@ def test_takeover_intent_and_cart_assignment_are_station_scoped(app,monkeypatch)
         command=request_takeover(station,user,track.uuid,current.id,str(uuid.uuid4()))
         assert command.action=='TAKEOVER' and command.target_decision.track_id==track.id and command.target_decision.status=='selected'
         asset=ImagingAsset(station_id=station.id,uuid=str(uuid.uuid4()),name='Legal ID',cart_code='ID-1',asset_type='STATION_ID',original_filename='id.mp3',storage_key='c'*32+'.mp3',media_type='mp3',duration_ms=3000,sample_rate_hz=44100,channels=2,file_size_bytes=100,checksum_sha256='c'*64,enabled=True,ingest_status='accepted');db.session.add(asset);db.session.commit()
-        slot=assign_cart(station,user,'ID',1,asset.uuid,'Legal');assert slot.imaging_asset_id==asset.id
+        with pytest.raises(ValueError,match='retired'):
+            assign_cart(station,user,'ID',1,asset.uuid,'Legal')
+        track.legacy_imaging_id=asset.id;track.audio_kind='STATION';db.session.commit()
+        slot=assign_cart(station,user,'ID',1,asset.uuid,'Legal');assert slot.track_id==track.id and slot.imaging_asset_id is None
     client=admin_client(app);base='/admin/stations/test-station/live'
     assert client.post(base+'/mode',data={'csrf':'test-admin-csrf-token','mode':'DJ_BOOTH'}).status_code==302
     assert client.post(base+'/assign-cart',data={'csrf':'test-admin-csrf-token','role':'HOT','position':'1','identifier':'foreign'}).status_code==302

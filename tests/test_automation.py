@@ -175,7 +175,7 @@ def test_real_event_can_correct_failed_queue_record(setup):
         assert decision.status == 'started' and decision.reason == 'late_event_confirmation'
 
 
-def test_worker_event_reader_rejects_untrusted_lines(monkeypatch, tmp_path):
+def test_worker_event_reader_rejects_untrusted_lines(setup, monkeypatch, tmp_path):
     from app import automation_worker
     monkeypatch.setattr(automation_worker, 'EVENT_ROOT', tmp_path)
     event_dir = tmp_path / 'one'
@@ -186,10 +186,12 @@ def test_worker_event_reader_rejects_untrusted_lines(monkeypatch, tmp_path):
     seen = []
     monkeypatch.setattr(automation_worker, 'playback_started', lambda value, slug, started: seen.append((value, slug, started)) or True)
     reader = automation_worker.EventReader()
-    assert reader.collect('one') == 2
+    with setup[0].app_context():
+        assert reader.collect('one') == 2
     assert [(value, slug) for value, slug, _ in seen] == [(12, 'one'), (13, 'one')]
     assert abs(seen[0][2].timestamp() - stamp) < 0.001 and seen[1][2] is None
-    assert reader.collect('one') == 0
+    with setup[0].app_context():
+        assert reader.collect('one') == 0
 
 
 def test_queue_reconciliation_marks_only_vanished_requests(setup, monkeypatch):

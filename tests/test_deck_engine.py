@@ -350,8 +350,8 @@ def test_auto_skip_advances_once_and_counts_only_engine_starts(app,tmp_path,monk
                 except subprocess.TimeoutExpired:proc.kill();proc.wait()
 
 
-@pytest.mark.parametrize('deck',['A','B'])
-def test_event_bus_waits_for_dj_boundary_and_preserves_mode(app,tmp_path,monkeypatch,deck):
+@pytest.mark.parametrize('deck,operation',[('A',None),('B',None),('AUTO',None),('A','PAUSE'),('B','CLEAR'),('A','MODE'),('A','TAKEOVER'),('B','OVER')])
+def test_event_bus_waits_for_dj_boundary_and_preserves_mode(app,tmp_path,monkeypatch,deck,operation):
     from app.services.playout_queue import _command,event_bus
     directory=tmp_path/'runtime'/'test-station';directory.mkdir(parents=True)
     media=tmp_path/'media';originals=media/'test-station'/'originals';originals.mkdir(parents=True)
@@ -372,8 +372,9 @@ def test_event_bus_waits_for_dj_boundary_and_preserves_mode(app,tmp_path,monkeyp
             def records():
                 file=directory/'events.log'
                 return [line.split() for line in file.read_text().splitlines()] if file.exists() else []
-            _command('test-station',f'freo_{deck.lower()}.push annotate:freo_decision=1:{originals/("a"*32+".mp3")}')
-            _command('test-station',f'freo_deck.take_{deck.lower()} 0.000')
+            _command('test-station',f'freo_{"queue" if deck == "AUTO" else deck.lower()}.push annotate:freo_decision=1:{originals/("a"*32+".mp3")}')
+            if deck != 'AUTO':
+                _command('test-station',f'freo_deck.take_{deck.lower()} 0.000')
             for _ in range(60):
                 if any(r[0]=='1' for r in records()):break
                 time.sleep(.1)
@@ -382,15 +383,30 @@ def test_event_bus_waits_for_dj_boundary_and_preserves_mode(app,tmp_path,monkeyp
             assert len(_command('test-station','freo_event.load_many '+'|'.join(uris)).split())==2
             assert event_bus('test-station','arm',123)=='OK'
             assert event_bus('test-station').endswith('|WAITING')
-            for _ in range(120):
+            if operation=='PAUSE':
+                _command('test-station','freo_deck.pause_a');time.sleep(.5)
+                assert event_bus('test-station').endswith('|WAITING')
+                assert not any(r[0]=='2' for r in records())
+                _command('test-station','freo_deck.take_a 0.000')
+            elif operation=='CLEAR':_command('test-station','freo_deck.clear_b')
+            elif operation=='MODE':_command('test-station','freo_mixer.mode AUTO')
+            cart_sent=False
+            for _ in range(160):
+                if operation in ('TAKEOVER','OVER') and not cart_sent and any(r[0]=='2' for r in records()):
+                    _command('test-station','freo_mixer.cart_mode '+operation)
+                    _command('test-station',f'freo_cart.push annotate:freo_decision=4:{originals/("b"*32+".mp3")}')
+                    cart_sent=True
                 if any(r[:2]==['END','3'] for r in records()):break
                 time.sleep(.1)
             starts={int(r[0]):float(r[1]) for r in records() if r[0]!='END'}
-            assert 2 in starts and starts[2]-starts[1]>=5.5,records()
+            assert 2 in starts,records()
+            if operation not in ('CLEAR','MODE'):assert starts[2]-starts[1]>=5.5,records()
+            elif operation=='MODE':assert starts[2]-starts[1]>=2.5,records()
             assert any(r[:2]==['END','2'] for r in records())
             assert any(r[:2]==['END','3'] for r in records())
-            assert 1.5 <= starts[3]-starts[2] <= 2.5,records()
-            assert _command('test-station','freo_mixer.state').startswith('DJ_BOOTH|')
+            if operation=='TAKEOVER':assert 3.5 <= starts[3]-starts[2] <= 4.8,records()
+            else:assert 1.5 <= starts[3]-starts[2] <= 2.5,records()
+            assert _command('test-station','freo_mixer.state').startswith('AUTO|' if operation=='MODE' else 'DJ_BOOTH|')
             assert event_bus('test-station','release',123)=='OK'
             assert event_bus('test-station')=='|WAITING'
         finally:

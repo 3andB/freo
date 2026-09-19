@@ -37,3 +37,39 @@ def test_playlist_event_editor_and_all_recurrence_controls(booth):
         assert row.recurrence_type=='QUARTER_HOUR' and row.content_type=='PLAYLIST' and not row.interrupt_dj
     driver.set_window_size(390,844)
     assert driver.execute_script('return document.documentElement.scrollWidth <= innerWidth+2')
+
+
+def test_all_recurrences_save_reload_and_search_within(booth):
+    app,driver,base,_=booth
+    with app.app_context():
+        station=Station.query.filter_by(slug='test-station').one()
+        classify(Track.query.first(),'STATION','station_id');db.session.commit()
+    wait=WebDriverWait(driver,15)
+    for kind in ('ONE_TIME','QUARTER_HOUR','HOURLY','DAILY','WEEKLY','MONTHLY'):
+        driver.get(base+'/admin/stations/test-station/events/create')
+        wait.until(lambda d:'STATION' in d.find_element(By.ID,'event-audio-results').text)
+        picker=Select(driver.find_element(By.ID,'event-recurrence'))
+        if kind in ('DAILY','MONTHLY'):
+            picker.select_by_value('WEEKLY')
+            for box in driver.find_elements(By.NAME,'weekdays'):
+                if box.is_selected():box.click()
+        picker.select_by_value(kind)
+        driver.find_element(By.NAME,'name').send_keys('Saved '+kind)
+        if kind=='ONE_TIME':
+            driver.execute_script("document.querySelector('[name=local_date]').value='2028-02-29'")
+        driver.find_element(By.CSS_SELECTOR,'#event-audio-results article > button:first-child').click()
+        driver.find_element(By.ID,'event-preview').click()
+        wait.until(lambda d:len(d.find_elements(By.CSS_SELECTOR,'#event-next-runs li'))>0)
+        driver.find_element(By.CSS_SELECTOR,'.event-editor button[type="submit"]').click()
+        wait.until(lambda d:'/events/create' not in d.current_url)
+        assert Select(driver.find_element(By.ID,'event-recurrence')).first_selected_option.get_attribute('value')==kind
+        assert 'STATION' in driver.find_element(By.ID,'event-audio-selected').text
+        with app.app_context():
+            row=TimedEvent.query.filter_by(name='Saved '+kind).one()
+            assert row.recurrence_type==kind and not row.interrupt_dj
+    query=driver.find_element(By.ID,'event-audio-search');query.send_keys('STATION')
+    wait.until(lambda d:'STATION' in d.find_element(By.ID,'event-audio-results').text)
+    wait.until(lambda d:d.find_elements(By.XPATH,"//div[@id='event-audio-results']//button[text()='Search within']"))[0].click()
+    wait.until(lambda d:'Verified Test Track' in d.find_element(By.ID,'event-audio-results').text)
+    assert driver.find_element(By.ID,'event-audio-search').get_attribute('value')==''
+    assert 'STATION' in driver.find_element(By.ID,'event-audio-scope').text

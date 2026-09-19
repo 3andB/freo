@@ -61,7 +61,7 @@ def music(station, storage, category):
     return row
 
 
-def test_cart_group_clock_preview_and_selection(world):
+def test_historical_cart_group_clock_preview_and_selection(world):
     app, one, _, storage = world
     category_create('one', 'Power', 'power')
     track = music(one, storage, 'power')
@@ -70,8 +70,10 @@ def test_cart_group_clock_preview_and_selection(world):
     set_group_membership('one', 'ids', asset.uuid, True)
     clock = create_clock('one', 'Imaging', 'imaging')
     add_clock_slot('one', 'imaging', 'CATEGORY', 'power')
-    add_clock_slot('one', 'imaging', 'IMAGING_GROUP', 'ids')
-    add_clock_slot('one', 'imaging', 'CART', asset.uuid)
+    # Existing pre-migration clock records remain readable; new writes are retired.
+    from app.models import ClockSlot
+    db.session.add_all([ClockSlot(clock_id=clock.id,position=2,slot_type='IMAGING_GROUP',imaging_group_id=group.id),ClockSlot(clock_id=clock.id,position=3,slot_type='CART',imaging_asset_id=asset.id)])
+    db.session.commit();db.session.expire(clock,['slots'])
     set_default_clock('one', 'imaging')
     set_automation('one', True)
     before = SelectionDecision.query.count()

@@ -12,7 +12,7 @@ from app.services.stations import get_station
 
 BLOCK_TYPES = ('GENERIC','STOPSET','NEWS','LEGAL_ID','PROMO_BLOCK','SPECIAL')
 FAILURE_POLICIES = ('SKIP_FAILED_ITEM','ABORT_BLOCK')
-ITEM_TYPES = ('TRACK','IMAGING_ASSET')
+ITEM_TYPES = ('TRACK',)
 ACTIVE_STATES = ('PENDING','QUEUED','STARTED')
 
 def _clean(value, limit, required=False):
@@ -57,7 +57,6 @@ def save_block(slug, *, identifier=None, name, description='', block_type='GENER
 
 def _target(block, item_type, identifier):
     if item_type == 'TRACK': row = tracks_for(block.station_id).filter_by(uuid=identifier).first()
-    elif item_type == 'IMAGING_ASSET': row = ImagingAsset.query.filter_by(station_id=block.station_id, uuid=identifier).first()
     else: raise ValueError('Unsupported block item type')
     if row is None: raise ValueError('Block content belongs to another station or does not exist')
     return row
@@ -65,6 +64,10 @@ def _target(block, item_type, identifier):
 def add_item(block, item_type, identifier, label='', failure_policy=None):
     require_editable(block)
     if failure_policy not in (None,'') + FAILURE_POLICIES: raise ValueError('Unsupported item failure policy')
+    if item_type == 'IMAGING_ASSET':
+        from app.services.audio_classification import migrated_audio
+        identifier = migrated_audio(block.station_id,identifier).uuid
+        item_type = 'TRACK'
     target = _target(block,item_type,identifier)
     row = EventBlockItem(block=block, position=len(block.items)+1, item_type=item_type,
         track_id=target.id if item_type=='TRACK' else None, imaging_asset_id=target.id if item_type=='IMAGING_ASSET' else None,
@@ -91,13 +94,14 @@ def reorder(block, ordered_ids):
     for n,item_id in enumerate(ids,1): items[item_id].position=n
     db.session.commit()
 
-def validate_block(block, storage=None):
+def validate_block(block, storage=None, *, check_files=True):
     errors=[]; storage=storage or LocalMediaStorage(); enabled=[i for i in block.items if i.enabled]
     if not enabled: errors.append('Block must contain at least one enabled item.')
     for item in enabled:
         target=item.track or item.imaging_asset
         if target is None or (not available(target,block.station_id) if item.item_type == 'TRACK' else target.station_id!=block.station_id) or not target.enabled or target.ingest_status!='accepted' or target.decommissioned_at:
             errors.append(f'Item {item.position} is disabled or unavailable.'); continue
+        if not check_files: continue
         try:
             (storage.regular_file if item.track else storage.imaging_file)(target.station.slug,target.storage_key)
         except (OSError,ValueError): errors.append(f'Item {item.position} failed storage verification.')
@@ -189,18 +193,48 @@ def confirm_finished(station, decision_id, at, identity):
     """Only matching engine EOF completes event audio; replay is harmless."""
     from app.models import TimedEventOccurrence
     decision = SelectionDecision.query.filter_by(id=decision_id,station_id=station.id,status='started',socket_identity=identity).first()
-    if not decision: return
+    if not decision or decision.started_at and at < decision.started_at.replace(tzinfo=decision.started_at.tzinfo or timezone.utc): return
     occurrence = decision.timed_event_occurrence
     item = decision.block_item_execution
     if item:
         item.state, item.completed_at = 'COMPLETED', at
         execution = item.execution
+        if execution.state in ('ABORTED','CANCELLED'):
+            db.session.commit();return
         if all(i.state in ('COMPLETED','SKIPPED','FAILED') for i in execution.items):
-            execution.state, execution.completed_at = 'COMPLETED', at
+            finish_execution(execution,at)
             occurrence = execution.timed_event_occurrence
     if occurrence and (not item or item.execution.state == 'COMPLETED'):
         occurrence.state, occurrence.completed_at = 'COMPLETED', at
     db.session.commit()
+
+
+def finish_execution(execution, at):
+    """Keep partial playback visible; never call an entirely failed run success."""
+    failed = any(i.state in ('FAILED','SKIPPED') for i in execution.items)
+    played = any(i.state == 'COMPLETED' for i in execution.items)
+    execution.state = 'COMPLETED' if played else 'FAILED'
+    execution.completed_at = at
+    execution.failure_reason = 'partial_playback' if played and failed else 'no_items_completed' if not played else None
+    if execution.timed_event_occurrence:
+        occurrence = execution.timed_event_occurrence
+        occurrence.state = execution.state
+        occurrence.completed_at = at
+        occurrence.failure_reason = execution.failure_reason
+
+
+def cancel_future_items(execution, reason):
+    from app.models import EventQueueCancellation
+    for item in execution.items:
+        if item.state not in ('PENDING','QUEUED','FAILED'): continue
+        decision = item.selection_decision
+        if decision and decision.status in ('queued','submitting'):
+            if not db.session.get(EventQueueCancellation,decision.id):
+                db.session.add(EventQueueCancellation(decision_id=decision.id,station_id=execution.station_id,processed=False))
+        elif decision and decision.status == 'selected':
+            decision.status, decision.reason = 'failed', reason
+        if item.state != 'FAILED': item.state = 'SKIPPED'
+        item.failure_reason = reason
 
 
 def submit_snapshot(execution, now):
@@ -237,7 +271,10 @@ def submit_snapshot(execution, now):
     db.session.commit()
     try:
         request_ids=push_sequence(decisions)
-    except (ValueError,RuntimeError):
+    except (OSError,ValueError,RuntimeError):
+        # Socket acceptance can precede a lost response. Remove future requests
+        # by their decision annotations even when no request IDs were received.
+        cancel_future_items(execution,'sequence_unavailable')
         for item,decision in zip(items,decisions):
             item.state='FAILED';item.failure_reason='sequence_unavailable';decision.status='failed';decision.reason='sequence_unavailable'
         execution.state='FAILED';execution.failure_reason='sequence_unavailable'

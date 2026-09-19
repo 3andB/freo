@@ -57,7 +57,7 @@ def create(station, name, slug):
 @clock_group.command('add-slot')
 @click.option('--station', required=True)
 @click.option('--clock', required=True)
-@click.option('--type', 'slot_type', type=click.Choice(['rotation', 'category', 'cart', 'imaging_group']), required=True)
+@click.option('--type', 'slot_type', type=click.Choice(['rotation', 'category', 'playlist', 'event_block']), required=True)
 @click.option('--target', required=True)
 def add(station, clock, slot_type, target):
     require_root()

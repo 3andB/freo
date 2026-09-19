@@ -103,8 +103,6 @@ def search_sources(station, kind, query='', page=1):
         q = Playlist.query.filter_by(station_id=station.id, deleted_at=None).filter(Playlist.name.ilike(pattern, escape='\\')).order_by(Playlist.name, Playlist.id)
     elif kind == 'category':
         q = MediaCategory.query.filter_by(station_id=station.id, enabled=True).filter(MediaCategory.name.ilike(pattern, escape='\\')).order_by(MediaCategory.name, MediaCategory.id)
-    elif kind == 'imaging':
-        q = ImagingAsset.query.filter_by(station_id=station.id, enabled=True, ingest_status='accepted', decommissioned_at=None).filter(or_(ImagingAsset.name.ilike(pattern, escape='\\'), ImagingAsset.cart_code.ilike(pattern, escape='\\'))).order_by(ImagingAsset.name, ImagingAsset.id)
     elif kind == 'sequence':
         q = EventBlock.query.filter_by(station_id=station.id, enabled=True).filter(EventBlock.name.ilike(pattern, escape='\\')).order_by(EventBlock.name, EventBlock.id)
     else:

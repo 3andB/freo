@@ -30,10 +30,10 @@ def create(station,name,block_type,failure_policy):
 @group.command('add')
 @click.option('--station',required=True)
 @click.option('--block',required=True)
-@click.option('--kind',required=True,type=click.Choice(['track','imaging']))
+@click.option('--kind',default='track',type=click.Choice(['track']))
 @click.option('--content',required=True)
 def add(station,block,kind,content):
-    try: row=add_item(block_for(station,block),'TRACK' if kind=='track' else 'IMAGING_ASSET',content);click.echo(row.position)
+    try: row=add_item(block_for(station,block),'TRACK',content);click.echo(row.position)
     except ValueError as error: raise click.ClickException(str(error))
 
 @group.command('validate')
@@ -72,4 +72,5 @@ def executions(station):
     if not row: raise click.ClickException('Station not found')
     for run in EventBlockExecution.query.filter_by(station_id=row.id).order_by(EventBlockExecution.id.desc()).limit(20):
         items=','.join(f'{item.position}:{item.state}:{item.selection_decision_id or "-"}' for item in run.items)
-        click.echo(f'{run.id}\t{run.block.slug}\t{run.source}\t{run.state}\t{items}')
+        target = run.block.slug if run.block else run.playlist.name if run.playlist else 'Unavailable audio'
+        click.echo(f'{run.id}\t{target}\t{run.source}\t{run.state}\t{items}')

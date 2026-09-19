@@ -24,7 +24,11 @@ def test_quick_toggles_management_and_album(booth):
     wait_text(driver, '#room-songs', 'HIT')
     driver.find_element(By.CSS_SELECTOR, '.room-song .preview-button').click()
     WebDriverWait(driver, 8).until(lambda d: d.execute_script('return !document.getElementById("music-audio").paused'))
-    driver.find_element(By.CSS_SELECTOR, '.room-song input').click()
+    selection = driver.find_element(By.CSS_SELECTOR, '.room-song input')
+    # The fixed preview player now occupies the bottom of the viewport.
+    # Scroll the checkbox clear of it before exercising a native click.
+    driver.execute_script('arguments[0].scrollIntoView({block: "center"})', selection)
+    selection.click()
     driver.execute_script('''
       window.pageMarker = 123;
       const original = FreoPage.fetch.bind(FreoPage);

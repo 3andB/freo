@@ -164,7 +164,9 @@ def test_all_admin_pages_have_each_station_monitor(app):
 
 def test_master_migration_roundtrip(app):
     runner = app.test_cli_runner()
-    for args in [('db', 'stamp', 'f19a73b206ce'), ('db', 'downgrade', 'e92b740a613f'), ('db', 'upgrade', 'head')]:
+    # The fixture already has the current schema. Round-trip this migration
+    # alone instead of reapplying later Cue/audio tables that still exist.
+    for args in [('db', 'stamp', 'f19a73b206ce'), ('db', 'downgrade', 'e92b740a613f'), ('db', 'upgrade', 'f19a73b206ce')]:
         result = runner.invoke(args=args)
         assert result.exit_code == 0, result.output
     with app.app_context():

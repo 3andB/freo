@@ -25,10 +25,12 @@ def iso(value):
     return value.isoformat() if value else None
 
 
-def format_station_time(value, zone, short=False):
+def format_station_time(value, zone, short=False, offset=False):
     if not value:
         return '—'
-    return aware(value).astimezone(ZoneInfo(zone)).strftime('%H:%M' if short else '%d %b %Y · %H:%M:%S')
+    pattern = '%H:%M' if short else '%d %b %Y · %H:%M:%S'
+    if offset: pattern += ' %Z (%z)'
+    return aware(value).astimezone(ZoneInfo(zone)).strftime(pattern)
 
 
 def worker_health(station):

@@ -128,7 +128,7 @@ def test_event_search_priority_filters_and_preview(app):
     assert client.get(base+'/audio?q=station_id').json['items'][0]['kind']=='TRACK'
     assert not client.get('/admin/stations/second-station/events/audio?q=station_id').json['items']
     preview=client.get(base+'/preview?recurrence_type=MONTHLY&month_day=31&local_time=10:00&starts_on=2028-02-01').json
-    assert len(preview['times'])==7 and 'UTC' in preview['summary']
+    assert len(preview['times'])==10 and 'UTC' in preview['summary']
 
 
 def test_imaging_conversion_preserves_audio_and_references(app,tmp_path,monkeypatch):
@@ -140,7 +140,8 @@ def test_imaging_conversion_preserves_audio_and_references(app,tmp_path,monkeypa
         key='b'*32+'.mp3';directory=tmp_path/station.slug/'imaging';directory.mkdir(parents=True);(directory/key).write_bytes(b'test audio')
         asset=m.ImagingAsset(station_id=station.id,uuid=str(uuid.uuid4()),name='Station ID',asset_type='STATION_ID',original_filename='id.mp3',storage_key=key,media_type='mp3',duration_ms=1000,sample_rate_hz=44100,channels=2,file_size_bytes=10,checksum_sha256=hashlib.sha256(b'test audio').hexdigest(),enabled=True,ingest_status='accepted')
         db.session.add(asset);db.session.commit()
-        row=events.save_event(station.slug,name='ID',recurrence_type='DAILY',content_type='IMAGING_ASSET',content_identifier=asset.uuid,local_time='12:00')
+        row=m.TimedEvent(uuid=str(uuid.uuid4()),station_id=station.id,name='ID',recurrence_type='DAILY',content_type='IMAGING_ASSET',imaging_asset_id=asset.id,local_time=datetime.strptime('12:00','%H:%M').time(),timing_mode='SOFT',weekday=0)
+        db.session.add(row);db.session.commit()
         report=convert(station,LocalMediaStorage(tmp_path))
         assert report['converted']==1 and all(n==0 for n in report['references'].values())
         db.session.refresh(row)

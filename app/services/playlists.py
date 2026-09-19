@@ -3,6 +3,7 @@ from datetime import datetime, timezone, timedelta
 import random
 import uuid
 from sqlalchemy.orm import selectinload
+from sqlalchemy import case
 from app.extensions import db
 from app.models import (Playlist, PlaylistItem, PlaylistCursor, MusicEdit, Track,
                         MediaCategory, Artist, Album, ClockSlot, ScheduleProgram,
@@ -12,13 +13,14 @@ from app.services.availability import tracks_for, available, playable, artists_f
 
 def seed_playlists(station_id):
     for number in (1, 2):
-        db.session.add(Playlist(station_id=station_id, name=f'Playlist {number}'))
+        if not Playlist.query.filter_by(station_id=station_id,system_key=f'PLAYLIST_{number}').first():
+            db.session.add(Playlist(station_id=station_id, name=f'Playlist {number}',system_key=f'PLAYLIST_{number}'))
     from app.services.audio_classification import defaults
     defaults(station_id)
 
 
 def listing(station_id):
-    return Playlist.query.options(selectinload(Playlist.items).joinedload(PlaylistItem.track)).filter_by(station_id=station_id, deleted_at=None).order_by(Playlist.id).all()
+    return Playlist.query.options(selectinload(Playlist.items).joinedload(PlaylistItem.track)).filter_by(station_id=station_id, deleted_at=None).order_by(case(*[(Playlist.system_key==key, index) for index,key in enumerate(('PLAYLIST_1','PLAYLIST_2','STATION','COMMERCIALS'))],else_=4),Playlist.id).all()
 
 
 def get_playlist(station_id, identifier):
@@ -64,7 +66,7 @@ def replace_order(row, ids):
 def membership(row, songs, operation, user_id):
     if operation not in ('add', 'remove'):
         raise ValueError('Choose add or remove')
-    if row.system_key:
+    if row.system_key in ('STATION','COMMERCIALS'):
         if operation == 'remove':
             raise ValueError('Reclassify this audio in its editor to remove it from the system collection')
         from app.services.audio_classification import classify
@@ -130,7 +132,7 @@ def source_songs(station_id, kind, identifier):
 
 def delete_playlist(row):
     from app.models import TimedEvent
-    if row.system_key:
+    if row.system_key in ('STATION','COMMERCIALS'):
         raise ValueError('STATION and COMMERCIALS are permanent audio collections')
     if TimedEvent.query.filter_by(playlist_id=row.id).first():
         raise ValueError('Remove this playlist from its events before deleting it')

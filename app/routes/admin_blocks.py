@@ -3,7 +3,7 @@ from app.services.availability import tracks_for
 from flask import Blueprint, abort, flash, redirect, render_template, request, url_for
 
 from app.extensions import db
-from app.models import AuditEvent, EventBlock, EventBlockExecution, ImagingAsset, Track
+from app.models import AuditEvent, EventBlock, EventBlockExecution, Track
 from app.routes.web import admin_stations, station_or_404
 from app.services.admin_auth import admin_required, can_manage_events, current_admin, require_csrf
 from app.services.admin_media import audit
@@ -47,8 +47,7 @@ def detail(slug,identifier):
         return redirect(url_for('admin_traffic.log_detail',slug=slug,log_date=log.log_date))
     executions=EventBlockExecution.query.filter_by(event_block_id=row.id).order_by(EventBlockExecution.id.desc()).limit(25).all()
     tracks=tracks_for(station.id).filter_by(enabled=True,ingest_status='accepted',decommissioned_at=None).order_by(Track.title).all()
-    imaging=ImagingAsset.query.filter_by(station_id=station.id,enabled=True,ingest_status='accepted',decommissioned_at=None).order_by(ImagingAsset.cart_code,ImagingAsset.name).all()
-    return render_template('admin/block_detail.html',**context(station,block=row,errors=validate_block(row),tracks=tracks,imaging=imaging,executions=executions,types=BLOCK_TYPES,policies=FAILURE_POLICIES))
+    return render_template('admin/block_detail.html',**context(station,block=row,errors=validate_block(row),tracks=tracks,executions=executions,types=BLOCK_TYPES,policies=FAILURE_POLICIES))
 
 @admin_blocks_blueprint.post('/admin/stations/<slug>/blocks/<identifier>/<operation>')
 @admin_required

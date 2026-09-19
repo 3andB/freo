@@ -6,7 +6,7 @@ from flask import Blueprint, abort, flash, jsonify, redirect, render_template, r
 from sqlalchemy import or_
 
 from app.extensions import db
-from app.models import EventBlock, ImagingAsset, LiveCartSlot, MediaCategory, Track
+from app.models import EventBlock, LiveCartSlot, MediaCategory, Track
 from app.routes.web import admin_stations, station_or_404
 from app.services.admin_auth import admin_required, can_control_playout, current_admin, require_csrf
 from app.services.live_assist import (request_deck, fire_cart, set_mixer, play_cue_on_b, assign_cart, clear_cue, cue_track, queue_block,
@@ -35,18 +35,15 @@ def page(slug):
     search = request.args.get('q', '').strip()[:100]
     pattern = search_term()
     tracks = tracks_for(station.id).filter_by(enabled=True, ingest_status='accepted', decommissioned_at=None)
-    imaging = ImagingAsset.query.filter_by(station_id=station.id, enabled=True, ingest_status='accepted', decommissioned_at=None)
     category=request.args.get('category','')
     if category:
         selected_category=MediaCategory.query.filter_by(station_id=station.id,slug=category).first_or_404();tracks=tracks.filter(Track.categories.any(MediaCategory.id==selected_category.id))
     if search:
         tracks = tracks.filter(or_(Track.title.ilike(pattern, escape='\\'), Track.artist.ilike(pattern, escape='\\'), Track.album.ilike(pattern, escape='\\')))
-        imaging = imaging.filter(or_(ImagingAsset.name.ilike(pattern, escape='\\'), ImagingAsset.cart_code.ilike(pattern, escape='\\')))
     slots=LiveCartSlot.query.filter_by(station_id=station.id).all()
     from app.services.live_mic import enabled as mic_enabled
     return render_template('admin/live.html', stations=admin_stations(), selected=station,
         page='live', mic_enabled=mic_enabled(), live=status(station), tracks=tracks.order_by(Track.title).limit(30).all(),
-        imaging=imaging.order_by(ImagingAsset.asset_type, ImagingAsset.cart_code, ImagingAsset.name).limit(60).all(),
         blocks=EventBlock.query.filter_by(station_id=station.id,enabled=True).order_by(EventBlock.name).all(),
         categories=MediaCategory.query.filter_by(station_id=station.id,enabled=True).order_by(MediaCategory.name).all(),
         hot_slots={x.position:x for x in slots if x.role=='HOT'},id_slots={x.position:x for x in slots if x.role=='ID'},
@@ -83,7 +80,7 @@ def song_search(slug):
 def action(slug, action):
     station = station_for_operator(slug)
     require_csrf()
-    if action not in ('cue-list','deck','mixer','fire-cart','play-b','hold', 'resume','mode','takeover','fade','cue','clear-cue','start-cue','repeat','assign-cart','queue-track', 'queue-imaging', 'queue-block', 'abort-block', 'skip'):
+    if action not in ('cue-list','deck','mixer','fire-cart','play-b','hold', 'resume','mode','takeover','fade','cue','clear-cue','start-cue','repeat','assign-cart','queue-track', 'queue-block', 'abort-block', 'skip'):
         abort(404)
     try:
         if action in ('mixer','play-b','takeover','fade','cue','clear-cue','start-cue','repeat','skip') and station.automation and station.automation.operator_mode == 'DJ_BOOTH':
@@ -138,7 +135,7 @@ def action(slug, action):
         elif action in ('hold', 'resume'):
             set_hold(station, current_admin(), action == 'hold')
             message = 'Automation refill held; items already queued may still play.' if action == 'hold' else 'Automation resumed using the current schedule.'
-        elif action in ('queue-track', 'queue-imaging'):
+        elif action == 'queue-track':
             if station.automation and station.automation.operator_mode == 'DJ_BOOTH':
                 raise ValueError('Load songs onto a deck in DJ mode. The queue is available in AUTO.')
             kind = action.removeprefix('queue-')
@@ -170,6 +167,5 @@ def action(slug, action):
 def cart_search(slug):
     station=station_for_operator(slug)
     pattern=search_term()
-    tracks=tracks_for(station.id).filter_by(enabled=True,ingest_status='accepted',decommissioned_at=None).filter(or_(Track.title.ilike(pattern,escape='\\'),Track.artist.ilike(pattern,escape='\\'))).order_by(Track.title).limit(50).all()
-    assets=ImagingAsset.query.filter_by(station_id=station.id,enabled=True,ingest_status='accepted',decommissioned_at=None).filter(or_(ImagingAsset.name.ilike(pattern,escape='\\'),ImagingAsset.cart_code.ilike(pattern,escape='\\'))).order_by(ImagingAsset.name).limit(50).all()
-    return jsonify([{'uuid':x.uuid,'label':f'Song · {x.artist} · {x.title}'} for x in tracks]+[{'uuid':x.uuid,'label':f'{x.asset_type.replace("_"," ")} · {x.name}'} for x in assets])
+    tracks=tracks_for(station.id).filter_by(enabled=True,ingest_status='accepted',decommissioned_at=None).filter(or_(Track.title.ilike(pattern,escape='\\'),Track.artist.ilike(pattern,escape='\\'),Track.cart_code.ilike(pattern,escape='\\'),Track.audio_subtype.ilike(pattern,escape='\\'))).order_by(Track.audio_kind.desc(),Track.title).limit(50).all()
+    return jsonify([{'uuid':x.uuid,'label':f'{x.audio_kind} · {x.audio_subtype or x.artist} · {x.title}'} for x in tracks])

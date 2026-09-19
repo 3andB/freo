@@ -31,12 +31,12 @@
     const list = $('playlist-list'); list.replaceChildren();
     for (const item of catalog.playlists) {
       const b = button(item.name, () => { if (canChange()) open(item.id); }); b.className = 'playlist-choice';
-      b.append(node('small', `${item.count} songs · ${duration(item.duration_ms)} · ${item.mode === 'RANDOM' ? 'Random' : 'Straight'}`));
+      b.append(node('small', `${item.system_key ? 'Default · ' : ''}${item.count} items · ${duration(item.duration_ms)} · ${item.mode === 'RANDOM' ? 'Random' : 'Straight'}`));
       if (current?.id === item.id) b.setAttribute('aria-current', 'true'); list.append(b);
     }
   }
   function renderSongs() {
-    $('playlist-delete').disabled=!!current.system_key;
+    $('playlist-delete').disabled=['STATION','COMMERCIALS'].includes(current.system_key);
     const list = $('playlist-songs'); list.replaceChildren();
     const term = $('playlist-search').value.trim().toLowerCase();
     const songs = current.songs.filter(s => `${s.title} ${s.artist} ${s.album}`.toLowerCase().includes(term));

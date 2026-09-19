@@ -11,7 +11,13 @@ from app.services.stations import validate_slug
 
 def set_timezone(slug, timezone_name):
     station = require_station(slug)
+    from app.services.stations import allocation_lock
+    from app.services.timed_events import timezone_changed
+    allocation_lock()
+    previous = station.timezone
     station.timezone = validate_timezone(timezone_name)
+    if station.timezone != previous:
+        timezone_changed(station,previous)
     db.session.commit()
     return station
 
@@ -50,20 +56,10 @@ def add_clock_slot(slug, clock_slug, slot_type, target):
         if not category.enabled:
             raise ValueError('Category is disabled')
         target_fields = {'category_id': category.id}
-    elif kind == 'CART':
-        from app.services.imaging import asset_for, eligible_asset
-        from app.services.media_storage import LocalMediaStorage
-        asset = asset_for(slug, target)
-        if not eligible_asset(asset, clock.station_id, LocalMediaStorage()):
-            raise ValueError('Cart is unavailable')
-        target_fields = {'imaging_asset_id': asset.id}
-    elif kind == 'IMAGING_GROUP':
-        from app.services.imaging import group_for, choose_group
-        group = group_for(slug, target)
-        asset, _, _ = choose_group(group, clock.station_id)
-        if not asset:
-            raise ValueError('Imaging group has no eligible assets')
-        target_fields = {'imaging_group_id': group.id}
+    elif kind == 'PLAYLIST':
+        from app.services.playlists import get_playlist
+        playlist = get_playlist(clock.station_id,target)
+        target_fields = {'playlist_id':playlist.id}
     elif kind == 'EVENT_BLOCK':
         from app.services.event_blocks import block_for, validate_block
         block = block_for(slug, target)
@@ -71,7 +67,7 @@ def add_clock_slot(slug, clock_slug, slot_type, target):
             raise ValueError('Event block is disabled or invalid')
         target_fields = {'event_block_id': block.id}
     else:
-        raise ValueError('Supported clock slot types: ROTATION, CATEGORY, CART, IMAGING_GROUP, EVENT_BLOCK')
+        raise ValueError('Supported clock slot types: ROTATION, CATEGORY, PLAYLIST, EVENT_BLOCK')
     position = max((slot.position for slot in clock.slots), default=0) + 1
     slot = ClockSlot(clock_id=clock.id, position=position, slot_type=kind, **target_fields)
     db.session.add(slot)

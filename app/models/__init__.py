@@ -745,7 +745,7 @@ class TimedEvent(db.Model):
     ends_on = db.Column(db.Date)
     local_time = db.Column(db.Time)
     early_tolerance_seconds = db.Column(db.Integer, nullable=False, default=0)
-    late_tolerance_seconds = db.Column(db.Integer, nullable=False, default=10)
+    late_tolerance_seconds = db.Column(db.Integer, nullable=False, default=300)
     missed_policy = db.Column(db.String(12), nullable=False, default='SKIP')
     interrupt_policy = db.Column(db.String(16), nullable=False, default='NEVER')
     priority = db.Column(db.Integer, nullable=False, default=100)
@@ -801,6 +801,16 @@ class TimedEventOccurrence(db.Model):
     station = db.relationship('Station')
     selection_decision = db.relationship('SelectionDecision', foreign_keys=[selection_decision_id],
         backref=db.backref('timed_event_occurrence', uselist=False))
+
+    @property
+    def state_label(self):
+        if self.state in ('PENDING','READY','QUEUED'):
+            if self.failure_reason == 'waiting_for_dj': return 'Waiting for DJ'
+            if self.boundary_reserved: return 'Waiting for current song'
+        if self.state == 'COMPLETED' and self.failure_reason == 'partial_playback':
+            return 'Completed with missing audio'
+        return {'PENDING':'Scheduled','READY':'Ready','QUEUED':'Queued','STARTED':'Playing',
+            'COMPLETED':'Completed','MISSED':'Missed','FAILED':'Failed','CANCELLED':'Cancelled'}.get(self.state,self.state)
 
     @property
     def timing_offset_seconds(self):

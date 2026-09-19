@@ -105,8 +105,9 @@ def test_programming_event_series_and_content_picker(booth):
     form=driver.find_element(By.CSS_SELECTOR,'.event-editor form')
     Select(form.find_element(By.NAME,'recurrence_type')).select_by_value('WEEKLY')
     form.find_element(By.NAME,'name').send_keys('Weekday announcement')
-    for day in ('0','2','4'):
-        form.find_element(By.CSS_SELECTOR,f'[name="weekdays"][value="{day}"]').click()
+    for choice in form.find_elements(By.NAME,'weekdays'):
+        if choice.is_selected() != (choice.get_attribute('value') in ('0','2','4')):
+            choice.click()
     driver.execute_script("arguments[0].value='10:15:00'",form.find_element(By.NAME,'local_time'))
     with app.app_context():
         identifier=Track.query.first().uuid

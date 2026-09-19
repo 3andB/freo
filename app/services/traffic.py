@@ -42,7 +42,10 @@ def update_campaign(row,name,start_date,end_date,target=None,priority=100,notes=
     if start_date>end_date: raise ValueError('Campaign start date must not follow end date')
     row.name=clean(name,120,True);row.start_date=start_date;row.end_date=end_date;row.target_spot_count=int(target) if target not in (None,'') else None;row.priority=int(priority);row.notes=clean(notes,1000);return row
 def attach_creative(campaign,asset_uuid,name,creative_code):
-    asset=Track.query.filter_by(station_id=campaign.station_id,uuid=asset_uuid,deleted_at=None).first() or ImagingAsset.query.filter_by(station_id=campaign.station_id,uuid=asset_uuid).first()
+    asset=Track.query.filter_by(station_id=campaign.station_id,uuid=asset_uuid,deleted_at=None).first()
+    if not asset:
+        from app.services.audio_classification import migrated_audio
+        asset=migrated_audio(campaign.station_id,asset_uuid)
     if not asset or asset.ingest_status!='accepted' or asset.decommissioned_at: raise ValueError('Creative audio is unavailable or cross-station')
     if (asset.audio_kind if isinstance(asset,Track) else asset.asset_type) not in ('COMMERCIALS','COMMERCIAL'): raise ValueError('Creative audio must use COMMERCIALS')
     row=CommercialCreative(station_id=campaign.station_id,campaign_id=campaign.id,track_id=asset.id if isinstance(asset,Track) else None,imaging_asset_id=asset.id if isinstance(asset,ImagingAsset) else None,name=clean(name,120,True),creative_code=clean(creative_code,40,True));db.session.add(row);db.session.commit();return row
@@ -54,12 +57,13 @@ def create_stopset(code,name,days,local_time,capacity,max_spots=None,timing_mode
     if timing_mode not in ('SOFT','HARD','NON_INTERRUPTING') or int(capacity)<=0: raise ValueError('Invalid stopset settings')
     row=TrafficStopset(station_id=s.id,name=clean(name,120,True),slug=slug(name),weekdays=weekdays(days),local_time=local_time,capacity_seconds=int(capacity),max_spots=max_spots,timing_mode=timing_mode);db.session.add(row);db.session.commit();return row
 def add_template_item(stopset,item_type,asset_uuid=None):
+    if item_type=='FIXED_IMAGING':
+        from app.services.audio_classification import migrated_audio
+        asset_uuid=migrated_audio(stopset.station_id,asset_uuid).uuid
+        item_type='FIXED_AUDIO'
     if item_type=='FIXED_AUDIO':
         asset=Track.query.filter_by(station_id=stopset.station_id,uuid=asset_uuid,enabled=True,ingest_status='accepted',deleted_at=None,decommissioned_at=None).first()
         if not asset: raise ValueError('Fixed audio is unavailable or cross-station')
-    elif item_type=='FIXED_IMAGING':
-        asset=ImagingAsset.query.filter_by(station_id=stopset.station_id,uuid=asset_uuid,enabled=True,ingest_status='accepted').first()
-        if not asset: raise ValueError('Fixed imaging is unavailable or cross-station')
     elif item_type=='COMMERCIAL_SLOT': asset=None
     else: raise ValueError('Unsupported stopset item type')
     row=TrafficStopsetItem(stopset=stopset,position=len(stopset.template_items)+1,item_type=item_type,track_id=asset.id if isinstance(asset,Track) else None,imaging_asset_id=asset.id if isinstance(asset,ImagingAsset) else None);db.session.add(row);db.session.commit();return row
@@ -115,6 +119,9 @@ def finalize_log(log):
             creative=next(pi,None) if template.item_type=='COMMERCIAL_SLOT' else None
             asset=template.audio if template.item_type in ('FIXED_IMAGING','FIXED_AUDIO') else creative.creative.audio if creative else None
             if not asset: continue
+            if isinstance(asset,ImagingAsset):
+                from app.services.audio_classification import migrated_audio
+                asset=migrated_audio(station.id,asset.uuid)
             position+=1;item=EventBlockItem(event_block_id=block.id,position=position,item_type='TRACK' if isinstance(asset,Track) else 'IMAGING_ASSET',track_id=asset.id if isinstance(asset,Track) else None,imaging_asset_id=asset.id if isinstance(asset,ImagingAsset) else None,enabled=True,label=creative.creative_name if creative else getattr(asset,'title',None) or asset.name);db.session.add(item);db.session.flush()
             if creative: creative.event_block_item_id=item.id;creative.status='MATERIALIZED'
         if validate_block(block): raise ValueError('Materialized stopset is invalid')
