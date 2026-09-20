@@ -9,6 +9,15 @@ from app.services import visual_schedule as vs
 from tests.test_live_browser import booth, app_fixture, wait_text
 
 
+def saved_calendar(app,driver,predicate=lambda rows:True):
+    def saved(_):
+        with app.app_context():
+            row=ChannelSchedule.query.first()
+            if row and predicate(row.calendar) and driver.find_element(By.ID,'save-state').text=='Saved':
+                return dict(entries=json.loads(json.dumps(row.calendar)),revision=row.revision)
+    return WebDriverWait(driver,10).until(saved)
+
+
 def test_overnight_series_stale_save_and_geometry(booth):
     app, driver, base, tmp_path = booth
     out = {}
@@ -27,8 +36,8 @@ def test_overnight_series_stale_save_and_geometry(booth):
         driver.execute_script("document.querySelector('.timeline-section').dispatchEvent(new MouseEvent('dblclick',{bubbles:true}))")
         WebDriverWait(driver,5).until(lambda d:d.find_element(By.ID,'section-inspector').is_displayed())
     def draft():
-        WebDriverWait(driver,5).until(lambda d:d.execute_script("return !!localStorage.getItem('freo-schedule:test-station:calendar:draft')"))
-        return driver.execute_script("return JSON.parse(localStorage.getItem('freo-schedule:test-station:calendar:draft'))")
+        WebDriverWait(driver,5).until(lambda d:not d.find_element(By.ID,'section-inspector').is_displayed())
+        return saved_calendar(app,driver)
     def row(start=82800,end=93600,freq='weekly',exceptions=None):
         return dict(id='audit',start=start,end=end,rule=dict(frequency=freq,anchor='2026-09-21',weekdays=[0],interval=1,exceptions=exceptions or []))
     seed([row()]);visit('2026-09-22');edit()
@@ -51,11 +60,10 @@ def test_overnight_series_stale_save_and_geometry(booth):
     time.sleep(4.5)
     edit();driver.execute_script("document.getElementById('section-start').value='08:00:00'")
     driver.find_element(By.CSS_SELECTOR,'#section-form button[type=submit]').click()
-    out['stale_revision']={'draft_revision':draft()['revision'],'remote_revision':new_revision,'local_end':draft()['entries'][0]['end']}
-    driver.find_element(By.ID,'save-schedule').click();wait_text(driver,'#studio-message','Another editor changed this schedule')
-    with app.app_context():
-        out['stale_saved_end']=ChannelSchedule.query.first().calendar[0]['end']
-    assert out['stale_saved_end']==39600
+    current=draft()
+    assert current['entries'][0]['start']==28800 and current['entries'][0]['end']==39600
+    assert 'another session' not in driver.find_element(By.ID,'studio-message').text
+    assert not driver.find_elements(By.ID,'save-schedule')
     # Inspect responsive overflow for the Show duration slider and overview.
     driver.execute_script('FreoPage.dispose();localStorage.clear()')
     driver.get(base+'/admin/stations/test-station/schedule-studio/shows')
@@ -97,27 +105,25 @@ def test_cancel_overlap_and_edits_while_saving(booth):
     assert driver.find_element(By.ID,'undo-edit').get_attribute('disabled')
     driver.find_element(By.CSS_SELECTOR,'#section-inspector .dialog-close').click()
     # Delay the actual save response while permitting a newer edit in the UI.
-    driver.execute_script("""const original=FreoPage.fetch.bind(FreoPage);window.releaseSave=null;FreoPage.fetch=async(...args)=>{const response=await original(...args);if(args[0].endsWith('/calendar')&&args[1]?.method==='POST')await new Promise(resolve=>window.releaseSave=resolve);return response;};document.querySelector('[data-id=series]').dispatchEvent(new MouseEvent('dblclick',{bubbles:true}));""")
+    driver.execute_script("""const original=FreoPage.fetch.bind(FreoPage);window.releaseSave=null;FreoPage.fetch=async(...args)=>{const response=await original(...args);if(args[0].endsWith('/calendar')&&args[1]?.method==='POST'){FreoPage.fetch=original;await new Promise(resolve=>window.releaseSave=resolve);}return response;};document.querySelector('[data-id=series]').dispatchEvent(new MouseEvent('dblclick',{bubbles:true}));""")
     Select(driver.find_element(By.ID,'edit-scope')).select_by_value('series')
     driver.execute_script("document.getElementById('section-start').value='08:00:00'")
     driver.find_element(By.CSS_SELECTOR,'#section-form button[type=submit]').click()
     WebDriverWait(driver,5).until(lambda d:not d.find_element(By.ID,'section-inspector').is_displayed())
-    driver.find_element(By.ID,'save-schedule').click()
     WebDriverWait(driver,10).until(lambda d:d.execute_script('return !!window.releaseSave'))
     driver.execute_script("document.querySelector('[data-id=series]').dispatchEvent(new MouseEvent('dblclick',{bubbles:true}))")
     Select(driver.find_element(By.ID,'edit-scope')).select_by_value('series')
     driver.execute_script("document.getElementById('section-start').value='07:00:00'")
     driver.find_element(By.CSS_SELECTOR,'#section-form button[type=submit]').click()
     WebDriverWait(driver,5).until(lambda d:not d.find_element(By.ID,'section-inspector').is_displayed())
+    with app.app_context():assert ChannelSchedule.query.first().calendar[0]['start']==28800
     driver.execute_script('window.releaseSave()')
-    wait_text(driver,'#studio-message','Newer edits still need saving')
-    assert driver.find_element(By.ID,'save-state').text=='Unsaved changes'
-    draft=driver.execute_script("return JSON.parse(localStorage.getItem('freo-schedule:test-station:calendar:draft'))")
-    assert next(r for r in draft['entries'] if r['id']=='series')['start']==25200
-    with app.app_context():
-        rows=ChannelSchedule.query.first().calendar
-        assert next(r for r in rows if r['id']=='series')['start']==28800
-        assert next(r for r in rows if r['id']=='series')['rule']['exceptions']==[]
+    saved=saved_calendar(app,driver,lambda rows:next(r for r in rows if r['id']=='series')['start']==25200)
+    assert next(r for r in saved['entries'] if r['id']=='series')['rule']['exceptions']==[]
+    driver.find_element(By.ID,'undo-edit').click()
+    saved_calendar(app,driver,lambda rows:next(r for r in rows if r['id']=='series')['start']==28800)
+    driver.find_element(By.ID,'redo-edit').click()
+    saved_calendar(app,driver,lambda rows:next(r for r in rows if r['id']=='series')['start']==25200)
 
 
 def test_horizontal_drag_and_exact_duration(booth):
@@ -133,9 +139,7 @@ def test_horizontal_drag_and_exact_duration(booth):
     driver.execute_script("arguments[0].scrollIntoView({block:'center'})",el)
     width=driver.execute_script("return document.querySelector('.time-column').getBoundingClientRect().width")
     ActionChains(driver).move_to_element(el).click_and_hold().move_by_offset(round(width),0).pause(.15).release().perform()
-    WebDriverWait(driver,5).until(lambda d:d.execute_script("const raw=localStorage.getItem('freo-schedule:test-station:calendar:draft');return raw&&JSON.parse(raw).entries[0].rule.anchor==='2026-09-22'"))
-    driver.execute_script("document.getElementById('save-schedule').scrollIntoView({block:'center'})")
-    driver.find_element(By.ID,'save-schedule').click();wait_text(driver,'#save-state','Saved')
+    saved_calendar(app,driver,lambda rows:rows[0]['rule']['anchor']=='2026-09-22')
     driver.get(base+'/admin/stations/test-station/schedule-studio/shows')
     WebDriverWait(driver,10).until(lambda d:d.find_elements(By.ID,'duration-minutes'))
     driver.execute_script("const input=document.getElementById('duration-minutes');input.value=16;input.dispatchEvent(new Event('change'))")
@@ -179,5 +183,5 @@ def test_drag_auto_scroll_keeps_elapsed_time_in_delta(booth):
     scrolled=driver.execute_script("return document.getElementById('timeline').scrollTop")
     assert scrolled>650,driver.execute_script('return {probe:dragProbe,message:document.getElementById("studio-message").textContent}')
     ActionChains(driver).release().perform()
-    draft=driver.execute_script("return JSON.parse(localStorage.getItem('freo-schedule:test-station:calendar:draft'))")
+    draft=saved_calendar(app,driver,lambda rows:rows[0]['start']>32400)
     assert draft['entries'][0]['start']>=32400+(delta+scrolled-600)*3600/84-120

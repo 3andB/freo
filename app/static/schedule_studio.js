@@ -4,7 +4,7 @@
 const root=document.getElementById('schedule-studio');if(!root)return;
 const page=window.FreoPage, editor=window.FreoScheduleEditor;
 const $=id=>document.getElementById(id), clone=value=>structuredClone(value), uid=()=>crypto.randomUUID();
-const view=root.dataset.view, composing=['shows','blocks'].includes(view);
+const view=root.dataset.view, composing=['shows','blocks'].includes(view), autosave=view==='calendar';
 let state=JSON.parse($('schedule-initial').value), compositions=[], composition={kind:view==='blocks'?'BLOCK':'SHOW',name:'',description:'',duration:view==='blocks'?86400:3600,sections:[]};
 let entries=clone(state.calendar), assignments=clone(state.assignments), simple=clone(state.simple), dirty=false, undo=[],redo=[],libraryKind=view==='shows'?'playlist':'show',sourcePage=1,dragged=null,editing=null,accordion=false,expanded=new Set(composing?[0]:[9,10,11]),events=[],pattern=[];
 let searchController,searchTimer,hoverTimer,hoverHour,selectedDate=new Intl.DateTimeFormat('en-CA',{timeZone:state.timezone,year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date()),layout='Week';
@@ -15,8 +15,20 @@ let favorites=stored('favorites'),recent=stored('recent');
 let selectedSection=null,repeatDisplay='compact',filterText='',filterKind='',suppressClick=false,scopeProposal=null;
 try{repeatDisplay=localStorage.getItem(localKey+':recurring')||'compact';}catch{}
 let baseRevision=state.revision, editGeneration=0, saving=false, validations=0, eventRequest=0, dragActive=false, renderPending=false;
+let saveTimer,savePromise,saveBlocked=false,saveConflict=null,retryDelay=1000,refreshing=false;
+const saveButton=$('save-schedule'), same=editor.equal;
 function message(value,error=false){$('studio-message').textContent=value;$('studio-message').classList.toggle('error',error);}
-async function api(action,data){const options=data===undefined?{}:{method:'POST',body:new URLSearchParams({csrf:root.dataset.csrf,payload:JSON.stringify(data)})};const response=await page.fetch(root.dataset.api+action,options);const result=await response.json();if(!response.ok)throw Error(result.error||'Unable to save');return result;}
+async function api(action,data){
+    const options=data===undefined?{}:{method:'POST',body:new URLSearchParams({csrf:root.dataset.csrf,payload:JSON.stringify(data)})};
+    const response=await page.fetch(root.dataset.api+action,options);
+    if(!response.headers.get('content-type')?.includes('application/json')){
+        if(response.status>=500)throw Object.assign(Error('Server temporarily unavailable. Your changes will retry automatically.'),{status:response.status,retryable:true});
+        throw Object.assign(Error('Sign in again to save. Your changes are kept in this browser.'),{status:401});
+    }
+    const result=await response.json();
+    if(!response.ok)throw Object.assign(Error(result.error||'Unable to save'),{status:response.status,retryable:result.retryable||response.status>=500,conflict:result.conflict,latest:result.state});
+    return result;
+}
 function dateObj(day){return new Date(day+'T12:00:00Z');}
 function iso(day){return day.toISOString().slice(0,10);}
 function shift(day,n){const d=dateObj(day);d.setUTCDate(d.getUTCDate()+n);return iso(d);}
@@ -29,9 +41,19 @@ function button(text,fn){const el=node('button',text);el.type='button';el.addEve
 function snapshot(){return {entries:clone(entries),assignments:clone(assignments),simple:clone(simple),composition:clone(composition)};}
 function restore(saved){({entries,assignments,simple,composition}=clone(saved));syncComposition();render();markDirty();}
 function before(){undo.push(snapshot());if(undo.length>50)undo.shift();redo=[];}
-function markDirty(){editGeneration++;dirty=true;$('save-state').textContent='Unsaved changes';$('undo-edit').disabled=!undo.length;$('redo-edit').disabled=!redo.length;try{localStorage.setItem(localKey+':draft',JSON.stringify({revision:baseRevision,...snapshot()}));}catch{}}
+function rememberDraft(){try{localStorage.setItem(localKey+':draft',JSON.stringify({revision:baseRevision,base:{calendar:state.calendar,assignments:state.assignments,simple:state.simple},...snapshot()}));}catch{}}
+function queueSave(delay=400){
+    clearTimeout(saveTimer);saveTimer=null;
+    if(autosave&&dirty&&!saveBlocked&&!page.signal.aborted)saveTimer=setTimeout(()=>{saveTimer=null;save();},delay);
+}
+function markDirty(){
+    editGeneration++;dirty=true;if(!saveConflict)saveBlocked=false;
+    $('save-state').textContent=saveConflict?'Not saved':autosave?'Saving…':'Unsaved changes';
+    $('undo-edit').disabled=!undo.length;$('redo-edit').disabled=!redo.length;
+    rememberDraft();queueSave();
+}
 $('undo-edit').onclick=()=>{if(!undo.length)return;redo.push(snapshot());restore(undo.pop());};$('redo-edit').onclick=()=>{if(!redo.length)return;undo.push(snapshot());restore(redo.pop());};
-function updateStatus(){const pending=state.transition&&['PENDING','PREPARING','FADING'].includes(state.transition.state);$('active-mode').textContent=pending?`Switching ${state.mode} → ${state.transition.mode}…`:`Active mode: ${state.mode.charAt(0)+state.mode.slice(1).toLowerCase()}`;$('mode-detail').textContent=`${state.timezone} · ${state.playing_fallback?'Playing default playlist: '+(state.fallback?.name||'Unavailable'):state.activated?'Following your saved programming':'Existing programming retained until activation'}`;document.querySelectorAll('[data-mode-badge]').forEach(el=>{const active=el.dataset.modeBadge===state.mode;el.textContent=active?'● Active':'Open workspace';el.classList.toggle('is-active',active);});const activate=$('activate-mode');if(activate){activate.disabled=pending;activate.textContent=state.mode===view.toUpperCase()&&state.activated?(view==='simple'?'Change what plays':'Active mode'):'Use '+view[0].toUpperCase()+view.slice(1);if(state.held&&state.activated)activate.textContent='Resume '+view[0].toUpperCase()+view.slice(1);if(view!=='simple'&&state.mode===view.toUpperCase()&&state.activated&&!state.held)activate.disabled=true;}document.querySelectorAll('.schedule-mode-status').forEach(el=>el.textContent=$('active-mode').textContent);if(state.transition?.state==='FAILED')message(state.transition.error,true);}
+function updateStatus(){const pending=state.transition&&['PENDING','PREPARING','FADING'].includes(state.transition.state);$('active-mode').textContent=pending?`Switching ${state.mode} → ${state.transition.mode}…`:`Active mode: ${state.mode.charAt(0)+state.mode.slice(1).toLowerCase()}`;$('mode-detail').textContent=`${state.timezone} · ${state.playing_fallback?'Playing default playlist: '+(state.fallback?.name||'Unavailable'):state.activated?'Following your saved programming':'Existing programming retained until activation'}`;document.querySelectorAll('[data-mode-badge]').forEach(el=>{const active=el.dataset.modeBadge===state.mode;el.textContent=active?'● Active':'Open workspace';el.classList.toggle('is-active',active);});const activate=$('activate-mode');if(activate){activate.disabled=pending||saving||validations>0;activate.textContent=state.mode===view.toUpperCase()&&state.activated?(view==='simple'?'Change what plays':'Active mode'):'Use '+view[0].toUpperCase()+view.slice(1);if(state.held&&state.activated)activate.textContent='Resume '+view[0].toUpperCase()+view.slice(1);if(view!=='simple'&&state.mode===view.toUpperCase()&&state.activated&&!state.held)activate.disabled=true;}document.querySelectorAll('.schedule-mode-status').forEach(el=>el.textContent=$('active-mode').textContent);if(state.transition?.state==='FAILED')message(state.transition.error,true);}
 const matches=editor.matches;
 function dayEntries(day){return editor.coverage(entries,day);}
 function assigned(day){return assignments.filter(a=>matches(a.rule,day)).map(a=>({...a,source:a.pattern[Math.round((dateObj(day)-dateObj(a.rule.anchor))/86400000)%a.pattern.length]}));}
@@ -247,7 +269,7 @@ async function applyItem(value,day,scope='series',origin=day,accept=()=>true){
     if(lost&&!confirm('Remove the inserted songs outside the new section bounds? This can be undone.'))return false;
     const generation=editGeneration;
     if(!composing){
-        validations++;$('save-schedule').disabled=true;
+        validations++;if(saveButton)saveButton.disabled=true;
         try{
             const checked=await api('calendar-preview',{items:proposal.items});
             if(!accept()||page.signal.aborted)return false;
@@ -256,7 +278,7 @@ async function applyItem(value,day,scope='series',origin=day,accept=()=>true){
         }catch(error){
             if(!accept()||page.signal.aborted)return false;
             message(error.message,true);$('move-scope-error').textContent=error.message;$('section-time-error').textContent=error.message;return false;
-        }finally{validations--;$('save-schedule').disabled=saving||validations>0;}
+        }finally{validations--;if(saveButton)saveButton.disabled=saving||validations>0;if(!validations&&dirty&&!saving)queueSave();}
     }
     if(!accept()||page.signal.aborted)return false;
     before();if(composing)composition.sections=proposal.items;else entries=proposal.items;selectedSection={id:proposal.value.id,origin:day,day};
@@ -282,38 +304,117 @@ if(composing){let savedSearchTimer;$('composition-search').oninput=()=>{clearTim
 function setDuration(value){value=Number(value);if(!Number.isInteger(value)||value<900||value>86400){syncComposition();message('Enter a duration from 15 to 1,440 minutes.',true);return;}const crossed=composition.sections.some(s=>s.end>value);if(crossed&&!confirm('Trim sections beyond the new Show end? This can be undone.')){syncComposition();return;}before();composition.duration=value;composition.sections=composition.sections.filter(s=>s.start<value).map(s=>({...s,end:Math.min(s.end,value),inserts:(s.inserts||[]).filter(i=>i.at<value)}));syncComposition();markDirty();render();}
 if(view==='shows'){$('show-duration').onchange=e=>setDuration(e.target.value);$('duration-minutes').onchange=e=>setDuration(Number(e.target.value)*60);$('duration-slider').onchange=e=>setDuration(e.target.value);$('duration-slider').oninput=e=>{$('duration-minutes').value=Number(e.target.value)/60;};}
 if(view==='simple'){const stage=$('simple-selection');stage.ondragover=e=>e.preventDefault();stage.ondrop=e=>{e.preventDefault();if(dragged)chooseSource(dragged);dragged=null;};}
-async function save(){
-    if(saving||validations)return;
-    saving=true;$('save-schedule').disabled=true;
-    const sent=snapshot(),generation=editGeneration;
+function documentKey(){return view==='calendar'?'calendar':view==='simple'?'simple':'assignments';}
+function adoptState(latest){
+    if(latest.revision<baseRevision)return;
+    const key=documentKey(),changed=!same(state[key],latest[key]);
+    const editingDetails=$('section-inspector').open||scopeProposal||dragActive||validations||$('mode-confirm').open;
+    if(!saving&&!editingDetails&&!saveConflict&&(!dirty||!changed)){
+        if(!dirty){
+            if(view==='calendar')entries=clone(latest.calendar);
+            if(view==='simple')simple=clone(latest.simple);
+            if(view==='blocks')assignments=clone(latest.assignments);
+            if(changed){undo=[];redo=[];$('undo-edit').disabled=$('redo-edit').disabled=true;}
+        }
+        state=latest;baseRevision=latest.revision;
+        if(changed&&!dirty)render();
+    }else{
+        for(const key of ['mode','activated','held','transition','playing_fallback','fallback','broadcast'])state[key]=latest[key];
+    }
+    updateStatus();
+}
+function showConflict(error,base){
+    saveConflict={base:clone(base),latest:error.latest};saveBlocked=true;
+    $('save-conflict').hidden=false;$('retry-save').hidden=true;$('save-state').textContent='Not saved';
+    message(error.message+' Your edits are kept here.',true);rememberDraft();
+}
+function save(){
+    clearTimeout(saveTimer);saveTimer=null;
+    if(savePromise)return savePromise;
+    if(!dirty||validations||saveBlocked)return Promise.resolve(!dirty);
+    savePromise=performSave().finally(()=>{savePromise=null;});
+    return savePromise;
+}
+async function performSave(){
+    saving=true;if(saveButton)saveButton.disabled=true;$('save-state').textContent='Saving…';$('retry-save').hidden=true;
+    const sent=snapshot(),generation=editGeneration,base=clone({calendar:state.calendar,assignments:state.assignments,simple:state.simple});
     const controls=['composition-select','new-composition','duplicate-composition','apply-composition','activate-mode'];
     for(const id of controls)if($(id))$(id).disabled=true;
+    let retry=false;
     try{
         let result;
         if(composing){
-            result=await api(view==='blocks'?'block-workspace':'composition',view==='blocks'?{composition:sent.composition,items:sent.assignments,revision:baseRevision}:sent.composition);
+            result=await api(view==='blocks'?'block-workspace':'composition',view==='blocks'?{composition:sent.composition,items:sent.assignments,revision:baseRevision,base:base.assignments}:sent.composition);
             const saved=view==='blocks'?result.composition:result;
-            if(view==='blocks'){baseRevision=result.revision;state.assignments=clone(sent.assignments);}
             if(editGeneration===generation)composition=saved;
             else{composition.id=saved.id;composition.revision=saved.revision;}
             for(const stack of [undo,redo])for(const snapshot of stack){snapshot.composition.id=saved.id;snapshot.composition.revision=saved.revision;}
-            compositions=compositions.filter(c=>c.id!==saved.id).concat(saved);
-            syncComposition();
+            if(view==='blocks'){
+                baseRevision=result.revision;
+                try{assignments=editor.mergeItems(sent.assignments,assignments,result.items);}
+                catch(error){showConflict(Object.assign(error,{latest:{...state,revision:result.revision,assignments:result.items}}),{...base,assignments:sent.assignments});return false;}
+                for(const stack of [undo,redo])for(const item of stack)item.assignments=editor.mergeItems(sent.assignments,item.assignments,result.items,true);
+                state.assignments=clone(result.items);
+            }
+            compositions=compositions.filter(c=>c.id!==saved.id).concat(saved);syncComposition();
         }else{
-            result=await api(view==='simple'?'simple':'calendar',view==='simple'?{revision:baseRevision,source:sent.simple}:{revision:baseRevision,items:sent.entries});
+            result=await api(view==='simple'?'simple':'calendar',view==='simple'?{revision:baseRevision,source:sent.simple,base:base.simple}:{revision:baseRevision,items:sent.entries,base:base.calendar});
             baseRevision=result.revision;
-            if(view==='calendar'){state.calendar=clone(result.items);if(editGeneration===generation)entries=clone(result.items);}
+            if(view==='calendar'){
+                try{entries=editor.mergeItems(sent.entries,entries,result.items);}
+                catch(error){showConflict(Object.assign(error,{latest:{...state,revision:result.revision,calendar:result.items}}),{...base,calendar:sent.entries});return false;}
+                // Rebase Undo/Redo as well, so an undo cannot erase someone else's unrelated entry.
+                for(const stack of [undo,redo])for(const item of stack)item.entries=editor.mergeItems(sent.entries,item.entries,result.items,true);
+                state.calendar=clone(result.items);
+            }else{state.simple=clone(result.source);if(editGeneration===generation)simple=clone(result.source);}
         }
-        state.revision=baseRevision;
-        if(editGeneration===generation){dirty=false;undo=[];redo=[];localStorage.removeItem(localKey+':draft');$('save-state').textContent='Saved';$('undo-edit').disabled=true;$('redo-edit').disabled=true;}
-        else markDirty();
-        message(dirty?'Saved submitted changes. Newer edits still need saving.':view==='shows'?'Show saved. Add it to Calendar, a Block, or Simple.':view==='blocks'?'Block and assignments saved together. Existing assignments keep their selected revision; use Apply to future uses to update them.':'Saved. '+(state.mode===view.toUpperCase()&&state.activated?'The active mode will use these changes.':'Use this mode when you are ready to put it on air.'));
-        render();
-        if(composing)await loadCompositions();
-    }catch(error){message(error.message,true);}
-    finally{saving=false;$('save-schedule').disabled=validations>0;for(const id of controls)if($(id))$(id).disabled=false;updateStatus();}
+        state.revision=baseRevision;retryDelay=1000;
+        if(editGeneration===generation){
+            dirty=false;localStorage.removeItem(localKey+':draft');$('save-state').textContent='Saved';
+            if(!autosave){undo=[];redo=[];$('undo-edit').disabled=$('redo-edit').disabled=true;}
+        }else{rememberDraft();$('save-state').textContent=autosave?'Saving…':'Unsaved changes';}
+        message(autosave?(dirty?'Saving latest changes…':'Changes saved automatically.'):dirty?'Saved submitted changes. Newer edits still need saving.':view==='shows'?'Show saved. Add it to Calendar, a Block, or Simple.':view==='blocks'?'Block and assignments saved together.':'Saved.');
+        render();if(composing)await loadCompositions();return true;
+    }catch(error){
+        if(error.conflict)showConflict(error,base);
+        else{
+            retry=autosave&&(error.retryable||!error.status);saveBlocked=!retry;
+            $('save-state').textContent=retry?'Not saved · retrying…':'Not saved';$('retry-save').hidden=false;
+            message(error.message||'Could not save. Your edits are kept here.',true);rememberDraft();
+        }
+        return false;
+    }finally{
+        saving=false;if(saveButton)saveButton.disabled=validations>0;for(const id of controls)if($(id))$(id).disabled=false;updateStatus();
+        if(dirty&&autosave&&!saveBlocked){queueSave(retry?retryDelay:100);if(retry)retryDelay=Math.min(retryDelay*2,15000);}
+    }
 }
-$('save-schedule').onclick=save;
+if(saveButton)saveButton.onclick=()=>{saveBlocked=false;save();};
+$('retry-save').onclick=()=>{saveBlocked=false;save();};
+async function resolveConflict(keep){
+    if(!saveConflict||saving)return;
+    try{
+        const latest=await api('state'),prior=saveConflict.base;
+        if(keep&&view!=='simple'){
+            const key=view==='calendar'?'entries':'assignments',document=view==='calendar'?'calendar':'assignments';
+            for(const stack of [undo,redo])for(const item of stack)item[key]=editor.mergeItems(prior[document],item[key],latest[document],true);
+        }
+        if(view==='calendar')entries=keep?editor.mergeItems(prior.calendar,entries,latest.calendar,true):clone(latest.calendar);
+        if(view==='blocks')assignments=keep?editor.mergeItems(prior.assignments,assignments,latest.assignments,true):clone(latest.assignments);
+        if(view==='simple'&&!keep)simple=clone(latest.simple);
+        state=latest;baseRevision=latest.revision;saveConflict=null;saveBlocked=false;$('save-conflict').hidden=true;
+        if(keep||composing){markDirty();await save();}else{resetHistory();render();message('Latest saved schedule loaded.');}
+    }catch(error){message(error.message,true);}
+}
+$('use-latest-schedule').onclick=()=>resolveConflict(false);$('keep-schedule-edits').onclick=()=>resolveConflict(true);
+async function flushCalendar(){
+    clearTimeout(saveTimer);
+    // A drag's preview validation may still be returning when navigation begins.
+    while(validations)await new Promise(resolve=>setTimeout(resolve,30));
+    while(dirty&&!saveBlocked){if(!await save())break;}
+    return !dirty;
+}
+if(autosave)page.beforeLeave=flushCalendar;
+
 if(view!=='simple'){
     $('edit-selected-section').onclick=()=>{const item=selectedSection&&(composing?composition.sections:entries).find(row=>row.id===selectedSection.id);if(item)openInspector({...item,origin:selectedSection.origin},selectedSection.day);};
     $('clear-selected-section').onclick=()=>{selectedSection=null;render();};
@@ -321,7 +422,7 @@ if(view!=='simple'){
     $('cancel-move-scope').onclick=cancelScope;$('move-scope-dialog').oncancel=e=>{e.preventDefault();cancelScope();};
     $('apply-move-scope').onclick=async()=>{
         if(!scopeProposal)return;const proposal=scopeProposal,scope=$('move-scope').value,value=clone(proposal.candidate);$('apply-move-scope').disabled=true;
-        try{value.rule=editor.movedRule(value.rule,proposal.origin,proposal.day,scope);if(await applyItem(value,proposal.day,scope,proposal.origin,()=>scopeProposal===proposal)){scopeProposal=null;$('move-scope-dialog').close();message('Schedule updated in draft. Save to publish.');}}
+        try{value.rule=editor.movedRule(value.rule,proposal.origin,proposal.day,scope);if(await applyItem(value,proposal.day,scope,proposal.origin,()=>scopeProposal===proposal)){scopeProposal=null;$('move-scope-dialog').close();message(autosave?'Schedule updated. Saving automatically…':'Schedule updated in draft. Save to publish.');}}
         finally{$('apply-move-scope').disabled=false;}
     };
     $('section-start').oninput=$('section-end').oninput=()=>{if(seconds($('section-end').value)<=seconds($('section-start').value))$('section-end-day').value='1';};
@@ -348,14 +449,44 @@ async function loadEvents(){
 let copiedSection=null;
 root.addEventListener('keydown',e=>{if(/INPUT|TEXTAREA|SELECT/.test(e.target.tagName))return;const block=e.target.closest('.timeline-section');if((e.ctrlKey||e.metaKey)&&e.key==='c'&&block){const list=composing?composition.sections:entries;copiedSection=clone(list.find(r=>r.id===block.dataset.id));e.preventDefault();message('Section copied. Navigate to a day and paste.');}if((e.ctrlKey||e.metaKey)&&e.key==='v'&&copiedSection){e.preventDefault();const copy=clone(copiedSection);copy.id=uid();if(!composing)copy.rule={...copy.rule,frequency:'once',anchor:selectedDate,until:null,starts_on:null,exceptions:[]};applyItem(copy,selectedDate);}});
 let transitionId;
-if($('activate-mode'))$('activate-mode').onclick=async()=>{if(dirty){message('Save your changes before activating this mode.',true);return;}try{state=await api('state');if(state.revision!==baseRevision){message('The saved schedule changed. Reload before switching modes.',true);return;}const preview=await api('transition-preview',{mode:view.toUpperCase(),simple});$('mode-confirm-title').textContent=state.mode===view.toUpperCase()?'Change what Simple plays?':`Switch from ${state.mode} to ${view.toUpperCase()}?`;$('mode-confirm-detail').textContent=`Current mode: ${state.mode}. New mode: ${view.toUpperCase()}. This also interrupts any current Event or live audio.`;$('mode-confirm-play').textContent=preview.source?'Will play now: '+preview.source.name+(preview.reason?' · Default playlist ('+preview.reason+')':''):'Nothing playable. Select a default playlist in Station settings.';$('confirm-mode').disabled=!preview.playable;transitionId=uid();$('mode-confirm').showModal();}catch(error){message(error.message,true);}};
-$('cancel-mode').onclick=()=>$('mode-confirm').close();$('confirm-mode').onclick=async()=>{const b=$('confirm-mode');b.disabled=true;try{await api('transition',{id:transitionId,current:state.mode,mode:view.toUpperCase(),revision:baseRevision,simple});$('mode-confirm').close();state=await api('state');updateStatus();message('Switch requested. Waiting for the playback engine.');}catch(error){message(error.message,true);b.disabled=false;}};
+if($('activate-mode'))$('activate-mode').onclick=async()=>{
+    if(autosave&&!await flushCalendar())return;
+    if(dirty){message('Save your changes before activating this mode.',true);return;}
+    try{
+        adoptState(await api('state'));
+        const preview=await api('transition-preview',{mode:view.toUpperCase(),simple});
+        $('mode-confirm-title').textContent=state.mode===view.toUpperCase()?'Change what Simple plays?':`Switch from ${state.mode} to ${view.toUpperCase()}?`;
+        $('mode-confirm-detail').textContent=`Current mode: ${state.mode}. New mode: ${view.toUpperCase()}. This also interrupts any current Event or live audio.`;
+        $('mode-confirm-play').textContent=preview.source?'Will play now: '+preview.source.name+(preview.reason?' · Default playlist ('+preview.reason+')':''):'Nothing playable. Select a default playlist in Station settings.';
+        $('confirm-mode').disabled=!preview.playable;transitionId={id:uid(),current:state.mode,mode:view.toUpperCase(),revision:baseRevision,simple:clone(simple)};$('mode-confirm').showModal();
+    }catch(error){message(error.message,true);}
+};
+$('cancel-mode').onclick=()=>$('mode-confirm').close();
+$('confirm-mode').onclick=async()=>{const b=$('confirm-mode');b.disabled=true;try{await api('transition',transitionId);$('mode-confirm').close();adoptState(await api('state'));message('Switch requested. Waiting for the playback engine.');}catch(error){message(error.message,true);b.disabled=false;}};
 function renderPattern(){const list=$('assign-pattern');list.replaceChildren();pattern.forEach((ref,index)=>{const chip=node('span',undefined,'pattern-chip');chip.append(node('span',`${index+1}. ${ref.name}`),button('←',()=>{if(index>0)[pattern[index-1],pattern[index]]=[pattern[index],pattern[index-1]];renderPattern();}),button('×',()=>{pattern.splice(index,1);renderPattern();}));list.append(chip);});}
 if(view==='blocks'){let assignTimer;$('assign-search').oninput=()=>{clearTimeout(assignTimer);assignTimer=setTimeout(async()=>{try{const data=await api('sources?'+new URLSearchParams({kind:'block',q:$('assign-search').value}));$('assign-options').replaceChildren();for(const item of data.items){const option=new Option(item.name,item.id);option.dataset.version=item.version;$('assign-options').append(option);}}catch(error){message(error.message,true);}},200);};$('assign-block').onclick=()=>{if(!composition.id||dirty){message('Save the Block before assigning it.',true);return;}pattern=[{kind:'block',id:composition.id,version:composition.revision,name:composition.name}];$('assign-options').replaceChildren();for(const item of compositions){const option=new Option(item.name,item.id);option.dataset.version=item.revision;$('assign-options').append(option);}$('assign-start').value=selectedDate;renderPattern();$('assign-dialog').showModal();};$('add-pattern-block').onclick=()=>{const option=$('assign-options').selectedOptions[0];if(option)pattern.push({kind:'block',id:Number(option.value),version:Number(option.dataset.version),name:option.textContent});renderPattern();};$('assign-form').onsubmit=e=>{e.preventDefault();if(!pattern.length)return;before();assignments.push({id:uid(),pattern:clone(pattern),rule:{frequency:$('assign-frequency').value,anchor:$('assign-start').value,until:$('assign-end').value||null,interval:1,weekdays:[...$('assign-weekdays').querySelectorAll('input:checked')].map(i=>Number(i.value)),dates:$('assign-dates').value.split(',').map(s=>s.trim()).filter(Boolean),exceptions:[]}});selectedDate=$('assign-start').value;markDirty();$('assign-dialog').close();renderAssignments();message('Assignment added to draft. Save schedule to publish.');};$('block-dates').onclick=()=>{$('assignment-list').hidden=!$('assignment-list').hidden;renderAssignments();};}
 function renderAssignments(){const list=$('assignment-list');list.replaceChildren();list.hidden=false;list.append(node('h3','Block assignments'));const browse=document.createElement('input');browse.type='date';browse.value=selectedDate;browse.setAttribute('aria-label','Preview Block assignments from date');browse.onchange=()=>{selectedDate=browse.value;renderAssignments();};list.append(browse);for(const row of assignments){const el=node('article');el.append(node('b',row.pattern.map(p=>`${p.name} (revision ${p.version})`).join(' → ')),node('p',`${row.rule.frequency} from ${row.rule.anchor}${row.rule.until?' until '+row.rule.until:''}`),button('Remove',()=>{before();assignments=assignments.filter(a=>a.id!==row.id);markDirty();renderAssignments();}));list.append(el);}const grid=node('div',undefined,'month-grid');for(let i=0;i<28;i++){const day=shift(selectedDate,i),el=node('div',undefined,'month-day');el.append(node('b',day.slice(5)));const rows=assigned(day);for(const row of rows)el.append(node('span',row.source.name));if(!rows.length)el.append(node('span','Default playlist'));grid.append(el);}list.append(grid);}
 page.listen(window,'beforeunload',e=>{if(dirty){e.preventDefault();e.returnValue='';}});
-page.cleanup(()=>{searchController?.abort();clearTimeout(searchTimer);clearTimeout(hoverTimer);previewAudio?.pause();});
-page.interval(async()=>{try{const latest=await api('state');state.mode=latest.mode;state.activated=latest.activated;state.held=latest.held;state.transition=latest.transition;state.playing_fallback=latest.playing_fallback;state.fallback=latest.fallback;if(latest.revision!==baseRevision&&!dirty&&!saving)message('The saved schedule changed in another session. Reload before editing or switching modes.',true);updateStatus();}catch{}},4000);
-async function init(){updateStatus();syncComposition();render();await Promise.all([loadSources(),loadCompositions(),loadEvents()]);try{const draft=JSON.parse(localStorage.getItem(localKey+':draft')||'null');if(draft){const restoreButton=button('Restore unsaved draft',()=>{if(draft.revision!==state.revision){message('The saved schedule changed since this draft. Review conflicts before saving.',true);}baseRevision=draft.revision;restore(draft);restoreButton.remove();});$('studio-message').append(restoreButton);}}catch{}}
+page.cleanup(()=>{searchController?.abort();clearTimeout(searchTimer);clearTimeout(hoverTimer);clearTimeout(saveTimer);previewAudio?.pause();});
+async function refreshState(){
+    if(refreshing||saving||page.signal.aborted)return;refreshing=true;
+    try{adoptState(await api('state'));}catch{}finally{refreshing=false;}
+}
+page.interval(refreshState,4000);
+page.listen(window,'online',()=>{if(autosave&&dirty&&!saveConflict){saveBlocked=false;queueSave(0);}refreshState();});
+async function init(){
+    updateStatus();syncComposition();render();await Promise.all([loadSources(),loadCompositions(),loadEvents()]);
+    try{
+        const draft=JSON.parse(localStorage.getItem(localKey+':draft')||'null');
+        if(draft){const restoreButton=button('Restore unsaved changes',()=>{
+            const legacyConflict=!draft.base&&draft.revision!==state.revision;
+            const current=clone(state);
+            if(draft.base)Object.assign(state,clone(draft.base));
+            baseRevision=draft.revision;restore(draft);restoreButton.remove();
+            if(legacyConflict)showConflict(Object.assign(Error('Review these older unsaved changes before replacing the saved schedule.'),{latest:current}),current);
+        });$('studio-message').append(restoreButton);}
+    }catch{}
+    await refreshState();
+}
 init();
 })();

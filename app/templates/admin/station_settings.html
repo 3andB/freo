@@ -79,11 +79,11 @@
 <p>Applying audio changes restarts this station if it is running. Listeners may briefly reconnect.</p>
 <button type="submit" class="admin-primary">Apply audio settings</button>
 </fieldset></form></section>
-<section class="admin-card" id="playback-settings" data-playback-api="{{ url_for('schedule_studio.write',slug=selected.slug,action='default') }}" data-source-api="{{ url_for('schedule_studio.read',slug=selected.slug,action='sources') }}" data-revision="{{ playback_policy.revision if playback_policy else 1 }}" data-csrf="{{ csrf_token() }}">
+<section class="admin-card" id="playback-settings" data-base="{{ (playback_policy.default_playlist_id if playback_policy else none)|tojson }}" data-playback-api="{{ url_for('schedule_studio.write',slug=selected.slug,action='default') }}" data-source-api="{{ url_for('schedule_studio.read',slug=selected.slug,action='sources') }}" data-revision="{{ playback_policy.revision if playback_policy else 1 }}" data-csrf="{{ csrf_token() }}">
 <h2>Playback</h2><p>What plays when the active mode has nothing playable? Choose the default playlist for Calendar, Blocks, and Simple.</p>
 <p id="fallback-current">{{ playback_policy.default_playlist.name if playback_policy and playback_policy.default_playlist else 'No default playlist selected' }}</p>
 <label>Find a playlist<input type="search" id="fallback-search" placeholder="Search playlists"></label><div id="fallback-results"></div><p id="fallback-status" role="status"></p>
 </section>
 {% include 'admin/_station_domains.html' %}
 {% endblock %}
-{% block scripts %}{{ super() }}<script defer src="{{ url_for('static',filename='station_settings.js',v='audio-20260917') }}"></script><script defer src="{{ url_for('static',filename='schedule_settings.js') }}"></script>{% endblock %}
+{% block scripts %}{{ super() }}<script defer src="{{ url_for('static',filename='station_settings.js',v='audio-20260917') }}"></script><script defer src="{{ url_for('static',filename='schedule_settings.js',v='sync-20260920') }}"></script>{% endblock %}

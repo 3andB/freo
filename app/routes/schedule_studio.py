@@ -11,6 +11,7 @@ from app.routes.web import admin_stations, station_or_404
 from app.services.admin_auth import admin_required, require_csrf, current_admin, can_manage_programming, can_control_playout
 from app.services.admin_media import audit
 from app.services import visual_schedule as vs
+from app.services.schedule_documents import ScheduleConflict, merge_items, merge_value
 
 schedule_studio=Blueprint('schedule_studio',__name__)
 
@@ -64,6 +65,10 @@ def legacy_calendar(station):
     return result
 
 
+def calendar_items(station, row):
+    return row.calendar if row and row.calendar_saved else legacy_calendar(station) if not row or not row.activated else []
+
+
 def state_json(station):
     from app.services.broadcast_status import cached_status
     row=vs.policy(station)
@@ -72,7 +77,7 @@ def state_json(station):
     current=SelectionDecision.query.filter_by(id=snapshot.current_decision_id,station_id=station.id).first() if snapshot and snapshot.current_decision_id else None
     playing_fallback=bool(current and current.reason=='default_playlist')
     return dict(broadcast=cached_status([station])[station.slug],playing_fallback=playing_fallback,held=bool(station.automation and station.automation.hold),mode=row.mode if row else 'CALENDAR',activated=bool(row and row.activated),revision=row.revision if row else 1,
-        calendar=row.calendar if row and row.calendar_saved else legacy_calendar(station) if not row or not row.activated else [],
+        calendar=calendar_items(station, row),
         assignments=row.assignments if row else [],simple=row.simple if row else None,
         fallback=vs.fallback(station),transition=dict(id=command.id,state=command.state,mode=command.mode,error=command.error) if command else None,
         timezone=station.timezone)
@@ -151,18 +156,19 @@ def write(slug,action):
             return jsonify(state_json(station))
         elif action=='block-workspace':
             schedule=ChannelSchedule.query.filter_by(station_id=station.id).with_for_update().first() or vs.policy(station,True)
-            if schedule.revision!=data.get('revision'):
+            if schedule.revision!=data.get('revision') and 'base' not in data:
                 raise ValueError('Another editor changed this schedule. Reload before saving.')
             if ScheduleTransition.query.filter_by(station_id=station.id).filter(ScheduleTransition.state.in_(('PENDING','PREPARING','FADING'))).first():
-                raise ValueError('Wait for the mode change to finish before editing.')
+                return jsonify(error='Finishing the mode change. Your edits will save shortly.',retryable=True),409
             composition=data.get('composition')
             if not isinstance(composition,dict) or composition.get('kind')!='BLOCK':
                 raise ValueError('Choose a Block')
             row=vs.save_composition(station,composition)
             db.session.flush()
-            schedule.assignments=vs.clean_document(station,data.get('items',[]),assignments=True)
+            items=merge_items(data['base'],data.get('items',[]),schedule.assignments) if 'base' in data else data.get('items',[])
+            schedule.assignments=vs.clean_document(station,items,assignments=True)
             schedule.revision+=1
-            output=dict(composition=vs.composition_json(row),revision=schedule.revision)
+            output=dict(composition=vs.composition_json(row),revision=schedule.revision,items=schedule.assignments)
         elif action=='composition':
             row=vs.save_composition(station,data);db.session.flush();output=vs.composition_json(row)
         elif action in ('apply-revision','apply-revision-preview'):
@@ -199,21 +205,33 @@ def write(slug,action):
             command=vs.transition_request(station,data);output=dict(id=command.id,state=command.state)
         elif action in ('calendar','assignments','simple','default'):
             row=ChannelSchedule.query.filter_by(station_id=station.id).with_for_update().first() or vs.policy(station,True)
-            if row.revision!=data.get('revision'):raise ValueError('Another editor changed this schedule. Reload before saving.')
-            if ScheduleTransition.query.filter_by(station_id=station.id).filter(ScheduleTransition.state.in_(('PENDING','PREPARING','FADING'))).first():raise ValueError('Wait for the mode change to finish before editing.')
-            if action=='calendar':row.calendar_saved=True
+            if row.revision!=data.get('revision') and 'base' not in data:raise ValueError('Another editor changed this schedule. Reload before saving.')
+            if ScheduleTransition.query.filter_by(station_id=station.id).filter(ScheduleTransition.state.in_(('PENDING','PREPARING','FADING'))).first():
+                return jsonify(error='Finishing the mode change. Your edits will save shortly.',retryable=True),409
             if action in ('calendar','assignments'):
-                setattr(row,action,vs.clean_document(station,data.get('items',[]),assignments=action=='assignments'))
-            elif action=='simple':row.simple=vs.source(station,data['source']) if data.get('source') else None
+                current=calendar_items(station,row) if action=='calendar' else row.assignments
+                items=merge_items(data['base'],data.get('items',[]),current) if 'base' in data else data.get('items',[])
+                setattr(row,action,vs.clean_document(station,items,assignments=action=='assignments'))
+                if action=='calendar':row.calendar_saved=True
+            elif action=='simple':
+                proposed=vs.source(station,data['source']) if data.get('source') else None
+                row.simple=merge_value(data['base'],proposed,row.simple) if 'base' in data else proposed
             else:
                 ref=vs.source(station,dict(kind='playlist',id=data.get('playlist')))
                 if not vs.source_tracks(station,ref):raise ValueError('Choose a playlist with playable songs')
-                row.default_playlist_id=ref['id']
+                row.default_playlist_id=merge_value(data['base'],ref['id'],row.default_playlist_id) if 'base' in data else ref['id']
             row.revision+=1;output=dict(revision=row.revision)
-            if action == 'calendar': output['items'] = row.calendar
+            if action in ('calendar','assignments'): output['items'] = getattr(row,action)
+            if action == 'simple': output['source'] = row.simple
+            if action == 'default':
+                output['playlist'] = row.default_playlist_id
+                playlist = db.session.get(Playlist, row.default_playlist_id) if row.default_playlist_id else None
+                output['name'] = playlist.name if playlist else 'No default playlist'
         else:abort(404)
         audit('visual_schedule_'+action,user_id=current_admin().id,station_id=station.id,target_type='station',target_id=station.slug,summary='Updated '+action+' in scheduling workspace')
         db.session.commit();return jsonify(output)
+    except ScheduleConflict as error:
+        db.session.rollback();return jsonify(error=str(error),conflict=True,state=state_json(station)),409
     except (ValueError,TypeError,KeyError) as error:
         db.session.rollback();return jsonify(error=str(error) or 'Invalid schedule'),400
 

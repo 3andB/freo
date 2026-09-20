@@ -93,12 +93,12 @@ def test_recurring_pointer_resize_move_cancel_and_visibility(booth):
     assert driver.execute_script("return localStorage.getItem('freo-schedule:test-station:calendar:draft')") is None
     drag('[data-id="series"] .resize-grip.top',0,-42);scope()
     Select(driver.find_element(By.ID,'move-scope')).select_by_value('series')
-    driver.find_element(By.ID,'apply-move-scope').click();wait_text(driver,'#studio-message','Schedule updated')
+    driver.find_element(By.ID,'apply-move-scope').click();WebDriverWait(driver,5).until(lambda d:not d.find_element(By.ID,'move-scope-dialog').is_displayed())
     width=driver.execute_script("return document.querySelector('.time-column').getBoundingClientRect().width")
     drag('[data-id="series"]',round(width),0);scope()
     assert '2026-09-22' in driver.find_element(By.ID,'move-scope-summary').text
-    driver.find_element(By.ID,'apply-move-scope').click();wait_text(driver,'#studio-message','Schedule updated')
-    click(driver,'#save-schedule');wait_text(driver,'#save-state','Saved')
+    driver.find_element(By.ID,'apply-move-scope').click();WebDriverWait(driver,5).until(lambda d:not d.find_element(By.ID,'move-scope-dialog').is_displayed())
+    wait_text(driver,'#save-state','Saved')
     with app.app_context():
         saved=ChannelSchedule.query.first().calendar
         repeating=next(row for row in saved if row['id']=='series');once=next(row for row in saved if row['id']!='series')
@@ -110,7 +110,7 @@ def test_recurring_pointer_resize_move_cancel_and_visibility(booth):
     Select(driver.find_element(By.ID,'recurring-display')).select_by_value('hide')
     # The edited occurrence remains visible when its original series is hidden.
     assert len(driver.find_elements(By.CSS_SELECTOR,'.timeline-section'))==1
-    driver.find_element(By.ID,'next-date').click();wait_text(driver,'#hidden-schedules','hidden')
+    click(driver,'#next-date');wait_text(driver,'#hidden-schedules','hidden')
     assert driver.find_elements(By.CSS_SELECTOR,'.timeline-section')==[]
     assert driver.find_elements(By.CSS_SELECTOR,'.hidden-coverage')
     driver.find_element(By.ID,'hidden-schedules').click()
@@ -135,7 +135,8 @@ def test_source_drop_and_short_resize_handles_do_not_open_details(booth):
     actions.pause(.3).release().perform()
     WebDriverWait(driver,8).until(lambda d:d.find_elements(By.CSS_SELECTOR,'.timeline-section'))
     assert not driver.find_element(By.ID,'section-inspector').is_displayed()
-    draft=driver.execute_script("return JSON.parse(localStorage.getItem('freo-schedule:test-station:calendar:draft'))")
+    from tests.test_schedule_editor_browser import saved_calendar
+    draft=saved_calendar(app,driver,lambda rows:bool(rows))
     assert (draft['entries'][0]['start'],draft['entries'][0]['end'])==(5400,9000)
     # Exact-time keyboard editing creates a short block with selectable edge handles.
     block=driver.find_element(By.CSS_SELECTOR,'.timeline-section')
@@ -154,6 +155,7 @@ def test_source_drop_and_short_resize_handles_do_not_open_details(booth):
     WebDriverWait(driver,5).until(lambda d:d.execute_script('return !!window.releasePreview'))
     driver.find_element(By.CSS_SELECTOR,'#section-inspector .dialog-close').click()
     driver.execute_script('window.releasePreview()')
-    WebDriverWait(driver,5).until(lambda d:d.find_element(By.ID,'save-schedule').is_enabled())
-    draft=driver.execute_script("return JSON.parse(localStorage.getItem('freo-schedule:test-station:calendar:draft'))")
+    wait_text(driver,'#save-state','Saved')
+    from tests.test_schedule_editor_browser import saved_calendar
+    draft=saved_calendar(app,driver,lambda rows:bool(rows))
     assert draft['entries'][0]['end']==5460

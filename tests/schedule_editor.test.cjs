@@ -75,3 +75,12 @@ test('cross-day series moves shift phase, weekdays, and exceptions together',()=
  assert.equal(editor.matches(shifted,'2026-10-06'),true);assert.equal(editor.matches(shifted,'2026-10-20'),false);
  assert.deepEqual(editor.movedRule(rule,'2026-10-05','2026-10-06','occurrence'),rule);
 });
+
+test('autosave rebases pending edits and undo without erasing unrelated saved items',()=>{
+ const base=[{id:'a',start:1},{id:'b',start:2}],local=[{id:'a',start:0},base[1]],remote=[...base,{id:'c',start:3}];
+ assert.deepEqual(editor.mergeItems(base,local,remote),[local[0],base[1],remote[2]]);
+ assert.deepEqual(editor.mergeItems(base,[base[1]],remote),[base[1],remote[2]]);
+ assert.throws(()=>editor.mergeItems(base,local,[{id:'a',start:4},base[1]]),/also changed/);
+ assert.deepEqual(editor.mergeItems(base,local,[{id:'a',start:4},base[1]],true),local);
+ assert.ok(editor.equal({a:1,b:2},{b:2,a:1}));
+});

@@ -6,6 +6,25 @@ const dayNumber = day => Date.parse(day + 'T12:00:00Z') / 86400000;
 const shift = (day, n) => new Date((dayNumber(day) + n) * 86400000).toISOString().slice(0, 10);
 const identity = () => crypto.randomUUID();
 
+function equal(a, b) {
+    if (a === b) return true;
+    if (!a || !b || typeof a !== 'object' || typeof b !== 'object' || Array.isArray(a) !== Array.isArray(b)) return false;
+    const keys = Object.keys(a);
+    return keys.length === Object.keys(b).length && keys.every(key => Object.hasOwn(b, key) && equal(a[key], b[key]));
+}
+
+function mergeItems(base, proposed, current, force = false) {
+    const before = new Map(base.map(row => [row.id, row])), wanted = new Map(proposed.map(row => [row.id, row]));
+    const merged = new Map(current.map(row => [row.id, copy(row)]));
+    for (const id of new Set([...before.keys(), ...wanted.keys()])) {
+        const old = before.get(id), value = wanted.get(id), saved = merged.get(id);
+        if (equal(old, value)) continue;
+        if (!force && !equal(saved, old) && !equal(saved, value)) throw Error('An item you edited was also changed elsewhere.');
+        if (value === undefined) merged.delete(id); else merged.set(id, copy(value));
+    }
+    return [...merged.values()];
+}
+
 function matches(rule, day) {
     if (day < rule.anchor || rule.starts_on && day < rule.starts_on || rule.until && day > rule.until || rule.exceptions?.includes(day)) return false;
     const days = Math.round(dayNumber(day) - dayNumber(rule.anchor)), interval = rule.interval || 1;
@@ -141,7 +160,7 @@ function remove(original, id, {composing = false, scope = 'series', origin} = {}
     return list;
 }
 
-const api = {interval, split, edit, remove, matches, occurrences, coverage, recurring, movedRule};
+const api = {interval, split, edit, remove, matches, occurrences, coverage, recurring, movedRule, equal, mergeItems};
 if (typeof module !== 'undefined') module.exports = api;
 else scope.FreoScheduleEditor = api;
 })(globalThis);

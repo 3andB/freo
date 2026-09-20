@@ -117,7 +117,23 @@ def test_show_console_simple_confirmation_and_events(booth):
     WebDriverWait(driver,5).until(lambda d:d.find_element(By.ID,'mode-confirm').is_displayed())
     driver.find_element(By.ID,'confirm-mode').click()
     wait_text(driver,'#active-mode','Switching')
-    with app.app_context():assert ScheduleTransition.query.count()==1
+    with app.app_context():
+        from app.models import ChannelSchedule
+        assert ScheduleTransition.query.count()==1
+        command=ScheduleTransition.query.one();command.state='APPLIED'
+        policy=ChannelSchedule.query.one();policy.mode='SIMPLE';policy.activated=True;policy.revision+=1
+        db.session.commit()
+    wait_text(driver,'#active-mode','Active mode: Simple')
+    assert 'another session' not in driver.find_element(By.ID,'studio-message').text
+    driver.find_element(By.XPATH,"//nav[@id='source-tabs']/button[text()='Songs']").click()
+    wait_text(driver,'#source-results','Verified Test Track')
+    driver.find_element(By.CSS_SELECTOR,'.source-actions button').click()
+    driver.find_element(By.ID,'save-schedule').click()
+    wait_text(driver,'#save-state','Saved')
+    with app.app_context():assert ChannelSchedule.query.one().simple['kind']=='song'
+    driver.find_element(By.ID,'activate-mode').click()
+    wait_text(driver,'#mode-confirm','Verified Test Track')
+    driver.find_element(By.ID,'cancel-mode').click()
     driver.get(base+'/admin/stations/test-station/events/create')
     wait_text(driver,'#event-audio-results','Verified Test Track')
     driver.find_element(By.CSS_SELECTOR,'#event-audio-results button').click()
@@ -139,6 +155,10 @@ def test_blocks_default_playlist_and_full_day_calendar_song(booth):
         playlist.items.append(PlaylistItem(track_id=track.id,position=1));db.session.add(playlist);db.session.commit()
     driver.get(base+'/admin/stations/test-station/settings')
     wait_text(driver,'#fallback-results','Always available')
+    with app.app_context():
+        from app.services import visual_schedule as vs
+        policy=vs.policy(Station.query.filter_by(slug='test-station').one(),True)
+        policy.revision+=1;db.session.commit()
     driver.find_element(By.CSS_SELECTOR,'#fallback-results button').click()
     wait_text(driver,'#fallback-status','Default playlist saved')
     driver.get(base+'/admin/stations/test-station/schedule-studio/blocks')
@@ -166,7 +186,8 @@ def test_blocks_default_playlist_and_full_day_calendar_song(booth):
     driver.execute_script("document.getElementById('section-start').value='00:00:00';document.getElementById('section-end').value='00:00:00';document.getElementById('section-end-day').value='1';")
     driver.find_element(By.CSS_SELECTOR,'#section-form button[type=submit]').click()
     WebDriverWait(driver,5).until(lambda d:not d.find_element(By.ID,'section-inspector').is_displayed())
-    driver.find_element(By.ID,'save-schedule').click();wait_text(driver,'#save-state','Saved')
+    assert not driver.find_elements(By.ID,'save-schedule')
+    wait_text(driver,'#save-state','Saved')
     with app.app_context():
         rows=[r for r in ChannelSchedule.query.first().calendar if r['source']['kind']=='song']
         assert len(rows)==1 and rows[0]['end']-rows[0]['start']==86400

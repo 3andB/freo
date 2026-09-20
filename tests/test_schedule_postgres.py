@@ -61,3 +61,22 @@ def test_block_transaction_rolls_back_under_postgres(pg_app):
     with pg_app.app_context():
         assert ScheduleComposition.query.count()==0
         assert vs.policy(Station.query.one()).revision==revision
+
+
+@pytest.mark.parametrize('same_item', [False, True])
+def test_concurrent_autosaves_merge_only_independent_items(pg_app, same_item):
+    with pg_app.app_context():
+        row=vs.policy(Station.query.one());revision=row.revision
+        ref=dict(kind='song',id=Track.query.one().id)
+    clients=[admin_client(pg_app),admin_client(pg_app)];barrier=Barrier(2)
+    def write(index):
+        payload=dict(revision=revision,base=[],items=[dict(id='same' if same_item else str(index),start=index*3600,end=(index+1)*3600,source=ref,rule=dict(frequency='once',anchor='2026-09-21'))])
+        barrier.wait(timeout=10)
+        response=clients[index].post('/admin/stations/test-station/schedule-studio/api/calendar',data={'csrf':'test-admin-csrf-token','payload':json.dumps(payload)})
+        return response.status_code,response.json
+    with ThreadPoolExecutor(max_workers=2) as pool:results=list(pool.map(write,range(2)))
+    assert sorted(r[0] for r in results)==([200,409] if same_item else [200,200]),results
+    with pg_app.app_context():
+        row=vs.policy(Station.query.one())
+        assert len(row.calendar)==(1 if same_item else 2)
+        assert row.revision==revision+(1 if same_item else 2)

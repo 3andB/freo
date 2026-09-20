@@ -66,7 +66,7 @@
     refreshing = true;
     try {
       const latest = await api('state');
-      if (!busy && !broadcastBusy && latest.broadcast.revision >= state.broadcast.revision) { state = latest; render(); if (refreshFailed) message(''); refreshFailed = false; }
+      if (!busy && !broadcastBusy && latest.broadcast.revision >= state.broadcast.revision && latest.revision >= state.revision) { state = latest; render(); if (refreshFailed) message(''); refreshFailed = false; }
     }
     catch { if (!busy && !broadcastBusy) {
       refreshFailed = true; state.broadcast.online = null; state.broadcast.tone = null;
