@@ -48,6 +48,7 @@ def state(song, *, include_waveform=True):
                 enabled=song.enabled, analysis=song.analysis_status, error=song.analysis_error,
                 processing_requested=song.analysis_requested, **({'waveform':song.waveform} if include_waveform else {}), cover=cover_url(song),
                 tags=[t.id for t in song.tags], categories=[c.id for c in song.categories],
+                playlists=[p.id for p in song.playlists if p.station_id == song.station_id and not p.deleted_at and not p.system_key],
                 broadcast=('Decommissioned' if song.decommissioned_at else
                            'Enabled for broadcast' if eligible else 'Enabled — choose an active category for rotation' if song.enabled else
                            'Processing before broadcast' if song.auto_enable_pending else 'Disabled'),
@@ -58,8 +59,10 @@ def state(song, *, include_waveform=True):
 @admin_required
 def catalog(slug):
     station = station_or_404(slug, require_enabled=False)
+    from app.services.playlists import listing
     return jsonify(artists=[dict(id=a.id,name=a.name) for a in artists_for(station.id).order_by(Artist.name)],
                    albums=[dict(id=a.id,name=a.title,artist_id=a.artist_id,cover_id=a.cover_id) for a in albums_for(station.id).order_by(Album.title)],
+                   playlists=[dict(id=p.id,name=p.name) for p in listing(station.id) if not p.system_key],
                    tags=[dict(id=t.id,name=t.name) for t in MusicTag.query.filter_by(station_id=station.id).order_by(MusicTag.name)],
                    categories=[dict(id=c.id,name=c.name,enabled=c.enabled) for c in MediaCategory.query.filter_by(station_id=station.id).order_by(MediaCategory.name)])
 

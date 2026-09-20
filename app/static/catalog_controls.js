@@ -71,14 +71,14 @@
       const id=fields[key],kind=key==='artist_id'?'artists':'albums';
       if(id)return catalog[kind].find(row=>row.id===Number(id))?.name||'';
       if(key==='album_id'&&id===null)return 'No album';
-      return '';
+      return fields[key==='artist_id'?'artist_name':'album_name']||'';
     };
     function paint(){for(const [key,{input,list}] of Object.entries(controls)){
       if(document.activeElement!==input||list.hidden)input.value=valueText(key);
       input.placeholder=!config.importing?`Search ${names[key].toLowerCase()}s`:config.batch&&!touched.has(key)?'Leave unchanged':`From file: ${detected[key==='artist_id'?'artist':'album']||'metadata'}`;
     }}
     function select(key,value){
-      const previousArtist=fields.artist_id;fields[key]=value;touched.add(key);
+      const previousArtist=fields.artist_id;fields[key]=value;delete fields[key==='artist_id'?'artist_name':'album_name'];if(key==='album_id')delete fields.album_artist;touched.add(key);
       if(key==='artist_id'){
         const album=catalog.albums.find(a=>a.id===fields.album_id);
         if(album&&album.artist_id!==value&&(!previousArtist||album.artist_id===previousArtist)){delete fields.album_id;delete fields.album_artist_id;touched.add('album_id');}
@@ -124,15 +124,15 @@
       wrap.addEventListener('focusout',e=>{if(!wrap.contains(e.relatedTarget)){list.hidden=true;input.value=valueText(key);input.setAttribute('aria-expanded','false');}});
     }
     const dispose=subscribe(catalog,paint);paint();
-    return {detected(data){detected=data||{};paint();},values(){const result={};if(fields.artist_id)result.artist_id=Number(fields.artist_id);if(fields.album_id!==undefined)result.album_id=fields.album_id;if(fields.album_artist_id&&fields.album_id)result.album_artist_id=fields.album_artist_id;return result;},
+    return {detected(data){detected=data||{};paint();},values(){const result={};if(!fields.artist_id&&fields.artist_name)result.artist_name=fields.artist_name;if(fields.album_id===undefined&&fields.album_name){result.album_name=fields.album_name;if(fields.album_artist)result.album_artist=fields.album_artist;}if(fields.artist_id)result.artist_id=Number(fields.artist_id);if(fields.album_id!==undefined)result.album_id=fields.album_id;if(fields.album_artist_id&&fields.album_id)result.album_artist_id=fields.album_artist_id;return result;},
       patch(){return Object.fromEntries([...touched].map(key=>[key,fields[key]??(key==='album_id'&&fields[key]===null?null:'file')]));},
       set(values){fields={...values};paint();},reset(){fields={};touched.clear();paint();},destroy:dispose,refresh:()=>load(config.base)};
   }
-  function chips(container,catalog,values={}){
-    const selected={tags:new Set(values.tags||[]),categories:new Set(values.categories||[])},touched=new Set();
-    for(const key of ['tags','categories']){const group=el('div',undefined,'music-toggle-group');group.setAttribute('role','group');group.setAttribute('aria-label',key);group.append(el('small',key));
-      for(const item of catalog[key]){const button=el('button',undefined,'music-toggle');button.type='button';const paint=()=>{button.textContent=(selected[key].has(item.id)?'✓ ':'+ ')+item.name;button.setAttribute('aria-pressed',selected[key].has(item.id)?'true':'false');};button.onclick=()=>{touched.add(key);container.dispatchEvent(new Event('classificationchange',{bubbles:true}));selected[key].has(item.id)?selected[key].delete(item.id):selected[key].add(item.id);paint();};paint();group.append(button);}container.append(group);}
-    return {touched:()=>[...touched],clearTouched:()=>touched.clear(),values:()=>Object.fromEntries(Object.entries(selected).map(([key,value])=>[key,[...value]])),set(values){for(const key of ['tags','categories']){selected[key]=new Set(values[key]||[]);const buttons=container.querySelector(`[aria-label="${key}"]`).querySelectorAll('button');buttons.forEach((b,i)=>{const item=catalog[key][i];b.textContent=(selected[key].has(item.id)?'✓ ':'+ ')+item.name;b.setAttribute('aria-pressed',String(selected[key].has(item.id)));});}}};
+  function chips(container,catalog,values={},keys=['tags','categories']){
+    const selected=Object.fromEntries(keys.map(key=>[key,new Set(values[key]||[])])),touched=new Set();
+    for(const key of keys){const group=el('div',undefined,'music-toggle-group');group.setAttribute('role','group');group.setAttribute('aria-label',key);group.append(el('small',key));
+      for(const item of catalog[key]||[]){const button=el('button',undefined,'music-toggle');button.type='button';const paint=()=>{button.textContent=(selected[key].has(item.id)?'✓ ':'+ ')+item.name;button.setAttribute('aria-pressed',selected[key].has(item.id)?'true':'false');};button.onclick=()=>{touched.add(key);container.dispatchEvent(new Event('classificationchange',{bubbles:true}));selected[key].has(item.id)?selected[key].delete(item.id):selected[key].add(item.id);paint();};paint();group.append(button);}container.append(group);}
+    return {touched:()=>[...touched],clearTouched:()=>touched.clear(),values:()=>Object.fromEntries(Object.entries(selected).map(([key,value])=>[key,[...value]])),set(values){for(const key of keys){selected[key]=new Set(values[key]||[]);const buttons=container.querySelector(`[aria-label="${key}"]`).querySelectorAll('button');buttons.forEach((b,i)=>{const item=catalog[key][i];b.textContent=(selected[key].has(item.id)?'✓ ':'+ ')+item.name;b.setAttribute('aria-pressed',String(selected[key].has(item.id)));});}}};
   }
   function chooseCover(config,extra={},initialFile=null){
     return new Promise(resolve=>{

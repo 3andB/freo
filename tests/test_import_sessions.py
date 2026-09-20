@@ -138,6 +138,9 @@ def test_duplicate_keeps_existing_metadata_and_enable_intent(app,tmp_path):
         song=Track.query.filter_by(title='Existing title').one();assert not song.auto_enable_pending
     result=client.get(second['url']).json['items'][0]
     assert result['job_status']=='duplicate' and result['song']['title']=='Existing title'
+    assert client.get(BASE).json['sessions'][0]['state']=='complete'
+    skipped=post(client,BASE).json;upload(client,skipped,path)
+    assert client.get(BASE).json['sessions'][0]['state']=='complete'
 
 
 def test_invalid_audio_expiry_auth_and_limits(app,tmp_path):
@@ -253,3 +256,90 @@ def test_import_audio_classification_reaches_system_playlist(app,tmp_path,kind,s
         song=Track.query.filter_by(audio_kind=kind).one()
         assert song.audio_subtype==subtype and song.cart_code=='ID-ONE' and not song.available_to_all
         assert [i.track_id for i in Playlist.query.filter_by(station_id=song.station_id,system_key=kind).one().items]==[song.id]
+
+
+def test_import_organization_sharing_completion_and_atomic_edits(app,tmp_path):
+    from app.models import Playlist, MusicTag, MediaCategory
+    from app.services.availability import available
+    from app.ingest_worker import process_one
+    client=admin_client(app);session=post(client,BASE).json
+    assert client.get(BASE).json['sessions'][0]['state']=='empty'
+    with app.app_context():
+        playlist=Playlist(station_id=1,name='Import destination');tag=MusicTag(station_id=1,name='Import label',slug='import-label')
+        foreign=Playlist(station_id=2,name='Foreign')
+        db.session.add_all([playlist,tag,foreign]);db.session.commit()
+        playlist_id,tag_id,foreign_id=playlist.id,tag.id,foreign.id
+        category_id=MediaCategory.query.filter_by(station_id=1).first().id
+    for index in [1,2]:upload(client,session,audio(tmp_path,index=index))
+    reviewed=prepare(app,client,session)
+    assert client.get(BASE).json['sessions'][0]['state']=='draft'
+    first=reviewed['items'][0]
+    assert post(client,session['url']+'/items/'+first['id'],{'revision':first['revision'],'choices':{'playlists':[foreign_id]}}).status_code==409
+    changes={'playlists':[playlist_id],'tags':[tag_id],'categories':[category_id],'available_to_all':True}
+    saved=post(client,session['url'],{'action':'save-items','items':[dict(id=i['id'],revision=i['revision'],choices=changes) for i in reviewed['items']]})
+    assert saved.status_code==200
+    assert finalize(client,saved.json).status_code==200
+    assert client.get(BASE).json['sessions'][0]['state']=='processing'
+    with app.app_context():
+        assert process_one() and process_one()
+        songs=Track.query.filter(Track.title.in_(['Song 1','Song 2'])).all()
+        from app.services.audio_analysis import analyze_song
+        for song in songs:analyze_song(song)
+        db.session.commit()
+        assert len(songs)==2 and all(available(song,2) for song in songs)
+        assert all([p.id for p in song.playlists]==[playlist_id] for song in songs)
+        assert all(tag_id in [t.id for t in song.tags] for song in songs)
+        assert len(db.session.get(Playlist,playlist_id).items)==2
+    assert client.get(BASE).json['sessions'][0]['state']=='complete'
+    imported=client.get(session['url']).json['items']
+    updates=[dict(id=i['id'],revision=i['revision'],choices={**changes,'title':i['song']['title'],'artist_name':'Shared artist','album_id':None}) for i in imported]
+    updates[-1]['revision']-=1
+    assert post(client,session['url'],{'action':'save-items','items':updates}).status_code==409
+    with app.app_context():assert not Track.query.filter_by(artist='Shared artist').first()
+    updates[-1]['revision']+=1
+    assert post(client,session['url'],{'action':'save-items','items':updates}).status_code==200
+    with app.app_context():
+        assert Track.query.filter_by(artist='Shared artist').count()==2
+        assert len(db.session.get(Playlist,playlist_id).items)==2
+    # A failed job stays recoverable even though its draft has been finalized.
+    with app.app_context():
+        job=MediaIngestJob.query.first();job.status='error';db.session.commit()
+    assert client.get(BASE).json['sessions'][0]['state']=='attention'
+
+
+def test_music_bulk_sharing_is_atomic_and_scoped_to_selection(app):
+    client=admin_client(app)
+    with app.app_context():
+        song=Track.query.first();identifier=song.uuid
+    url='/admin/api/stations/test-station/music/actions/share-all'
+    assert client.post(url,data={'data':json.dumps({'songs':[identifier]})}).status_code==400
+    result=post(client,url,{'songs':[identifier]})
+    assert result.status_code==200,result.get_data(as_text=True)
+    with app.app_context():assert Track.query.first().available_to_all
+    with app.app_context():
+        song=Track.query.first();song.available_to_all=False;song.audio_kind='STATION';db.session.commit()
+    assert post(client,url,{'songs':[identifier]}).status_code==409
+    with app.app_context():assert not Track.query.first().available_to_all
+
+
+def test_failed_import_destinations_can_be_corrected_before_retry(app,tmp_path):
+    from app.models import Playlist
+    from app.ingest_worker import process_one
+    client=admin_client(app);session=post(client,BASE).json
+    with app.app_context():
+        playlist=Playlist(station_id=1,name='Temporary destination');db.session.add(playlist);db.session.commit();identifier=playlist.id
+    item=upload(client,session,audio(tmp_path)).json
+    assert post(client,session['url']+'/items/'+item['id'],{'revision':item['revision'],'choices':{'playlists':[identifier]}}).status_code==200
+    assert finalize(client,prepare(app,client,session)).status_code==200
+    with app.app_context():
+        from app.services.import_sessions import utcnow
+        db.session.get(Playlist,identifier).deleted_at=utcnow();db.session.commit();process_one()
+    failed=client.get(session['url']).json['items'][0]
+    assert failed['job_status']=='error' and not failed['song']
+    saved=post(client,session['url']+'/items/'+item['id'],{'revision':failed['revision'],'choices':{'playlists':[],'available_to_all':True}})
+    assert saved.status_code==200
+    assert post(client,session['url']+'/items/'+item['id'],{'revision':saved.json['revision'],'action':'retry'}).status_code==200
+    with app.app_context():
+        assert process_one()
+        song=Track.query.filter_by(title='Song 1').one()
+        assert song.available_to_all and not song.playlists

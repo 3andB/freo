@@ -24,3 +24,24 @@
 /* Drag feedback must not move the ruler underneath the captured pointer. */
 #studio-message{height:3.5em;overflow:auto;box-sizing:border-box}
 #studio-message:empty{display:block}
+
+.timeline-filters{display:flex;align-items:end;flex-wrap:wrap;gap:12px;margin-bottom:14px}.timeline-filters label{flex:1;min-width:140px;font-size:12px}.timeline-filters input,.timeline-filters select{width:100%}
+.selected-section{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:12px;margin-bottom:12px;background:var(--theme-raised);border-radius:10px}.selected-section[hidden]{display:none}.selected-section strong{flex:1;font-size:12px}
+.timeline-section.is-recurring{background:var(--theme-raised);box-shadow:inset 3px 0 var(--theme-muted),inset 0 0 0 1px var(--theme-border)}.timeline-section.is-recurring strong{font-size:11px}.timeline-section.is-selected{outline:2px solid var(--theme-accent);outline-offset:1px;z-index:6}
+.timeline-section .resize-grip{height:14px;z-index:2}.timeline-section.is-selected .resize-grip{background:color-mix(in srgb,var(--theme-accent) 18%,transparent)}
+.timeline-section.is-short.is-selected{overflow:visible}.timeline-section.is-short.is-selected .resize-grip{display:block;width:45%;height:14px;background:var(--theme-accent);border-radius:4px}.timeline-section.is-short.is-selected .resize-grip.top{top:-7px;right:auto}.timeline-section.is-short.is-selected .resize-grip.bottom{bottom:-7px;left:55%}
+.hidden-coverage{position:absolute;left:4px;right:4px;box-sizing:border-box;overflow:hidden;pointer-events:none;font-size:10px;color:var(--theme-muted);border-left:2px dashed var(--theme-border);background:repeating-linear-gradient(135deg,transparent,transparent 6px,color-mix(in srgb,var(--theme-muted) 5%,transparent) 6px,color-mix(in srgb,var(--theme-muted) 5%,transparent) 12px)}
+.time-column.has-events .timeline-section,.time-column.has-events .fallback-band,.time-column.has-events .hidden-coverage{right:29%}.timeline-event-lane{position:absolute;inset:0 0 0 73%;border-left:1px dashed var(--theme-border);pointer-events:none;z-index:4}.timeline-event-group{position:absolute;left:2px;right:2px;font-size:10px;pointer-events:auto;background:var(--theme-raised);border-radius:5px}.timeline-event-group summary{padding:5px;cursor:pointer;overflow:hidden;text-overflow:ellipsis}.timeline-event-group[open]{z-index:8;min-width:160px;right:0;left:auto;box-shadow:0 5px 20px #0003}.timeline-event-group a{display:block;padding:6px}
+.agenda-series{padding:14px;border-bottom:1px solid var(--theme-border)}.agenda-series>summary{cursor:pointer;font-size:13px}.recurring-summary{color:var(--theme-muted)}.time-column.drop-target{box-shadow:inset 0 0 0 2px var(--theme-accent)}
+#move-scope-dialog{max-width:460px;width:calc(100% - 32px)}#move-scope-error,#section-time-error{color:var(--theme-danger)}
+
+/* Selection must not shift the timeline while a pointer is captured. */
+.selected-section{height:54px;box-sizing:border-box;overflow:auto}
+@media(max-width:750px){.selected-section{height:104px}}
+
+#schedule-studio[data-view=calendar] .studio-header{margin:4px 0 12px;align-items:center}#schedule-studio[data-view=calendar] .studio-header h1{font-size:24px;margin:4px 0}#schedule-studio[data-view=calendar] .studio-header p{font-size:12px;margin:4px 0}#schedule-studio[data-view=calendar] .studio-header .eyebrow{display:none}
+#schedule-studio[data-view=calendar] .mode-cards{margin-bottom:14px}#schedule-studio[data-view=calendar] .mode-cards a{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:10px 14px}#schedule-studio[data-view=calendar] .mode-cards a>span{display:none}#schedule-studio[data-view=calendar] .mode-cards b{font-size:16px}
+.selected-section strong{min-width:0;overflow-wrap:anywhere}.calendar-focused .studio-header,.calendar-focused .mode-cards,.calendar-focused .studio-library{display:none}.calendar-focused .studio-layout{grid-template-columns:minmax(0,1fr)}.calendar-focused .studio-timeline{max-height:calc(100vh - 280px);min-height:300px}
+@media(max-width:750px){.selected-section{height:104px}#schedule-studio[data-view=calendar] .mode-cards a{padding:9px;flex-wrap:wrap}.timeline-filters label{min-width:120px}}
+
+#calendar-controls{scroll-margin-top:calc(var(--header-height,190px) + 16px)}

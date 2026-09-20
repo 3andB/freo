@@ -33,7 +33,8 @@ def test_add_limit_delete_and_share_in_browser(booth):
     sharing=driver.find_element(By.CSS_SELECTOR,'form[action*="/media/sharing/song/"]')
     sharing.find_element(By.NAME,'available_to_all').click()
     sharing.find_element(By.CSS_SELECTOR,'button').click()
-    WebDriverWait(driver,10).until(lambda d:'/media' in d.current_url and '/'+identifier not in d.current_url)
+    wait_text(driver,'[data-availability-form] [role=status]','Channel availability saved.')
+    with app.app_context():assert Track.query.filter_by(uuid=identifier).one().available_to_all
     driver.get(base+'/admin/stations/second-station/media')
     wait_text(driver,'body','Verified Test Track')
 

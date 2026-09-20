@@ -127,7 +127,7 @@ def read(slug,action):
                 for at in _instants(event,begin,end):
                     local=at.astimezone(zone)
                     if start<=local.date()<start+timedelta(days=days):
-                        result.append(dict(id=event.uuid,name=event.name,date=local.date().isoformat(),second=local.hour*3600+local.minute*60,timing=event.timing_mode))
+                        result.append(dict(id=event.uuid,name=event.name,date=local.date().isoformat(),second=local.hour*3600+local.minute*60,timing=event.timing_mode,recurring=event.recurrence_type != 'ONE_TIME'))
             return jsonify(items=result)
         abort(404)
     except (ValueError,TypeError,KeyError) as error:return jsonify(error=str(error) or 'Invalid request'),400
@@ -140,6 +140,8 @@ def write(slug,action):
     try:
         data=json.loads(request.form.get('payload','{}'))
         if not isinstance(data,dict):raise ValueError('Invalid request')
+        if action == 'calendar-preview':
+            return jsonify(items=vs.clean_document(station, data.get('items', [])))
         db.session.query(Station.id).filter_by(id=station.id).with_for_update().first()
         if action=='broadcast':
             if not can_control_playout(current_admin(),station):abort(403)
@@ -208,6 +210,7 @@ def write(slug,action):
                 if not vs.source_tracks(station,ref):raise ValueError('Choose a playlist with playable songs')
                 row.default_playlist_id=ref['id']
             row.revision+=1;output=dict(revision=row.revision)
+            if action == 'calendar': output['items'] = row.calendar
         else:abort(404)
         audit('visual_schedule_'+action,user_id=current_admin().id,station_id=station.id,target_type='station',target_id=station.slug,summary='Updated '+action+' in scheduling workspace')
         db.session.commit();return jsonify(output)

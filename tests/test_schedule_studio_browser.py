@@ -148,11 +148,13 @@ def test_blocks_default_playlist_and_full_day_calendar_song(booth):
     driver.find_element(By.CSS_SELECTOR,'.source-actions button').click()
     WebDriverWait(driver,5).until(lambda d:d.find_element(By.ID,'section-inspector').is_displayed())
     driver.find_element(By.CSS_SELECTOR,'#section-form button[type=submit]').click()
+    WebDriverWait(driver,5).until(lambda d:not d.find_element(By.ID,'section-inspector').is_displayed())
     driver.find_element(By.ID,'save-schedule').click();wait_text(driver,'#save-state','Saved')
     driver.find_element(By.ID,'assign-block').click()
     WebDriverWait(driver,5).until(lambda d:d.find_element(By.ID,'assign-dialog').is_displayed())
     driver.execute_script("document.getElementById('assign-start').value='2026-09-21'")
     driver.find_element(By.CSS_SELECTOR,'#assign-form button[type=submit]').click()
+    WebDriverWait(driver,5).until(lambda d:not d.find_element(By.ID,'section-inspector').is_displayed())
     driver.find_element(By.ID,'save-schedule').click();wait_text(driver,'#save-state','Saved')
     with app.app_context():
         policy=ChannelSchedule.query.first();assert policy.assignments[0]['rule']['weekdays']==[0,1,2,3,4]
@@ -161,8 +163,9 @@ def test_blocks_default_playlist_and_full_day_calendar_song(booth):
     driver.find_element(By.XPATH,"//nav[@id='source-tabs']/button[text()='Songs']").click()
     wait_text(driver,'#source-results','Verified Test Track')
     driver.find_element(By.CSS_SELECTOR,'.source-actions button').click()
-    driver.execute_script("document.getElementById('section-start').value='00:00:00';document.getElementById('section-end').value='00:00:00';")
+    driver.execute_script("document.getElementById('section-start').value='00:00:00';document.getElementById('section-end').value='00:00:00';document.getElementById('section-end-day').value='1';")
     driver.find_element(By.CSS_SELECTOR,'#section-form button[type=submit]').click()
+    WebDriverWait(driver,5).until(lambda d:not d.find_element(By.ID,'section-inspector').is_displayed())
     driver.find_element(By.ID,'save-schedule').click();wait_text(driver,'#save-state','Saved')
     with app.app_context():
         rows=[r for r in ChannelSchedule.query.first().calendar if r['source']['kind']=='song']

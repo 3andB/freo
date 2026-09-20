@@ -53,3 +53,25 @@ test('seeded interval transformations conserve duration and each insert over 200
   assert.deepEqual(item,snapshot);
  }
 });
+
+test('effective coverage matches dated override priority without mutating recurring definitions',()=>{
+ const repeating=section({rule:{...rule,interval:1},start:0,end:86400});
+ const override=section({id:'special',start:3600,end:7200,rule:{frequency:'once',anchor:'2026-09-21'}});
+ const rows=editor.coverage([repeating,override],'2026-09-21');
+ assert.deepEqual(rows.map(r=>[r.id,r.start,r.end]),[['a',0,3600],['special',3600,7200],['a',7200,86400]]);
+ assert.equal(repeating.end,86400);
+ assert.deepEqual(editor.coverage([repeating,override],'2026-09-28').map(r=>[r.start,r.end]),[[0,86400]]);
+});
+test('overnight overrides clip the next day and preserve the occurrence origin',()=>{
+ const recurring=section({start:82800,end:93600,rule:{...rule,interval:1}});
+ const one=section({id:'special',start:0,end:3600,rule:{frequency:'once',anchor:'2026-09-22'}});
+ const rows=editor.coverage([recurring,one],'2026-09-22');
+ assert.deepEqual(rows.map(r=>[r.id,r.start,r.end,r.origin]),[['special',0,3600,'2026-09-22'],['a',3600,7200,'2026-09-21']]);
+});
+test('cross-day series moves shift phase, weekdays, and exceptions together',()=>{
+ const shifted=editor.movedRule(rule,'2026-10-05','2026-10-06','series');
+ assert.equal(shifted.anchor,'2026-09-22');assert.deepEqual(shifted.weekdays,[1]);
+ assert.deepEqual(shifted.exceptions,['2026-10-20']);
+ assert.equal(editor.matches(shifted,'2026-10-06'),true);assert.equal(editor.matches(shifted,'2026-10-20'),false);
+ assert.deepEqual(editor.movedRule(rule,'2026-10-05','2026-10-06','occurrence'),rule);
+});

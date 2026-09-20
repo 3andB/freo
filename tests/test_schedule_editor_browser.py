@@ -24,9 +24,10 @@ def test_overnight_series_stale_save_and_geometry(booth):
         driver.get(base+f'/admin/stations/test-station/schedule-studio/calendar?date={day}&view={view}')
         WebDriverWait(driver,10).until(lambda d:d.find_elements(By.CSS_SELECTOR,'.time-column'))
     def edit():
-        driver.execute_script("document.querySelector('.timeline-section').click()")
+        driver.execute_script("document.querySelector('.timeline-section').dispatchEvent(new MouseEvent('dblclick',{bubbles:true}))")
         WebDriverWait(driver,5).until(lambda d:d.find_element(By.ID,'section-inspector').is_displayed())
     def draft():
+        WebDriverWait(driver,5).until(lambda d:d.execute_script("return !!localStorage.getItem('freo-schedule:test-station:calendar:draft')"))
         return driver.execute_script("return JSON.parse(localStorage.getItem('freo-schedule:test-station:calendar:draft'))")
     def row(start=82800,end=93600,freq='weekly',exceptions=None):
         return dict(id='audit',start=start,end=end,rule=dict(frequency=freq,anchor='2026-09-21',weekdays=[0],interval=1,exceptions=exceptions or []))
@@ -88,7 +89,7 @@ def test_cancel_overlap_and_edits_while_saving(booth):
         p.calendar=vs.clean_document(s,[dict(id='series',start=32400,end=36000,source=ref,rule=dict(frequency='weekly',anchor='2026-09-21',weekdays=[0])),dict(id='once',start=36000,end=39600,source=ref,rule=dict(frequency='once',anchor='2026-09-21'))]);p.calendar_saved=True;db.session.commit()
     driver.get(base+'/admin/stations/test-station/schedule-studio/calendar?date=2026-09-21&view=day')
     WebDriverWait(driver,10).until(lambda d:d.find_elements(By.CSS_SELECTOR,'[data-id="series"]'))
-    driver.execute_script("document.querySelector('[data-id=series]').click()")
+    driver.execute_script("document.querySelector('[data-id=series]').dispatchEvent(new MouseEvent('dblclick',{bubbles:true}))")
     driver.execute_script("document.getElementById('section-start').value='10:00:00';document.getElementById('section-end').value='11:00:00'")
     driver.find_element(By.CSS_SELECTOR,'#section-form button[type=submit]').click()
     WebDriverWait(driver,5).until(lambda d:d.switch_to.alert).dismiss()
@@ -96,16 +97,18 @@ def test_cancel_overlap_and_edits_while_saving(booth):
     assert driver.find_element(By.ID,'undo-edit').get_attribute('disabled')
     driver.find_element(By.CSS_SELECTOR,'#section-inspector .dialog-close').click()
     # Delay the actual save response while permitting a newer edit in the UI.
-    driver.execute_script("""const original=FreoPage.fetch.bind(FreoPage);window.releaseSave=null;FreoPage.fetch=async(...args)=>{const response=await original(...args);if(args[0].endsWith('/calendar')&&args[1]?.method==='POST')await new Promise(resolve=>window.releaseSave=resolve);return response;};document.querySelector('[data-id=series]').click();""")
+    driver.execute_script("""const original=FreoPage.fetch.bind(FreoPage);window.releaseSave=null;FreoPage.fetch=async(...args)=>{const response=await original(...args);if(args[0].endsWith('/calendar')&&args[1]?.method==='POST')await new Promise(resolve=>window.releaseSave=resolve);return response;};document.querySelector('[data-id=series]').dispatchEvent(new MouseEvent('dblclick',{bubbles:true}));""")
     Select(driver.find_element(By.ID,'edit-scope')).select_by_value('series')
     driver.execute_script("document.getElementById('section-start').value='08:00:00'")
     driver.find_element(By.CSS_SELECTOR,'#section-form button[type=submit]').click()
+    WebDriverWait(driver,5).until(lambda d:not d.find_element(By.ID,'section-inspector').is_displayed())
     driver.find_element(By.ID,'save-schedule').click()
     WebDriverWait(driver,10).until(lambda d:d.execute_script('return !!window.releaseSave'))
-    driver.execute_script("document.querySelector('[data-id=series]').click()")
+    driver.execute_script("document.querySelector('[data-id=series]').dispatchEvent(new MouseEvent('dblclick',{bubbles:true}))")
     Select(driver.find_element(By.ID,'edit-scope')).select_by_value('series')
     driver.execute_script("document.getElementById('section-start').value='07:00:00'")
     driver.find_element(By.CSS_SELECTOR,'#section-form button[type=submit]').click()
+    WebDriverWait(driver,5).until(lambda d:not d.find_element(By.ID,'section-inspector').is_displayed())
     driver.execute_script('window.releaseSave()')
     wait_text(driver,'#studio-message','Newer edits still need saving')
     assert driver.find_element(By.ID,'save-state').text=='Unsaved changes'

@@ -35,7 +35,7 @@ def test_import_and_edit_catalog(booth, request):
     WebDriverWait(driver,8).until(lambda d:d.execute_script('return !document.getElementById("music-audio").paused'))
     choose(driver,'.import-card','Artist','New browser artist',True)
     choose(driver,'.import-card','Album','New browser album',True)
-    click('.import-card .import-more summary')
+    assert driver.find_element(By.CSS_SELECTOR,'.import-card .import-more').get_attribute('open')
     click('.import-card [aria-label=categories] button')
     driver.find_element(By.XPATH,"//button[text()='Choose artwork']").click()
     driver.find_element(By.CSS_SELECTOR,'.artwork-dialog input[type=file]').send_keys(str(browser_dir/image.name))

@@ -21,6 +21,24 @@ def validate_metadata(station_id, data):
     if not isinstance(data, dict):
         raise ValueError('Invalid song details')
     result = {}
+    if 'available_to_all' in data:
+        if not isinstance(data['available_to_all'], bool):
+            raise ValueError('Choose whether this song is available to all stations')
+        if data['available_to_all'] and data.get('audio_kind', 'MUSIC') != 'MUSIC':
+            raise ValueError('Only music can be shared with all stations')
+        result['available_to_all'] = data['available_to_all']
+    if 'playlists' in data:
+        from app.services.playlists import get_playlist
+        values = data['playlists']
+        if not isinstance(values, list) or len(values) > 500:
+            raise ValueError('Choose valid playlists')
+        result['playlists'] = []
+        for value in values:
+            playlist = get_playlist(station_id, value)
+            if playlist.system_key:
+                raise ValueError('Use Audio type to choose a system collection')
+            if playlist.id not in result['playlists']:
+                result['playlists'].append(playlist.id)
     if 'audio_kind' in data:
         from app.services.audio_classification import validate
         kind, subtype, code = validate(data['audio_kind'], data.get('audio_subtype', ''), data.get('cart_code'))
@@ -77,6 +95,9 @@ def apply_metadata(song, data, station_id=None):
     if isinstance(data, dict) and data.get('isrc') == song.isrc:
         data = {key: value for key, value in data.items() if key != 'isrc'}
     data = validate_metadata(station_id, data)
+    if 'available_to_all' in data:
+        from app.services.stations import allocation_lock
+        allocation_lock()
     artist = owned(Artist, station_id, data['artist_id']) if data.get('artist_id') else None
     if data.get('artist_name'): artist = artist_for(song.station_id, data['artist_name'])
     if artist:
@@ -109,4 +130,27 @@ def apply_metadata(song, data, station_id=None):
     if 'audio_kind' in data:
         from app.services.audio_classification import classify
         classify(song, data['audio_kind'], data['audio_subtype'], data['cart_code'], station_id=station_id)
+    if 'available_to_all' in data and data['available_to_all'] != song.available_to_all:
+        from app.extensions import db
+        from app.services.availability import set_sharing
+        db.session.flush()
+        set_sharing(song, data['available_to_all'])
+    if 'playlists' in data:
+        from app.extensions import db
+        from app.models import Playlist, PlaylistItem, Station
+        from sqlalchemy import or_
+        from sqlalchemy.orm import selectinload
+        from app.services.playlists import ordered_ids, replace_order
+        # Serialize membership changes with the Music organizer and ingest workers.
+        db.session.query(Station.id).filter_by(id=station_id).with_for_update().first()
+        wanted = set(data['playlists'])
+        rows = Playlist.query.filter_by(station_id=station_id, deleted_at=None).filter(
+            Playlist.system_key.is_(None), or_(Playlist.id.in_(wanted),
+                Playlist.items.any(PlaylistItem.track_id == song.id))).options(
+                    selectinload(Playlist.items)).order_by(Playlist.id).populate_existing().with_for_update().all()
+        for row in rows:
+            ids = ordered_ids(row)
+            if (row.id in wanted) == (song.id in ids):
+                continue
+            replace_order(row, ids + [song.id] if row.id in wanted else [i for i in ids if i != song.id])
     return song

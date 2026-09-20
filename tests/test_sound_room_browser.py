@@ -14,9 +14,13 @@ from tests.test_web import app as app_fixture
 def test_sound_room_preview_tag_drag_category_editor_notes_and_undo(booth):
     app,driver,base,tmp_path=booth
     def click(by,selector):
-        node=driver.find_element(by,selector)
-        driver.execute_script('arguments[0].scrollIntoView({block:"center"})',node)
-        node.click()
+        def activate(browser):
+            node=browser.find_element(by,selector)
+            browser.execute_script('arguments[0].scrollIntoView({block:"center"})',node)
+            node.click()
+            return True
+        # Polling may replace an inspector button between scrolling and clicking.
+        WebDriverWait(driver,8,ignored_exceptions=(StaleElementReferenceException,)).until(activate)
     audio=tmp_path/'media'/'test-station'/'originals'/('a'*32+'.mp3')
     subprocess.run(['/usr/bin/ffmpeg','-y','-hide_banner','-loglevel','error','-f','lavfi','-i','sine=frequency=440:duration=30','-codec:a','libmp3lame',str(audio)],check=True)
     driver.get(base+'/admin/stations/test-station/media')

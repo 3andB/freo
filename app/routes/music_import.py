@@ -70,7 +70,7 @@ def session_state(session, slug):
     song = joinedload(MusicImportItem.job).joinedload(MediaIngestJob.track)
     rows = MusicImportItem.query.filter_by(session_id=session.id, dismissed=False).options(
         song.defer(Track.waveform), song.selectinload(Track.tags),
-        song.selectinload(Track.categories), song.joinedload(Track.catalog_album),
+        song.selectinload(Track.categories), song.selectinload(Track.playlists), song.joinedload(Track.catalog_album),
         song.joinedload(Track.station)).order_by(MusicImportItem.created_at, MusicImportItem.id).all()
     duplicates = duplicate_songs(rows, session.station_id)
     return dict(id=session.id, url=url_for('.session_detail', slug=slug, identifier=session.id),
@@ -97,6 +97,26 @@ def choices(station_id, data):
     return result
 
 
+def save_choices(item, metadata, session):
+    if item.status == 'finalized':
+        job = item.job
+        song = job.track if job else None
+        if job and job.status in ('error', 'rejected') and not song:
+            # Correct unavailable destinations before retrying the retained audio.
+            previous = job.import_metadata or {}
+            job.import_metadata = {**({'cover_id': previous['cover_id']} if previous.get('cover_id') else {}), **metadata}
+        else:
+            if not song or song.deleted_at or song.decommissioned_at or job.status == 'duplicate':
+                raise ValueError('Wait for import to finish or edit the existing song in Music')
+            if not metadata.get('title'): raise ValueError('Song title is required')
+            apply_metadata(song, metadata, session.station_id)
+            audit('media_editor_updated', user_id=current_admin().id, station_id=session.station_id,
+                  target_id=song.uuid, summary='Song details updated from import workspace')
+    elif item.status not in ('pending', 'preparing', 'ready', 'failed'):
+        raise ValueError('This draft has expired or was removed')
+    item.choices = metadata
+
+
 @music_import.errorhandler(ValueError)
 def invalid(error):
     db.session.rollback()
@@ -116,7 +136,9 @@ def sessions(slug):
     rows = (MusicImportSession.query.filter_by(station_id=station.id, admin_user_id=current_admin().id)
             .options(selectinload(MusicImportSession.items).load_only(MusicImportItem.id,
                 MusicImportItem.original_filename, MusicImportItem.relative_path,
-                MusicImportItem.detected, MusicImportItem.dismissed, MusicImportItem.status))
+                MusicImportItem.detected, MusicImportItem.dismissed, MusicImportItem.status, MusicImportItem.checksum)
+                .joinedload(MusicImportItem.job).load_only(MediaIngestJob.status)
+                .joinedload(MediaIngestJob.track).load_only(Track.analysis_status, Track.deleted_at))
             .filter(MusicImportSession.updated_at >= utcnow() - timedelta(days=DRAFT_DAYS))
             .order_by(MusicImportSession.updated_at.desc()).limit(20).all())
     def label(session):
@@ -124,7 +146,19 @@ def sessions(slug):
         if not visible: return 'Empty import'
         first = visible[0]
         return (first.detected or {}).get('album') or first.relative_path.rpartition('/')[0] or first.original_filename
-    response = jsonify(csrf=csrf_token(), sessions=[dict(id=s.id, created_at=s.created_at.isoformat(),
+    duplicates = duplicate_songs([item for session in rows for item in session.items if not item.dismissed], station.id)
+    def progress(session):
+        visible = [i for i in session.items if not i.dismissed]
+        if not visible: return 'empty'
+        visible = [i for i in visible if not (i.status != 'finalized' and i.checksum in duplicates) and not (i.job and i.job.status == 'duplicate')]
+        if not visible: return 'complete'
+        if any(i.status in ('failed', 'expired') or i.job and (i.job.status in ('error', 'rejected') or i.job.track and i.job.track.analysis_status == 'failed') for i in visible):
+            return 'attention'
+        if any(i.status != 'finalized' for i in visible): return 'draft'
+        if any(not i.job or i.job.status not in ('accepted', 'duplicate') or i.job.track and i.job.track.analysis_status in ('pending', 'processing') for i in visible):
+            return 'processing'
+        return 'complete'
+    response = jsonify(csrf=csrf_token(), sessions=[dict(id=s.id, created_at=s.created_at.isoformat(), state=progress(s),
         name=label(s), count=sum(not i.dismissed for i in s.items),
         imported=sum(not i.dismissed and i.status=='finalized' for i in s.items)) for s in rows])
     response.headers['Cache-Control'] = 'private, no-store'
@@ -153,9 +187,8 @@ def session_detail(slug, identifier):
                 item = rows[selection['id']]
                 if item.revision != selection.get('revision'):
                     raise ValueError('Details changed in another tab. Reload this import before saving.')
-                if item.status not in ('pending', 'preparing', 'ready', 'failed'):
-                    raise ValueError('This draft has expired or was imported. Reload its details.')
-                item.choices = choices(session.station_id, selection.get('choices', {}))
+                metadata = choices(session.station_id, selection.get('choices', {}))
+                save_choices(item, metadata, session)
                 item.revision += 1
             session.updated_at = utcnow(); db.session.commit()
             return jsonify(session_state(session, slug))
@@ -233,17 +266,7 @@ def edit_item(slug, identifier, item_id):
         else: raise ValueError('This song cannot be retried yet')
     elif action == 'save':
         metadata = choices(session.station_id, data.get('choices', {}))
-        if item.status == 'finalized':
-            song = item.job.track if item.job else None
-            if not song or song.deleted_at or song.decommissioned_at: raise ValueError('Wait for import to finish before editing song details')
-            # Completed rows send the full visible metadata, not old draft defaults.
-            if not metadata.get('title'): raise ValueError('Song title is required')
-            apply_metadata(song, metadata, session.station_id)
-            audit('media_editor_updated', user_id=current_admin().id, station_id=session.station_id,
-                  target_id=song.uuid, summary='Song details updated from import workspace')
-        elif item.status not in ('pending', 'preparing', 'ready', 'failed'):
-            raise ValueError('This draft has expired or was removed')
-        item.choices = metadata
+        save_choices(item, metadata, session)
     else: raise ValueError('Invalid import action')
     item.revision += 1; session.updated_at = utcnow(); db.session.commit()
     return jsonify(item_state(item, slug))

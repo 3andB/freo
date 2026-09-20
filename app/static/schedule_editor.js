@@ -6,6 +6,67 @@ const dayNumber = day => Date.parse(day + 'T12:00:00Z') / 86400000;
 const shift = (day, n) => new Date((dayNumber(day) + n) * 86400000).toISOString().slice(0, 10);
 const identity = () => crypto.randomUUID();
 
+function matches(rule, day) {
+    if (day < rule.anchor || rule.starts_on && day < rule.starts_on || rule.until && day > rule.until || rule.exceptions?.includes(day)) return false;
+    const days = Math.round(dayNumber(day) - dayNumber(rule.anchor)), interval = rule.interval || 1;
+    const date = new Date(day + 'T12:00:00Z'), anchor = new Date(rule.anchor + 'T12:00:00Z');
+    const weekday = d => (d.getUTCDay() + 6) % 7;
+    if (rule.frequency === 'once') return day === rule.anchor;
+    if (rule.frequency === 'dates') return rule.dates?.includes(day);
+    if (rule.frequency === 'daily') return days % interval === 0;
+    if (rule.frequency === 'weekly') return Math.floor((days + weekday(anchor)) / 7) % interval === 0 && rule.weekdays.includes(weekday(date));
+    const months = (date.getUTCFullYear() - anchor.getUTCFullYear()) * 12 + date.getUTCMonth() - anchor.getUTCMonth();
+    if (months % interval) return false;
+    if (rule.nth) {
+        const last = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + 1, 0)).getUTCDate();
+        return weekday(date) === rule.weekday && (rule.nth === -1 ? date.getUTCDate() + 7 > last : Math.floor((date.getUTCDate() - 1) / 7) + 1 === rule.nth);
+    }
+    return date.getUTCDate() === (rule.month_day || anchor.getUTCDate());
+}
+
+function occurrences(document, day) {
+    const result = [];
+    for (const entry of document) for (const origin of [shift(day, -1), day]) {
+        if (!matches(entry.rule, origin)) continue;
+        const offset = origin === day ? 0 : -86400, start = entry.start + offset, end = entry.end + offset;
+        if (end > 0 && start < 86400) result.push({...copy(entry), start: Math.max(0, start), end: Math.min(86400, end), origin});
+    }
+    return result.sort((a, b) => a.start - b.start || a.id.localeCompare(b.id));
+}
+
+const recurring = item => !['once', 'dates'].includes(item.rule.frequency);
+function coverage(document, day) {
+    const rows = occurrences(document, day), overrides = rows.filter(row => !recurring(row));
+    return rows.flatMap(row => {
+        if (!recurring(row)) return [row];
+        let pieces = [row];
+        for (const override of overrides) pieces = pieces.flatMap(piece => {
+            if (override.start >= piece.end || override.end <= piece.start) return [piece];
+            const remaining = [];
+            if (piece.start < override.start) remaining.push({...piece, end: override.start});
+            if (piece.end > override.end) remaining.push({...piece, start: override.end});
+            return remaining;
+        });
+        return pieces;
+    }).sort((a, b) => a.start - b.start || a.id.localeCompare(b.id));
+}
+
+function movedRule(rule, origin, day, scope) {
+    const result = copy(rule), delta = Math.round(dayNumber(day) - dayNumber(origin));
+    if (!delta || scope === 'occurrence') return result;
+    result.anchor = shift(rule.anchor, delta);
+    if (result.starts_on) result.starts_on = shift(result.starts_on, delta);
+    if (result.until) result.until = shift(result.until, delta);
+    result.exceptions = (result.exceptions || []).map(date => shift(date, delta));
+    if (result.dates) result.dates = result.dates.map(date => shift(date, delta));
+    result.weekdays = (result.weekdays || []).map(n => ((n + delta) % 7 + 7) % 7);
+    const d = new Date(day + 'T12:00:00Z');
+    result.weekday = (d.getUTCDay() + 6) % 7;
+    result.month_day = d.getUTCDate();
+    if (result.nth > 0) result.nth = Math.floor((d.getUTCDate() - 1) / 7) + 1;
+    return result;
+}
+
 function interval(section, start, end, move = false) {
     const result = {...copy(section), start, end};
     if (section.inserts) {
@@ -80,7 +141,7 @@ function remove(original, id, {composing = false, scope = 'series', origin} = {}
     return list;
 }
 
-const api = {interval, split, edit, remove};
+const api = {interval, split, edit, remove, matches, occurrences, coverage, recurring, movedRule};
 if (typeof module !== 'undefined') module.exports = api;
 else scope.FreoScheduleEditor = api;
 })(globalThis);

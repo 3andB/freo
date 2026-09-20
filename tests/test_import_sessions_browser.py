@@ -66,7 +66,7 @@ def test_amber_state_incremental_upload_and_edit_in_place(booth):
     choose(driver,'.import-card:first-child','Artist','Amber State',True)
     wait_saved(app,artist='Amber State')
     add_audio(driver,tmp_path,2);work(app,True);wait_text(driver,'.import-card:last-child','Ready to import')
-    click(driver,'.import-card:last-child .import-card-head button[aria-label^="Edit"]')
+    assert driver.find_element(By.CSS_SELECTOR,'.import-card:last-child .import-row-editor').is_displayed()
     choose(driver,'.import-card:last-child','Artist','Amber State')
     wait_saved(app,artist='Amber State')
     click(driver,'#media-upload-form [type=submit]');wait_text(driver,'#import-message','Import started')
@@ -80,7 +80,9 @@ def test_amber_state_incremental_upload_and_edit_in_place(booth):
     def corrected(_):
         with app.app_context():return Track.query.filter_by(title='Song 2',artist='Corrected Artist').count()==1
     WebDriverWait(driver,10).until(corrected)
-    driver.refresh();WebDriverWait(driver,10).until(lambda d:len(d.find_elements(By.CSS_SELECTOR,'.import-card'))==2)
+    workspace=driver.find_element(By.ID,'import-sessions').get_attribute('value')
+    driver.get(base+'/admin/stations/test-station/media/upload?import_session='+workspace)
+    WebDriverWait(driver,10).until(lambda d:len(d.find_elements(By.CSS_SELECTOR,'.import-card'))==2)
     wait_text(driver,'.import-card:last-child','Corrected Artist')
     with app.app_context():assert Track.query.count()==3
     driver.save_screenshot('/tmp/freo-import-workspace-desktop.png')
@@ -93,8 +95,8 @@ def test_album_bulk_artist_preserves_category_and_later_track_inherits(booth):
     app,driver,base,tmp_path=booth;open_import(driver,base)
     for index in (1,2):add_audio(driver,tmp_path,index,album='My Album',track=str(index))
     work(app,True);wait_text(driver,'.import-card:last-child','Ready to import')
-    click(driver,'.import-card:first-of-type .import-card-head button[aria-label^="Edit"]')
-    click(driver,'.import-card:first-of-type .import-more summary')
+    assert driver.find_element(By.CSS_SELECTOR,'.import-card:first-of-type .import-row-editor').is_displayed()
+    assert driver.find_element(By.CSS_SELECTOR,'.import-card:first-of-type .import-more').get_attribute('open')
     click(driver,'.import-card:first-of-type [aria-label=categories] button')
     click(driver,'.import-group-head button')
     choose(driver,'#batch-catalog','Artist','Amber State',True)
@@ -163,7 +165,7 @@ def test_single_tagged_song_then_add_another_after_import(booth):
         with app.app_context():return Track.query.filter_by(title='Song 1',artist='Amber State').count()==1
     WebDriverWait(driver,8).until(saved)
     add_audio(driver,tmp_path,2);work(app,True);wait_text(driver,'.import-card:last-child','Ready to import')
-    click(driver,'.import-card:last-child .import-card-head button[aria-label^=Edit]')
+    assert driver.find_element(By.CSS_SELECTOR,'.import-card:last-child .import-row-editor').is_displayed()
     choose(driver,'.import-card:last-child','Artist','Amber State')
     click(driver,'#media-upload-form [type=submit]');wait_text(driver,'#import-message','Import started');work(app)
     wait_text(driver,'.import-card:last-child','Imported')

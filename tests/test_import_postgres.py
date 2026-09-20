@@ -82,3 +82,28 @@ def test_concurrent_album_save_and_single_edit_preserve_revision(pg_app):
     results=race(edit)
     assert sorted(response.status_code for response in results)==[200,409]
     with pg_app.app_context():assert db.session.get(MusicImportItem,identifier).revision==2
+
+
+def test_concurrent_import_assignments_preserve_playlist_membership_and_revision(pg_app):
+    from app.models import Track, Playlist
+    from app.services.catalog_edit import apply_metadata
+    with pg_app.app_context():
+        station=Station.query.first()
+        playlist=Playlist(station_id=station.id,name='Concurrent imports')
+        songs=[Track(station_id=station.id,uuid=str(uuid.uuid4()),title=f'Song {i}',artist='Artist',
+            original_filename=f'{i}.mp3',storage_key=f'{i}.mp3',media_type='mp3',duration_ms=1000,
+            sample_rate_hz=44100,channels=2,file_size_bytes=100,checksum_sha256=str(i)*64,
+            enabled=False,ingest_status='accepted') for i in range(2)]
+        db.session.add_all([playlist,*songs]);db.session.commit()
+        identifiers=[song.id for song in songs];playlist_id=playlist.id;revision=playlist.revision
+    def assign(index):
+        with pg_app.app_context():
+            song=db.session.get(Track,identifiers[index])
+            apply_metadata(song,{'playlists':[playlist_id],'available_to_all':True})
+            db.session.commit()
+    race(assign)
+    with pg_app.app_context():
+        playlist=db.session.get(Playlist,playlist_id)
+        assert {item.track_id for item in playlist.items}==set(identifiers)
+        assert playlist.revision==revision+2
+        assert all(db.session.get(Track,identifier).available_to_all for identifier in identifiers)

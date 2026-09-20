@@ -146,6 +146,9 @@ def mutate(slug,action):
     try:
         data=json.loads(request.form.get('data','{}'))
         if not isinstance(data,dict):raise ValueError('Invalid request')
+        if action == 'share-all':
+            from app.services.stations import allocation_lock
+            allocation_lock()
         db.session.query(Station.id).filter_by(id=station.id).with_for_update().first()
         undo=None
         if action in ('create-playlist','edit-playlist','delete-playlist','playlist-source','playlist-remove','playlist-reorder'):
@@ -187,6 +190,15 @@ def mutate(slug,action):
             by_uuid={song.uuid:song for song in songs};songs=list(dict.fromkeys(by_uuid[x] for x in data['songs']))
             undo,count=playlist_service.membership(row,songs,data.get('operation'),current_admin().id)
             message=f'{count} song(s) updated · {row.name}'
+        elif action=='share-all':
+            from app.services.availability import set_sharing
+            songs=selected_songs(station,data)
+            if any(song.audio_kind != 'MUSIC' for song in songs):
+                raise ValueError('Select music songs to make available to all channels')
+            for song in songs:
+                if not song.available_to_all:
+                    set_sharing(song, True, current_admin().id)
+            message=f'{len(songs)} song(s) available to all channels'
         elif action=='classify':
             from app.services.audio_classification import classify
             songs=selected_songs(station,data)
