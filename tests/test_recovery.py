@@ -87,10 +87,13 @@ def postgres():
     created = []
     connection = recovery.connect(url)
     connection.autocommit = True
-    def new_database():
+    def new_database(encoding=None):
         name = 'recovery_test_' + uuid.uuid4().hex
         with connection.cursor() as cursor:
-            cursor.execute(sql.SQL('CREATE DATABASE {} TEMPLATE template0').format(sql.Identifier(name)))
+            query = sql.SQL('CREATE DATABASE {} TEMPLATE template0').format(sql.Identifier(name))
+            if encoding:
+                query += sql.SQL(' ENCODING {}').format(sql.Literal(encoding))
+            cursor.execute(query)
         created.append(name)
         values = parse_dsn(url)
         values['dbname'] = name
@@ -165,6 +168,44 @@ def test_encrypted_backup_restore_preserves_database_files_and_metadata(postgres
         (payload / 'database.dump').write_bytes(b'corrupted')
         with pytest.raises(recovery.RecoveryError, match='checksum'):
             recovery.validate_payload(payload, manifest)
+
+
+@pytest.mark.parametrize('legacy_manifest', [False, True])
+def test_restore_retains_unicode_when_target_template_uses_different_encoding(postgres, tmp_path, monkeypatch, legacy_manifest):
+    from contextlib import contextmanager
+    target_url, new_database, created = postgres
+    source_url = new_database(encoding='UTF8')
+    populated(source_url)
+    title = 'Beyoncé — 東京 🎵'
+    connection = recovery.connect(source_url)
+    with connection:
+        with connection.cursor() as cursor:
+            cursor.execute('UPDATE stations SET name=%s', (title,))
+    connection.close()
+    root = tmp_path / 'state'
+    root.mkdir()
+    bundle = tmp_path / 'unicode.gpg'
+    recovery.create(source_url, [root], bundle, b'fixture-secret', version='0.1.0')
+    unpack = recovery.unpack
+    if legacy_manifest:
+        @contextmanager
+        def old_manifest(*args, **kwargs):
+            with unpack(*args, **kwargs) as (payload, manifest):
+                manifest.pop('database_encoding')
+                yield payload, manifest
+        monkeypatch.setattr(recovery, 'unpack', old_manifest)
+    report = recovery.restore(bundle, b'fixture-secret', target_url, tmp_path / 'restored')
+    created.append(report['database'])
+    assert report['status'] == 'verified' and report['database_encoding'] == 'UTF8'
+    params = parse_dsn(target_url)
+    params['dbname'] = report['database']
+    connection = recovery.connect(make_dsn(**params))
+    with connection.cursor() as cursor:
+        cursor.execute('SELECT name FROM stations')
+        assert cursor.fetchone()[0] == title
+        cursor.execute('SHOW server_encoding')
+        assert cursor.fetchone()[0] == 'UTF8'
+    connection.close()
 
 
 def test_connected_clients_prevent_backup(postgres, tmp_path):

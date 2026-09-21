@@ -104,6 +104,9 @@ service accounts and map both ownership and ACL entries before activation.
 PostgreSQL global roles are not recreated from a cluster-wide dump; restore uses
 the explicit destination role and skips original owner/privilege assignments.
 The original full database dump retains that metadata for reviewed recovery.
+Restore explicitly uses the source database's character encoding, including
+when the destination cluster has a different default. Older format-1 bundles
+recover the encoding from their verified database dump.
 
 The initial implementation makes full private temporary copies under the system
 temporary directory. Budget several times the full dataset size for staging,

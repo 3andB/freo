@@ -10,6 +10,7 @@ import hashlib
 import json
 import os
 from pathlib import Path, PurePosixPath
+import re
 import shutil
 import stat
 import subprocess
@@ -311,8 +312,8 @@ def create(url, roots, destination, passphrase, *, version, media_root=None, upl
             cursor.execute("SELECT count(*) FROM pg_stat_activity WHERE datname=current_database() AND pid<>pg_backend_pid() AND backend_type='client backend'")
             if cursor.fetchone()[0]:
                 raise RecoveryError('Database clients remain connected; stop all writers before backup')
-            cursor.execute('SELECT pg_export_snapshot(), current_setting(\'server_version\')')
-            snapshot, server_version = cursor.fetchone()
+            cursor.execute("SELECT pg_export_snapshot(), current_setting('server_version'), current_setting('server_encoding')")
+            snapshot, server_version, database_encoding = cursor.fetchone()
         revision = schema_revision(connection)
         tables, sequences = database_inventory(connection), sequence_inventory(connection)
         with tempfile.TemporaryDirectory(prefix='freo-backup-') as name:
@@ -329,6 +330,7 @@ def create(url, roots, destination, passphrase, *, version, media_root=None, upl
             manifest = dict(format=1, status='complete', backup_id=uuid.uuid4().hex,
                             created_at=datetime.now(timezone.utc).isoformat(), version=version,
                             schema_revision=revision, postgres_version=server_version,
+                            database_encoding=database_encoding,
                             roots=[str(p) for p in roots], entries=entries,
                             database_sha256=digest(payload / 'database.dump'),
                             tables=tables, sequences=sequences)
@@ -411,18 +413,30 @@ def restore(bundle, passphrase, target_url, directory, *, preserve_ownership=Fal
     if directory.exists() or directory.is_symlink():
         raise RecoveryError('Restore directory must not exist')
     with unpack(bundle, passphrase) as (payload, manifest):
+        encoding = manifest.get('database_encoding')
+        if encoding is None:
+            # Original format-1 bundles carry encoding in the custom dump rather
+            # than the manifest. Read schema output without executing any SQL.
+            schema = run(['pg_restore', '--schema-only', '--file=-', str(payload / 'database.dump')])
+            encodings = re.findall(rb"^SET client_encoding = '([A-Za-z0-9_-]+)';$", schema, re.MULTILINE)
+            if len(encodings) != 1:
+                raise RecoveryError('Cannot determine source database encoding; restore refused')
+            encoding = encodings[0].decode('ascii')
+        if not isinstance(encoding, str) or not re.fullmatch(r'[A-Za-z0-9_-]{1,32}', encoding):
+            raise RecoveryError('Invalid source database encoding')
         unresolved = restore_files(payload, manifest, directory, preserve_ownership)
         name = 'freo_restore_' + uuid.uuid4().hex
         report = dict(backup_id=manifest['backup_id'], database=name, status='incomplete',
                       roots=manifest['roots'], unresolved_symlinks=unresolved,
-                      ownership_restored=preserve_ownership)
+                      ownership_restored=preserve_ownership, database_encoding=encoding)
         report_path = directory / 'restore-report.json'
         report_path.write_text(json.dumps(report, indent=2))
         connection = connect(target_url)
         try:
             connection.autocommit = True
             with connection.cursor() as cursor:
-                cursor.execute(sql.SQL('CREATE DATABASE {} TEMPLATE template0').format(sql.Identifier(name)))
+                cursor.execute(sql.SQL('CREATE DATABASE {} TEMPLATE template0 ENCODING {}').format(
+                    sql.Identifier(name), sql.Literal(encoding)))
         finally:
             connection.close()
         params = parse_dsn(target_url)
