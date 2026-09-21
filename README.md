@@ -8,6 +8,8 @@
 
 [Copyright identification and DMCA reporting](docs/copyright-and-dmca.md) documents permanent public Track IDs, optional ISRC metadata, private copyright reports, admin review, and upgrade instructions.
 
+[First-use license agreement](docs/license-agreement.md) displays the licensing and copyright requirements on first admin use, records acceptance, and can be reopened from Station Control.
+
 [Player settings and listener feedback](docs/player-and-listener-experience.md) add station messages, cover art, social links, published Day/Week/Month schedules, top/bottom ad slots, and song votes with private comments. The public player uses a responsive DJ-inspired record design.
 
 [Public radio directories](docs/public-radio-directories.md): explicitly submit a station to Radio Browser or enable Internet-Radio.com advertising through Icecast YP from Station settings. Both are opt-in client integrations.

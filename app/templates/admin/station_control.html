@@ -33,6 +33,7 @@
   </div>
   <p>Mode changes use your saved programming. Scheduled Events remain enabled.</p>
   <p><a href="{{ url_for('station_settings.page',slug=selected.slug) }}#playback-settings">Manage the default playlist in Station settings →</a></p>
+  <button type="button" data-license-open aria-haspopup="dialog" aria-controls="license-agreement">License agreement</button>
 </section>
 {% endblock %}
 {% block scripts %}{{ super() }}<script defer src="{{ url_for('static',filename='station_control.js',v='release-20260921') }}"></script>{% endblock %}

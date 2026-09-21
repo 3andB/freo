@@ -1,6 +1,7 @@
 {% extends 'base.html' %}
-{% block head %}{{ super() }}<link rel="stylesheet" href="{{ url_for('static',filename='operations.css',v='broadcast-20260918') }}">{% if page in ['media','sound-room','tags','playlists'] %}<link rel="stylesheet" href="{{ url_for('static',filename='music.css',v='music-workflow-20260919') }}">{% endif %}{% endblock %}
+{% block head %}{{ super() }}<link rel="stylesheet" href="{{ url_for('static',filename='license_agreement.css',v='20260921') }}"><link rel="stylesheet" href="{{ url_for('static',filename='operations.css',v='broadcast-20260918') }}">{% if page in ['media','sound-room','tags','playlists'] %}<link rel="stylesheet" href="{{ url_for('static',filename='music.css',v='music-workflow-20260919') }}">{% endif %}{% endblock %}
 {% block body_class %}dashboard-page admin-page{% endblock %}
+{% block footer %}{{ super() }}{% include 'admin/_license_agreement.html' %}{% endblock %}
 {% block header %}
 <header class="admin-topbar">
   <a class="wordmark" href="{{ url_for('web.admin_home') }}">freo<span>.world</span></a>
@@ -20,7 +21,7 @@
   </div>
 </header>
 {% endblock %}
-{% block scripts %}<script defer src="{{ url_for('static',filename='music_availability.js',v='music-workflow-20260919') }}"></script>{% if selected and page in ['live','media','sound-room'] %}<script defer src="{{ url_for('static',filename='song_flags.js') }}"></script>{% endif %}<script defer src="{{ url_for('static', filename='admin.js') }}"></script><script defer src="{{ url_for('static',filename='schedule_status.js') }}"></script>{% if page in ['media','sound-room','tags','playlists'] %}<script defer src="{{ url_for('static',filename='music_preview.js',v='music-workflow-20260919') }}"></script><script defer src="{{ url_for('static',filename='music_toggles.js',v='playlists-v1') }}"></script>{% endif %}{% endblock %}
+{% block scripts %}<script defer src="{{ url_for('static',filename='license_agreement.js',v='20260921') }}"></script><script defer src="{{ url_for('static',filename='music_availability.js',v='music-workflow-20260919') }}"></script>{% if selected and page in ['live','media','sound-room'] %}<script defer src="{{ url_for('static',filename='song_flags.js') }}"></script>{% endif %}<script defer src="{{ url_for('static', filename='admin.js') }}"></script><script defer src="{{ url_for('static',filename='schedule_status.js') }}"></script>{% if page in ['media','sound-room','tags','playlists'] %}<script defer src="{{ url_for('static',filename='music_preview.js',v='music-workflow-20260919') }}"></script><script defer src="{{ url_for('static',filename='music_toggles.js',v='playlists-v1') }}"></script>{% endif %}{% endblock %}
 {% block content %}
 <div class="admin-layout">
   <aside class="admin-sidebar" aria-label="Admin navigation">

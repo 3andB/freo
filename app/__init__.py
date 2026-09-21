@@ -68,6 +68,8 @@ def create_app(config_name=None):
     app.register_blueprint(schedule_cli, cli_group=None)
     app.register_blueprint(schedule_blueprint)
     app.register_blueprint(web_blueprint)
+    from .routes.license_agreement import license_agreement
+    app.register_blueprint(license_agreement)
     from .routes.website import website
     app.register_blueprint(website)
     from .routes.dmca import dmca

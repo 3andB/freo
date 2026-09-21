@@ -1,0 +1,27 @@
+{% set agreement = license_agreement_context() %}
+<dialog id="license-agreement" class="license-agreement" aria-labelledby="license-agreement-title" closedby="{{ 'none' if agreement.required else 'closerequest' }}" data-required="{{ 'true' if agreement.required else 'false' }}" {% if agreement.required %}open{% endif %}>
+  <h2 id="license-agreement-title" tabindex="-1">Freo license agreement</h2>
+  <p>Please read and accept this agreement before using Freo. Version {{ agreement.version }}.</p>
+  <div class="license-agreement-copy">
+    <p>This agreement incorporates the licensing information published on the <a href="{{ agreement.url }}" target="_blank" rel="noopener noreferrer">Freo Live licensing page ↗</a>.</p>
+    <h3>Software licensing</h3>
+    <p>Freo runs on infrastructure you provide, including hosting, storage and bandwidth. The published Community allowance is two channels, with an optional Freo Live owner account. Consult the website for additional capacity and licensing availability.</p>
+    <h3>Broadcasting and copyright</h3>
+    <p>A Freo software entitlement does not grant music or other content broadcast rights. You are responsible for obtaining permission for the material you broadcast.</p>
+    <p class="license-copyright"><strong>You may not broadcast copyrighted material without permission. Doing so is a direct violation of this license.</strong></p>
+    <h3>Source code</h3>
+    <p>Source-code terms are separate from installation entitlements. Consult the <a href="https://github.com/lee-3andB/freo" target="_blank" rel="noopener noreferrer">project repository ↗</a> for those terms.</p>
+  </div>
+  <form id="license-accept-form" action="{{ url_for('license_agreement.accept') }}" method="post" {% if not agreement.required %}hidden{% endif %}>
+    <input type="hidden" name="csrf" value="{{ csrf_token() }}">
+    <input type="hidden" name="version" value="{{ agreement.version }}">
+    <label class="license-acknowledgment"><input type="checkbox" name="agree" value="yes" required> I have read and accept the license agreement, including the copyright restriction.</label>
+    <p data-license-error role="alert" hidden></p>
+    <button class="admin-primary" type="submit">Accept and continue</button>
+  </form>
+  <form data-license-decline action="{{ url_for('web.logout') }}" method="post" {% if not agreement.required %}hidden{% endif %}>
+    <input type="hidden" name="csrf" value="{{ session.get('logout_csrf', '') }}">
+    <button type="submit">Decline and sign out</button>
+  </form>
+  <button type="button" data-license-close {% if agreement.required %}hidden{% endif %}>Close</button>
+</dialog>
