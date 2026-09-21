@@ -48,4 +48,16 @@ cause. The retained handoff trace makes any recurrence attributable.
 
 Verified pre-deployment backup:
 `/var/backups/freo/focused-repair-20260921T181623Z`.
-Deployment and the final two-hour observation have not started.
+Application commit `ba64f38` was pushed and deployed. Both station configurations
+validated and the web, worker and both station engines restarted; deployment
+finished at 18:23:21 UTC. Post-deployment health/UI/asset checks passed. Both
+stations had fresh AUTO observations and ten seconds of decoded audible music.
+Evidence: `deployment.json` and `live-verification.json` under the evidence root.
+
+The final two-hour observation started at **18:25:04 UTC** and is due to finish
+at **20:25:04 UTC**, followed by restoration/audio checks. It runs application
+commit `ba64f38` under `freo-live-final-2h-20260921.service`, with the existing
+watchdog and independent restoration hook. The first checkpoint is clean and
+all four timed event fixtures are installed. Evidence/progress:
+`/tmp/freo-live-final-2h-20260921/run.json`. No completed live-test result is
+claimed here. This documentation follow-up changes no tested application code.
