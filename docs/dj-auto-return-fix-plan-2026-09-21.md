@@ -1,11 +1,12 @@
 # DJ-to-Auto interruption repair plan
 
-Status: implemented locally; corrected regressions and quiet rehearsal passed.
+Status: deployed September 21 after corrected regressions and rehearsal passed.
 The three-hour repeat completed at 04:35 UTC on September 21 with continuous
 playback and all DJ returns. Its recorded failures were three late IDs and one
 temporary missing-request observation. The owner accepts the ID delays; a bounded
-confirmation window now addresses the observation race. Release validation is in
-progress following explicit authorization to commit, push, and restart live.
+confirmation window now addresses the observation race. Release validation and
+post-restart HTTP/audio checks passed; see `docs/station-release-2026-09-21.md`.
+The owner subsequently authorized a five-hour stress run on the live stations.
 Results are recorded in
 `docs/dj-auto-return-repair-2026-09-21.md`.
 

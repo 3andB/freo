@@ -1,5 +1,9 @@
 # DJ-to-Auto repair — September 21, 2026
 
+Current status: deployed and live-verified; see `station-release-2026-09-21.md`
+for final validation, the additional calendar polling correction, and deployment.
+The sections below preserve the intermediate evidence and chronology.
+
 The repair prepares one eligible scheduled request during the last eight seconds
 of an aired DJ track. The worker renews a two-second engine lease identifying the
 outgoing deck/request and the replacement. Liquidsoap performs the handoff at

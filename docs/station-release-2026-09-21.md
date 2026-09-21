@@ -100,4 +100,32 @@ Block. Operator edits detected during cleanup are preserved and reported.
 stop hook will invoke it. Original empty-period Calendar behavior now has the
 configured music fallback after restoration.
 
-Deployment and post-restart verification are pending.
+## Deployment result
+
+Application/test release commit `f992699` was pushed to `origin/main`. Both
+managed engine configurations were validated and installed. Web, automation,
+ingest, microphone, statistics and central API services restarted, followed by
+the managed engines one at a time. Both exposed the new return protocol and
+resumed managed music.
+
+The subsequent HTTP checks caught an Icecast runtime hang after its 05:53:24
+configuration reload: the listener backlog filled and both status and new stream
+requests timed out. The renderer had added explicit `public=0` fields to the two
+existing mounts. This is an observed reload incident, not a proven upstream root
+cause. Icecast was restarted, including recovery of the existing diagnostic and
+managed engines. No application workaround or timing tolerance was added to hide
+the incident.
+
+The repeated live verification at 06:00 UTC passed all four health/readiness
+checks, authenticated Booth/Calendar/Station Control/Events pages for both
+stations, and exact delivery of all five changed static assets. Both engines
+reported the new return protocol, fresh worker observations, and backup tone off.
+Ten seconds of each actual MP3 stream decoded successfully; RMS was 0.06559 and
+0.10729. The eight application/managed-engine units were active with zero automatic
+restart loops before the Icecast recovery; recovery and final streaming checks
+are recorded in the same release evidence directory.
+
+The five-hour live stress run is the next action after this deployment record is
+committed and pushed. Its evidence directory is `/tmp/freo-live-stress-20260921`
+and its managed unit is `freo-live-stress-20260921.service`. The actual start and
+expected finish will be written to that directory's `run.json` after setup.
