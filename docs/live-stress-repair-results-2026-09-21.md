@@ -1,7 +1,7 @@
 # Live stress corrections — September 21, 2026
 
-Status: corrections and pre-deployment validation completed. The two-hour live
-test has not started. Plan: `live-stress-repair-plan-2026-09-21.md`.
+Status: corrections validated, pushed and deployed. The live runner rehearsal
+passed. The two-hour live test is running; its final outcome is pending. Plan: `live-stress-repair-plan-2026-09-21.md`.
 
 ## Findings and corrections
 
@@ -117,10 +117,49 @@ recorded below.
 
 Evidence is under `/tmp/freo-live-repair-20260921/`. The verified pre-deployment
 backup is `/var/backups/freo/live-repair-20260921T125852Z`. Final-source audio,
-rehearsal, deployment and live test outcomes will be recorded when completed.
+rehearsal and deployment outcomes are recorded below; the live test outcome
+remains pending.
 
 Final integrated programme rehearsal passed on the corrected source: 300 seconds
 of observation, two completed timed events, one DJ takeover and three programme
 rotations. No findings, detected silence, fallback or engine clock lag. Evidence:
 `programme/run.json` and `programme/runtime/test_three_hour_programme0/soak-result.json`.
-Deployment and the separate two-hour live run remain pending.
+The separate two-hour live run is recorded below.
+
+## Deployment
+
+Application commit `78035960993b11cb4f10fabc5824562d4135f6d2` was pushed to
+`origin/main`. Both engine configurations validated and the web, automation and
+both station services restarted. Deployment finished at 13:40:16 UTC.
+
+Post-deployment checks passed: four health endpoints; matching bytes for six
+live static assets; Booth, Calendar, Control and Events pages on both stations;
+fresh worker observations, AUTO playback and ten decoded seconds of audible
+stream audio per station. Evidence: `deployment.json` and `live-verification.json`
+under the repair evidence directory.
+
+## Live runner rehearsal and two-hour observation
+
+The 180-second live rehearsal passed with no findings: six station scheduling
+exercises across Block, Calendar and Simple, 15 UI navigations, and six track
+starts. Both original programming configurations were restored. The normal
+cleanup and independent service stop hook each verified fresh AUTO and decoded
+five seconds of audible audio from both streams. The service exited successfully.
+Evidence: `/tmp/freo-live-rehearsal-20260921/`.
+
+The full 7,200-second observation began at **2026-09-21 13:46:08 UTC** and is due
+to finish at **15:46:08 UTC**, followed by restoration and audio checks. It runs
+application commit `7803596` under `freo-live-2h-20260921.service`. Its watchdog
+is 120 seconds, maximum runtime includes ten minutes for setup/cleanup, and
+`ExecStopPost` independently invokes the runner's `--restore` path. The first
+checkpoint is clean; this is not a completed or passing two-hour result.
+
+Evidence and progress: `/tmp/freo-live-2h-20260921/run.json`, `actions.jsonl`,
+`resources.jsonl`, decoder recordings/logs, and eventual `restoration.json` and
+`restored-health.json`. Check both test outcome and restoration health when
+reviewing the final result. Four owned hard/soft events were installed. The
+second station uses approved music as explicitly recorded event-path test audio;
+the first uses existing station ID audio.
+
+This documentation update follows the application commit and changes no tested
+application or runner code.

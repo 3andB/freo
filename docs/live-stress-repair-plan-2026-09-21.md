@@ -1,7 +1,8 @@
 # Live stress repairs and two-hour retest
 
-Status: corrections implemented; pre-deployment validation passed. The new live test has not
-started. See `live-stress-repair-results-2026-09-21.md` for evidence.
+Status: corrections validated, pushed and deployed. The short live rehearsal
+passed; the two-hour live test started at 13:46:08 UTC on September 21 and is due
+to finish at 15:46:08 UTC. Its outcome remains pending. See `live-stress-repair-results-2026-09-21.md` for evidence.
 Scope: polish the existing Scheduler, Station Control and DJ Booth. Preserve
 operator behavior and the owner's acceptance of late IDs. Replace the outstanding
 five-hour retest with a two-hour live run after corrections pass their checks.
