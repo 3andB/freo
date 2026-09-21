@@ -5,6 +5,7 @@ from contextlib import contextmanager
 from contextvars import ContextVar
 from functools import wraps
 import os
+import sys
 from pathlib import Path
 import secrets
 import shutil
@@ -107,6 +108,8 @@ def install_staged(path, temp):
 
 
 def render_liquidsoap(station, password, audio_settings=None):
+    from app.services.live_mic import enabled as live_mic_enabled
+    mic_enabled = live_mic_enabled()
     from app.services.station_audio import active_settings, validate_settings, processing_liquidsoap
     audio = validate_settings(audio_settings) if audio_settings is not None else active_settings(station.stream)
     slug = validate_slug(station.slug)
@@ -114,10 +117,10 @@ def render_liquidsoap(station, password, audio_settings=None):
     values = {
         '__BITRATE__': str(audio['bitrate']),
         '__AUDIO_PROCESSING__': processing_liquidsoap(audio),
-        '__MIC_START__': 'mic_input.start()' if os.environ.get('FREO_LIVE_MIC') == '1' else '()',
-        '__MIC_STOP__': 'mic_input.stop()' if os.environ.get('FREO_LIVE_MIC') == '1' else '()',
-        '__MIC_ENABLED__': 'true' if os.environ.get('FREO_LIVE_MIC') == '1' else 'false',
-        '__MIC_INPUT__': (f'input.http(id="freo_mic_input", start=false, clock_safe=true, max_buffer=0.25, poll_delay=0.5, timeout=2.0, format="wav", int_args=[("probesize",4096),("analyzeduration",0)], {{"http://127.0.0.1:8091/audio/{slug}?token=" ^ mic_token()}})' if os.environ.get('FREO_LIVE_MIC') == '1' else 'blank()'),
+        '__MIC_START__': 'mic_input.start()' if mic_enabled else '()',
+        '__MIC_STOP__': 'mic_input.stop()' if mic_enabled else '()',
+        '__MIC_ENABLED__': 'true' if mic_enabled else 'false',
+        '__MIC_INPUT__': (f'input.http(id="freo_mic_input", start=false, clock_safe=true, max_buffer=0.25, poll_delay=0.5, timeout=2.0, format="wav", int_args=[("probesize",4096),("analyzeduration",0)], {{"http://127.0.0.1:8091/audio/{slug}?token=" ^ mic_token()}})' if mic_enabled else 'blank()'),
         '__CONTROL_SOCKET__': json.dumps(f'/run/freo/playout/{slug}/control.sock'),
         '__PLAYLIST__': json.dumps(f'/var/lib/freo/playlists/{slug}.m3u'),
         '__EVENT_FILE__': json.dumps(f'/run/freo/playout/{slug}/events.log'),
@@ -164,7 +167,7 @@ def render(station):
         config_tmp.unlink(missing_ok=True)
         snippet_tmp.unlink(missing_ok=True)
     # The root-owned renderer retains prior Icecast config and credentials.
-    run_checked(['/opt/freo/venv/bin/python', str(SOURCE / 'scripts/render-radio-config.py')])
+    run_checked([sys.executable, str(SOURCE / 'scripts/render-radio-config.py')])
     if (ROOT / 'radio/icecast.xml').read_bytes() != prior_icecast:
         try:
             run_checked(['/bin/systemctl', 'reload', 'icecast2.service'])
@@ -317,7 +320,7 @@ def remove(station):
             root.remove(mount)
     staged = atomic_install(path, ET.tostring(root, encoding='unicode'), 0o640, 'root', 'icecast')
     os.replace(staged, path)
-    run_checked(['/opt/freo/venv/bin/python', str(SOURCE / 'scripts/render-radio-config.py')])
+    run_checked([sys.executable, str(SOURCE / 'scripts/render-radio-config.py')])
     run_checked(['/usr/sbin/nginx', '-t'])
     run_checked(['/bin/systemctl', 'reload', 'icecast2.service'])
     run_checked(['/bin/systemctl', 'reload', 'nginx.service'])

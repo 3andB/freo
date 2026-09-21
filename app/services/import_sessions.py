@@ -1,4 +1,5 @@
 """Worker preparation and bounded storage for the music review workspace."""
+from app.services.installation_settings import get_setting
 from datetime import datetime, timedelta, timezone
 import hashlib
 import json
@@ -67,7 +68,7 @@ def stage(session, identifier, file, relative_path='', choices=None):
         with os.fdopen(fd, 'wb') as output:
             while chunk := file.stream.read(1024 * 1024):
                 total += len(chunk)
-                if total > current_app.config['MAX_MEDIA_UPLOAD_BYTES']:
+                if total > get_setting('MAX_MEDIA_UPLOAD_BYTES'):
                     raise ValueError('File exceeds the per-song upload limit')
                 if sum(i.size_bytes for i in active) + total > MAX_SESSION_BYTES:
                     raise ValueError('This workspace has reached its 10 GB limit')

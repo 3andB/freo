@@ -7,6 +7,13 @@ if [[ $install_dir != /opt/freo ]]; then
   echo 'Freo currently supports FREO_INSTALL_DIR=/opt/freo only.' >&2
   exit 1
 fi
+# Installation and upgrade are separate operations. Refuse before apt, file
+# replacement, role creation or any service changes on an existing installation.
+if [[ -e "$install_dir/.env" || -L "$install_dir/.env" || -e "$install_dir/current" || -L "$install_dir/current" || -e /etc/freo/freo.env || -L /etc/freo/freo.env || -d /var/lib/freo/media ]]; then
+  echo 'Existing Freo state detected. Installer will not overwrite this installation.' >&2
+  echo 'Use the verified upgrade/recovery workflow in docs/recovery-and-upgrades.md.' >&2
+  exit 1
+fi
 . /etc/os-release
 if [[ ${ID:-} != ubuntu || ${VERSION_ID:-} != 24.04 ]]; then
   echo 'Freo installer supports Ubuntu 24.04 only.' >&2
@@ -77,8 +84,10 @@ install -d -o icecast2 -g icecast -m 0750 /var/log/icecast2
 # Only named release files are deployed; .env, media, .git and runtime files stay untouched.
 if [[ $source_dir != "$install_dir" ]]; then
   cp -R "$source_dir/app" "$install_dir/"
+  cp -R "$source_dir/freo_ops" "$install_dir/"
 fi
 chown -R root:root "$install_dir/app"
+chown -R root:root "$install_dir/freo_ops"
 if [[ $source_dir != "$install_dir" ]]; then
   install -m 0644 "$source_dir/wsgi.py" "$install_dir/wsgi.py"
   install -m 0644 "$source_dir/requirements.txt" "$install_dir/requirements.txt"
@@ -86,7 +95,11 @@ fi
 if [[ ! -x "$install_dir/venv/bin/python" ]]; then
   python3 -m venv "$install_dir/venv"
 fi
-"$install_dir/venv/bin/pip" install -r "$install_dir/requirements.txt"
+if [[ -f "$source_dir/requirements.lock" && -d "$source_dir/wheels" ]]; then
+  "$install_dir/venv/bin/pip" install --no-index --require-hashes --find-links "$source_dir/wheels" -r "$source_dir/requirements.lock"
+else
+  "$install_dir/venv/bin/pip" install -r "$install_dir/requirements.txt"
+fi
 if [[ ! -f "$install_dir/.env" ]]; then
   if runuser -u postgres -- psql -tAc "SELECT 1 FROM pg_roles WHERE rolname='freo'" | grep -qx 1; then
     echo 'Existing PostgreSQL role freo found but no .env; refusing to reset its password.' >&2
@@ -94,7 +107,9 @@ if [[ ! -f "$install_dir/.env" ]]; then
   fi
   db_password=$(openssl rand -hex 32)
   app_secret=$(openssl rand -hex 32)
-  runuser -u postgres -- psql -v ON_ERROR_STOP=1 -c "CREATE ROLE freo LOGIN PASSWORD '$db_password'" >/dev/null
+  runuser -u postgres -- psql -v ON_ERROR_STOP=1 >/dev/null <<SQL
+CREATE ROLE freo LOGIN PASSWORD '$db_password';
+SQL
   if ! runuser -u postgres -- psql -tAc "SELECT 1 FROM pg_database WHERE datname='freo'" | grep -qx 1; then
     runuser -u postgres -- createdb -O freo freo
   fi
@@ -146,6 +161,7 @@ fi
 python3 "$install_dir/scripts/render-radio-config.py"
 if [[ -f "$install_dir/migrations/env.py" ]]; then
   (cd "$install_dir" && runuser -u freo -- env FREO_ENV_FILE="$install_dir/.env" "$install_dir/venv/bin/flask" --app wsgi:app db upgrade)
+  (cd "$install_dir" && runuser -u freo -- env FREO_ENV_FILE="$install_dir/.env" "$install_dir/venv/bin/flask" --app wsgi:app settings import-environment)
 fi
 unit_src=$source_dir/deploy/systemd/freo.service
 unit_dst=/etc/systemd/system/freo.service

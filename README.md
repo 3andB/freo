@@ -1,5 +1,11 @@
 # Freo
 
+[Recovery and upgrades](docs/recovery-and-upgrades.md): the 0.2.0 candidate adds
+database-backed installation preferences, encrypted backup/restore verification,
+signed release bundles and a maintenance-window updater. The fresh installer
+refuses existing installations. Public support still requires the independent
+VM acceptance test and release prerequisites described in the guide.
+
 [Radio Station Operations](docs/operations-navigation.md): **Admin → Overview** covers all stations, system health, freo.live connection, and aggregate statistics. Use the sidebar station selector and **Switch** to open an individual station’s controls. Website, player settings, feedback, installation, and audit tools are available in the operations context.
 
 [Station website and Website CMS](docs/station-website.md): every installation opens with a customizable station homepage, automatic channel cards, real library counts, published schedules, images, colors and draft/publish controls. Manage it in **Admin → Website**.

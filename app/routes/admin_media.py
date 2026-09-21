@@ -1,4 +1,5 @@
 """Authenticated, CSRF-protected media management; no raw-file delivery."""
+from app.services.installation_settings import get_setting
 from app.services.availability import artists_for, albums_for
 from app.services.availability import tracks_for, track_scope
 import uuid
@@ -407,7 +408,7 @@ def audit_view():
 
 @admin_media_blueprint.errorhandler(413)
 def upload_too_large(_error):
-    limit = current_app.config['MAX_MEDIA_UPLOAD_BYTES'] // (1024 * 1024)
+    limit = get_setting('MAX_MEDIA_UPLOAD_BYTES') // (1024 * 1024)
     return render_template('admin/media_error.html', stations=admin_stations(), selected=None,
                            page='media', message=f'Upload exceeds the {limit} MB limit.'), 413
 

@@ -6,6 +6,17 @@ from app.services import copyright as copyright_ids
 from app.extensions import db
 
 
+class InstallationSettings(db.Model):
+    __tablename__ = 'installation_settings'
+    __table_args__ = (
+        db.CheckConstraint('id = 1', name='ck_installation_settings_singleton'),
+        db.CheckConstraint('revision > 0', name='ck_installation_settings_revision'),
+    )
+    id = db.Column(db.Integer, primary_key=True)
+    values = db.Column(db.JSON, nullable=False)
+    revision = db.Column(db.Integer, nullable=False)
+
+
 class AdminUser(db.Model):
     __tablename__ = 'admin_users'
     id = db.Column(db.Integer, primary_key=True)

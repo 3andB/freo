@@ -1,4 +1,5 @@
 """Public pages and a login-gated, read-only operations overview."""
+from app.services.installation_settings import get_setting
 import hmac
 import secrets
 import time
@@ -102,7 +103,7 @@ def admin_home():
     return render_template('admin/overview.html', stations=stations, selected=None,
                            ops=snapshot(stations), page='overview',
                            impacts={station.slug: deletion_impact(station) for station in stations},
-                           station_limit=current_app.config['FREO_MAX_STATIONS'])
+                           station_limit=get_setting('FREO_MAX_STATIONS'))
 
 
 @web_blueprint.get('/admin/stations')

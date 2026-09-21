@@ -1,5 +1,13 @@
 # Fresh Ubuntu 24.04 acceptance test
 
+For the 0.2.0 candidate, installer reruns in this historical checklist must now
+refuse safely with no changes. Perform actual upgrades with the signed bundle
+workflow in [recovery and upgrades](recovery-and-upgrades.md). In addition to the
+feature checks below, test upgrade interruption at each journal phase, old/new
+worker versions, backup disk exhaustion, signature rejection, and restore on a
+separate replacement VM with service-account/ACL mapping. Record actual stream
+interruption and verify every preserved original file hash and saved setting.
+
 This test must run on a separate, disposable, fresh Ubuntu 24.04 VM before Freo claims third-party installation support. Record OS image, commit, package versions, results, and defects. Do not use the production Freo database.
 
 1. Create the VM, install Git if required, clone the public Freo repository, enter the checkout, and run `sudo ./scripts/install.sh`.

@@ -1,4 +1,5 @@
 """Station-scoped browser media operations; filesystem writes stay in the ingest worker."""
+from app.services.installation_settings import get_setting
 from app.services.availability import tracks_for
 import os
 from pathlib import Path
@@ -60,7 +61,7 @@ def stage_upload(station, user, file, *, kind='ingest', imaging_type=None, imagi
         with os.fdopen(fd, 'wb') as output:
             while chunk := file.stream.read(1024 * 1024):
                 total += len(chunk)
-                if total > current_app.config.get('MAX_MEDIA_UPLOAD_BYTES', MAX_WEB_UPLOAD_BYTES):
+                if total > get_setting('MAX_MEDIA_UPLOAD_BYTES'):
                     raise MediaValidationError('File exceeds the web upload size limit')
                 output.write(chunk)
             output.flush()

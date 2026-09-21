@@ -39,6 +39,12 @@ def create_app(config_name=None):
     if name not in configs:
         raise ValueError("FLASK_ENV must be development, production, or testing")
     app = Flask(__name__)
+    @app.url_defaults
+    def version_static_assets(endpoint, values):
+        if endpoint == 'static':
+            from .version import VERSION
+            values.setdefault('v', VERSION)
+
     app.config.from_object(configs[name])
     for key in ("SECRET_KEY", "PUBLIC_BASE_URL", "FREO_DOMAIN", "FREO_INSTALLATION_HOSTS", "FREO_DOMAIN_TARGET_HOST", "FREO_DOMAIN_TARGET_IPS", "FREO_MEDIA_ROOT", "LOG_LEVEL", "FREO_API_URL", "FREO_API_STATE_DIR", "FREO_INSTALL_TYPE", "FREO_GEOIP_DATABASE", "FREO_STATS_STATE_DIR"):
         if key in os.environ:
@@ -79,6 +85,8 @@ def create_app(config_name=None):
     from .routes.statistics import statistics
     app.register_blueprint(statistics, cli_group=None)
     app.register_blueprint(admin_cli, cli_group=None)
+    from .settings_cli import settings_cli
+    app.register_blueprint(settings_cli, cli_group=None)
     from .routes.catalog_editor import catalog_editor
     app.register_blueprint(catalog_editor)
     from .routes.music_import import music_import
@@ -129,7 +137,21 @@ def create_app(config_name=None):
                       SESSION_COOKIE_SECURE=name == 'production', PERMANENT_SESSION_LIFETIME=3600,
                       MAX_MEDIA_UPLOAD_BYTES=upload_limit,
                       MAX_MEDIA_BATCH_BYTES=batch_limit,
-                      MAX_CONTENT_LENGTH=batch_limit + 1024 * 1024)
+                      MAX_CONTENT_LENGTH=1024 * 1024 * 1024 + 1024 * 1024)
+    @app.before_request
+    def saved_upload_limit():
+        from flask import request
+        if request.method in ('POST', 'PUT', 'PATCH'):
+            from .services.installation_settings import get_setting
+            saved_limit = get_setting('MAX_MEDIA_BATCH_BYTES') + 1024 * 1024
+            host_limit = app.config.get('MAX_CONTENT_LENGTH')
+            request.max_content_length = min(saved_limit, host_limit) if host_limit is not None else saved_limit
+
+    from .services.installation_settings import SettingsUnavailable
+    @app.errorhandler(SettingsUnavailable)
+    def settings_unavailable(error):
+        return {'status': 'unavailable'}, 503
+
     from .services.loudness import gain_for
     app.jinja_env.globals['music_gain'] = gain_for
     return app

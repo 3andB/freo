@@ -1,4 +1,5 @@
 """Explicit public directory actions. No credentials, automatic publication or sync."""
+from app.services.installation_settings import get_setting
 import http.client
 import ipaddress
 import json
@@ -53,7 +54,7 @@ def metadata(station):
     name = (station.name or '').strip()
     if not name or len(name) > 400 or any(ord(c) < 32 for c in name):
         raise ValueError('Enter a valid station name before listing.')
-    base = current_app.config.get('PUBLIC_BASE_URL', '').rstrip('/')
+    base = get_setting('PUBLIC_BASE_URL').rstrip('/')
     public_url(base)
     if urlsplit(base).path:
         raise ValueError('PUBLIC_BASE_URL must contain only the public origin.')

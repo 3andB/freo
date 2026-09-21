@@ -41,7 +41,8 @@ def normalize_hostname(value, *, domain=False):
 
 
 def installation_hosts():
-    config = current_app.config
+    from app.services.installation_settings import snapshot
+    config, _ = snapshot()
     values = config.get('FREO_INSTALLATION_HOSTS', '').split(',')
     values += [config.get('FREO_DOMAIN', ''), urlsplit(config.get('PUBLIC_BASE_URL', '')).netloc]
     if current_app.testing or current_app.debug:
@@ -76,7 +77,8 @@ def addresses(hostname):
 
 
 def verify_domain(row):
-    config = current_app.config
+    from app.services.installation_settings import snapshot
+    config, _ = snapshot()
     try:
         expected = {ipaddress.ip_address(value.strip()) for value in config.get('FREO_DOMAIN_TARGET_IPS', '').split(',') if value.strip()}
     except ValueError as error:
@@ -108,7 +110,8 @@ def preferred_url(station):
     primary = StationDomain.query.filter_by(station_id=station.id, enabled=True, is_primary=True).filter(StationDomain.verified_at.isnot(None)).first()
     if primary:
         return 'https://' + primary.hostname + '/'
-    base = current_app.config.get('PUBLIC_BASE_URL', '').rstrip('/')
+    from app.services.installation_settings import get_setting
+    base = get_setting('PUBLIC_BASE_URL').rstrip('/')
     # Also used by root provisioning without an HTTP request or SERVER_NAME.
     return base + '/player/' + (station.public_slug or station.slug)
 

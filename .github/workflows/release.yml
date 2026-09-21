@@ -1,0 +1,58 @@
+name: Build signed release candidate
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    uses: ./.github/workflows/recovery.yml
+  package:
+    needs: tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    environment: release
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Prepare builder
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y python3-venv gnupg
+          python3 -m venv venv
+          venv/bin/pip install -r requirements.txt
+      - name: Build complete release with hashed wheels
+        run: |
+          mkdir -p "$RUNNER_TEMP/freo-release"
+          venv/bin/python scripts/build-release.py --output "$RUNNER_TEMP/freo-release/freo-${GITHUB_REF_NAME}.tar.gz"
+      - name: Sign candidate and generate common website/API index
+        env:
+          FREO_RELEASE_SIGNING_KEY: ${{ secrets.FREO_RELEASE_SIGNING_KEY }}
+          FREO_RELEASE_SIGNING_PASSPHRASE: ${{ secrets.FREO_RELEASE_SIGNING_PASSPHRASE }}
+          FREO_RELEASE_SIGNING_FINGERPRINT: ${{ vars.FREO_RELEASE_SIGNING_FINGERPRINT }}
+        run: |
+          set -euo pipefail
+          test -n "$FREO_RELEASE_SIGNING_KEY"
+          test -n "$FREO_RELEASE_SIGNING_FINGERPRINT"
+          freo_gpg_home=$(mktemp -d)
+          trap 'gpgconf --homedir "$freo_gpg_home" --kill gpg-agent; rm -rf -- "$freo_gpg_home"' EXIT
+          chmod 700 "$freo_gpg_home"
+          printf '%s' "$FREO_RELEASE_SIGNING_KEY" | gpg --homedir "$freo_gpg_home" --batch --import
+          freo_artifact="$RUNNER_TEMP/freo-release/freo-${GITHUB_REF_NAME}.tar.gz"
+          printf '%s\n' "$FREO_RELEASE_SIGNING_PASSPHRASE" | gpg --homedir "$freo_gpg_home" --batch --pinentry-mode loopback --passphrase-fd 0 --local-user "$FREO_RELEASE_SIGNING_FINGERPRINT" --armor --detach-sign --output "${freo_artifact}.asc" "$freo_artifact"
+          gpg --homedir "$freo_gpg_home" --batch --export "$FREO_RELEASE_SIGNING_FINGERPRINT" > "$RUNNER_TEMP/freo-release/publisher.gpg"
+          venv/bin/python scripts/release-index.py "$freo_artifact" --download-url "https://github.com/${GITHUB_REPOSITORY}/releases/download/${GITHUB_REF_NAME}/freo-${GITHUB_REF_NAME}.tar.gz" --output "$RUNNER_TEMP/freo-release/latest.json"
+          cd "$RUNNER_TEMP/freo-release"
+          sha256sum "freo-${GITHUB_REF_NAME}.tar.gz" > SHA256SUMS
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: freo-signed-release-candidate
+          path: ${{ runner.temp }}/freo-release/
+          if-no-files-found: error
+          retention-days: 30

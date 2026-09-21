@@ -8,7 +8,12 @@ from app.services.stations import validate_slug
 
 
 def enabled():
-    return os.environ.get('FREO_LIVE_MIC', '0') == '1'
+    from flask import has_app_context
+    if not has_app_context():
+        # Standalone engine validation has no database application context.
+        return os.environ.get('FREO_LIVE_MIC', '0') == '1'
+    from app.services.installation_settings import get_setting
+    return get_setting('FREO_LIVE_MIC')
 
 
 def gateway(slug, action, *, timeout=2, **data):

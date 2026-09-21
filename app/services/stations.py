@@ -1,4 +1,5 @@
 """Station domain rules; no systemd or shell access."""
+from app.services.installation_settings import get_setting
 import re
 from flask import current_app
 from sqlalchemy import text
@@ -28,7 +29,7 @@ def create_station(name, slug, description='', *, pending=False, timezone_name='
     from app.models import StationAlias
     if Station.query.filter(db.or_(Station.slug == slug, Station.public_slug == slug)).first() or db.session.get(StationAlias, slug):
         raise ValueError('Station slug already exists')
-    limit = current_app.config['FREO_MAX_STATIONS']
+    limit = get_setting('FREO_MAX_STATIONS')
     if limit and active_stations().count() >= limit:
         raise ValueError(f'This installation allows a maximum of {limit} stations')
     from app.services.central_api.licensing import check_expansion

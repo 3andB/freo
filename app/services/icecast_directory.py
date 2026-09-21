@@ -1,4 +1,5 @@
 """Small, preserving Icecast 2.5 YP configuration patch and apply operation."""
+from app.services.installation_settings import get_setting
 import os
 import re
 import xml.etree.ElementTree as ET
@@ -59,7 +60,7 @@ def directory_config(raw, station, enabled):
     if enabled:
         from app.services.station_domains import normalize_hostname
         data = metadata(station)
-        origin = urlsplit(current_app.config['PUBLIC_BASE_URL'])
+        origin = urlsplit(get_setting('PUBLIC_BASE_URL'))
         if origin.scheme != 'https':
             raise ValueError('Internet-Radio.com requires a configured public HTTPS origin.')
         normalize_hostname(origin.hostname, domain=True)

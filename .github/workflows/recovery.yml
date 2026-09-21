@@ -1,0 +1,42 @@
+name: Recovery and release checks
+
+on:
+  pull_request:
+  push:
+  workflow_dispatch:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  recovery:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      FREO_ENV_FILE: /dev/null
+      FLASK_ENV: testing
+      DATABASE_URL: 'sqlite://'
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Install isolated test dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y python3-venv postgresql postgresql-client gnupg acl
+          python3 -m venv venv
+          venv/bin/pip install -r requirements-dev.txt
+      - name: Settings, artifact and failure-injection tests
+        run: venv/bin/pytest -q tests/test_installation_settings.py tests/test_release_bundles.py tests/test_upgrade.py tests/test_installer_guard.py
+      - name: Real PostgreSQL migrations and encrypted restore
+        run: bash scripts/test-recovery-postgres.sh
+      - name: Build source review artifact
+        run: venv/bin/python scripts/build-release.py --development --output "$RUNNER_TEMP/freo-review.tar.gz"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: freo-source-review
+          path: ${{ runner.temp }}/freo-review.tar.gz
+          if-no-files-found: error
+          retention-days: 14
