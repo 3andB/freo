@@ -386,7 +386,7 @@ def process_manual(station, reader):
         current = command.expected_decision
         try:
             if command.action.startswith('DECK_'):
-                process_deck_command(station,command,identity)
+                process_deck_command(station,command,identity,reader)
                 continue
             idle_start = command.action == 'TAKEOVER' and command.expected_decision_id is None
             active = active_ids(slug)
@@ -460,7 +460,7 @@ def process_manual(station, reader):
 
 
 
-def process_deck_command(station, command, identity):
+def process_deck_command(station, command, identity, reader=None):
     from app.services.booth_cue import interrupt, locked, validate_automatic
     from app.models import CuePlayback
     cue = locked(station)
@@ -481,6 +481,12 @@ def process_deck_command(station, command, identity):
     if expected != command.expected_decision_id:
         raise ValueError('Deck changed before the command reached the engine')
     operation=command.action.removeprefix('DECK_')
+    stop_target = None
+    if (reader is not None and operation in ('PAUSE','CLEAR') and 'auto_return_id' in mixer and
+            mixer.get(deck.lower()+'_playing') and not mixer.get(('b' if deck == 'A' else 'a')+'_playing') and
+            not (cue and cue.auto_enabled) and not mixer.get('cart_id') and not mixer.get('auto_standby')):
+        # Selection and decoding happen while the outgoing song still plays.
+        stop_target = prepare_auto_successor(station, reader, mixer)
     if operation in ('LOAD', 'CLEAR', 'FADE'):
         interrupt(station, current)
     if operation == 'PLAY' or (operation == 'LOAD' and command.play_on_load):
@@ -513,6 +519,9 @@ def process_deck_command(station, command, identity):
             deck_control(station.slug,deck,action,command.fade_seconds)
         else:
             deck_control(station.slug,deck,action)
+    if stop_target:
+        from app.services.playout_queue import _command
+        _command(station.slug, f'freo_mixer.return_stopped {stop_target}')
     command.status='sent';command.processed_at=datetime.now(timezone.utc)
     db.session.commit()
 

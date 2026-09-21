@@ -247,3 +247,23 @@ def test_auto_standby_engine_observation_is_validated(monkeypatch):
     for response in (response.rsplit('|',1)[0]+'|nan',response.replace('|true|42|','|maybe|42|')):
         with pytest.raises(RuntimeError,match='Auto source'):
             mixer_state('test-station')
+
+
+@pytest.mark.parametrize('operation',['PAUSE','CLEAR'])
+@pytest.mark.parametrize('other_playing',[False,True])
+def test_stop_prepares_before_silence_and_leaves_other_deck_in_control(prepared,monkeypatch,operation,other_playing):
+    from app.automation_worker import EventReader
+    station,track,user,snapshot=prepared
+    command=request_deck(station,user,'A',operation,None,str(snapshot.current_decision_id),str(uuid.uuid4()))
+    observed=dict(snapshot.mixer,auto_return_id=None,b_playing=other_playing)
+    calls=[]
+    monkeypatch.setattr('app.services.playout_queue.mixer_state',lambda _:observed)
+    monkeypatch.setattr('app.services.playout_queue.channel_queue',lambda *args:[])
+    monkeypatch.setattr('app.services.playout_queue.deck_control',lambda *args:calls.append('stop'))
+    def prepare(*args):
+        calls.append('prepare');return 123
+    monkeypatch.setattr('app.automation_worker.prepare_auto_successor',prepare)
+    monkeypatch.setattr('app.services.playout_queue._command',lambda slug,value:calls.append(value))
+    process_deck_command(station,command,'engine',EventReader())
+    assert calls==(['stop'] if other_playing else ['prepare','stop','freo_mixer.return_stopped 123'])
+    assert command.status=='sent'

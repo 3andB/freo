@@ -87,7 +87,9 @@ return_target = ref("")
 return_deck = ref("")
 return_until = ref(0.0)
 return_completed = ref("")
-def cancel_return() = return_source := ""; return_until := 0.0 end
+stopped_source = ref("")
+stopped_at = ref(0.0)
+def cancel_return() = return_source := ""; return_until := 0.0; stopped_source := "" end
 b_play = ref(false)
 cart_takeover = ref(false)
 duck = ref(0.5)
@@ -273,7 +275,7 @@ server.register(namespace="freo_deck", "take_a", fun (value) -> take_deck("A", v
 server.register(namespace="freo_deck", "pause_a", fun (_) -> begin
   cancel_return()
   if mode() != "DJ_BOOTH" then "ERROR DJ control required" else
-    if a_play() then cancel_transition() end
+    if a_play() then stopped_source := a_decision(); stopped_at := time(); cancel_transition() end
     a_generation := a_generation() + 1; fade_end := 0.0; a_play := false
     "OK"
   end
@@ -281,7 +283,7 @@ end)
 server.register(namespace="freo_deck", "clear_a", fun (_) -> begin
   cancel_return()
   if mode() != "DJ_BOOTH" then "ERROR DJ control required" else
-    if a_play() then cancel_transition() end
+    if a_play() then stopped_source := a_decision(); stopped_at := time(); cancel_transition() end
     a_generation := a_generation() + 1; fade_end := 0.0; a_play := false; deck_a.set_queue([]); deck_a.skip(); a_decision := ""; event_boundary("A")
     "OK"
   end
@@ -312,7 +314,7 @@ server.register(namespace="freo_deck", "take_b", fun (value) -> take_deck("B", v
 server.register(namespace="freo_deck", "pause_b", fun (_) -> begin
   cancel_return()
   if mode() != "DJ_BOOTH" then "ERROR DJ control required" else
-    if b_play() then cancel_transition() end
+    if b_play() then stopped_source := b_decision(); stopped_at := time(); cancel_transition() end
     b_generation := b_generation() + 1; b_fade_end := 0.0; b_play := false
     "OK"
   end
@@ -320,7 +322,7 @@ end)
 server.register(namespace="freo_deck", "clear_b", fun (_) -> begin
   cancel_return()
   if mode() != "DJ_BOOTH" then "ERROR DJ control required" else
-    if b_play() then cancel_transition() end
+    if b_play() then stopped_source := b_decision(); stopped_at := time(); cancel_transition() end
     b_generation := b_generation() + 1; b_fade_end := 0.0; b_play := false; deck_b.set_queue([]); deck_b.skip(); b_decision := ""; event_boundary("B")
     "OK"
   end
@@ -463,7 +465,7 @@ def cue_finished(_, metadata)
   end
 end
 # The worker prepares one request and renews a short lease. Only the rendered
-# EOF can perform this handoff; paused decks and an unavailable worker cannot.
+# EOF can perform this handoff; explicit stops use their own grace timer.
 server.register(namespace="freo_mixer", "return_arm", fun (value) -> begin
   fields = string.split(separator=" ", value)
   if list.length(fields) != 3 then "ERROR invalid return"
@@ -473,7 +475,7 @@ server.register(namespace="freo_mixer", "return_arm", fun (value) -> begin
     return_target := list.nth(fields, 2)
     # Cover a brief multi-station worker/engine stall; manual operations revoke
     # this identity-scoped lease immediately, and an absent worker still expires.
-    return_until := time()+5.0
+    return_until := time()+15.0
     "OK"
   end
 end)
@@ -486,6 +488,28 @@ server.register(namespace="freo_mixer", "return_discard", fun (target) -> begin
     queue.set_queue(list.filter(fun (r) -> decision(request.metadata(r)) != target, queue.queue()))
     current = queue.current()
     if null.defined(current) and decision(request.metadata(null.get(current))) == target then queue.skip() end
+    "OK"
+  end
+end)
+# Authorize the existing two-second stopped-deck grace once. Manual operations
+# revoke the captured identity; worker polling cannot extend the silent interval.
+server.register(namespace="freo_mixer", "return_stopped", fun (target) -> begin
+  source = stopped_source()
+  since = stopped_at()
+  if mode() != "DJ_BOOTH" or source == "" then "BUSY"
+  else
+    thread.run(delay=max(0.0, 2.0-(time()-since)), fun () -> begin
+      future = queue.queue()
+      current = queue.current()
+      ready = (null.defined(current) and decision(request.metadata(null.get(current))) == target) or
+        (list.length(future) > 0 and decision(request.metadata(list.hd(future))) == target)
+      if mode() == "DJ_BOOTH" and stopped_source() == source and stopped_at() == since and time()-since < 15.0 and
+          not a_play() and not b_play() and not mic_active() and not cart.is_ready() and event_token() == "" and ready then
+        ignore(set_mode("AUTO"))
+        transition_duration := 0.0; auto_to := 1.0; a_to := 0.0; b_to := 0.0
+        return_completed := source
+      end
+    end)
     "OK"
   end
 end)

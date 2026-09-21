@@ -29,7 +29,7 @@ def handoff_stack(monkeypatch, tmp_path, request):
         source = original(*args, **kwargs)
         return source.replace('output.icecast(', f'output.file(%wav, "{recording}", radio)\noutput.icecast(')
     monkeypatch.setattr(station_runtime, 'render_liquidsoap', render)
-    duration = getattr(request, 'param', 12)
+    duration = getattr(request, 'param', 30 if request.node.callspec.params.get('operation')=='lease-expiry' else 12)
     stack = SystemStack(monkeypatch, tmp_path)
     try:
         with stack.app.app_context():
@@ -89,7 +89,7 @@ def test_natural_dj_end_has_continuous_programme(handoff_stack, deck, boundary):
     assert gap <= .25, f'Programme absent for {gap:.2f}s after DJ EOF (backup does not count as music)'
 
 
-@pytest.mark.parametrize('operation', ['repeat','clear','pause','lease-expiry','worker-delay','worker-restart','schedule-edit','auto-cue'])
+@pytest.mark.parametrize('operation', ['repeat','clear','pause','lease-expiry','worker-delay','worker-stall','worker-restart','schedule-edit','auto-cue'])
 def test_prepared_return_respects_deck_changes_and_worker_lifetime(handoff_stack, operation):
     stack=handoff_stack
     def station():return Station.query.filter_by(slug=stack.slug).one()
@@ -155,13 +155,13 @@ def test_prepared_return_respects_deck_changes_and_worker_lifetime(handoff_stack
         if operation=='worker-delay':
             wait_for(lambda: stack.query(lambda: mixer_state(stack.slug)['a_elapsed']>=8.3))
         stack.stop_worker()
-        if operation=='worker-delay':
-            time.sleep(4)
+        if operation in ('worker-delay','worker-stall'):
+            time.sleep(4 if operation=='worker-delay' else 8)
             assert stack.query(lambda: mixer_state(stack.slug)['mode'])=='AUTO', 'Brief worker delay lost the prepared EOF handoff'
             stack.start_worker()
             wait_for(lambda: stack.query(lambda: station().automation.operator_mode=='AUTO'))
         elif operation=='lease-expiry':
-            time.sleep(8)
+            time.sleep(26)
             assert stack.query(lambda: mixer_state(stack.slug)['mode'])=='DJ_BOOTH'
             assert stack.query(lambda: program_decision_id(stack.slug))!=replacement
         else:
@@ -180,7 +180,7 @@ def test_prepared_return_respects_deck_changes_and_worker_lifetime(handoff_stack
         gap=(first-last-1)/20
         (stack.evidence/'manual-stop-result.json').write_text(json.dumps(dict(operation=operation,audio_gap=gap)))
         assert gap<=2.75, f'{operation}: {gap:.2f}s exceeds the 2s operator grace plus recovery allowance'
-    if operation in ('worker-restart','worker-delay','schedule-edit'):
+    if operation in ('worker-restart','worker-delay','worker-stall','schedule-edit'):
         target=stack.query(lambda: program_decision_id(stack.slug))
         def interval():
             rows=[line.split() for line in (stack.runtime/stack.slug/'events.log').read_text().splitlines()]
@@ -261,27 +261,44 @@ def test_auto_does_not_run_empty_inside_boundary_window(handoff_stack,boundary,l
 
 @pytest.mark.parametrize('handoff_stack', [60], indirect=True)
 @pytest.mark.parametrize('operation', ['PAUSE','CLEAR'])
-def test_early_stop_loads_auto_during_grace(handoff_stack, monkeypatch, operation):
+@pytest.mark.parametrize('deck', ['A','B'])
+@pytest.mark.parametrize('followup', ['worker-stall','manual-take'])
+def test_early_stop_loads_auto_during_grace(handoff_stack, monkeypatch, operation, deck, followup):
     from app import automation_worker as worker
     stack=handoff_stack
     def station():return Station.query.filter_by(slug=stack.slug).one()
     wait_for(lambda: stack.query(lambda: program_decision_id(stack.slug)))
     stack.query(lambda: set_mode(station(),AdminUser.query.first(),'DJ_BOOTH'))
     wait_for(lambda: stack.query(lambda: mixer_state(stack.slug)['mode']=='DJ_BOOTH'))
-    identifier=stack.query(lambda: request_deck(station(),AdminUser.query.first(),'A','LOAD',stack.track_uuids[2],
+    identifier=stack.query(lambda: request_deck(station(),AdminUser.query.first(),deck,'LOAD',stack.track_uuids[2],
         '',str(uuid.uuid4()),fade_seconds=0,play_on_load=True).target_decision_id)
     wait_for(lambda: stack.query(lambda: program_decision_id(stack.slug)==identifier))
-    wait_for(lambda: stack.query(lambda: mixer_state(stack.slug)['a_elapsed']>2))
+    wait_for(lambda: stack.query(lambda: mixer_state(stack.slug)[deck.lower()+'_elapsed']>2))
     refill=worker.refill_station
     delays=[]
     def slow_refill(slug,reader,depth):
-        # A short selection/decoder delay must fit inside, not after, the grace.
+        # Selection delay must occur while music still plays, before the grace.
         if not delays:
             delays.append(True);time.sleep(.8)
         return refill(slug,reader,depth)
     monkeypatch.setattr(worker,'refill_station',slow_refill)
-    stack.query(lambda: request_deck(station(),AdminUser.query.first(),'A',operation,None,
-        str(identifier),str(uuid.uuid4())))
+    command=stack.query(lambda: request_deck(station(),AdminUser.query.first(),deck,operation,None,
+        str(identifier),str(uuid.uuid4())).id)
+    wait_for(lambda: stack.query(lambda: db.session.get(LiveControlCommand,command).status=='sent'))
+    stack.stop_worker()
+    if followup=='manual-take':
+        from app.services.playout_queue import deck_control, push_decision
+        # A new operator take during the grace must invalidate the old timer.
+        if operation=='CLEAR':
+            stack.query(lambda: push_decision(db.session.get(SelectionDecision,identifier)))
+        stack.query(lambda: deck_control(stack.slug,deck,'take',0))
+        time.sleep(3)
+        assert stack.query(lambda: mixer_state(stack.slug)['mode'])=='DJ_BOOTH'
+        assert stack.query(lambda: program_decision_id(stack.slug))==identifier
+        return
+    time.sleep(3)
+    assert stack.query(lambda: mixer_state(stack.slug)['mode'])=='AUTO', 'Stopped return depended on a worker tick'
+    stack.start_worker()
     wait_for(lambda: stack.query(lambda: station().automation.operator_mode=='AUTO'))
     time.sleep(2)
     stack.stop_worker();stop_process(stack.engine)

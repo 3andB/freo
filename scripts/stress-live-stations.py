@@ -245,7 +245,9 @@ class LiveStress:
                 TimedEventOccurrence.station_id==self.originals[slug]['station_id'],
                 TimedEventOccurrence.state.in_(('PENDING','READY','QUEUED','STARTED')),
                 TimedEventOccurrence.scheduled_for_utc<=now+timedelta(seconds=30),
-                TimedEventOccurrence.deadline_at_utc>=now).first() is not None
+                db.or_(TimedEventOccurrence.deadline_at_utc>=now,
+                    TimedEventOccurrence.state.in_(('QUEUED','STARTED')),
+                    TimedEventOccurrence.boundary_reserved.is_(True))).first() is not None
 
     def condition(self, slug, key, active, threshold=0):
         name=slug+':'+key

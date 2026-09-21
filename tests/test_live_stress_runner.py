@@ -227,3 +227,22 @@ def test_fallback_recovery_after_ui_wait_remains_a_finding(monkeypatch):
     assert len(issues)==1 and issues[0][1]['duration_confirmed'] is False
     assert issues[0][1]['elapsed_seconds']==25
     assert len(events)==1 and not runner.conditions
+
+
+@pytest.mark.parametrize('state,reserved,expected', [
+    ('PENDING',False,False), ('READY',True,True), ('QUEUED',False,True),
+    ('STARTED',False,True), ('COMPLETED',True,False), ('FAILED',True,False)])
+def test_runner_protects_inflight_ids_after_nominal_deadline(authenticated_runner,state,reserved,expected):
+    from app.models import Track
+    from tests.test_timed_events import create_one
+    runner=authenticated_runner
+    with runner.app.app_context():
+        station=Station.query.filter_by(slug='test-station').one()
+        station.timezone='UTC'
+        event=create_one(station,Track.query.first(),module.datetime.now(module.timezone.utc),timing_mode='SOFT',interrupt_policy='NEVER')
+        row=event.occurrences[0]
+        row.state=state;row.boundary_reserved=reserved
+        row.deadline_at_utc=module.datetime.now(module.timezone.utc)-module.timedelta(seconds=5)
+        db.session.commit()
+        runner.originals={'test-station':{'station_id':station.id}}
+    assert runner.protected_event('test-station') is expected
