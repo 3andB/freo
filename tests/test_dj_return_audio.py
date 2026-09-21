@@ -21,7 +21,7 @@ pytestmark = pytest.mark.skipif(os.environ.get('FREO_SYSTEM_TEST') != '1', reaso
 
 
 @pytest.fixture
-def handoff_stack(monkeypatch, tmp_path):
+def handoff_stack(monkeypatch, tmp_path, request):
     from app.services import station_runtime
     original = station_runtime.render_liquidsoap
     recording = tmp_path/'handoff.wav'
@@ -29,13 +29,14 @@ def handoff_stack(monkeypatch, tmp_path):
         source = original(*args, **kwargs)
         return source.replace('output.icecast(', f'output.file(%wav, "{recording}", radio)\noutput.icecast(')
     monkeypatch.setattr(station_runtime, 'render_liquidsoap', render)
+    duration = getattr(request, 'param', 12)
     stack = SystemStack(monkeypatch, tmp_path)
     try:
         with stack.app.app_context():
             track = db.session.get(Track, stack.track_ids[2])
-            subprocess.run(['ffmpeg','-v','error','-y','-f','lavfi','-i','sine=frequency=880:duration=12',
+            subprocess.run(['ffmpeg','-v','error','-y','-f','lavfi','-i',f'sine=frequency=880:duration={duration}',
                             str(stack.media/stack.slug/'originals'/track.storage_key)], check=True)
-            track.duration_ms = 12000
+            track.duration_ms = duration*1000
             db.session.commit()
         stack.start()
         yield stack
@@ -256,3 +257,82 @@ def test_auto_does_not_run_empty_inside_boundary_window(handoff_stack,boundary,l
         longest=max(longest,current)
     (stack.evidence/'boundary-result.json').write_text(json.dumps(dict(boundary=boundary,lead_seconds=lead_seconds,gap_seconds=longest/20)))
     assert longest/20 <= .25, f'{boundary}: missing programme audio for {longest/20}s'
+
+
+@pytest.mark.parametrize('handoff_stack', [60], indirect=True)
+@pytest.mark.parametrize('operation', ['PAUSE','CLEAR'])
+def test_early_stop_loads_auto_during_grace(handoff_stack, monkeypatch, operation):
+    from app import automation_worker as worker
+    stack=handoff_stack
+    def station():return Station.query.filter_by(slug=stack.slug).one()
+    wait_for(lambda: stack.query(lambda: program_decision_id(stack.slug)))
+    stack.query(lambda: set_mode(station(),AdminUser.query.first(),'DJ_BOOTH'))
+    wait_for(lambda: stack.query(lambda: mixer_state(stack.slug)['mode']=='DJ_BOOTH'))
+    identifier=stack.query(lambda: request_deck(station(),AdminUser.query.first(),'A','LOAD',stack.track_uuids[2],
+        '',str(uuid.uuid4()),fade_seconds=0,play_on_load=True).target_decision_id)
+    wait_for(lambda: stack.query(lambda: program_decision_id(stack.slug)==identifier))
+    wait_for(lambda: stack.query(lambda: mixer_state(stack.slug)['a_elapsed']>2))
+    refill=worker.refill_station
+    delays=[]
+    def slow_refill(slug,reader,depth):
+        # A short selection/decoder delay must fit inside, not after, the grace.
+        if not delays:
+            delays.append(True);time.sleep(.8)
+        return refill(slug,reader,depth)
+    monkeypatch.setattr(worker,'refill_station',slow_refill)
+    stack.query(lambda: request_deck(station(),AdminUser.query.first(),'A',operation,None,
+        str(identifier),str(uuid.uuid4())))
+    wait_for(lambda: stack.query(lambda: station().automation.operator_mode=='AUTO'))
+    time.sleep(2)
+    stack.stop_worker();stop_process(stack.engine)
+    windows=tone_windows(stack.evidence/'handoff.wav')
+    last=max(i for i,(dj,_) in enumerate(windows) if dj>500)
+    first=next(i for i in range(last+1,len(windows)) if windows[i][1]>500)
+    gap=(first-last-1)/20
+    (stack.evidence/'early-stop-result.json').write_text(json.dumps(dict(operation=operation,gap_seconds=gap)))
+    assert delays and gap<=2.75, f'{operation}: {gap:.2f}s after early stop'
+
+
+@pytest.mark.parametrize('deck', ['A','B'])
+def test_cold_worker_restart_before_old_preparation_window(handoff_stack, deck):
+    import sys
+    stack=handoff_stack
+    def station():return Station.query.filter_by(slug=stack.slug).one()
+    wait_for(lambda: stack.query(lambda: program_decision_id(stack.slug)))
+    stack.query(lambda: set_mode(station(),AdminUser.query.first(),'DJ_BOOTH'))
+    wait_for(lambda: stack.query(lambda: mixer_state(stack.slug)['mode']=='DJ_BOOTH'))
+    identifier=stack.query(lambda: request_deck(station(),AdminUser.query.first(),deck,'LOAD',stack.track_uuids[2],
+        '',str(uuid.uuid4()),fade_seconds=0,play_on_load=True).target_decision_id)
+    wait_for(lambda: stack.query(lambda: mixer_state(stack.slug)[deck.lower()+'_elapsed']>=3))
+    stack.stop_worker()
+    # A genuinely new interpreter/app/EventReader, using only private resources.
+    bootstrap = """
+import sys
+from pathlib import Path
+from urllib.request import build_opener,ProxyHandler
+from app import automation_worker as worker
+from app.services import playout_queue,broadcast_status
+worker.EVENT_ROOT=playout_queue.SOCKET_ROOT=Path(sys.argv[1])
+class LocalIcecast:
+ def open(self,url,**kwargs):
+  assert url=='http://127.0.0.1:8001/status-json.xsl'
+  return build_opener(ProxyHandler({})).open(sys.argv[2]+'/status-json.xsl',**kwargs)
+broadcast_status._opener=LocalIcecast()
+worker.main()
+"""
+    process=stack.spawn([sys.executable,'-c',bootstrap,str(stack.runtime),stack.icecast_url],'cold-worker.log')
+    try:
+        wait_for(lambda: stack.query(lambda: station().automation.operator_mode=='AUTO'),timeout=30)
+        time.sleep(2)
+        assert process.poll() is None
+    finally:
+        stop_process(process)
+        import shutil
+        shutil.copyfile(stack.root/'cold-worker.log',stack.evidence/'cold-worker.log')
+    stop_process(stack.engine)
+    windows=tone_windows(stack.evidence/'handoff.wav')
+    last=max(i for i,(dj,_) in enumerate(windows) if dj>500)
+    first=next(i for i in range(last+1,len(windows)) if windows[i][1]>500)
+    gap=(first-last-1)/20
+    (stack.evidence/'cold-restart-result.json').write_text(json.dumps(dict(deck=deck,gap_seconds=gap)))
+    assert gap<=.25, f'Cold worker restart left {gap:.2f}s without programme'

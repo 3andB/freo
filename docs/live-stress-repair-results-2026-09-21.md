@@ -1,7 +1,8 @@
 # Live stress corrections — September 21, 2026
 
 Status: corrections validated, pushed and deployed. The live runner rehearsal
-passed. The two-hour live test is running; its final outcome is pending. Plan: `live-stress-repair-plan-2026-09-21.md`.
+passed. The two-hour live test completed with findings and successful restoration.
+See `live-stress-deep-dive-plan-2026-09-21.md` for the subsequent investigation. Plan: `live-stress-repair-plan-2026-09-21.md`.
 
 ## Findings and corrections
 
@@ -163,3 +164,21 @@ the first uses existing station ID audio.
 
 This documentation update follows the application commit and changes no tested
 application or runner code.
+
+## Final two-hour result
+
+The full duration completed with findings. Observation ended at approximately
+15:46:09 UTC, normal cleanup at 15:46:23 and independent recovery/audio checks
+at 15:46:29. Both original programming configurations were restored. Final totals:
+168 track starts, 47 DJ returns, 372 UI navigations and two worker restarts;
+both stations completed hard and soft events and all required DJ scenario counts.
+
+There were eight decoded-silence findings, one stale worker observation and one
+missing Calendar-boundary coverage finding. Four additional fallback recovery
+observations were recorded without corresponding fallback issue promotion.
+Investigation establishes that polling spans are not exact audio durations and
+that backup tone can terminate the silence detector's interval while music is
+still absent. Five silence reports follow PAUSE/CLEAR; natural-ending/restart
+request gaps also remain. This was not a clean pass. The detailed follow-up
+plan records measured timelines, monitoring defects and the unproven portions
+of the remaining handoff causes.

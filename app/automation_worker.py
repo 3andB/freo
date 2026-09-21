@@ -798,7 +798,7 @@ def prepare_dj_return(station, reader, mixer, cue_active=False):
     cue = db.session.get(BoothCue, station.id)
     decks = [key for key in ('a','b') if mixer.get(key+'_playing') and mixer.get(key+'_id') and
              mixer.get('transition', {}).get(key+'_gain', 1) > 0]
-    if (not decks and slug in reader.dj_return_prepared and not cue_active and
+    if (not decks and not cue_active and
             not (cue and cue.auto_enabled) and not mixer.get('cart_id') and
             not LiveControlCommand.query.filter_by(station_id=station.id,status='pending').first()):
         # Request identity may disappear just before its rendered EOF callback.
@@ -818,7 +818,7 @@ def prepare_dj_return(station, reader, mixer, cue_active=False):
     now = datetime.now(timezone.utc)
     # Duration metadata can end a few frames before the rendered EOF. Keep
     # renewing while this same deck is audible; only the engine owns its end.
-    if remaining is not None and remaining <= 8:
+    if remaining is not None and remaining <= 30:
         # A due event or a programme change before EOF must choose the next source.
         programming = resolve(station)
         eligible = not (programming.next_transition and programming.next_transition <= now+timedelta(seconds=max(0,remaining)+1))
@@ -835,11 +835,24 @@ def prepare_dj_return(station, reader, mixer, cue_active=False):
             reader.dj_return_prepared.discard(slug)
         return
     current_signature = signature(station)
+    target = prepare_auto_successor(station, reader, mixer, current_signature)
+    candidate = db.session.get(SelectionDecision, target) if target else None
+    if candidate and candidate.status=='queued' and candidate.programming_signature==current_signature and candidate.reason!='programming_refresh_pending':
+        _command(slug, f'freo_mixer.return_arm {decks[0].upper()} {row.id} {target}')
+        reader.dj_return_prepared.add(slug)
+
+
+def prepare_auto_successor(station, reader, mixer, current_signature=None):
+    """Resolve one silent AUTO replacement for EOF or the stopped-deck grace."""
+    from app.services.playout_queue import _command, mixer_state
+    from app.services.programming_refresh import signature, refresh
+    slug = station.slug
+    current_signature = current_signature or signature(station)
     refresh(station, reader, current_signature, prepared_auto_id=mixer.get('auto_id'))
     reader.starved_until.pop(slug, None)
     observed = mixer_state(slug)
     if observed['mode'] != 'DJ_BOOTH':
-        return
+        return None
     target = observed.get('auto_id')
     held = db.session.get(SelectionDecision, target) if target else None
     if held and held.status=='started':
@@ -869,10 +882,7 @@ def prepare_dj_return(station, reader, mixer, cue_active=False):
         if target is None:
             future = queued_order(slug)
             target = request_decision_id(slug, future[0]) if future else None
-    candidate = db.session.get(SelectionDecision, target) if target else None
-    if candidate and candidate.status=='queued' and candidate.programming_signature==current_signature and candidate.reason!='programming_refresh_pending':
-        _command(slug, f'freo_mixer.return_arm {decks[0].upper()} {row.id} {target}')
-        reader.dj_return_prepared.add(slug)
+    return target
 
 
 def return_to_auto_if_stopped(station, reader, mixer, now=None):
@@ -908,6 +918,9 @@ def return_to_auto_if_stopped(station, reader, mixer, now=None):
         return False
     now=time.monotonic() if now is None else now
     since=reader.dj_stopped_since.setdefault(slug,now)
+    if 'auto_return_id' in mixer:
+        # Load while the existing stop grace runs, not after switching to AUTO.
+        prepare_auto_successor(station, reader, mixer)
     if now-since < 2:
         return False
     from app.services.live_assist import return_to_schedule

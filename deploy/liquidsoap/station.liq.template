@@ -498,6 +498,13 @@ def dj_finished(deck, remaining, metadata)
   ready = (null.defined(current) and decision(request.metadata(null.get(current))) == return_target()) or
     (list.length(future) > 0 and decision(request.metadata(list.hd(future))) == return_target())
   repeating = if deck == "A" then list.length(deck_a.queue()) > 0 else list.length(deck_b.queue()) > 0 end
+  if mode() == "DJ_BOOTH" then
+    file.write(append=true, perms=0o640, __EVENT_FILE__, data="HANDOFF " ^ string.float(time()) ^ " " ^ deck ^ " " ^ decision(metadata) ^
+      " target=" ^ return_target() ^ " lease=" ^ string.float(return_until()-time()) ^
+      " matched=" ^ string(return_deck() == deck and return_source() == decision(metadata)) ^
+      " ready=" ^ string(ready) ^ " repeat=" ^ string(repeating) ^ " other=" ^ string(other_audible) ^
+      " mic=" ^ string(mic_active()) ^ " cart=" ^ string(cart.is_ready()) ^ " event=" ^ event_token() ^ "\n")
+  end
   if mode() == "DJ_BOOTH" and return_until() > time() and return_deck() == deck and return_source() == decision(metadata) and
       not repeating and not other_audible and not mic_active() and not cart.is_ready() and event_token() == "" and ready then
     finished = return_source()

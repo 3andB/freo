@@ -213,3 +213,17 @@ def test_only_rendered_request_counts_for_dj_playback(authenticated_runner):
     state['_rendered_decision_id']=42
     runner.session('test-station',state)
     assert runner.sessions['test-station']['seen_playing']
+
+
+def test_fallback_recovery_after_ui_wait_remains_a_finding(monkeypatch):
+    runner=module.LiveStress.__new__(module.LiveStress)
+    runner.conditions={};issues=[];events=[]
+    runner.issue=lambda *args,**kw:issues.append((args,kw))
+    runner.event=lambda *args,**kw:events.append((args,kw))
+    monkeypatch.setattr(module.time,'monotonic',lambda:100)
+    runner.condition('test-station','fallback',True,5)
+    monkeypatch.setattr(module.time,'monotonic',lambda:125)
+    runner.condition('test-station','fallback',False,5)
+    assert len(issues)==1 and issues[0][1]['duration_confirmed'] is False
+    assert issues[0][1]['elapsed_seconds']==25
+    assert len(events)==1 and not runner.conditions

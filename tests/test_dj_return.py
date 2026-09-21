@@ -20,7 +20,7 @@ def test_preparation_does_not_take_over_another_operation(prepared, monkeypatch,
     if gate=='cart': mixer['cart_id']=42
     if gate=='other-deck': mixer.update(b_id=43,b_playing=True)
     if gate=='transition': mixer['transition']={'incoming':'A'}
-    if gate=='too-early': mixer['a_elapsed']=0
+    if gate=='too-early': track.duration_ms=60000; mixer['a_elapsed']=0
     if gate=='auto-cue': db.session.add(BoothCue(station_id=station.id,auto_enabled=True))
     if gate=='pending': db.session.add(LiveControlCommand(station_id=station.id,action='DECK_PLAY',status='pending',idempotency_key='pending-return-test'))
     if gate=='disabled': station.automation.enabled=False
@@ -89,9 +89,11 @@ def test_entering_booth_preserves_scheduled_standby(prepared,monkeypatch):
     assert station.slug not in reader.dj_return_prepared
 
 
-def test_eof_observation_does_not_cancel_or_renew_the_last_lease(prepared,monkeypatch):
+@pytest.mark.parametrize("remembered", [True, False])
+def test_eof_observation_does_not_cancel_or_renew_the_last_lease(prepared,monkeypatch,remembered):
     station,track,user,snapshot=prepared
-    reader=EventReader();reader.dj_return_prepared.add(station.slug)
+    reader=EventReader()
+    if remembered: reader.dj_return_prepared.add(station.slug)
     calls=[]
     monkeypatch.setattr('app.services.playout_queue._command',lambda *args:pytest.fail('EOF lease was cancelled or renewed'))
     monkeypatch.setattr('app.services.programming_refresh.signature',lambda *args:'current')
@@ -141,3 +143,17 @@ def test_sync_does_not_undo_eof_between_snapshot_and_mode_write(prepared, monkey
     sync_mixer(station)
     assert station.automation.operator_mode=='AUTO'
     assert AuditEvent.query.filter_by(action='live_auto_return').count()==1
+
+
+def test_stopped_deck_prepares_during_grace_without_restarting_it(prepared, monkeypatch):
+    from app.automation_worker import return_to_auto_if_stopped
+    station,track,user,snapshot=prepared
+    reader=EventReader();reader.dj_has_played.add(station.slug)
+    stopped=dict(snapshot.mixer,a_playing=False,auto_return_id=None,auto_standby=False)
+    modes=[]
+    monkeypatch.setattr('app.automation_worker.prepare_auto_successor',lambda *args:modes.append(station.automation.operator_mode))
+    assert not return_to_auto_if_stopped(station,reader,stopped,now=10)
+    assert modes==['DJ_BOOTH']
+    assert return_to_auto_if_stopped(station,reader,stopped,now=12)
+    assert modes==['DJ_BOOTH','DJ_BOOTH']
+    assert station.automation.operator_mode=='AUTO'

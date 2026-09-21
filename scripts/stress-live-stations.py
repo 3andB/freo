@@ -255,8 +255,14 @@ class LiveStress:
                 self.issue(key+':'+slug+':'+str(began),key.replace('-',' '),station=slug,
                     elapsed_seconds=round(time.monotonic()-began,2))
         elif name in self.conditions:
-            self.event('condition_recovered',station=slug,condition=key,
-                elapsed_seconds=round(time.monotonic()-self.conditions.pop(name),2))
+            began=self.conditions.pop(name)
+            elapsed=round(time.monotonic()-began,2)
+            # A blocking UI action may span recovery. Preserve the observation
+            # without claiming that its entire polling interval was audible tone.
+            if threshold and elapsed>=threshold:
+                self.issue(key+':'+slug+':'+str(began),key.replace('-',' ')+' observed before recovery; duration needs review',
+                    station=slug,elapsed_seconds=elapsed,duration_confirmed=False)
+            self.event('condition_recovered',station=slug,condition=key,elapsed_seconds=elapsed)
 
     def browser(self):
         from selenium import webdriver
@@ -475,10 +481,12 @@ class LiveStress:
         now = time.monotonic()
         self.metrics['stations'][slug]['samples'] += 1
         self.latest[slug]={k:state.get(k) for k in ('observed_at','observation_fresh','mode','mixer','current','deck_command')}
-        self.condition(slug,'worker-stale',not state['observation_fresh'] and now>self.recovery_until)
         with self.app.app_context():
             mixer = mixer_state(slug)
             actual = program_decision_id(slug)
+        self.latest[slug]['rendered_decision_id']=actual
+        self.latest[slug]['engine_mixer']=mixer
+        self.condition(slug,'worker-stale',not state['observation_fresh'] and now>self.recovery_until)
         if self.stable.get(slug, (None,))[0] != actual:
             self.stable[slug] = (actual, now)
         if actual and state['observation_fresh'] and now-self.stable[slug][1]>15:
@@ -700,6 +708,9 @@ class LiveStress:
                             self.event('settled_auto',station=slug)
                         if not settling and slug not in self.sessions and time.monotonic()>=due[slug] and not self.protected_event(slug):
                             phase=phases[slug]
+                            if self.args.seconds>=7200 and phase==2:
+                                # Observe the Calendar boundary before leaving it.
+                                self.browser_sample(slug,0)
                             self.exercise(slug,phase);phases[slug]+=1;due[slug]=time.monotonic()+45
                             if self.args.seconds>=7200 and phase==1:
                                 with self.app.app_context():
