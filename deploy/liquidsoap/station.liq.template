@@ -193,8 +193,8 @@ def set_mode(value)
   else
     if value != mode() then
       cancel_return()
-      gain_a = if a_play() then a_mix() else 0.0 end
-      gain_b = if b_play() then b_mix() else 0.0 end
+      gain_a = if a_play() and deck_a.is_ready() then a_mix() else 0.0 end
+      gain_b = if b_play() and deck_b.is_ready() then b_mix() else 0.0 end
       gain_auto = if auto_play() then auto_mix() else 0.0 end
       cancel_transition()
       generation = transition_generation()
@@ -214,7 +214,7 @@ def set_mode(value)
         auto_from := gain_auto; auto_to := 1.0; auto_play := true
         a_from := gain_a; b_from := gain_b; a_to := 0.0; b_to := 0.0
         transition_start := time()
-        transition_duration := if dj_waiting() then 0.0 else 3.0 end
+        transition_duration := if dj_waiting() or (gain_a <= 0.001 and gain_b <= 0.001) then 0.0 else 3.0 end
         dj_waiting := false
         thread.run(delay=transition_duration(), {
           if transition_generation() == generation and mode() == "AUTO" then
@@ -350,6 +350,7 @@ end)
 # Browser audio is drained even while off air so speech never queues for later.
 mic_token = ref("")
 mic_input = __MIC_INPUT__
+mic_running = ref(false)
 mic_phase = ref("OFF AIR")
 mic_lease = ref(0.0)
 mic_start = ref(0.0)
@@ -373,7 +374,8 @@ def mic_active() = mic_phase() == "FADING" or mic_phase() == "LIVE" or mic_phase
 server.register(namespace="freo_mic", "state", fun (_) -> mic_token() ^ "|" ^ mic_phase() ^ "|" ^ string(mic_ready() and not cart.is_ready()))
 server.register(namespace="freo_mic", "prepare", fun (token) -> begin
   if mic_active() then "ERROR microphone already live" else
-    mic_token := token; mic_phase := "READY"; mic_lease := time()+6.0; "OK"
+    __MIC_STOP__; mic_token := token; __MIC_START__; mic_running := true
+    mic_phase := "READY"; mic_lease := time()+6.0; "OK"
   end
 end)
 server.register(namespace="freo_mic", "lease", fun (token) -> begin
@@ -407,6 +409,13 @@ thread.run(every=0.05, {
     mic_phase := "LIVE"; mic_start := time()
   elsif mic_phase() == "RETURNING" and (mic_duration() == 0.0 or mic_progress() >= 1.0) then
     mic_phase := "READY"
+  end
+  # A disconnected microphone must not continuously decode missing HTTP audio.
+  if mic_running() and time() > mic_lease() and not mic_active() then
+    __MIC_STOP__; mic_running := false
+    # Disconnecting a READY/off-air mic must preserve an ongoing DJ feed.
+    # Keep FAILED and its token only for loss of an active microphone.
+    if mic_phase() == "READY" then mic_phase := "OFF AIR"; mic_token := "" end
   end
 })
 
@@ -462,7 +471,9 @@ server.register(namespace="freo_mixer", "return_arm", fun (value) -> begin
     return_deck := list.nth(fields, 0)
     return_source := list.nth(fields, 1)
     return_target := list.nth(fields, 2)
-    return_until := time()+2.0
+    # Cover a brief multi-station worker/engine stall; manual operations revoke
+    # this identity-scoped lease immediately, and an absent worker still expires.
+    return_until := time()+5.0
     "OK"
   end
 end)

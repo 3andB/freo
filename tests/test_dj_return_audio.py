@@ -88,7 +88,7 @@ def test_natural_dj_end_has_continuous_programme(handoff_stack, deck, boundary):
     assert gap <= .25, f'Programme absent for {gap:.2f}s after DJ EOF (backup does not count as music)'
 
 
-@pytest.mark.parametrize('operation', ['repeat','clear','lease-expiry','worker-restart','schedule-edit','auto-cue'])
+@pytest.mark.parametrize('operation', ['repeat','clear','pause','lease-expiry','worker-delay','worker-restart','schedule-edit','auto-cue'])
 def test_prepared_return_respects_deck_changes_and_worker_lifetime(handoff_stack, operation):
     stack=handoff_stack
     def station():return Station.query.filter_by(slug=stack.slug).one()
@@ -122,7 +122,7 @@ def test_prepared_return_respects_deck_changes_and_worker_lifetime(handoff_stack
     assert stack.query(prepared_ids)=={replacement}, 'Prepared a second replacement for an already loaded request'
     assert stack.query(lambda: program_decision_id(stack.slug))==identifier, 'Test operation arrived after DJ EOF'
     assert stack.query(lambda: mixer_state(stack.slug)['a_elapsed'])<10, 'Test operation needs two seconds before EOF'
-    if operation in ('repeat','clear'):
+    if operation in ('repeat','clear','pause'):
         command=stack.query(lambda: request_deck(station(),AdminUser.query.first(),'A',operation.upper(),None,
             str(identifier),str(uuid.uuid4())).id)
         wait_for(lambda: stack.query(lambda: db.session.get(LiveControlCommand,command).status=='sent'))
@@ -151,8 +151,15 @@ def test_prepared_return_respects_deck_changes_and_worker_lifetime(handoff_stack
         assert stack.query(lambda: db.session.get(SelectionDecision,current).track_id)==stack.track_ids[1]
         assert stack.query(lambda: db.session.get(SelectionDecision,replacement).status)=='failed'
     else:
+        if operation=='worker-delay':
+            wait_for(lambda: stack.query(lambda: mixer_state(stack.slug)['a_elapsed']>=8.3))
         stack.stop_worker()
-        if operation=='lease-expiry':
+        if operation=='worker-delay':
+            time.sleep(4)
+            assert stack.query(lambda: mixer_state(stack.slug)['mode'])=='AUTO', 'Brief worker delay lost the prepared EOF handoff'
+            stack.start_worker()
+            wait_for(lambda: stack.query(lambda: station().automation.operator_mode=='AUTO'))
+        elif operation=='lease-expiry':
             time.sleep(8)
             assert stack.query(lambda: mixer_state(stack.slug)['mode'])=='DJ_BOOTH'
             assert stack.query(lambda: program_decision_id(stack.slug))!=replacement
@@ -161,7 +168,18 @@ def test_prepared_return_respects_deck_changes_and_worker_lifetime(handoff_stack
             wait_for(lambda: stack.query(lambda: station().automation.operator_mode=='AUTO'))
             assert stack.query(lambda: program_decision_id(stack.slug))==replacement
             assert stack.query(lambda: AuditEvent.query.filter_by(action='live_auto_return').count())==1
-    if operation in ('worker-restart','schedule-edit'):
+    if operation in ('clear','pause'):
+        wait_for(lambda: stack.query(lambda: station().automation.operator_mode=='AUTO'))
+        time.sleep(2)
+        stack.stop_worker()
+        stop_process(stack.engine)
+        windows=tone_windows(stack.evidence/'handoff.wav')
+        last=max(i for i,(dj,_) in enumerate(windows) if dj>500)
+        first=next(i for i in range(last+1,len(windows)) if windows[i][1]>500)
+        gap=(first-last-1)/20
+        (stack.evidence/'manual-stop-result.json').write_text(json.dumps(dict(operation=operation,audio_gap=gap)))
+        assert gap<=2.75, f'{operation}: {gap:.2f}s exceeds the 2s operator grace plus recovery allowance'
+    if operation in ('worker-restart','worker-delay','schedule-edit'):
         target=stack.query(lambda: program_decision_id(stack.slug))
         def interval():
             rows=[line.split() for line in (stack.runtime/stack.slug/'events.log').read_text().splitlines()]

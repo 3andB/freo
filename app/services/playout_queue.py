@@ -243,7 +243,11 @@ def sync_mixer(station):
     if state.operator_mode == 'DJ_BOOTH' and observed['mode'] == 'AUTO' and observed.get('auto_return_id'):
         from app.services.live_assist import accept_engine_return
         accept_engine_return(station, observed['auto_return_id'])
-    _command(station.slug, 'freo_mixer.mode ' + state.operator_mode)
+    # A rendered EOF may change the engine mode immediately after this snapshot.
+    # Reasserting an already-matching DJ mode would undo that handoff and erase
+    # its completion identity before the next worker observation can adopt it.
+    if observed['mode'] != state.operator_mode:
+        _command(station.slug, 'freo_mixer.mode ' + state.operator_mode)
     return observed
 
 

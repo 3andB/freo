@@ -157,12 +157,13 @@ async def gateway_roundtrip(engine_dir=None, station=None):
         assert (engine_dir/'control.sock').exists(), (engine_dir/'engine.log').read_text()[-4000:]
         song = engine_dir/'song.wav'
         generator = await asyncio.create_subprocess_exec('ffmpeg','-v','error','-f','lavfi','-i',
-            'sine=frequency=440:duration=30','-y',str(song))
+            'sine=frequency=440:duration=60','-y',str(song))
         assert await generator.wait() == 0
         assert await command('freo_mixer.mode DJ_BOOTH') == 'OK'
         assert (await command('freo_a.push annotate:freo_decision=1234:'+str(song))).isdigit()
         await asyncio.sleep(.2)
         assert await command('freo_deck.take_a 0.000') == 'OK'
+        assert 'Decoding failed' not in (engine_dir/'engine.log').read_text(), 'Idle microphone attempted HTTP decoding'
         assert await command('freo_mic.prepare '+token) == 'OK'
         async def observed():
             await post('heartbeat', owner=1, token=token)
@@ -174,6 +175,20 @@ async def gateway_roundtrip(engine_dir=None, station=None):
             if fields[2] == 'true': break
             await asyncio.sleep(.1)
         assert fields[2] == 'true', (engine_dir/'engine.log').read_text()[-4000:]
+        # A READY microphone expiring while off air must not force DJ into AUTO.
+        # Keep the browser session alive while deliberately withholding the engine lease.
+        until=asyncio.get_running_loop().time()+6.5
+        while asyncio.get_running_loop().time()<until:
+            await post('heartbeat',owner=1,token=token)
+            await asyncio.sleep(.1)
+        assert (await command('freo_mic.state')).split('|')[1]=='OFF AIR'
+        assert (await command('freo_mixer.state')).split('|')[0]=='DJ_BOOTH'
+        assert await command('freo_mic.prepare '+token)=='OK'
+        for _ in range(120):
+            fields=await observed()
+            if fields[2]=='true':break
+            await asyncio.sleep(.1)
+        assert fields[2]=='true'
         def voice_level():
             # Measure the received 880 Hz voice in the actual rendered WAV,
             # independently of engine control/state acknowledgements.

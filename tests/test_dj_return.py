@@ -112,3 +112,32 @@ def test_repeated_dj_mode_request_does_not_create_a_new_session(prepared,monkeyp
     assert AuditEvent.query.filter_by(action='live_mode_changed').count()==1
     monkeypatch.setattr('app.services.playout_queue.socket_identity',lambda slug:'engine')
     assert accept_engine_return(station,row.id)
+
+
+
+def test_sync_does_not_undo_eof_between_snapshot_and_mode_write(prepared, monkeypatch):
+    from app.services.playout_queue import sync_mixer
+    station,track,user,snapshot=prepared
+    row=db.session.get(SelectionDecision,snapshot.current_decision_id)
+    row.started_at=datetime.now(timezone.utc)
+    db.session.commit()
+    monkeypatch.setattr('app.services.playout_queue.socket_identity',lambda slug:'engine')
+    engine={'mode':'DJ_BOOTH','auto_return_id':None}
+    snapshots=[]
+    def read(slug):
+        observed=dict(engine)
+        if not snapshots:
+            # EOF renders after the snapshot, before sync_mixer can write.
+            engine.update(mode='AUTO',auto_return_id=row.id)
+        snapshots.append(observed)
+        return observed
+    def command(slug, command):
+        engine['mode']=command.split()[-1]
+        if engine['mode']=='DJ_BOOTH':engine['auto_return_id']=None
+    monkeypatch.setattr('app.services.playout_queue.mixer_state',read)
+    monkeypatch.setattr('app.services.playout_queue._command',command)
+    sync_mixer(station)
+    assert engine=={'mode':'AUTO','auto_return_id':row.id}
+    sync_mixer(station)
+    assert station.automation.operator_mode=='AUTO'
+    assert AuditEvent.query.filter_by(action='live_auto_return').count()==1

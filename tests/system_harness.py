@@ -190,7 +190,11 @@ class SystemStack:
             icecast=self.icecast_url, database='disposable SQLite WAL', worker='real tick in restartable thread'), indent=2))
 
     def icecast_ready(self):
-        assert self.icecast.poll() is None, (self.root/'icecast.log').read_text()
+        code=self.icecast.poll()
+        if code is not None:
+            logs='\n'.join(path.read_text(errors='replace')[-5000:] for path in
+                (self.root/'icecast.log',self.root/'icecast-logs/error.log') if path.exists())
+            raise AssertionError(f'Private Icecast exited {code}: {logs}')
         try:
             with self.opener.open(self.icecast_url + '/status-json.xsl', timeout=1) as response:
                 return response.status == 200
@@ -315,6 +319,8 @@ class SystemStack:
             for name in ('engine.log', 'icecast.log'):
                 if (self.root/name).exists():
                     shutil.copy2(self.root/name, self.evidence/name)
+            if (self.root/'icecast-logs').exists():
+                shutil.copytree(self.root/'icecast-logs',self.evidence/'icecast-logs',dirs_exist_ok=True)
             shutil.copytree(self.runtime, self.evidence/'runtime', dirs_exist_ok=True,
                             ignore=shutil.ignore_patterns('*.sock'))
             (self.evidence/'worker-errors.json').write_text(json.dumps(self.errors, indent=2))

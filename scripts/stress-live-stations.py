@@ -13,6 +13,8 @@ from pathlib import Path
 import re
 import secrets
 import signal
+import socket
+import os
 import shutil
 import subprocess
 import sys
@@ -20,11 +22,12 @@ import time
 import urllib.parse
 import urllib.request
 import uuid
+from zoneinfo import ZoneInfo
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from app import create_app
 from app.extensions import db
-from app.models import AdminUser, Station, Track, BoothCue, LiveCartSlot, ScheduleComposition, SelectionDecision, TimedEventOccurrence
+from app.models import AdminUser, Station, Track, BoothCue, LiveControlCommand, LiveCartSlot, ScheduleComposition, SelectionDecision, TimedEvent, TimedEventOccurrence
 from app.services import visual_schedule as vs
 from app.services.availability import tracks_for
 from app.services.playout_queue import mixer_state, program_decision_id
@@ -40,6 +43,11 @@ def write_json(path, value):
     pending.replace(path)
 
 
+class NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
+
 class LiveStress:
     def __init__(self, args):
         self.args = args
@@ -50,10 +58,13 @@ class LiveStress:
         with self.app.app_context():
             admin = AdminUser.query.filter_by(active=True).first()
             assert admin, 'An existing active administrator is required'
-            self.cookie = self.app.session_interface.get_signing_serializer(self.app).dumps(
-                dict(admin_user_id=admin.id, admin_csrf=self.csrf))
+            self.admin_id = admin.id
         self.cookie_name = self.app.config.get('SESSION_COOKIE_NAME', 'session')
         self.driver = None
+        self.cookie = None
+        self.auth_until = 0
+        self.browser_cookie = None
+        self.opener = urllib.request.build_opener(NoRedirect())
         self.tabs = {}
         self.probes = {}
         self.sessions = {}
@@ -68,16 +79,51 @@ class LiveStress:
         self.stable = {}
         self.monitor_progress = {}
         self.last_resource = {}
+        self.latest = {}
+        self.conditions = {}
+        self.programming = {}
+        self.settled = set()
+
+    def authenticate(self, browser=False):
+        if time.monotonic() >= self.auth_until:
+            with self.app.app_context():
+                admin=db.session.get(AdminUser, self.admin_id)
+                if admin is None or not admin.active:
+                    raise RuntimeError('Stress administrator is no longer active')
+                self.cookie = self.app.session_interface.get_signing_serializer(self.app).dumps(
+                    dict(admin_user_id=self.admin_id, admin_csrf=self.csrf))
+            self.auth_until = time.monotonic() + min(600, self.app.permanent_session_lifetime.total_seconds()/2)
+            self.metrics['auth_renewals']=self.metrics.get('auth_renewals',0)+1
+        if browser and self.driver and self.browser_cookie != self.cookie:
+            self.driver.add_cookie(dict(name=self.cookie_name, value=self.cookie, path='/',
+                secure=self.base.startswith('https'), httpOnly=True, sameSite='Lax'))
+            self.browser_cookie = self.cookie
+
+    def heartbeat(self):
+        self.metrics['heartbeat_at'] = utc()
+        write_json(self.root/'run.json', self.metrics)
+        address = os.environ.get('NOTIFY_SOCKET')
+        if address:
+            with socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM) as channel:
+                channel.connect('\0'+address[1:] if address.startswith('@') else address)
+                channel.sendall(b'READY=1\nWATCHDOG=1')
 
     def api(self, path, form=None):
+        self.authenticate()
         data = urllib.parse.urlencode(dict(csrf=self.csrf, **form)).encode() if form is not None else None
         request = urllib.request.Request(self.base + path, data=data, headers={
             'Cookie': self.cookie_name + '=' + self.cookie, 'Accept': 'application/json'})
         try:
-            with urllib.request.urlopen(request, timeout=20) as response:
+            with self.opener.open(request, timeout=20) as response:
+                if response.url != request.full_url or 'application/json' not in response.headers.get('Content-Type', ''):
+                    raise RuntimeError(f'{path}: unexpected HTTP {response.status} response; expected authenticated JSON')
                 return json.load(response)
         except urllib.error.HTTPError as error:
-            raise RuntimeError(f'{path}: HTTP {error.code}: {error.read().decode()[:250]}') from None
+            detail=''
+            if 'application/json' in error.headers.get('Content-Type',''):
+                try:detail=str(json.load(error).get('message',''))[:250]
+                except (ValueError,AttributeError):pass
+            raise RuntimeError(f'{path}: HTTP {error.code}; {detail}; request was not retried') from None
 
     def state(self, slug):
         return self.api(f'/admin/stations/{slug}/schedule-studio/api/state')
@@ -100,6 +146,8 @@ class LiveStress:
         if key in self.issue_keys:
             return
         self.issue_keys.add(key)
+        if details.get('station') in self.latest:
+            details['observation']=self.latest[details['station']]
         row = dict(at=utc(), key=key, message=message, **details)
         self.metrics['issues'].append(row)
         with (self.root/'issues.jsonl').open('a') as output:
@@ -130,13 +178,16 @@ class LiveStress:
                 assert vs.source_tracks(station, p.simple), f'{slug}: Simple playlist is empty'
                 tracks = tracks_for(station.id).filter(Track.audio_kind=='MUSIC', Track.enabled.is_(True),
                     Track.ingest_status=='accepted', Track.decommissioned_at.is_(None),
-                    Track.duration_ms.between(60000, 360000)).order_by(Track.id).limit(20).all()
+                    Track.duration_ms.between(60000, 360000)).order_by(Track.duration_ms,Track.id).limit(20).all()
                 assert len(tracks) >= 2, f'{slug}: needs at least two approved music tracks'
                 self.originals[slug] = dict(station_id=station.id, mode=p.mode,
                     calendar=copy.deepcopy(p.calendar), calendar_saved=p.calendar_saved,
                     assignments=copy.deepcopy(p.assignments), simple=copy.deepcopy(p.simple),
                     live_simple=copy.deepcopy(p.live_simple), activation=p.activation, activated=p.activated)
-                self.plan[slug] = dict(tracks=[dict(uuid=t.uuid, title=t.title, duration=t.duration_ms/1000) for t in tracks],
+                event_track=tracks_for(station.id).filter(Track.enabled.is_(True), Track.ingest_status=='accepted',
+                    Track.decommissioned_at.is_(None),Track.duration_ms.between(1000,180000)).order_by(Track.audio_kind=='MUSIC',Track.duration_ms).first()
+                assert event_track, f'{slug}: needs approved event audio of at most three minutes'
+                self.plan[slug] = dict(event_track=event_track.uuid, event_audio_kind=event_track.audio_kind, tracks=[dict(uuid=t.uuid, title=t.title, duration=t.duration_ms/1000) for t in tracks],
                     source=copy.deepcopy(p.simple), carts=[dict(role=c.role, position=c.position)
                         for c in LiveCartSlot.query.filter_by(station_id=station.id) if c.track_id or c.imaging_asset_id])
         return {'base': self.base, 'stations': {s: {'tracks': len(p['tracks']), 'carts': len(p['carts'])} for s,p in self.plan.items()}}
@@ -149,7 +200,7 @@ class LiveStress:
             # Persist each created fixture identity before installing references.
             block = self.schedule(slug, 'composition', kind='BLOCK', name='Live stress '+self.root.name,
                 description='Temporary authorized endurance fixture; archived after restoration.',
-                sections=[dict(id=str(uuid.uuid4()), start=0, end=86400, source=plan['source'])])
+                sections=[dict(id=str(uuid.uuid4()), start=i*900, end=(i+1)*900, source=plan['source']) for i in range(96)])
             self.originals[slug]['temporary_block_id'] = block['id']
             write_json(self.root/'originals.json', self.originals)
             rule = dict(frequency='daily', anchor='2026-01-01', interval=1)
@@ -169,6 +220,44 @@ class LiveStress:
             self.metrics['stations'][slug] = dict(actions=0, dj_returns=0, samples=0, metadata_matches=0)
         self.event('temporary_programming_installed')
 
+    def install_events(self):
+        from app.services.timed_events import save_event
+        for slug in self.args.stations:
+            names=[self.root.name+' '+slug+' '+mode for mode in ('HARD','SOFT')]
+            self.originals[slug]['temporary_event_names']=names
+            write_json(self.root/'originals.json',self.originals)
+            with self.app.app_context():
+                station=Station.query.filter_by(slug=slug).one()
+                for name,mode,delay in zip(names,('HARD','SOFT'),(60,300)):
+                    at=(datetime.now(timezone.utc)+timedelta(seconds=delay)).astimezone(ZoneInfo(station.timezone))
+                    row=save_event(slug,name=name,timing_mode=mode,recurrence_type='ONE_TIME',content_type='TRACK',
+                        content_identifier=self.plan[slug]['event_track'],local_date=at.date().isoformat(),
+                        local_time=at.strftime('%H:%M:%S'),late_tolerance_seconds=600,missed_policy='PLAY_LATE',
+                        interrupt_policy='MUSIC_ONLY' if mode=='HARD' else 'NEVER')
+                    self.event('event_installed',station=slug,event_id=row.id,timing=mode,audio_kind=self.plan[slug]['event_audio_kind'])
+            self.switch(slug,'BLOCKS')
+
+    def protected_event(self, slug):
+        # Deliberate station-mode changes must not cancel a due normal ID.
+        with self.app.app_context():
+            now=datetime.now(timezone.utc)
+            return TimedEventOccurrence.query.filter(
+                TimedEventOccurrence.station_id==self.originals[slug]['station_id'],
+                TimedEventOccurrence.state.in_(('PENDING','READY','QUEUED','STARTED')),
+                TimedEventOccurrence.scheduled_for_utc<=now+timedelta(seconds=30),
+                TimedEventOccurrence.deadline_at_utc>=now).first() is not None
+
+    def condition(self, slug, key, active, threshold=0):
+        name=slug+':'+key
+        if active:
+            began=self.conditions.setdefault(name,time.monotonic())
+            if time.monotonic()-began>=threshold:
+                self.issue(key+':'+slug+':'+str(began),key.replace('-',' '),station=slug,
+                    elapsed_seconds=round(time.monotonic()-began,2))
+        elif name in self.conditions:
+            self.event('condition_recovered',station=slug,condition=key,
+                elapsed_seconds=round(time.monotonic()-self.conditions.pop(name),2))
+
     def browser(self):
         from selenium import webdriver
         from selenium.webdriver.chrome.options import Options
@@ -183,8 +272,7 @@ class LiveStress:
         self.driver = webdriver.Chrome(service=Service('/usr/bin/chromedriver'), options=options)
         self.driver.set_page_load_timeout(30)
         self.driver.get(self.base+'/health')
-        self.driver.add_cookie(dict(name=self.cookie_name, value=self.cookie, path='/',
-            secure=self.base.startswith('https'), httpOnly=True, sameSite='Lax'))
+        self.authenticate(browser=True)
         for index, slug in enumerate(self.args.stations):
             if index:
                 self.driver.switch_to.new_window('tab')
@@ -196,6 +284,7 @@ class LiveStress:
     def navigate(self, slug, view, first=False):
         from selenium.webdriver.support.ui import WebDriverWait
         self.driver.switch_to.window(self.tabs[slug])
+        self.authenticate(browser=True)
         path = f'/admin/stations/{slug}/'+('live' if view=='live' else 'schedule-studio/'+view)
         if first:
             self.driver.get(self.base+path)
@@ -219,6 +308,10 @@ class LiveStress:
         from selenium.webdriver.common.by import By
         from selenium.webdriver.support.ui import WebDriverWait
         current = self.state(slug)
+        visited=self.metrics.get('stations',{}).get(slug,{})
+        if visited is not None:
+            modes=visited.setdefault('schedule_modes',[])
+            if mode not in modes:modes.append(mode)
         if current['mode'] == mode and self.status(slug)['mode']=='AUTO':
             return
         self.live(slug, 'mode', mode='AUTO')
@@ -249,8 +342,31 @@ class LiveStress:
                       nonce=str(uuid.uuid4()), fade_seconds='1', play_on_load='true' if operation=='LOAD' else 'false')
         if track:
             fields['identifier'] = track['uuid']
+        self.event('deck_requested',station=slug,deck=deck,operation=operation,
+            expected_decision=fields['expected_decision_id'],nonce=fields['nonce'],track=track['uuid'] if track else None)
         self.live(slug, 'deck', **fields)
-        self.event('deck_'+operation.lower(), station=slug, deck=deck)
+        with self.app.app_context():
+            row = LiveControlCommand.query.filter_by(station_id=self.originals[slug]['station_id'],
+                idempotency_key=fields['nonce']).one()
+            command_id, target_id = row.id, row.target_decision_id
+        deadline = time.monotonic()+25
+        while time.monotonic()<deadline:
+            observed = self.status(slug)
+            command = observed.get('deck_command') or {}
+            if command.get('id') != command_id:
+                if command.get('id',0)>command_id:
+                    raise RuntimeError('Deck command was replaced before confirmation')
+                time.sleep(.25)
+                continue
+            if command.get('status') == 'failed':
+                raise RuntimeError(f'Deck {operation} failed: {command.get("error")}')
+            if command.get('status') == 'sent' and (operation != 'LOAD' or
+                    (observed.get('mixer') or {}).get(deck.lower()+'_id') == target_id):
+                observed['_target_decision_id'] = target_id
+                self.event('deck_'+operation.lower(), station=slug, deck=deck, command=command)
+                return observed
+            time.sleep(.25)
+        raise RuntimeError(f'Deck {operation} was not confirmed')
 
     def exercise(self, slug, phase):
         plan = self.plan[slug]
@@ -263,16 +379,22 @@ class LiveStress:
                 self.live(slug, 'skip', expected_decision_id=str(current['decision_id']), nonce=str(uuid.uuid4()))
                 self.event('skip', station=slug)
         elif kind in (4,5,6,7,8,10,11):
-            track = plan['tracks'][phase % len(plan['tracks'])]
+            track = plan['tracks'][phase % 2]
             deck = 'B' if kind==5 else 'A'
             self.navigate(slug, 'live')
             self.live(slug, 'mode', mode='DJ_BOOTH')
             deadline = time.monotonic()+20
-            while time.monotonic()<deadline and (self.status(slug).get('mixer') or {}).get('mode')!='DJ_BOOTH':
+            while time.monotonic()<deadline:
+                entering = self.status(slug)
+                engine = entering.get('mixer') or {}
+                if entering.get('observation_fresh') and engine.get('mode')=='DJ_BOOTH' and not engine.get('a_id') and not engine.get('b_id'):
+                    break
                 time.sleep(.3)
-            self.deck(slug, deck, 'LOAD', track)
+            else:
+                raise RuntimeError('Fresh empty decks were not observed after entering DJ mode')
+            loaded = self.deck(slug, deck, 'LOAD', track)
             self.sessions[slug] = dict(kind=kind, began=time.monotonic(), track=track, deck=deck,
-                seen_playing=False, modified=False, deadline=time.monotonic()+track['duration']*(2 if kind==7 else 1)+90)
+                seen_playing=False, modified=False, expected_decision=loaded['_target_decision_id'], deadline=time.monotonic()+track['duration']*(2 if kind==7 else 1)+90)
         else:
             state = self.status(slug)
             if plan['carts'] and not state['cart']['locked']:
@@ -288,11 +410,19 @@ class LiveStress:
         if not session:
             return
         mixer = state.get('mixer') or {}
-        if mixer.get(session['deck'].lower()+'_playing'):
+        if mixer.get(session['deck'].lower()+'_playing') and state.get('_rendered_decision_id')==session['expected_decision']:
             session['seen_playing'] = True
+        if session.get('repeat_id') and state.get('_rendered_decision_id')==session['repeat_id'] and mixer.get('a_playing'):
+            session['repeat_seen']=True
         if session['seen_playing'] and state['mode']=='AUTO':
+            if session['kind']==7 and not session.get('repeat_seen'):
+                self.issue('repeat-unconfirmed:'+slug+':'+str(session['began']), 'Repeated request was not observed playing',station=slug)
+                del self.sessions[slug]
+                return
             self.metrics['stations'][slug]['dj_returns'] += 1
             self.event('dj_return', station=slug, kind_id=session['kind'])
+            coverage=self.metrics['stations'][slug].setdefault('scenarios',{})
+            key=str(session['kind']);coverage[key]=coverage.get(key,0)+1
             del self.sessions[slug]
             return
         if time.monotonic()>session['deadline']:
@@ -307,7 +437,8 @@ class LiveStress:
             self.deck(slug, 'B', 'LOAD', track)
             session['deadline'] = time.monotonic()+track['duration']+60
         elif session['kind']==7:
-            self.deck(slug, 'A', 'REPEAT')
+            repeated=self.deck(slug, 'A', 'REPEAT')
+            session['repeat_id']=repeated['_target_decision_id']
         elif session['kind']==8:
             self.live(slug, 'mode', mode='AUTO')
             self.event('manual_auto_crossfade', station=slug)
@@ -329,26 +460,36 @@ class LiveStress:
                 str(directory/'audio-%d.wav')],stdout=log,stderr=log)
             self.probes[slug] = dict(process=process, log=log, offset=0, directory=directory, last=time.monotonic())
 
+    def wait_audio(self):
+        deadline=time.monotonic()+40
+        while time.monotonic()<deadline:
+            if any(p['process'].poll() is not None for p in self.probes.values()):
+                raise RuntimeError('Continuous decoder exited during startup')
+            if all(any(f.stat().st_size>16044 for f in p['directory'].glob('audio-*.wav')) for p in self.probes.values()):
+                return
+            time.sleep(.25)
+        raise RuntimeError('Both streams did not produce decoded audio before the test clock')
+
     def sample(self, slug):
         state = self.status(slug)
         now = time.monotonic()
         self.metrics['stations'][slug]['samples'] += 1
-        if not state['observation_fresh'] and now > self.recovery_until:
-            self.issue('worker-stale:'+slug, 'Worker observation became stale', station=slug)
+        self.latest[slug]={k:state.get(k) for k in ('observed_at','observation_fresh','mode','mixer','current','deck_command')}
+        self.condition(slug,'worker-stale',not state['observation_fresh'] and now>self.recovery_until)
         with self.app.app_context():
             mixer = mixer_state(slug)
             actual = program_decision_id(slug)
         if self.stable.get(slug, (None,))[0] != actual:
             self.stable[slug] = (actual, now)
-        if actual and now-self.stable[slug][1]>15:
+        if actual and state['observation_fresh'] and now-self.stable[slug][1]>15:
             if (state.get('current') or {}).get('decision_id') != actual:
-                self.issue('metadata:'+slug+':'+str(actual), 'Web status disagrees with rendered output', station=slug)
+                confirmed=self.status(slug)
+                with self.app.app_context(): still=program_decision_id(slug)
+                if confirmed['observation_fresh'] and still==actual and (confirmed.get('current') or {}).get('decision_id')!=actual:
+                    self.issue('metadata:'+slug+':'+str(actual), 'Web status disagrees with stable rendered output', station=slug,actual_decision=actual)
             else:
                 self.metrics['stations'][slug]['metadata_matches'] += 1
-        if not mixer.get('tone', True):
-            self.last_tone[slug] = now
-        elif now-self.last_tone.setdefault(slug,now)>5:
-            self.issue('fallback:'+slug, 'Backup tone persisted for more than five seconds', station=slug)
+        self.condition(slug,'fallback',mixer.get('tone',True),5)
         for key in ['deck_command','skip_command']:
             command = state.get(key)
             if command and command['status']=='failed' and command['id'] not in self.seen_commands:
@@ -359,6 +500,8 @@ class LiveStress:
             raise RuntimeError(slug+': continuous decoder exited')
         with (probe['directory']/'audio.log').open() as source:
             source.seek(probe['offset']); text=source.read(); probe['offset']=source.tell()
+        for end,duration in re.findall(r'silence_end: ([\d.]+) \| silence_duration: ([\d.]+)',text):
+            self.event('silence_interval',station=slug,end_seconds=float(end),duration_seconds=float(duration))
         for stamp in re.findall(r'silence_start: ([\d.]+)',text):
             self.issue('silence:'+slug+':'+stamp, 'At least three seconds of decoded silence', station=slug, stream_seconds=stamp)
         files = list(probe['directory'].glob('audio-*.wav'))
@@ -368,6 +511,9 @@ class LiveStress:
                 self.issue('decoder-stall:'+slug,'Decoded audio stopped advancing',station=slug,age=age)
             if age>90:
                 raise RuntimeError(slug+': stream outage exceeded 90 seconds')
+        state['_rendered_decision_id']=actual
+        self.latest[slug]['rendered_decision_id']=actual
+        self.latest[slug]['engine_mixer']=mixer
         self.session(slug,state)
         return state
 
@@ -401,16 +547,24 @@ class LiveStress:
         with self.app.app_context():
             identifier=self.originals[slug]['station_id']
             began=datetime.fromisoformat(self.metrics['monitor_started_at'])
+            visual=vs.resolve_visual(Station.query.filter_by(slug=slug).one())
+            old=self.programming.get(slug)
+            if visual and old and visual['mode']==old['mode'] and visual['key']!=old['key']:
+                count=self.metrics['stations'][slug].setdefault('boundaries',{})
+                mode=visual['mode'];count[mode]=count.get(mode,0)+1
+                self.event('programme_boundary',station=slug,mode=mode,key=visual['key'])
+            if visual:self.programming[slug]={'mode':visual['mode'],'key':visual['key']}
             self.metrics['stations'][slug]['track_starts']=SelectionDecision.query.filter(
                 SelectionDecision.station_id==identifier,SelectionDecision.status=='started',SelectionDecision.started_at>=began).count()
             occurrences=TimedEventOccurrence.query.filter(TimedEventOccurrence.station_id==identifier,
                 TimedEventOccurrence.scheduled_for_utc>=began,TimedEventOccurrence.scheduled_for_utc<=datetime.now(timezone.utc)).all()
             self.metrics['stations'][slug]['events_completed']=sum(o.state=='COMPLETED' for o in occurrences)
+            self.metrics['stations'][slug]['event_modes_completed']=sorted({o.event.timing_mode for o in occurrences if o.state=='COMPLETED'})
             for occurrence in occurrences:
                 if occurrence.state in ('FAILED','MISSED'):
                     self.issue('event:'+str(occurrence.id),'Timed event did not complete',station=slug,state=occurrence.state,reason=occurrence.failure_reason)
         metrics = {r['name']:r['value'] for r in self.driver.execute_cdp_cmd('Performance.getMetrics',{})['metrics']}
-        # Service RSS and restart counts expose growth/restart loops across the five hours.
+        # Track service memory and restart loops across the observation period.
         services={}
         if time.monotonic()-self.last_resource.get(slug,0)>60:
             self.last_resource[slug]=time.monotonic()
@@ -429,12 +583,21 @@ class LiveStress:
             return
         restored = self.root/'restoration.json'
         if restored.exists() and json.loads(restored.read_text()).get('status')=='restored':
+            report=self.root/'run.json'
+            if report.exists() and getattr(getattr(self,'args',None),'restore',False):
+                outcome=json.loads(report.read_text())
+                if outcome.get('status') in ('preparing','running'):
+                    outcome.update(status='interrupted',failure='Runner stopped before recording completion',finished_at=utc())
+                outcome['cleanup_status']='restored';write_json(report,outcome)
             return
         originals = json.loads(path.read_text())
         errors = []
         for slug, original in originals.items():
             try:
                 with self.app.app_context():
+                    owned_events=TimedEvent.query.filter(TimedEvent.station_id==original.get('station_id'),TimedEvent.name.in_(original.get('temporary_event_names',[]))).all()
+                    if any(e.revision!=1 and e.enabled for e in owned_events):
+                        raise RuntimeError('Temporary event was edited; preserving operator changes')
                     p = vs.policy(Station.query.filter_by(slug=slug).one())
                     for field in ('calendar','assignments'):
                         if getattr(p,field) not in (original[field], original.get('installed_'+field)):
@@ -454,6 +617,9 @@ class LiveStress:
                     p.live_simple = original['live_simple']
                     p.activated = original['activated']
                     p.revision += 1
+                    from app.services.timed_events import set_enabled
+                    for event in TimedEvent.query.filter(TimedEvent.station_id==station.id,TimedEvent.name.in_(original.get('temporary_event_names',[]))):
+                        if event.enabled:set_enabled(event,False)
                     block = db.session.get(ScheduleComposition,original.get('temporary_block_id')) if original.get('temporary_block_id') else None
                     if block:
                         block.archived = True
@@ -462,8 +628,43 @@ class LiveStress:
             except Exception as error:
                 errors.append(dict(station=slug,error=str(error)))
         write_json(self.root/'restoration.json',dict(at=utc(),status='failed' if errors else 'restored',errors=errors))
+        report = self.root/'run.json'
+        if report.exists():
+            outcome = json.loads(report.read_text())
+            if getattr(getattr(self,'args',None),'restore',False) and outcome.get('status') in ('preparing','running'):
+                outcome.update(status='interrupted',failure='Runner stopped before recording completion',finished_at=utc())
+            outcome.update(cleanup_status='failed' if errors else 'restored', cleanup_at=utc())
+            write_json(report, outcome)
         if errors:
             raise RuntimeError('Restoration needs review: '+json.dumps(errors))
+
+    def verify_restored(self):
+        import math
+        import wave
+        from array import array
+        report={}
+        for slug in self.args.stations:
+            deadline=time.monotonic()+40
+            while time.monotonic()<deadline:
+                state=self.status(slug)
+                if state['observation_fresh'] and state['mode']=='AUTO' and state.get('current') and not (state.get('mixer') or {}).get('tone',True):
+                    break
+                time.sleep(1)
+            else:
+                raise RuntimeError(slug+': restored station did not resume fresh AUTO music')
+            output=self.root/(slug+'-restored.wav')
+            subprocess.run(['ffmpeg','-nostdin','-v','error','-y','-rw_timeout','10000000',
+                '-i','http://127.0.0.1:8001/'+slug,'-t','5','-ac','1','-ar','8000',str(output)],
+                check=True,stdout=subprocess.DEVNULL,stderr=subprocess.PIPE,timeout=20)
+            with wave.open(str(output)) as audio:
+                values=array('h',audio.readframes(audio.getnframes()))
+                seconds=len(values)/audio.getframerate()
+            rms=math.sqrt(sum(v*v for v in values)/max(1,len(values)))/32768
+            if seconds<4 or rms<=.001:
+                raise RuntimeError(slug+': restored stream did not decode audible audio')
+            report[slug]={'decoded_seconds':seconds,'rms':round(rms,5),'fresh_auto':True}
+        write_json(self.root/'restored-health.json',dict(at=utc(),stations=report))
+        return report
 
     def run(self):
         self.preflight()
@@ -473,30 +674,47 @@ class LiveStress:
             self.prepare()
             self.browser()
             self.start_audio()
+            self.wait_audio()
             for slug in self.args.stations:
                 state=self.status(slug)
                 for key in ('deck_command','skip_command'):
                     if state.get(key): self.seen_commands.add(state[key]['id'])
+            if self.args.seconds>=7200:self.install_events()
             began=time.monotonic()
             started=datetime.now(timezone.utc)
             self.metrics.update(status='running',monitor_started_at=started.isoformat(),
                 expected_finish_utc=(started+timedelta(seconds=self.args.seconds)).isoformat(),
                 commit=subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip())
-            due={s:began+10+i*20 for i,s in enumerate(self.args.stations)}
-            phases={s:0 for s in self.args.stations}
+            due={s:began+(920 if self.args.seconds>=7200 else 10)+i*20 for i,s in enumerate(self.args.stations)}
+            phases={s:(1 if self.args.seconds>=7200 else 0) for s in self.args.stations}
             next_browser=began+20
             index=0
+            checkpoint=0
             while time.monotonic()-began < self.args.seconds:
                 for slug in self.args.stations:
                     try:
                         self.sample(slug)
-                        if slug not in self.sessions and time.monotonic()>=due[slug]:
-                            self.exercise(slug,phases[slug]);phases[slug]+=1;due[slug]=time.monotonic()+45
+                        settling=self.args.seconds>=7200 and time.monotonic()-began>=self.args.seconds-600
+                        if settling and slug not in self.sessions and slug not in self.settled:
+                            self.live(slug,'mode',mode='AUTO');self.settled.add(slug)
+                            self.event('settled_auto',station=slug)
+                        if not settling and slug not in self.sessions and time.monotonic()>=due[slug] and not self.protected_event(slug):
+                            phase=phases[slug]
+                            self.exercise(slug,phase);phases[slug]+=1;due[slug]=time.monotonic()+45
+                            if self.args.seconds>=7200 and phase==1:
+                                with self.app.app_context():
+                                    visual=vs.resolve_visual(Station.query.filter_by(slug=slug).one())
+                                until=(visual['next_transition']-datetime.now(timezone.utc)).total_seconds() if visual['next_transition'] else 900
+                                due[slug]=time.monotonic()+max(45,min(930,until+15))
                     except Exception as error:
                         self.issue('operation:'+slug+':'+str(phases[slug]),str(error),station=slug)
                         if '90 seconds' in str(error) or 'decoder exited' in str(error):
                             raise
-                        self.live(slug,'mode',mode='AUTO')
+                        try:
+                            self.live(slug,'mode',mode='AUTO')
+                        except Exception as recovery_error:
+                            self.metrics['recovery_error']=str(recovery_error)
+                            raise error from recovery_error
                         self.sessions.pop(slug,None)
                         phases[slug]+=1;due[slug]=time.monotonic()+30
                 if time.monotonic()>=next_browser:
@@ -505,17 +723,28 @@ class LiveStress:
                         self.browser_sample(slug,index//len(self.args.stations))
                     except Exception as error:
                         self.issue('browser:'+str(index),str(error),station=slug)
-                    index+=1;next_browser=time.monotonic()+15
-                hour=int((time.monotonic()-began)//3600)
-                if hour in (1,2,3,4) and hour not in self.restart_hours:
+                    index+=1;next_browser=time.monotonic()+20
+                hour=int((time.monotonic()-began)//2700)
+                if hour in (1,2) and hour not in self.restart_hours:
                     # Preserve audio while exercising the actual worker's recovery.
                     self.restart_hours.add(hour)
                     self.recovery_until=time.monotonic()+40
                     subprocess.run(['systemctl','restart','freo-automation.service'],check=True,timeout=30)
-                    self.event('worker_restart',hour=hour)
+                    self.event('worker_restart',elapsed_minutes=hour*45)
                 self.metrics.update(elapsed_seconds=round(time.monotonic()-began,2),samples=self.metrics['samples']+1)
-                write_json(self.root/'run.json',self.metrics)
+                self.heartbeat()
+                reached=int((time.monotonic()-began)//900)
+                if reached>checkpoint:
+                    checkpoint=reached
+                    self.event('checkpoint',elapsed_seconds=self.metrics['elapsed_seconds'],issues=len(self.metrics['issues']),stations=self.metrics['stations'])
                 time.sleep(2)
+            if self.args.seconds>=7200:
+                for slug,stats in self.metrics['stations'].items():
+                    missing=[f'DJ scenario {kind}' for kind in (4,5,6,7,8,10,11) if stats.get('scenarios',{}).get(str(kind),0)<(2 if kind in (4,5) else 1)]
+                    missing += [f'{mode} mode' for mode in ('SIMPLE','BLOCKS','CALENDAR') if mode not in stats.get('schedule_modes',[])]
+                    missing += [f'{mode} boundary' for mode in ('BLOCKS','CALENDAR') if not stats.get('boundaries',{}).get(mode)]
+                    missing += [f'{mode} event' for mode in ('HARD','SOFT') if mode not in stats.get('event_modes_completed',[])]
+                    if missing:self.issue('coverage:'+slug,'Required scenarios did not complete',station=slug,missing=missing)
             self.metrics['status']='completed_with_findings' if self.metrics['issues'] else 'passed'
             self.metrics['completed_duration']=True
         except BaseException as error:
@@ -524,8 +753,11 @@ class LiveStress:
         finally:
             try:
                 self.restore()
+                self.metrics['cleanup_status']='restored'
+                self.metrics['cleanup_at']=utc()
+                self.metrics['restored_health']=self.verify_restored()
             except Exception as error:
-                self.metrics.update(status='restore_failed',restore_error=str(error))
+                self.metrics.update(exercise_status=self.metrics['status'],status='failed',cleanup_status='failed',restore_error=str(error))
             for probe in self.probes.values():
                 probe['process'].terminate()
                 try: probe['process'].wait(timeout=10)
@@ -535,14 +767,14 @@ class LiveStress:
                 self.driver.quit()
             self.metrics['finished_at']=utc()
             if self.root.exists():
-                write_json(self.root/'run.json',self.metrics)
+                self.heartbeat()
 
 
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--live',action='store_true',help='Explicit acknowledgement that actual broadcasts will be exercised')
     parser.add_argument('--stations',nargs='+',required=True)
-    parser.add_argument('--seconds',type=int,default=18000)
+    parser.add_argument('--seconds',type=int,default=7200)
     parser.add_argument('--output',type=Path,required=True)
     parser.add_argument('--preflight',action='store_true')
     parser.add_argument('--restore',action='store_true')
@@ -553,7 +785,7 @@ def main():
     if args.preflight:
         print(json.dumps(runner.preflight(),indent=2));return
     if args.restore:
-        runner.restore();return
+        runner.restore();runner.verify_restored();return
     signal.signal(signal.SIGTERM,lambda *_: (_ for _ in ()).throw(KeyboardInterrupt('Service stopped')))
     runner.run()
 

@@ -39,9 +39,10 @@ def test_worker_cue_event_restart_and_return_to_schedule(app, tmp_path, monkeypa
     monkeypatch.setattr('app.services.playout_queue.SOCKET_ROOT', runtime)
     monkeypatch.setattr('app.automation_worker.EVENT_ROOT', runtime)
     monkeypatch.setattr('app.services.broadcast_status.observation', lambda slug: (True, 0))
+    # The first song must survive setup before AUTO_CUE is armed.
     # Leave enough audio on the second Cue item for a deliberate interruption,
     # including the engine's two-second fade and worker/database round trips.
-    for key, extension, duration, frequency in [('a', 'mp3', 5, 440), ('b', 'flac', 20, 660), ('c', 'wav', 2, 880)]:
+    for key, extension, duration, frequency in [('a', 'mp3', 10, 440), ('b', 'flac', 20, 660), ('c', 'wav', 2, 880)]:
         subprocess.run(['ffmpeg', '-v', 'error', '-f', 'lavfi', '-i',
             f'sine=frequency={frequency}:duration={duration}', '-y', str(originals/(key*32+'.'+extension))], check=True)
     with app.app_context():
@@ -50,7 +51,7 @@ def test_worker_cue_event_restart_and_return_to_schedule(app, tmp_path, monkeypa
         station.automation.hold = True
         first = Track.query.first()
         first.storage_key = 'a'*32+'.mp3'
-        first.duration_ms = 5000
+        first.duration_ms = 10000
         def audio(key, extension, duration):
             track = Track(station_id=station.id, uuid=str(uuid.uuid4()), title='Test '+key,
                 artist='Test', original_filename=key+'.'+extension, storage_key=key*32+'.'+extension,
@@ -97,6 +98,7 @@ def test_worker_cue_event_restart_and_return_to_schedule(app, tmp_path, monkeypa
                     tick(reader)
                     time.sleep(.1)
                 assert command.target_decision.status == 'started'
+                assert program_decision_id(station.slug)==command.target_decision_id, 'Fixture setup outlasted the initial DJ song'
                 edit(operation='auto', enabled='true')
                 now = datetime.now(timezone.utc)
                 event = save_event(station.slug, name='Cue boundary event', recurrence_type='ONE_TIME',
@@ -106,7 +108,7 @@ def test_worker_cue_event_restart_and_return_to_schedule(app, tmp_path, monkeypa
                 occurrence = event.occurrences[0]
                 cue = db.session.get(BoothCue, station.id)
                 replayed = False
-                deadline = time.monotonic()+30
+                deadline = time.monotonic()+45
                 while time.monotonic()<deadline:
                     tick(reader)
                     if not replayed and (occurrence.boundary_reserved or occurrence.state=='MISSED'):
@@ -117,6 +119,10 @@ def test_worker_cue_event_restart_and_return_to_schedule(app, tmp_path, monkeypa
                     if len(starts)>=2:
                         break
                     time.sleep(.12)
+                if not (replayed and len(starts)>=2):
+                    (tmp_path/'cue-failure.json').write_text(json.dumps(dict(mode=station.automation.operator_mode,
+                        cue_enabled=cue.auto_enabled, event_state=occurrence.state, event_reason=occurrence.failure_reason,
+                        decisions=[dict(id=r.id,method=r.selection_method,status=r.status,reason=r.reason) for r in SelectionDecision.query.all()]),indent=2))
                 assert replayed and len(starts)>=2
                 assert [row.track_id for row in starts[:2]] == [first.id, second.id]
                 assert cue.auto_enabled and station.automation.operator_mode=='DJ_BOOTH'

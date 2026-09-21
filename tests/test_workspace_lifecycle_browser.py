@@ -123,3 +123,36 @@ def test_navigation_retained_resources(booth):
             assert sample['retained']['documents'] <= warm['documents'] + 2
             assert sample['retained']['jsEventListeners'] <= warm['jsEventListeners'] + 20
             assert sample['retained']['nodes'] <= warm['nodes'] + 1000
+
+
+@pytest.mark.parametrize('result', ['success', 'error'])
+@pytest.mark.parametrize('return_first', [False, True])
+def test_mic_response_after_departure_cannot_paint_another_page(booth, monkeypatch, result, return_first):
+    _, driver, base, _ = booth
+    monkeypatch.setattr('app.services.live_mic.enabled', lambda: True)
+    monkeypatch.setattr('app.routes.live_mic.gateway', lambda *args, **kwargs: {'phase':'OFF AIR'})
+    driver.refresh()
+    driver.execute_script("""
+      window.pageErrors=[];
+      window.addEventListener('unhandledrejection', e=>pageErrors.push(String(e.reason)));
+      window.addEventListener('error', e=>pageErrors.push(e.message));
+      const scope=FreoPage, original=scope.fetch.bind(scope);
+      scope.fetch=async(url, options)=>{
+        const response=await original(url,options);
+        if(!String(url).includes('/live-mic/status'))return response;
+        return {ok:true,headers:response.headers,json:()=>new Promise((resolve,reject)=>{
+          window.releaseMic=()=>arguments[0]==='error'
+            ?reject(new Error('Old microphone response')):resolve({phase:'FAILED',healthy:false});
+        })};
+      };
+    """, result)
+    wait=WebDriverWait(driver,15)
+    wait.until(lambda d:d.execute_script('return !!window.releaseMic'))
+    navigate(driver,base+'/admin/stations/test-station/schedule-studio/control')
+    if return_first:
+        navigate(driver,base+'/admin/stations/test-station/live')
+        wait.until(lambda d:d.find_element(By.ID,'mic-state').get_attribute('textContent')=='OFF AIR')
+    driver.execute_async_script('releaseMic();setTimeout(arguments[0],100)')
+    assert driver.execute_script('return pageErrors')==[]
+    if return_first:
+        assert driver.find_element(By.ID,'mic-state').get_attribute('textContent')=='OFF AIR'
