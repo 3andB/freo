@@ -35,7 +35,8 @@ def _command(slug, command):
     mic_command = re.fullmatch(r'freo_mic\.(?:state|(?:prepare|lease) [0-9a-f]{32}|(?:take|end) [0-9a-f]{32} (?:[0-9]\.[0-9]{3}|10\.000))', command)
     schedule_command = re.fullmatch(r'freo_schedule\.switch [0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12} [0-9]+', command)
     event_command = re.fullmatch(r'freo_event\.(?:arm|release|cancel) [1-9][0-9]*', command)
-    if not batch and not event_command and not schedule_command and not mic_command and command not in ('freo_schedule.status', 'freo_queue.queue', 'request.on_air', 'freo_queue.skip', 'freo_queue.flush_and_skip', 'freo_program.rms', 'freo_program.current', 'freo_deck.requests', 'freo_event.state') and not re.fullmatch(r'(?:freo_music\.remove [1-9][0-9]*|freo_(?:queue|event)\.remove [0-9]+(?: [0-9]+){0,19}|freo_deck\.(?:take|fade)_[ab](?: (?:[0-9]\.[0-9]{3}|10\.000))?|freo_deck\.(?:pause|clear|future)_[ab]|request.metadata [0-9]+|freo_(?:a|b|cart|event)\.queue|freo_mixer\.(?:state|fade_a|fade_next [1-9][0-9]*|clear_future|mode (?:AUTO|DJ_BOOTH)|crossfader (?:0\.[0-9]{3}|1\.000)|(?:a_play|b_play) (?:true|false)|cart_mode (?:OVER|TAKEOVER)|duck (?:0\.[0-9]{3}|1\.000)))', command) and not (re.fullmatch(music_pattern, command) or re.fullmatch(imaging_pattern, command)):
+    return_command = re.fullmatch(r'freo_mixer\.(?:return_cancel|return_discard [1-9][0-9]*|return_arm [AB] [1-9][0-9]* [1-9][0-9]*)', command)
+    if not return_command and not batch and not event_command and not schedule_command and not mic_command and command not in ('freo_schedule.status', 'freo_queue.queue', 'request.on_air', 'freo_queue.skip', 'freo_queue.flush_and_skip', 'freo_program.rms', 'freo_program.current', 'freo_deck.requests', 'freo_event.state') and not re.fullmatch(r'(?:freo_music\.remove [1-9][0-9]*|freo_(?:queue|event)\.remove [0-9]+(?: [0-9]+){0,19}|freo_deck\.(?:take|fade)_[ab](?: (?:[0-9]\.[0-9]{3}|10\.000))?|freo_deck\.(?:pause|clear|future)_[ab]|request.metadata [0-9]+|freo_(?:a|b|cart|event)\.queue|freo_mixer\.(?:state|fade_a|fade_next [1-9][0-9]*|clear_future|mode (?:AUTO|DJ_BOOTH)|crossfader (?:0\.[0-9]{3}|1\.000)|(?:a_play|b_play) (?:true|false)|cart_mode (?:OVER|TAKEOVER)|duck (?:0\.[0-9]{3}|1\.000)))', command) and not (re.fullmatch(music_pattern, command) or re.fullmatch(imaging_pattern, command)):
         raise ValueError('Liquidsoap command is not allowlisted')
     matches=[re.fullmatch(music_pattern,'freo_queue.insert '+uri) for uri in uris] if batch else [re.fullmatch(music_pattern,command)]
     for music in matches:
@@ -204,7 +205,7 @@ def program_decision_id(slug):
 def mixer_state(slug):
     import math
     parts = _command(slug, 'freo_mixer.state').split('|')
-    if len(parts) not in (9,13,16,17) or parts[0] not in ('AUTO','DJ_BOOTH') or any(value not in ('true','false') for value in parts[2:4]):
+    if len(parts) not in (9,13,16,17,18) or parts[0] not in ('AUTO','DJ_BOOTH') or any(value not in ('true','false') for value in parts[2:4]):
         raise RuntimeError('Invalid mixer state')
     numeric = [float(parts[index]) for index in (1,7,8)]
     if not all(math.isfinite(value) for value in numeric) or not 0 <= numeric[0] <= 1:
@@ -223,10 +224,14 @@ def mixer_state(slug):
         if parts[13] not in ('true','false') or (parts[14] and not REQUEST_ID.fullmatch(parts[14])) or not math.isfinite(gain) or not 0<=gain<=1:
             raise RuntimeError('Invalid Auto source state')
         extra=dict(auto_standby=parts[13]=='true',auto_id=int(parts[14]) if parts[14] else None,auto_gain=gain)
-    if len(parts)==17:
+    if len(parts)>=17:
         if parts[16] not in ('true','false'):
             raise RuntimeError('Invalid broadcast tone state')
         extra['tone'] = parts[16] == 'true'
+    if len(parts)==18:
+        if parts[17] and not re.fullmatch(r'[1-9][0-9]*', parts[17]):
+            raise RuntimeError('Invalid automatic return identity')
+        extra['auto_return_id'] = int(parts[17]) if parts[17] else None
     return dict(**extra,transition=transition,mode=parts[0],crossfader=numeric[0],a_playing=parts[2]=='true',b_playing=parts[3]=='true',
                 a_id=int(parts[4]) if parts[4] else None,b_id=int(parts[5]) if parts[5] else None,
                 cart_id=int(parts[6]) if parts[6] else None,a_elapsed=max(0,numeric[1]),b_elapsed=max(0,numeric[2]))
@@ -235,6 +240,9 @@ def mixer_state(slug):
 def sync_mixer(station):
     state = station.automation
     observed = mixer_state(station.slug)
+    if state.operator_mode == 'DJ_BOOTH' and observed['mode'] == 'AUTO' and observed.get('auto_return_id'):
+        from app.services.live_assist import accept_engine_return
+        accept_engine_return(station, observed['auto_return_id'])
     _command(station.slug, 'freo_mixer.mode ' + state.operator_mode)
     return observed
 

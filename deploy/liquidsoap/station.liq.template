@@ -82,6 +82,12 @@ mode = ref(__OPERATOR_MODE__)
 a_play = ref(false)
 auto_play = ref(true)
 dj_waiting = ref(true)
+return_source = ref("")
+return_target = ref("")
+return_deck = ref("")
+return_until = ref(0.0)
+return_completed = ref("")
+def cancel_return() = return_source := ""; return_until := 0.0 end
 b_play = ref(false)
 cart_takeover = ref(false)
 duck = ref(0.5)
@@ -140,6 +146,7 @@ def event_boundary(deck)
   end
 end
 def take_deck(deck, value)
+  cancel_return()
   duration = if value == "" then 3.0 else float_of_string(default=-1.0, value) end
   if mode() != "DJ_BOOTH" then "ERROR DJ control required"
   elsif not (duration >= 0.0 and duration <= 10.0) then "ERROR invalid fade duration"
@@ -185,6 +192,7 @@ def set_mode(value)
   if value != "AUTO" and value != "DJ_BOOTH" then "ERROR invalid mode"
   else
     if value != mode() then
+      cancel_return()
       gain_a = if a_play() then a_mix() else 0.0 end
       gain_b = if b_play() then b_mix() else 0.0 end
       gain_auto = if auto_play() then auto_mix() else 0.0 end
@@ -195,6 +203,7 @@ def set_mode(value)
       fade_end := 0.0; b_fade_end := 0.0
       schedule_fade_generation := schedule_fade_generation()+1; schedule_fade_end := 0.0
       if value == "DJ_BOOTH" then
+        return_completed := ""
         # Auto has its own source: entering the booth never touches its song.
         deck_a.set_queue([]); deck_a.skip(); a_decision := ""
         deck_b.set_queue([]); deck_b.skip(); b_decision := ""
@@ -262,6 +271,7 @@ def fade_gain() = if fade_end() > 0.0 then max(0.0, min(1.0, (fade_end()-time())
 def b_fade_gain() = if b_fade_end() > 0.0 then max(0.0, min(1.0, (b_fade_end()-time())/max(0.001, b_fade_duration()))) else 1.0 end end
 server.register(namespace="freo_deck", "take_a", fun (value) -> take_deck("A", value))
 server.register(namespace="freo_deck", "pause_a", fun (_) -> begin
+  cancel_return()
   if mode() != "DJ_BOOTH" then "ERROR DJ control required" else
     if a_play() then cancel_transition() end
     a_generation := a_generation() + 1; fade_end := 0.0; a_play := false
@@ -269,6 +279,7 @@ server.register(namespace="freo_deck", "pause_a", fun (_) -> begin
   end
 end)
 server.register(namespace="freo_deck", "clear_a", fun (_) -> begin
+  cancel_return()
   if mode() != "DJ_BOOTH" then "ERROR DJ control required" else
     if a_play() then cancel_transition() end
     a_generation := a_generation() + 1; fade_end := 0.0; a_play := false; deck_a.set_queue([]); deck_a.skip(); a_decision := ""; event_boundary("A")
@@ -276,6 +287,7 @@ server.register(namespace="freo_deck", "clear_a", fun (_) -> begin
   end
 end)
 server.register(namespace="freo_deck", "fade_a", fun (value) -> begin
+  cancel_return()
   duration = if value == "" then 3.0 else float_of_string(default=-1.0, value) end
   if mode() != "DJ_BOOTH" then "ERROR DJ control required"
   elsif not (duration >= 0.0 and duration <= 10.0) then "ERROR invalid fade duration"
@@ -290,6 +302,7 @@ server.register(namespace="freo_deck", "fade_a", fun (value) -> begin
   end
 end)
 server.register(namespace="freo_deck", "future_a", fun (_) -> begin
+  cancel_return()
   if mode() != "DJ_BOOTH" then "ERROR DJ control required" else
     deck_a.set_queue([])
     "OK"
@@ -297,6 +310,7 @@ server.register(namespace="freo_deck", "future_a", fun (_) -> begin
 end)
 server.register(namespace="freo_deck", "take_b", fun (value) -> take_deck("B", value))
 server.register(namespace="freo_deck", "pause_b", fun (_) -> begin
+  cancel_return()
   if mode() != "DJ_BOOTH" then "ERROR DJ control required" else
     if b_play() then cancel_transition() end
     b_generation := b_generation() + 1; b_fade_end := 0.0; b_play := false
@@ -304,6 +318,7 @@ server.register(namespace="freo_deck", "pause_b", fun (_) -> begin
   end
 end)
 server.register(namespace="freo_deck", "clear_b", fun (_) -> begin
+  cancel_return()
   if mode() != "DJ_BOOTH" then "ERROR DJ control required" else
     if b_play() then cancel_transition() end
     b_generation := b_generation() + 1; b_fade_end := 0.0; b_play := false; deck_b.set_queue([]); deck_b.skip(); b_decision := ""; event_boundary("B")
@@ -311,6 +326,7 @@ server.register(namespace="freo_deck", "clear_b", fun (_) -> begin
   end
 end)
 server.register(namespace="freo_deck", "fade_b", fun (value) -> begin
+  cancel_return()
   duration = if value == "" then 3.0 else float_of_string(default=-1.0, value) end
   if mode() != "DJ_BOOTH" then "ERROR DJ control required"
   elsif not (duration >= 0.0 and duration <= 10.0) then "ERROR invalid fade duration"
@@ -325,6 +341,7 @@ server.register(namespace="freo_deck", "fade_b", fun (value) -> begin
   end
 end)
 server.register(namespace="freo_deck", "future_b", fun (_) -> begin
+  cancel_return()
   if mode() != "DJ_BOOTH" then "ERROR DJ control required" else
     deck_b.set_queue([])
     "OK"
@@ -436,8 +453,51 @@ def cue_finished(_, metadata)
     file.write(append=true, perms=0o640, __EVENT_FILE__, data="END " ^ value ^ " " ^ string.float(time()) ^ "\n")
   end
 end
-music_a = source.on_end(delay=0.0, deck_a, fun (remaining, metadata) -> begin cue_finished(remaining, metadata); event_boundary("A") end)
-music_b = source.on_end(delay=0.0, deck_b, fun (remaining, metadata) -> begin cue_finished(remaining, metadata); event_boundary("B") end)
+# The worker prepares one request and renews a short lease. Only the rendered
+# EOF can perform this handoff; paused decks and an unavailable worker cannot.
+server.register(namespace="freo_mixer", "return_arm", fun (value) -> begin
+  fields = string.split(separator=" ", value)
+  if list.length(fields) != 3 then "ERROR invalid return"
+  else
+    return_deck := list.nth(fields, 0)
+    return_source := list.nth(fields, 1)
+    return_target := list.nth(fields, 2)
+    return_until := time()+2.0
+    "OK"
+  end
+end)
+server.register(namespace="freo_mixer", "return_cancel", fun (_) -> begin cancel_return(); "OK" end)
+server.register(namespace="freo_mixer", "return_discard", fun (target) -> begin
+  # Never discard an incoming request once EOF has made it audible.
+  if mode() != "DJ_BOOTH" or auto_play() then "BUSY"
+  else
+    cancel_return()
+    queue.set_queue(list.filter(fun (r) -> decision(request.metadata(r)) != target, queue.queue()))
+    current = queue.current()
+    if null.defined(current) and decision(request.metadata(null.get(current))) == target then queue.skip() end
+    "OK"
+  end
+end)
+def dj_finished(deck, remaining, metadata)
+  cue_finished(remaining, metadata)
+  event_boundary(deck)
+  other_audible = if deck == "A" then b_play() and b_mix() > 0.0 and deck_b.is_ready() else a_play() and a_mix() > 0.0 and deck_a.is_ready() end
+  future = queue.queue()
+  current = queue.current()
+  ready = (null.defined(current) and decision(request.metadata(null.get(current))) == return_target()) or
+    (list.length(future) > 0 and decision(request.metadata(list.hd(future))) == return_target())
+  repeating = if deck == "A" then list.length(deck_a.queue()) > 0 else list.length(deck_b.queue()) > 0 end
+  if mode() == "DJ_BOOTH" and return_until() > time() and return_deck() == deck and return_source() == decision(metadata) and
+      not repeating and not other_audible and not mic_active() and not cart.is_ready() and event_token() == "" and ready then
+    finished = return_source()
+    ignore(set_mode("AUTO"))
+    transition_duration := 0.0; auto_to := 1.0; a_to := 0.0; b_to := 0.0
+    a_play := false; b_play := false
+    return_completed := finished
+  end
+end
+music_a = source.on_end(delay=0.0, deck_a, fun (remaining, metadata) -> dj_finished("A", remaining, metadata))
+music_b = source.on_end(delay=0.0, deck_b, fun (remaining, metadata) -> dj_finished("B", remaining, metadata))
 music_a = amplify(override="freo_gain", 1.0, music_a)
 music_b = amplify(override="freo_gain", 1.0, music_b)
 music_a = mksafe(switch(track_sensitive=false, [({a_play() and main_active()}, music_a)]))
@@ -468,6 +528,7 @@ schedule_switch_phase = ref("APPLIED")
 schedule_switch_end = ref(0.0)
 server.register(namespace="freo_schedule", "status", fun (_) -> schedule_switch_phase() ^ "|" ^ schedule_switch_token())
 server.register(namespace="freo_schedule", "switch", fun (value) -> begin
+  cancel_return()
   parts = string.split(separator=" ", value)
   token = list.nth(default="", parts, 0)
   rid = list.nth(default="", parts, 1)
@@ -550,6 +611,7 @@ end
 # Check identity inside the engine so a natural track boundary cannot skip the
 # next, unrelated song between a worker read and its cleanup command.
 server.register(namespace="freo_music", "remove", fun (target) -> begin
+  cancel_return()
   def remove_from(source)
     source.set_queue(list.filter(fun (r) -> decision(request.metadata(r)) != target, source.queue()))
     current = source.current()
@@ -576,7 +638,7 @@ server.register(namespace="freo_program", "current", fun (_) ->
 server.register(namespace="freo_mixer", "state", fun (_) ->
   mode() ^ "|" ^ "0." ^ "|" ^ string(a_play()) ^ "|" ^ string(b_play()) ^ "|" ^ current_a() ^ "|" ^ current_b() ^ "|" ^ current_cart() ^ "|" ^ string.float(if current_a() == "" then 0.0 else deck_a.elapsed() end) ^ "|" ^ string.float(if current_b() == "" then 0.0 else deck_b.elapsed() end) ^ "|" ^
   (if transition_duration() > 0.0 and transition_fraction() < 1.0 and mode() == "DJ_BOOTH" then if a_to() > b_to() then "A" else "B" end else "" end) ^ "|" ^
-  string.float(transition_fraction()) ^ "|" ^ string.float(a_mix()*fade_gain()) ^ "|" ^ string.float(b_mix()*b_fade_gain()) ^ "|" ^ string(mode() == "DJ_BOOTH" and dj_waiting()) ^ "|" ^ current_auto() ^ "|" ^ string.float(auto_mix()) ^ "|" ^ string(broadcasting_tone()))
+    string.float(transition_fraction()) ^ "|" ^ string.float(a_mix()*fade_gain()) ^ "|" ^ string.float(b_mix()*b_fade_gain()) ^ "|" ^ string(mode() == "DJ_BOOTH" and dj_waiting()) ^ "|" ^ current_auto() ^ "|" ^ string.float(auto_mix()) ^ "|" ^ string(broadcasting_tone()) ^ "|" ^ return_completed())
 # Prepared decks have not aired. Confirm only while playing.
 auto_confirmed = ref("")
 a_confirmed = ref("")

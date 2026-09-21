@@ -168,7 +168,9 @@ def tick(observations, now):
         fresh = now - seen < 30
         incident(station.id, 'playout_unobserved', station.desired_state == 'running' and not fresh, now, 'Playout worker observation is stale')
         silent = bool(fresh and item.get('online') and snapshot.program_rms is not None and snapshot.program_rms < .001)
-        silence_since = old.get('silence_since', now) if silent else None
+        silence_since = old.get('silence_since') if silent else None
+        if silent and silence_since is None:
+            silence_since = now
         item['silence_since'] = silence_since
         incident(station.id, 'silence', bool(silent and now - silence_since >= 30), now, 'Program RMS below -60 dBFS for at least 30 seconds')
         stored.data = item

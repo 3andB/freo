@@ -16,6 +16,60 @@ def observation(listeners=2, sent=1000, epoch='server', source='mount'):
     return dict(online=True, listeners=listeners, bytes=sent, epoch=epoch, source_epoch=source, clients=[])
 
 
+@pytest.mark.parametrize('initial', ['missing', 'null', 'sound'])
+def test_silence_incident_transitions_and_collection_recovery(app, initial):
+    from app.models import LiveQueueSnapshot, BroadcastIncident, AudienceSample
+    with app.app_context():
+        station = Station.query.order_by(Station.id).first()
+        identifier = station.id
+        start = 1800000000
+        if initial == 'null':
+            db.session.add(StatsState(scope=identifier, data={'silence_since': None}))
+        db.session.add(LiveQueueSnapshot(station_id=identifier, queued_decision_ids=[],
+            unknown_count=0, observed_at=datetime.fromtimestamp(start, timezone.utc), program_rms=.2))
+        db.session.commit()
+
+        def sample(offset, rms, fresh=True, online=True):
+            snapshot = db.session.get(LiveQueueSnapshot, identifier)
+            snapshot.observed_at = datetime.fromtimestamp(start + offset - (0 if fresh else 60), timezone.utc)
+            snapshot.program_rms = rms
+            item = observation()
+            item['online'] = online
+            collect.tick({identifier: item}, start + offset)
+            db.session.remove()  # Exercise persisted null/numeric state, not an in-memory shortcut.
+
+        def incidents():
+            return BroadcastIncident.query.filter_by(scope=identifier, kind='silence').order_by(BroadcastIncident.started_at).all()
+
+        if initial == 'sound':
+            sample(0, .2)
+        sample(1, 0)
+        sample(30, 0)
+        assert not incidents()
+        sample(31, 0)
+        assert len(incidents()) == 1 and incidents()[0].ended_at is None
+        sample(40, 0)
+        assert len(incidents()) == 1
+        sample(41, .2)
+        assert incidents()[0].ended_at == start + 41
+        sample(42, 0)
+        sample(71, 0)
+        assert len(incidents()) == 1
+        sample(72, 0)
+        assert len(incidents()) == 2
+        sample(73, 0, fresh=False)
+        assert incidents()[1].ended_at == start + 73
+        assert db.session.get(StatsState, identifier).data['silence_since'] is None
+        sample(74, 0, online=None)
+        assert db.session.get(StatsState, identifier).data['silence_since'] is None
+        sample(75, None)
+        assert db.session.get(StatsState, identifier).data['silence_since'] is None
+        sample(76, .2)
+        assert db.session.get(AudienceSample, (identifier, start + 76)) is not None
+        assert BroadcastIncident.query.filter(BroadcastIncident.scope != identifier,
+            BroadcastIncident.kind == 'silence').count() == 0
+
+
 def test_counter_integrals_resets_gaps_and_partial_station_total(app):
     with app.app_context():
         ids=[s.id for s in Station.query.order_by(Station.id)]

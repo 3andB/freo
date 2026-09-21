@@ -211,6 +211,13 @@ def test_queue_reconciliation_marks_only_vanished_requests(setup, monkeypatch):
         monkeypatch.setattr(automation_worker, 'socket_identity', lambda slug: '1:2')
         monkeypatch.setattr(automation_worker, 'queued_ids', lambda slug: {11})
         monkeypatch.setattr(automation_worker, 'active_ids', lambda slug: set())
+        monkeypatch.setattr('app.services.playout_queue._command', lambda *args: '')
+        monkeypatch.setattr('app.services.playout_queue.channel_queue', lambda *args: [])
+        observed = [100.0]
+        monkeypatch.setattr(automation_worker.time, 'monotonic', lambda: observed[0])
+        assert automation_worker.reconcile_requests('one') == 0
+        assert first.status == 'queued'
+        observed[0] += 10
         assert automation_worker.reconcile_requests('one') == 1
         assert first.status == 'failed' and first.reason == 'request_not_started'
         assert second.status == 'queued'
@@ -228,6 +235,21 @@ def test_heartbeat_reports_stale_worker(setup):
         row.seen_at = datetime.now(timezone.utc) - timedelta(seconds=30)
         db.session.commit()
         assert client.get('/health/automation').status_code == 503
+
+
+def test_calendar_fast_polling_expires_after_boundary(setup, monkeypatch):
+    from app import automation_worker as worker
+    reader = worker.EventReader()
+    observed = [100.0]
+    monkeypatch.setattr(worker.time, 'monotonic', lambda: observed[0])
+    with setup[0].app_context():
+        assert worker.worker_delay(reader) == 2
+        reader.calendar_poll_until = 105.0
+        assert worker.worker_delay(reader) == .25
+        observed[0] = 104.9
+        assert worker.worker_delay(reader) == .25
+        observed[0] = 105.0
+        assert worker.worker_delay(reader) == 2
 
 
 def test_worker_refills_only_to_target_depth(setup, monkeypatch):

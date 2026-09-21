@@ -10,10 +10,21 @@
 
   async function api(action, data) {
     const options = data === undefined ? {} : {method: 'POST', body: new URLSearchParams({csrf: root.dataset.csrf, payload: JSON.stringify(data)})};
-    const response = await page.fetch(root.dataset.api + action, options);
-    const result = await response.json();
-    if (!response.ok) throw Error(result.error || 'Unable to reach station control.');
-    return result;
+    const controller = new AbortController(), abort = () => controller.abort();
+    page.signal.addEventListener('abort', abort, {once: true});
+    if (page.signal.aborted) abort();
+    const timeout = setTimeout(abort, 6000);
+    try {
+      const response = await page.fetch(root.dataset.api + action, {...options, signal: controller.signal});
+      const result = await response.json();
+      if (!response.ok) throw Error(result.error || 'Unable to reach station control.');
+      return result;
+    } catch (error) {
+      if (controller.signal.aborted && !page.signal.aborted) throw Error('Request timed out. Check station status before retrying.');
+      throw error;
+    } finally {
+      clearTimeout(timeout); page.signal.removeEventListener('abort', abort);
+    }
   }
   function message(text, error = false) {
     $('control-message').textContent = text;
@@ -83,11 +94,11 @@
         if (pending()) throw Error('Wait for the current mode change to finish.');
         const mode = button.dataset.switchMode;
         const preview = await api('transition-preview', {mode});
-        if (!preview.playable) throw Error('Nothing playable. Configure this mode or choose a default playlist in Station settings.');
+        if (!preview.playable) throw Error(preview.message);
         const payload = {id: crypto.randomUUID(), current: state.mode, mode, revision: state.revision};
         const confirmed = await window.FreoDialog.confirm({
           title: `Switch from ${title(state.mode)} to ${title(mode)}?`,
-          message: `This fades the current audio now, including any Event or live audio. Saved schedules are kept and future Events remain enabled. Will play now: ${preview.source.name}${preview.reason ? ' · Default playlist (' + preview.reason + ')' : ''}.`,
+          message: `This fades the current audio now, including any Event or live audio. Saved schedules are kept and future Events remain enabled. ${preview.message}`,
           confirmLabel: 'Confirm & switch now', signal: page.signal
         });
         if (!confirmed) return;

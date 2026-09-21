@@ -45,3 +45,42 @@
 @media(max-width:750px){.selected-section{height:104px}#schedule-studio[data-view=calendar] .mode-cards a{padding:9px;flex-wrap:wrap}.timeline-filters label{min-width:120px}}
 
 #calendar-controls{scroll-margin-top:calc(var(--header-height,190px) + 16px)}
+
+/* Blocks: saved formats, explicit scheduling state, and precise section controls. */
+#schedule-studio[data-view=blocks] .studio-header{margin:4px 0 12px}
+#schedule-studio[data-view=blocks] .studio-header h1{font-size:26px;margin:4px 0}
+#schedule-studio[data-view=blocks] .studio-header p{font-size:13px}
+#schedule-studio[data-view=blocks] .mode-cards a{padding:10px 14px}
+#schedule-studio[data-view=blocks] .mode-cards a>span{display:none}
+#schedule-studio[data-view=blocks] .studio-commandbar{padding:14px;background:var(--theme-raised);border:1px solid var(--theme-border);border-radius:12px}
+#schedule-studio[data-view=blocks] .studio-layout{grid-template-columns:minmax(0,1fr) 280px}
+#schedule-studio[data-view=blocks] .composition-controls{gap:8px;margin-bottom:12px}
+.saved-blocks{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;max-height:180px;overflow:auto;margin-bottom:14px}
+.saved-block-card{min-width:0;padding:12px;text-align:left;border:1px solid var(--theme-border);border-radius:10px;background:var(--theme-surface);color:var(--theme-text);cursor:pointer}
+.saved-block-card strong,.saved-block-card span{display:block;overflow-wrap:anywhere}
+.saved-block-card span{font-size:11px;color:var(--theme-muted);margin-top:5px}
+.saved-block-card[aria-pressed=true]{border-color:var(--theme-accent);background:var(--theme-raised);box-shadow:inset 3px 0 var(--theme-accent)}
+.block-summary{display:flex;flex-wrap:wrap;gap:8px;font-size:12px}
+.block-summary>span{padding:7px 10px;background:var(--theme-raised);border-radius:6px}
+.block-summary .needs-assignment{border:1px dashed var(--theme-accent)}
+.block-version-help{font-size:12px;line-height:1.6;color:var(--theme-muted);margin:10px 0 18px}
+.block-section-editor{border:1px solid var(--theme-border);border-radius:10px;background:var(--theme-raised);padding:12px;margin:0 0 12px}
+.block-section-editor>div:first-child{display:flex;flex-wrap:wrap;gap:8px;justify-content:space-between;font-size:12px;min-height:20px}
+.block-section-editor output{color:var(--theme-muted)}
+.block-time-controls{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr) auto auto;align-items:center;gap:12px;margin-top:10px}
+.block-time-controls label{font-size:12px;min-width:0}
+.block-time-controls input[type=range]{display:block;width:100%;min-width:0;padding:0;margin:10px 0 0;accent-color:var(--theme-accent);touch-action:pan-y}
+.block-time-controls input[type=time]{display:block;width:100%;box-sizing:border-box}
+.block-time-controls .block-midnight{display:flex;gap:6px;align-items:center}
+.block-time-controls input[type=checkbox]{width:auto}
+#block-time-error{height:1.5em;margin:6px 0 0;font-size:12px;color:var(--theme-danger)}
+#assign-error{color:var(--theme-danger)}
+.timeline-zoom input[type=range]{width:100px;min-height:24px;padding:0;accent-color:var(--theme-accent)}
+#schedule-studio[data-view=blocks] .studio-timeline{max-height:620px}
+#schedule-studio[data-view=blocks] .resize-grip{height:18px}
+#schedule-studio[data-view=blocks] .timeline-section>strong{position:sticky;top:52px}
+#assign-weekdays[hidden]{display:none}
+@media(max-width:1100px){.block-time-controls{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}}
+@media(max-width:750px){#schedule-studio[data-view=blocks] .studio-layout{display:flex}.saved-blocks{grid-template-columns:repeat(2,minmax(0,1fr))}.block-time-controls{gap:8px}.block-time-controls input[type=time]{font-size:16px}.block-section-editor{padding:10px}}
+#schedule-studio[data-view=blocks] .composition-controls>label{flex:1 1 220px;min-width:180px}
+#schedule-studio[data-view=blocks] .composition-controls>label input,#schedule-studio[data-view=blocks] .composition-controls>label select{width:100%;box-sizing:border-box}

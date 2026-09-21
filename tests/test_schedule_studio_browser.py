@@ -173,6 +173,8 @@ def test_blocks_default_playlist_and_full_day_calendar_song(booth):
     driver.find_element(By.ID,'assign-block').click()
     WebDriverWait(driver,5).until(lambda d:d.find_element(By.ID,'assign-dialog').is_displayed())
     driver.execute_script("document.getElementById('assign-start').value='2026-09-21'")
+    Select(driver.find_element(By.ID,'assign-frequency')).select_by_value('weekly')
+    driver.execute_script("document.querySelectorAll('#assign-weekdays input').forEach(el=>el.checked=Number(el.value)<5)")
     driver.find_element(By.CSS_SELECTOR,'#assign-form button[type=submit]').click()
     WebDriverWait(driver,5).until(lambda d:not d.find_element(By.ID,'section-inspector').is_displayed())
     driver.find_element(By.ID,'save-schedule').click();wait_text(driver,'#save-state','Saved')

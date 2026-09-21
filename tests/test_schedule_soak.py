@@ -61,7 +61,15 @@ def test_continuous_scheduling_soak(app,tmp_path,monkeypatch):
                         assert command.state!='FAILED',command.error
                         assert now-switch_at<10,'Handoff exceeded 10 seconds'
                         if command.state=='APPLIED':
-                            assert command.decision.status=='started' and program_decision_id(station.slug)==command.decision_id
+                            assert command.decision.status=='started'
+                            current=program_decision_id(station.slug)
+                            if current!=command.decision_id:
+                                # A confirmed four-second target may finish before
+                                # this later socket read, especially under clock lag.
+                                # Require its real END callback, never infer completion.
+                                events=(directory/'events.log').read_text().splitlines()
+                                assert any(line.startswith(f'END {command.decision_id} ') for line in events), (command.decision_id,current)
+                                metrics['completed_before_observation']=metrics.get('completed_before_observation',0)+1
                             assert vs.transition_request(station,dict(id=command.id)).id==command.id
                             metrics['switches'].append([before,p.mode]);metrics['max_switch_seconds']=max(metrics['max_switch_seconds'],now-switch_at)
                             command=None;next_switch=switch_at+10;last_audio=now

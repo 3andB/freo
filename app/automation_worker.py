@@ -6,6 +6,7 @@ import time
 from datetime import datetime, timedelta, timezone
 import math
 from contextlib import contextmanager
+from flask import current_app
 
 from app import create_app
 from app.extensions import db
@@ -48,6 +49,8 @@ class EventReader:
         self.dj_stopped_since = {}
         self.auto_return_until = {}
         self.programming_signatures = {}
+        self.dj_return_prepared = set()
+        self.calendar_poll_until = 0.0
 
     def collect(self, slug):
         path = EVENT_ROOT / slug / 'events.log'
@@ -196,6 +199,13 @@ def reconcile_requests(slug):
     if interrupted: db.session.commit()
     rows = SelectionDecision.query.join(SelectionDecision.station).filter(
         SelectionDecision.status == 'queued', Station.slug == slug).all()
+    # Socket inventory and rendered START callbacks are separate observations.
+    # A short request can leave the decoder before its START is collected. Keep
+    # it queued during a bounded confirmation window; never invent an airplay.
+    missing_by_station = current_app.extensions.setdefault('playout_missing_requests', {})
+    missing = missing_by_station.get(slug, {})
+    still_missing = {}
+    observed = time.monotonic()
     changed = 0
     for row in rows:
         if row.socket_identity is None or row.liquidsoap_request_id is None:
@@ -206,10 +216,22 @@ def reconcile_requests(slug):
                 changed += 1
             continue
         if row.socket_identity != identity or row.liquidsoap_request_id not in live:
+            if row.socket_identity == identity:
+                if not complete_inventory:
+                    continue  # Unavailable channels cannot prove absence.
+                key = (row.id, row.liquidsoap_request_id, identity)
+                since = missing.get(key, observed)
+                if observed - since < 10:
+                    still_missing[key] = since
+                    continue
             row.status = 'failed'
             if row.reason != 'programming_refresh_pending':
                 row.reason = 'playout_restarted' if row.socket_identity != identity else 'request_not_started'
             changed += 1
+    if still_missing:
+        missing_by_station[slug] = still_missing
+    else:
+        missing_by_station.pop(slug, None)
     if changed:
         for row in rows:
             if row.status == 'failed' and row.selection_method == 'timed_event':
@@ -761,6 +783,98 @@ def process_timed_events(station, reader, now=None):
                 for row in future), default=None)
 
 
+def prepare_dj_return(station, reader, mixer, cue_active=False):
+    """Resolve one replacement before EOF; the engine performs only the handoff."""
+    if 'auto_return_id' not in mixer:  # Compatible with an engine awaiting restart.
+        return
+    from app.models import BoothCue
+    from app.services.playout_queue import _command, channel_queue, mixer_state
+    from app.services.programming_refresh import signature, refresh
+    slug = station.slug
+    if mixer['mode'] != 'DJ_BOOTH' or mixer.get('auto_standby'):
+        _command(slug, 'freo_mixer.return_cancel')
+        reader.dj_return_prepared.discard(slug)
+        return
+    cue = db.session.get(BoothCue, station.id)
+    decks = [key for key in ('a','b') if mixer.get(key+'_playing') and mixer.get(key+'_id') and
+             mixer.get('transition', {}).get(key+'_gain', 1) > 0]
+    if (not decks and slug in reader.dj_return_prepared and not cue_active and
+            not (cue and cue.auto_enabled) and not mixer.get('cart_id') and
+            not LiveControlCommand.query.filter_by(station_id=station.id,status='pending').first()):
+        # Request identity may disappear just before its rendered EOF callback.
+        # Leave the existing lease to finish/expire; never renew absent audio.
+        # Explicit deck operations already revoke it inside the engine.
+        refresh(station, reader, signature(station), prepared_auto_id=mixer.get('auto_id'))
+        return
+    eligible = (station.automation.enabled and len(decks)==1 and not cue_active and
+                not (cue and cue.auto_enabled) and not mixer.get('cart_id') and
+                not mixer.get('auto_standby') and not mixer.get('transition', {}).get('incoming') and
+                not LiveControlCommand.query.filter_by(station_id=station.id,status='pending').first())
+    row = db.session.get(SelectionDecision, mixer[decks[0]+'_id']) if eligible else None
+    if eligible and channel_queue(slug, decks[0].upper()):
+        eligible = False  # REPEAT already owns this deck's next boundary.
+        row = None
+    remaining = (row.track.duration_ms/1000-mixer.get(decks[0]+'_elapsed',0)) if row and row.track else None
+    now = datetime.now(timezone.utc)
+    # Duration metadata can end a few frames before the rendered EOF. Keep
+    # renewing while this same deck is audible; only the engine owns its end.
+    if remaining is not None and remaining <= 8:
+        # A due event or a programme change before EOF must choose the next source.
+        programming = resolve(station)
+        eligible = not (programming.next_transition and programming.next_transition <= now+timedelta(seconds=max(0,remaining)+1))
+        eligible = eligible and not TimedEventOccurrence.query.filter(
+            TimedEventOccurrence.station_id==station.id,
+            TimedEventOccurrence.state.in_(('PENDING','READY','QUEUED','STARTED')),
+            TimedEventOccurrence.scheduled_for_utc <= now+timedelta(seconds=max(0,remaining)+1)).first()
+    else:
+        eligible = False
+    if not eligible:
+        _command(slug, 'freo_mixer.return_cancel')
+        if slug in reader.dj_return_prepared or (mixer.get('auto_id') and mixer.get('auto_gain') == 0):
+            refresh(station, reader, 'dj-return-cancelled', prepared_auto_id=mixer.get('auto_id'))
+            reader.dj_return_prepared.discard(slug)
+        return
+    current_signature = signature(station)
+    refresh(station, reader, current_signature, prepared_auto_id=mixer.get('auto_id'))
+    reader.starved_until.pop(slug, None)
+    observed = mixer_state(slug)
+    if observed['mode'] != 'DJ_BOOTH':
+        return
+    target = observed.get('auto_id')
+    held = db.session.get(SelectionDecision, target) if target else None
+    if held and held.status=='started':
+        # A skipped outgoing Auto request may remain current until its source
+        # is pulled again. It is history, not the prepared replacement.
+        target = None
+    if target is None:
+        # Reading future requests before active requests also covers a request
+        # moving into the inactive Auto source between the two observations.
+        inventory = queued_ids(slug) | active_ids(slug)
+        prepared = SelectionDecision.query.filter(
+            SelectionDecision.station_id==station.id, SelectionDecision.status=='queued',
+            SelectionDecision.admin_user_id.is_(None),
+            SelectionDecision.programming_signature==current_signature,
+            SelectionDecision.liquidsoap_request_id.in_(inventory),
+            SelectionDecision.socket_identity==socket_identity(slug)).order_by(SelectionDecision.id).first() if inventory else None
+        target = prepared.id if prepared else None
+    if target is None:
+        if SelectionDecision.query.filter_by(station_id=station.id,reason='programming_refresh_pending',status='queued').first():
+            _command(slug, 'freo_mixer.return_cancel')
+            return
+        refill_station(slug, reader, 1)
+        target = mixer_state(slug).get('auto_id')
+        held = db.session.get(SelectionDecision, target) if target else None
+        if held and held.status=='started':
+            target = None
+        if target is None:
+            future = queued_order(slug)
+            target = request_decision_id(slug, future[0]) if future else None
+    candidate = db.session.get(SelectionDecision, target) if target else None
+    if candidate and candidate.status=='queued' and candidate.programming_signature==current_signature and candidate.reason!='programming_refresh_pending':
+        _command(slug, f'freo_mixer.return_arm {decks[0].upper()} {row.id} {target}')
+        reader.dj_return_prepared.add(slug)
+
+
 def return_to_auto_if_stopped(station, reader, mixer, now=None):
     """Return after aired DJ music stops, never from a missing engine response."""
     slug=station.slug
@@ -802,6 +916,23 @@ def return_to_auto_if_stopped(station, reader, mixer, now=None):
     return True
 
 
+def continuity_depth(station, now=None):
+    """Keep one successor when suppressing lookahead would leave empty output."""
+    from app.services.playout_queue import program_decision_id
+    identifier = program_decision_id(station.slug)
+    if identifier is None:
+        return 1
+    row = db.session.get(SelectionDecision, identifier)
+    if row is None or row.started_at is None:
+        return 0
+    asset = row.track or row.imaging_asset
+    if asset is None:
+        return 0
+    now = now or datetime.now(timezone.utc)
+    end = row.started_at.replace(tzinfo=row.started_at.tzinfo or timezone.utc)+timedelta(milliseconds=asset.duration_ms)
+    return int(end <= now+timedelta(seconds=5))
+
+
 def tick(reader, target_depth=2):
     heartbeat()
     states = AutomationState.query.all()
@@ -828,6 +959,7 @@ def tick(reader, target_depth=2):
                     from app.services.booth_cue import disarm
                     disarm(state.station, 'AUTO_CUE is off · station AUTO is active.')
                     reader.dj_has_played.discard(slug);reader.dj_stopped_since.pop(slug,None)
+                    reader.dj_return_prepared.discard(slug)
             except (OSError, RuntimeError, ValueError):
                 pass
             if mic_active:
@@ -855,6 +987,8 @@ def tick(reader, target_depth=2):
                 if not cue_active and return_to_auto_if_stopped(state.station,reader,mixer_state(slug)):
                     sync_mixer(state.station)
                     reader.auto_return_until[slug]=time.monotonic()+4
+                if state.operator_mode == 'DJ_BOOTH':
+                    prepare_dj_return(state.station, reader, mixer_state(slug), cue_active)
             if state.operator_mode == 'DJ_BOOTH' and not standby:
                 for execution in EventBlockExecution.query.filter_by(station_id=state.station_id).filter(EventBlockExecution.state.in_(('PENDING','QUEUED','STARTED'))).all():
                     execution.state='ABORTED';execution.aborted_at=datetime.now(timezone.utc);execution.failure_reason='dj_control'
@@ -902,8 +1036,15 @@ def tick(reader, target_depth=2):
                 depth_limit = 0
             if programming.next_transition:
                 remaining = (programming.next_transition - datetime.now(timezone.utc)).total_seconds()
+                if 0 < remaining <= 5:
+                    # Retain the fast cadence through the boundary: once it
+                    # passes, resolve() points at tomorrow's next transition.
+                    reader.calendar_poll_until = max(reader.calendar_poll_until,
+                        time.monotonic() + remaining + 5)
                 if 0 < remaining <= 20:
                     depth_limit = 0
+            if depth_limit == 0:
+                depth_limit = continuity_depth(state.station)
             refill_station(slug, reader, depth_limit)
             state.worker_heartbeat_at = datetime.now(timezone.utc)
             state.observed_queue_depth = queue_depth(slug)
@@ -918,6 +1059,18 @@ def tick(reader, target_depth=2):
         except Exception:
             db.session.rollback()
             logger.exception('Automation tick failed for station=%s', slug)
+
+
+def worker_delay(reader):
+    """Use the same bounded boundary cadence in production and system tests."""
+    if time.monotonic() < reader.calendar_poll_until:
+        return .25
+    due = TimedEventOccurrence.query.filter(TimedEventOccurrence.state.in_(('PENDING','READY'))).order_by(TimedEventOccurrence.scheduled_for_utc).first()
+    nearest = ((due.scheduled_for_utc.replace(tzinfo=due.scheduled_for_utc.tzinfo or timezone.utc)-datetime.now(timezone.utc)).total_seconds() if due else None)
+    dj_active = db.session.query(AutomationState.station_id).join(Station).filter(
+        AutomationState.operator_mode=='DJ_BOOTH', Station.enabled.is_(True),
+        Station.desired_state=='running').first() is not None
+    return .25 if dj_active or (nearest is not None and -5 <= nearest <= 5) else 2
 
 
 def main():
@@ -937,18 +1090,13 @@ def main():
             except Exception:
                 db.session.rollback()
                 logger.exception('Automation database or worker tick failed')
-            # Two-second normal cadence; the final event window adapts to 250ms
-            # without a persistent busy loop.
-            nearest = None
+            # Two-second normal cadence; DJ/event/calendar boundaries use 250ms.
             try:
-                from app.models import TimedEventOccurrence
-                due = TimedEventOccurrence.query.filter(TimedEventOccurrence.state.in_(('PENDING','READY'))).order_by(TimedEventOccurrence.scheduled_for_utc).first()
-                if due:
-                    nearest = (due.scheduled_for_utc.replace(tzinfo=due.scheduled_for_utc.tzinfo or timezone.utc)-datetime.now(timezone.utc)).total_seconds()
+                delay = worker_delay(reader)
             except Exception:
                 db.session.rollback()
-            dj_active = db.session.query(AutomationState.station_id).join(Station).filter(AutomationState.operator_mode=='DJ_BOOTH',Station.enabled.is_(True),Station.desired_state=='running').first() is not None
-            time.sleep(.25 if dj_active or (nearest is not None and -5 <= nearest <= 5) else 2)
+                delay = 2
+            time.sleep(delay)
 
 
 if __name__ == '__main__':

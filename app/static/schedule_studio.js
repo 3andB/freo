@@ -6,7 +6,7 @@ const page=window.FreoPage, editor=window.FreoScheduleEditor;
 const $=id=>document.getElementById(id), clone=value=>structuredClone(value), uid=()=>crypto.randomUUID();
 const view=root.dataset.view, composing=['shows','blocks'].includes(view), autosave=view==='calendar';
 let state=JSON.parse($('schedule-initial').value), compositions=[], composition={kind:view==='blocks'?'BLOCK':'SHOW',name:'',description:'',duration:view==='blocks'?86400:3600,sections:[]};
-let entries=clone(state.calendar), assignments=clone(state.assignments), simple=clone(state.simple), dirty=false, undo=[],redo=[],libraryKind=view==='shows'?'playlist':'show',sourcePage=1,dragged=null,editing=null,accordion=false,expanded=new Set(composing?[0]:[9,10,11]),events=[],pattern=[];
+let entries=clone(state.calendar), assignments=clone(state.assignments), simple=clone(state.simple), dirty=false, undo=[],redo=[],libraryKind=composing?'playlist':'show',sourcePage=1,dragged=null,editing=null,accordion=false,expanded=new Set(composing?[0]:[9,10,11]),events=[],pattern=[];
 let searchController,searchTimer,hoverTimer,hoverHour,selectedDate=new Intl.DateTimeFormat('en-CA',{timeZone:state.timezone,year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date()),layout='Week';
 const requested=new URLSearchParams(location.search);if(/^\d{4}-\d{2}-\d{2}$/.test(requested.get('date')||''))selectedDate=requested.get('date');const requestedView=requested.get('view');if(['day','week','month','agenda'].includes(requestedView))layout=requestedView[0].toUpperCase()+requestedView.slice(1);
 const localKey='freo-schedule:'+root.dataset.station+':'+view;
@@ -50,15 +50,17 @@ function markDirty(){
     editGeneration++;dirty=true;if(!saveConflict)saveBlocked=false;
     $('save-state').textContent=saveConflict?'Not saved':autosave?'Saving…':'Unsaved changes';
     $('undo-edit').disabled=!undo.length;$('redo-edit').disabled=!redo.length;
-    rememberDraft();queueSave();
+    updateBlockSummary();rememberDraft();queueSave();
 }
 $('undo-edit').onclick=()=>{if(!undo.length)return;redo.push(snapshot());restore(undo.pop());};$('redo-edit').onclick=()=>{if(!redo.length)return;undo.push(snapshot());restore(redo.pop());};
 function updateStatus(){const pending=state.transition&&['PENDING','PREPARING','FADING'].includes(state.transition.state);$('active-mode').textContent=pending?`Switching ${state.mode} → ${state.transition.mode}…`:`Active mode: ${state.mode.charAt(0)+state.mode.slice(1).toLowerCase()}`;$('mode-detail').textContent=`${state.timezone} · ${state.playing_fallback?'Playing default playlist: '+(state.fallback?.name||'Unavailable'):state.activated?'Following your saved programming':'Existing programming retained until activation'}`;document.querySelectorAll('[data-mode-badge]').forEach(el=>{const active=el.dataset.modeBadge===state.mode;el.textContent=active?'● Active':'Open workspace';el.classList.toggle('is-active',active);});const activate=$('activate-mode');if(activate){activate.disabled=pending||saving||validations>0;activate.textContent=state.mode===view.toUpperCase()&&state.activated?(view==='simple'?'Change what plays':'Active mode'):'Use '+view[0].toUpperCase()+view.slice(1);if(state.held&&state.activated)activate.textContent='Resume '+view[0].toUpperCase()+view.slice(1);if(view!=='simple'&&state.mode===view.toUpperCase()&&state.activated&&!state.held)activate.disabled=true;}document.querySelectorAll('.schedule-mode-status').forEach(el=>el.textContent=$('active-mode').textContent);if(state.transition?.state==='FAILED')message(state.transition.error,true);}
 const matches=editor.matches;
 function dayEntries(day){return editor.coverage(entries,day);}
-function assigned(day){return assignments.filter(a=>matches(a.rule,day)).map(a=>({...a,source:a.pattern[Math.round((dateObj(day)-dateObj(a.rule.anchor))/86400000)%a.pattern.length]}));}
+function assigned(day){const rows=assignments.filter(a=>matches(a.rule,day)),dated=rows.filter(a=>['once','dates'].includes(a.rule.frequency));return (dated.length?dated:rows).map(a=>({...a,source:a.pattern[Math.round((dateObj(day)-dateObj(a.rule.anchor))/86400000)%a.pattern.length]}));}
 function duration(){return composing?composition.duration:86400;}
-function height(hour){if(composing&&duration()<3600)return 180*3600/duration();return accordion?(expanded.has(hour)?180:28):84;}
+let blockHourHeight=48;
+function fallbackLabel(){return state.fallback?'Default: '+state.fallback.name:'No default playlist configured';}
+function height(hour){if(composing&&duration()<3600)return 180*3600/duration();return accordion?(expanded.has(hour)?180:28):(view==='blocks'?blockHourHeight:84);}
 function yFor(second){let y=0;for(let h=0;h<Math.floor(second/3600);h++)y+=height(h);return y+(second%3600)/3600*height(Math.floor(second/3600));}
 function secondFor(y){y=Math.max(0,y);let h=0;while(y>height(h)&&h<23){y-=height(h);h++;}return Math.min(duration(),h*3600+y/height(h)*3600);}
 function snap(second){const step=Number($('timeline-snap')?.value||900);return Math.round(second/step)*step;}
@@ -72,10 +74,11 @@ function updateSelection(){
     const item=selectedSection&&(composing?composition.sections:entries).find(row=>row.id===selectedSection.id);
     $('selected-section').hidden=false;$('edit-selected-section').disabled=$('clear-selected-section').disabled=!item;
     $('selected-section-label').textContent=item?`${item.source.name} · ${composing?'':selectedSection.origin+' · '}${timeLabel(item.start)}–${timeLabel(item.end)}${item.end>86400?' (+1 day)':''}`:'Select a schedule to edit its details';
+    syncBlockTiming(item);
 }
 function render(){
-    if(dragActive){renderPending=true;return;}renderPending=false;updateStatus();
-    if(view==='simple'){const el=$('simple-selection');el.textContent=simple?`${simple.name} · repeats continuously`:'Drop a Show, category, artist, album, or song here';el.classList.toggle('is-selected',!!simple);return;}
+    if(dragActive){renderPending=true;return;}renderPending=false;updateStatus();updateBlockSummary();
+    if(view==='simple'){const el=$('simple-selection');el.textContent=simple?`${simple.name} · repeats continuously`:'Drop a Block, Show, playlist, category, artist, album, or song here';el.classList.toggle('is-selected',!!simple);$('simple-playback-help').textContent=simple?.kind==='block'?'Starts at the beginning when activated and repeats every 24 hours. No day assignment is needed.':'Pick a source from the library. It plays continuously until you change it.';return;}
     const timeline=$('timeline'),top=timeline.scrollTop,left=timeline.scrollLeft;
     overview();updateSelection();timeline.replaceChildren();$('short-sections').replaceChildren();$('overridden-schedules').replaceChildren();
     if(!composing){
@@ -100,11 +103,11 @@ function renderGrid(timeline){
         const all=composing?composition.sections:dayEntries(day);let covered=0;
         const band=(start,end,text,className='fallback-band')=>{const el=node('div',text,className);el.style.top=yFor(start)+'px';el.style.height=(yFor(end)-yFor(start))+'px';column.append(el);};
         for(const item of [...all].sort((a,b)=>a.start-b.start)){
-            if(item.start>covered)band(covered,item.start,`${timeLabel(covered)}–${timeLabel(item.start)} · Default playlist`);
+            if(item.start>covered)band(covered,item.start,`${timeLabel(covered)}–${timeLabel(item.start)} · ${fallbackLabel()}`);
             covered=Math.max(covered,item.end);
             if(!composing&&!visibleItem(item))band(item.start,item.end,'Scheduled · hidden','hidden-coverage');
         }
-        if(covered<duration())band(covered,duration(),`${timeLabel(covered)}–${timeLabel(duration())} · Default playlist`);
+        if(covered<duration())band(covered,duration(),`${timeLabel(covered)}–${timeLabel(duration())} · ${fallbackLabel()}`);
         for(const item of all.filter(item=>composing||visibleItem(item))){
             column.append(sectionElement(item,day));
             if(yFor(item.end)-yFor(item.start)<30)$('short-sections').append(button(`${composing?'':day+' · '}${timeLabel(item.start)}–${timeLabel(item.end)} · ${item.source.name}`,()=>{selectSection(item,day);openInspector(item,day);}));
@@ -132,6 +135,7 @@ function renderGrid(timeline){
     timeline.append(grid);
 }
 async function placeSource(ref,day,start){
+    if(!composing&&ref.kind==='block')start=0;
     const end=composing&&!composition.sections.length&&ref.kind!=='song'?duration():Math.min(duration(),start+(ref.duration||3600));
     const item={id:uid(),start,end,source:clone(ref)};if(!composing)item.rule={frequency:'once',anchor:day,interval:1,exceptions:[]};
     if(await applyItem(item,day)){selectSection(item,day);message(`${ref.name} added. Use Edit details for exact times or repeats.`);}
@@ -233,7 +237,7 @@ function renderAgenda(timeline){
     const recurring=new Map();
     for(let i=0;i<7;i++){
         const day=shift(selectedDate,i),all=dayEntries(day),rows=all.filter(visibleItem);
-        if(!all.length){const el=node('div',undefined,'agenda-row');el.append(node('b',day),node('span','Default playlist all day'));timeline.append(el);}
+        if(!all.length){const el=node('div',undefined,'agenda-row');el.append(node('b',day),node('span',fallbackLabel()+' · all day'));timeline.append(el);}
         for(const row of rows){
             if(repeatDisplay==='compact'&&editor.recurring(row)&&!isSelected(row)){if(!recurring.has(row.id))recurring.set(row.id,[]);recurring.get(row.id).push({row,day});continue;}
             const el=node('div',undefined,'agenda-row');el.append(node('b',day+' '+timeLabel(row.start)),node('span',row.source.name),button('Edit',()=>openInspector(row,day)));timeline.append(el);
@@ -258,7 +262,7 @@ function recurrenceFromForm(){
         month_day:samePattern?prior.month_day:d.getUTCDate(),nth:samePattern?prior.nth:choice==='last'?-1:choice==='nth'?Math.floor((d.getUTCDate()-1)/7)+1:0,
         weekday:samePattern?prior.weekday:weekday(anchor),dates:$('repeat-dates').value.split(',').map(date=>date.trim()).filter(Boolean),exceptions:clone(prior?.exceptions||[])};
 }
-function openInspector(item,day,ref,start=0,proposed=false){const origin=item?.origin||day;if(item&&!proposed)item=canonical(item);day=origin;editing={item:clone(item),day,origin,formDate:day,ref:clone(ref||item.source)};const end=item?.end||(composing&&!composition.sections.length&&ref.kind!=='song'?duration():Math.min(duration(),start+(ref.duration||3600)));$('inspector-title').textContent=item?'Edit scheduled content':'Add to schedule';$('section-source').value=editing.ref.name;$('section-start').value=clock(item?.start??start);$('section-end').value=clock(end);$('section-end-day').value=end>=86400?'1':'0';$('section-time-error').textContent='';$('section-order').value=editing.ref.order||'default';$('placement-recurrence').hidden=composing;$('section-date').required=!composing;const rule=item?.rule||{frequency:'once',anchor:day,interval:1,weekdays:[weekday(day)]};$('section-date').value=day;$('repeat-frequency').value=rule.frequency;$('repeat-dates').value=(rule.dates||[]).join(', ');$('repeat-dates-label').hidden=rule.frequency!=='dates';$('repeat-interval').value=rule.interval||1;$('repeat-until').value=rule.until||'';$('repeat-weekdays').querySelectorAll('input').forEach(input=>input.checked=(rule.weekdays||[]).includes(Number(input.value)));$('repeat-monthly').value=rule.nth===-1?'last':rule.nth?'nth':'date';$('edit-scope-label').hidden=!item||rule.frequency==='once';$('edit-scope').value='occurrence';$('song-insert-label').hidden=!composing||!!item||editing.ref.kind!=='song';$('song-insert').checked=false;$('artist-group-label').hidden=editing.ref.kind!=='artist';$('artist-group').textContent=editing.ref.name;for(const id of ['delete-section','duplicate-section','split-section'])$(id).hidden=!item;$('section-inspector').showModal();}
+function openInspector(item,day,ref,start=0,proposed=false){if(!item&&ref?.kind==='block'&&!composing)start=0;const origin=item?.origin||day;if(item&&!proposed)item=canonical(item);day=origin;editing={item:clone(item),day,origin,formDate:day,ref:clone(ref||item.source)};const end=item?.end||(composing&&!composition.sections.length&&ref.kind!=='song'?duration():Math.min(duration(),start+(ref.duration||3600)));$('inspector-title').textContent=item?'Edit scheduled content':'Add to schedule';$('section-source').value=editing.ref.name;$('section-start').value=clock(item?.start??start);$('section-end').value=clock(end);$('section-end-day').value=end>=86400?'1':'0';$('section-time-error').textContent='';$('section-order').value=editing.ref.order||'default';$('placement-recurrence').hidden=composing;$('section-date').required=!composing;const rule=item?.rule||{frequency:'once',anchor:day,interval:1,weekdays:[weekday(day)]};$('section-date').value=day;$('repeat-frequency').value=rule.frequency;$('repeat-dates').value=(rule.dates||[]).join(', ');$('repeat-dates-label').hidden=rule.frequency!=='dates';$('repeat-interval').value=rule.interval||1;$('repeat-until').value=rule.until||'';$('repeat-weekdays').querySelectorAll('input').forEach(input=>input.checked=(rule.weekdays||[]).includes(Number(input.value)));$('repeat-monthly').value=rule.nth===-1?'last':rule.nth?'nth':'date';$('edit-scope-label').hidden=!item||rule.frequency==='once';$('edit-scope').value='occurrence';$('song-insert-label').hidden=!composing||!!item||editing.ref.kind!=='song';$('song-insert').checked=false;$('artist-group-label').hidden=editing.ref.kind!=='artist';$('artist-group').textContent=editing.ref.name;for(const id of ['delete-section','duplicate-section','split-section'])$(id).hidden=!item;$('section-inspector').showModal();}
 async function applyItem(value,day,scope='series',origin=day,accept=()=>true){
     const list=composing?composition.sections:entries;
     const prior=list.find(r=>r.id===value.id);
@@ -291,16 +295,93 @@ $('split-section').onclick=()=>{const item=editing.item;if(item.end-item.start<2
 $('edit-scope').onchange=()=>{const series=$('edit-scope').value==='series';$('section-date').value=series?editing.item.rule.anchor:editing.day;editing.formDate=$('section-date').value;};
 $('repeat-frequency').onchange=()=>{$('repeat-dates-label').hidden=$('repeat-frequency').value!=='dates';};
 $('preview-recurrence').onclick=async()=>{try{const result=await api('recurrence',recurrenceFromForm());$('recurrence-preview').textContent=result.dates.join(' · ');}catch(error){message(error.message,true);}};
-async function loadSources(append=false){searchController?.abort();searchController=new AbortController();if(!append)sourcePage=1;const results=$('source-results');try{let data;if($('library-filter').value!=='all')data={items:($('library-filter').value==='recent'?recent:favorites).filter(s=>s.kind===libraryKind&&s.name.toLowerCase().includes($('source-search').value.toLowerCase())),more:false};else{const response=await fetch(root.dataset.api+'sources?'+new URLSearchParams({kind:libraryKind,q:$('source-search').value,page:sourcePage}),{signal:searchController.signal});data=await response.json();if(!response.ok)throw Error(data.error);}results.replaceChildren();for(const item of data.items){const card=node('div',undefined,'source-card');card.draggable=true;card.setAttribute('role','listitem');card.append(node('span',{show:'◉',category:'▦',playlist:'≋',artist:'♬',album:'▣',song:'♪'}[item.kind],'source-art'));if(item.artwork){const art=document.createElement('img');art.src=item.artwork;art.alt='';art.className='source-art';card.firstChild.replaceWith(art);}const copy=node('div');copy.append(node('strong',item.name),node('small',item.kind+(item.count!==undefined?' · '+item.count+' songs':item.kind==='show'?' · '+Math.round(item.duration/60)+' min':'')));const actions=node('div',undefined,'source-actions');const add=button('+',()=>chooseSource(item));add.setAttribute('aria-label','Add '+item.name);const star=button(favorites.some(f=>f.kind===item.kind&&f.id===item.id)?'★':'☆',()=>{const index=favorites.findIndex(f=>f.kind===item.kind&&f.id===item.id);if(index>=0)favorites.splice(index,1);else favorites.push(item);localStorage.setItem(localKey+':favorites',JSON.stringify(favorites));loadSources();});star.setAttribute('aria-label','Favorite '+item.name);actions.append(add,star);if(item.identifier&&item.kind==='song'){const preview=button('▶',()=>previewSong(item));preview.setAttribute('aria-label','Preview '+item.name);actions.append(preview);}card.append(copy,actions);card.ondragstart=e=>{dragged=item;e.dataTransfer.setData('application/json',JSON.stringify(item));};card.ondragend=()=>{dragged=null;clearTimeout(hoverTimer);hoverHour=null;};results.append(card);}if(!data.items.length)results.textContent='No sources found. Try another search or tab.';$('source-more').hidden=!data.more;$('source-prev').hidden=sourcePage<=1;}catch(error){if(error.name!=='AbortError')results.textContent='Unable to load sources. Change your search to retry.';}}
+async function loadSources(append=false){searchController?.abort();searchController=new AbortController();if(!append)sourcePage=1;const results=$('source-results');try{let data;if($('library-filter').value!=='all')data={items:($('library-filter').value==='recent'?recent:favorites).filter(s=>s.kind===libraryKind&&s.name.toLowerCase().includes($('source-search').value.toLowerCase())),more:false};else{const response=await fetch(root.dataset.api+'sources?'+new URLSearchParams({kind:libraryKind,q:$('source-search').value,page:sourcePage}),{signal:searchController.signal});data=await response.json();if(!response.ok)throw Error(data.error);}results.replaceChildren();for(const item of data.items){const card=node('div',undefined,'source-card');card.draggable=true;card.setAttribute('role','listitem');card.append(node('span',{block:'▤',show:'◉',category:'▦',playlist:'≋',artist:'♬',album:'▣',song:'♪'}[item.kind],'source-art'));if(item.artwork){const art=document.createElement('img');art.src=item.artwork;art.alt='';art.className='source-art';card.firstChild.replaceWith(art);}const copy=node('div');copy.append(node('strong',item.name),node('small',item.kind+(item.count!==undefined?' · '+item.count+' songs':['show','block'].includes(item.kind)?' · '+Math.round(item.duration/60)+' min':'')));const actions=node('div',undefined,'source-actions');const add=button('+',()=>chooseSource(item));add.setAttribute('aria-label','Add '+item.name);const star=button(favorites.some(f=>f.kind===item.kind&&f.id===item.id)?'★':'☆',()=>{const index=favorites.findIndex(f=>f.kind===item.kind&&f.id===item.id);if(index>=0)favorites.splice(index,1);else favorites.push(item);localStorage.setItem(localKey+':favorites',JSON.stringify(favorites));loadSources();});star.setAttribute('aria-label','Favorite '+item.name);actions.append(add,star);if(item.identifier&&item.kind==='song'){const preview=button('▶',()=>previewSong(item));preview.setAttribute('aria-label','Preview '+item.name);actions.append(preview);}card.append(copy,actions);card.ondragstart=e=>{dragged=item;e.dataTransfer.setData('application/json',JSON.stringify(item));};card.ondragend=()=>{dragged=null;clearTimeout(hoverTimer);hoverHour=null;};results.append(card);}if(!data.items.length)results.textContent='No sources found. Try another search or tab.';$('source-more').hidden=!data.more;$('source-prev').hidden=sourcePage<=1;}catch(error){if(error.name!=='AbortError')results.textContent='Unable to load sources. Change your search to retry.';}}
 let previewAudio;
 function previewSong(item){previewAudio?.pause();previewAudio=new Audio(`/admin/stations/${root.dataset.station}/media/${item.identifier}/audition`);window.FreoMonitor?.stop();previewAudio.play().catch(()=>message('Audio preview unavailable.',true));}
 function chooseSource(item){recent=[item,...recent.filter(r=>r.kind!==item.kind||r.id!==item.id)].slice(0,30);localStorage.setItem(localKey+':recent',JSON.stringify(recent));if(view==='simple'){before();simple=clone(item);markDirty();render();}else openInspector(null,selectedDate,item,composing?0:9*3600);}
-const types=[['show','Shows'],['category','Categories'],['playlist','Playlists'],['artist','Artists'],['album','Albums'],['song','Songs']];for(const [kind,label] of types){if(view==='shows'&&kind==='show')continue;const tab=button(label,()=>{libraryKind=kind;[...$('source-tabs').children].forEach(t=>t.setAttribute('aria-selected',String(t===tab)));loadSources();});tab.setAttribute('role','tab');tab.setAttribute('aria-selected',String(kind===libraryKind));$('source-tabs').append(tab);}
+const types=[['block','Blocks'],['show','Shows'],['category','Categories'],['playlist','Playlists'],['artist','Artists'],['album','Albums'],['song','Songs']];for(const [kind,label] of types){if((kind==='block'&&!['calendar','simple'].includes(view))||(view==='shows'&&kind==='show'))continue;const tab=button(label,()=>{libraryKind=kind;[...$('source-tabs').children].forEach(t=>t.setAttribute('aria-selected',String(t===tab)));loadSources();});tab.setAttribute('role','tab');tab.setAttribute('aria-selected',String(kind===libraryKind));$('source-tabs').append(tab);}
 $('source-search').oninput=()=>{clearTimeout(searchTimer);searchTimer=setTimeout(()=>loadSources(),200);};$('library-filter').onchange=()=>loadSources();$('source-more').onclick=()=>{sourcePage++;loadSources(true);};$('source-prev').onclick=()=>{sourcePage=Math.max(1,sourcePage-1);loadSources(true);};
 function resetHistory(){dirty=false;undo=[];redo=[];editGeneration++;localStorage.removeItem(localKey+':draft');$('save-state').textContent='Saved';$('undo-edit').disabled=true;$('redo-edit').disabled=true;}
 function syncComposition(){if(!composing)return;$('composition-name').value=composition.name;$('composition-description').value=composition.description;if(view==='shows'){$('duration-minutes').value=composition.duration/60;$('duration-slider').step=composition.duration%60?1:60;$('duration-slider').value=composition.duration;const presets=$('show-duration');presets.querySelector('[data-custom]')?.remove();if(![...presets.options].some(o=>Number(o.value)===composition.duration)){const option=new Option(`${composition.duration/60} minutes`,composition.duration);option.dataset.custom='true';presets.append(option);}presets.value=composition.duration;}}
-let compositionPage=1;async function loadCompositions(append=false){if(!composing)return;if(!append)compositionPage=1;const result=await api('compositions?'+new URLSearchParams({kind:view==='shows'?'SHOW':'BLOCK',q:$('composition-search').value,page:compositionPage}));compositions=append?[...compositions,...result.items]:result.items;if(composition.id&&!compositions.some(c=>c.id===composition.id))compositions.push(clone(composition));$('compositions-more').hidden=!result.more;const select=$('composition-select');select.replaceChildren(new Option('New '+(view==='shows'?'Show':'Block'),''));for(const item of compositions)select.append(new Option(item.name,item.id));select.value=composition.id||'';}
-if(composing){let savedSearchTimer;$('composition-search').oninput=()=>{clearTimeout(savedSearchTimer);savedSearchTimer=setTimeout(()=>loadCompositions().catch(e=>message(e.message,true)),200);};$('compositions-more').onclick=()=>{compositionPage++;loadCompositions(true).catch(e=>message(e.message,true));};$('apply-composition').onclick=async()=>{if(dirty||!composition.id){message('Save this composition first.',true);return;}try{const preview=await api('apply-revision-preview',{id:composition.id,version:composition.revision});if(!confirm(preview.message))return;const result=await api('apply-revision',{id:composition.id,version:composition.revision,effective_on:preview.effective_on,revision:baseRevision});baseRevision=result.revision;state.revision=result.revision;message(preview.message);}catch(error){message(error.message,true);}};$('composition-select').onchange=()=>{if(dirty&&!confirm('Discard unsaved edits and open this composition?')){$('composition-select').value=composition.id||'';return;}composition=clone(compositions.find(c=>c.id===Number($('composition-select').value))||{kind:view==='blocks'?'BLOCK':'SHOW',name:'',description:'',duration:view==='blocks'?86400:3600,sections:[]});const pendingAssignments=JSON.stringify(assignments)!==JSON.stringify(state.assignments);resetHistory();if(pendingAssignments)markDirty();syncComposition();render();};$('new-composition').onclick=()=>{if(dirty&&!confirm('Discard unsaved edits?'))return;composition={kind:view==='blocks'?'BLOCK':'SHOW',name:'',description:'',duration:view==='blocks'?86400:3600,sections:[]};const pendingAssignments=JSON.stringify(assignments)!==JSON.stringify(state.assignments);resetHistory();if(pendingAssignments)markDirty();syncComposition();render();};$('duplicate-composition').onclick=()=>{before();delete composition.id;delete composition.revision;composition.name+=' copy';syncComposition();markDirty();};for(const id of ['composition-name','composition-description'])$(id).oninput=()=>{before();composition[id==='composition-name'?'name':'description']=$(id).value;markDirty();};$('calendar-controls').hidden=true;}
+let compositionPage=1;async function loadCompositions(append=false){if(!composing)return;if(!append)compositionPage=1;const result=await api('compositions?'+new URLSearchParams({kind:view==='shows'?'SHOW':'BLOCK',q:$('composition-search').value,page:compositionPage}));compositions=append?[...compositions,...result.items]:result.items;if(composition.id&&!compositions.some(c=>c.id===composition.id))compositions.push(clone(composition));$('compositions-more').hidden=!result.more;const select=$('composition-select');select.replaceChildren(new Option('New '+(view==='shows'?'Show':'Block'),''));for(const item of compositions)select.append(new Option(item.name,item.id));select.value=composition.id||'';renderSavedBlocks();}
+if(composing){let savedSearchTimer;$('composition-search').oninput=()=>{clearTimeout(savedSearchTimer);savedSearchTimer=setTimeout(()=>loadCompositions().catch(e=>message(e.message,true)),200);};$('compositions-more').onclick=()=>{compositionPage++;loadCompositions(true).catch(e=>message(e.message,true));};$('apply-composition').onclick=async()=>{if(dirty||!composition.id){message('Save this composition first.',true);return;}try{const preview=await api('apply-revision-preview',{id:composition.id,version:composition.revision});if(!confirm(preview.message))return;const result=await api('apply-revision',{id:composition.id,version:composition.revision,effective_on:preview.effective_on,revision:baseRevision});baseRevision=result.revision;state.revision=result.revision;message(preview.message);}catch(error){message(error.message,true);}};$('composition-select').onchange=()=>openComposition($('composition-select').value);$('new-composition').onclick=()=>openComposition('');$('duplicate-composition').onclick=()=>{before();delete composition.id;delete composition.revision;composition.name+=' copy';localStorage.removeItem(localKey+':opened');syncComposition();markDirty();render();};for(const id of ['composition-name','composition-description'])$(id).oninput=()=>{before();composition[id==='composition-name'?'name':'description']=$(id).value;markDirty();};$('calendar-controls').hidden=true;}
+function renderSavedBlocks(){
+    if(view!=='blocks')return;
+    const list=$('saved-blocks');list.replaceChildren();
+    for(const item of compositions){
+        const card=button('',()=>openComposition(item.id));card.className='saved-block-card';
+        card.setAttribute('aria-pressed',String(item.id===composition.id));
+        card.append(node('strong',item.name),node('span',`24 hours · ${item.sections.length} sections · v${item.revision}`));list.append(card);
+    }
+    if(!compositions.length)list.append(node('p','Your saved Blocks will appear here.'));
+}
+let compositionRequest=0;
+async function openComposition(id,ask=true){
+    if(saving)return;
+    if(ask&&dirty&&!confirm('Discard unsaved content edits and open another item? Pending day assignments will be kept.')){$('composition-select').value=composition.id||'';return;}
+    const generation=editGeneration,request=++compositionRequest;
+    try{
+        const loaded=id?await api('composition?id='+encodeURIComponent(id)):{kind:view==='blocks'?'BLOCK':'SHOW',name:'',description:'',duration:view==='blocks'?86400:3600,sections:[]};
+        if(request!==compositionRequest||page.signal.aborted)return;
+        if(generation!==editGeneration){message('Your edits changed while loading. Save them before opening another item.',true);return;}
+        if(loaded.kind!==(view==='blocks'?'BLOCK':'SHOW'))throw Error('This item belongs to a different workspace.');
+        composition=loaded;selectedSection=null;
+        if(loaded.id){compositions=compositions.filter(item=>item.id!==loaded.id).concat(clone(loaded));if(![...$('composition-select').options].some(option=>Number(option.value)===loaded.id))$('composition-select').append(new Option(loaded.name,loaded.id));}
+        const pendingAssignments=!same(assignments,state.assignments);resetHistory();if(pendingAssignments)markDirty();
+        if(id)localStorage.setItem(localKey+':opened',id);else localStorage.removeItem(localKey+':opened');
+        syncComposition();$('composition-select').value=composition.id||'';renderSavedBlocks();render();
+        message(id?`${composition.name} loaded. Existing scheduled uses retain their saved version.`:'New '+(view==='blocks'?'Block':'Show')+'. Add a name and content.');
+    }catch(error){message(error.message,true);$('composition-select').value=composition.id||'';}
+}
+function updateBlockSummary(){
+    if(view!=='blocks')return;
+    $('block-content-status').textContent=composition.id?`${dirty?'Unsaved edits':'Saved'} · ${composition.name} · v${composition.revision}`:'New Block · not saved';
+    const covered=composition.sections.reduce((total,item)=>total+item.end-item.start,0),gap=86400-covered;
+    $('block-coverage-status').textContent=gap?`${Math.round(covered/60)} min filled · ${Math.round(gap/60)} min ${state.fallback?'use fallback':'without fallback'}`:'Full day covered';
+    const uses=assignments.filter(item=>item.pattern.some(ref=>ref.id===composition.id));
+    const today=new Intl.DateTimeFormat('en-CA',{timeZone:state.timezone,year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
+    const active=assigned(today).find(item=>item.source?.id===composition.id);
+    $('block-assignment-status').textContent=active?`Assigned to today · v${active.source.version}`:uses.length?`${uses.length} day assignment${uses.length===1?'':'s'} · not today`:'Not assigned to any days';
+    $('block-assignment-status').classList.toggle('needs-assignment',!uses.length);
+}
+function syncBlockTiming(item){
+    if(view!=='blocks')return;
+    for(const id of ['block-section-start','block-section-end','block-section-midnight','block-start-slider','block-end-slider','block-apply-times'])$(id).disabled=!item;
+    $('block-section-name').textContent=item?.source.name||'Section timing';$('block-time-error').textContent='';
+    if(!item){$('block-section-duration').textContent='Select a section on the timeline';return;}
+    $('block-section-start').value=clock(item.start);$('block-section-end').value=clock(item.end);$('block-section-midnight').checked=item.end===86400;
+    syncTimingSliders();
+}
+function blockTimes(){return {start:seconds($('block-section-start').value),end:$('block-section-midnight').checked?86400:seconds($('block-section-end').value)};}
+function syncTimingSliders(){
+    const {start,end}=blockTimes();
+    for(const [id,value] of [['block-start-slider',start],['block-end-slider',end]]){const slider=$(id);slider.step=value%60?1:60;slider.value=Number.isFinite(value)?value:0;slider.setAttribute('aria-valuetext',timeLabel(value));}
+    $('block-section-duration').textContent=Number.isFinite(start)&&end>start?`${timeLabel(start)}–${timeLabel(end)} · ${Math.round((end-start)/60*100)/100} minutes`:'End must be after start';
+}
+async function applyBlockTimes(){
+    const item=composition.sections.find(row=>row.id===selectedSection?.id);if(!item)return;
+    const {start,end}=blockTimes();
+    if(!Number.isInteger(start)||!Number.isInteger(end)||start<0||end>86400||end<=start){$('block-time-error').textContent='Choose an end after the start, within this 24-hour Block.';return;}
+    if(start===item.start&&end===item.end)return;
+    if(!await applyItem(editor.interval(item,start,end,end-start===item.end-item.start),selectedDate))syncBlockTiming(item);
+}
+if(view==='blocks'){
+    $('block-apply-times').onclick=applyBlockTimes;
+    $('block-section-start').oninput=syncTimingSliders;
+    $('block-section-end').oninput=()=>{$('block-section-midnight').checked=false;syncTimingSliders();};
+    $('block-section-midnight').onchange=()=>{if($('block-section-midnight').checked)$('block-section-end').value='00:00:00';syncTimingSliders();};
+    for(const [id,edge] of [['block-start-slider','start'],['block-end-slider','end']]){
+        $(id).oninput=e=>{
+            const old=blockTimes();let value=Number(e.target.value);
+            value=edge==='start'?Math.max(0,Math.min(old.end-1,value)):Math.min(86400,Math.max(old.start+1,value));
+            $('block-section-'+edge).value=clock(value);
+            if(edge==='end')$('block-section-midnight').checked=value===86400;
+            syncTimingSliders();
+        };
+        $(id).onchange=applyBlockTimes;
+    }
+}
+
 function setDuration(value){value=Number(value);if(!Number.isInteger(value)||value<900||value>86400){syncComposition();message('Enter a duration from 15 to 1,440 minutes.',true);return;}const crossed=composition.sections.some(s=>s.end>value);if(crossed&&!confirm('Trim sections beyond the new Show end? This can be undone.')){syncComposition();return;}before();composition.duration=value;composition.sections=composition.sections.filter(s=>s.start<value).map(s=>({...s,end:Math.min(s.end,value),inserts:(s.inserts||[]).filter(i=>i.at<value)}));syncComposition();markDirty();render();}
 if(view==='shows'){$('show-duration').onchange=e=>setDuration(e.target.value);$('duration-minutes').onchange=e=>setDuration(Number(e.target.value)*60);$('duration-slider').onchange=e=>setDuration(e.target.value);$('duration-slider').oninput=e=>{$('duration-minutes').value=Number(e.target.value)/60;};}
 if(view==='simple'){const stage=$('simple-selection');stage.ondragover=e=>e.preventDefault();stage.ondrop=e=>{e.preventDefault();if(dragged)chooseSource(dragged);dragged=null;};}
@@ -338,7 +419,7 @@ function save(){
 async function performSave(){
     saving=true;if(saveButton)saveButton.disabled=true;$('save-state').textContent='Saving…';$('retry-save').hidden=true;
     const sent=snapshot(),generation=editGeneration,base=clone({calendar:state.calendar,assignments:state.assignments,simple:state.simple});
-    const controls=['composition-select','new-composition','duplicate-composition','apply-composition','activate-mode'];
+    const controls=['composition-select','new-composition','duplicate-composition','apply-composition','activate-mode','assign-block','block-to-calendar'];
     for(const id of controls)if($(id))$(id).disabled=true;
     let retry=false;
     try{
@@ -368,12 +449,12 @@ async function performSave(){
                 state.calendar=clone(result.items);
             }else{state.simple=clone(result.source);if(editGeneration===generation)simple=clone(result.source);}
         }
-        state.revision=baseRevision;retryDelay=1000;
+        state.revision=baseRevision;retryDelay=1000;if(composing&&composition.id)localStorage.setItem(localKey+':opened',composition.id);
         if(editGeneration===generation){
             dirty=false;localStorage.removeItem(localKey+':draft');$('save-state').textContent='Saved';
             if(!autosave){undo=[];redo=[];$('undo-edit').disabled=$('redo-edit').disabled=true;}
         }else{rememberDraft();$('save-state').textContent=autosave?'Saving…':'Unsaved changes';}
-        message(autosave?(dirty?'Saving latest changes…':'Changes saved automatically.'):dirty?'Saved submitted changes. Newer edits still need saving.':view==='shows'?'Show saved. Add it to Calendar, a Block, or Simple.':view==='blocks'?'Block and assignments saved together.':'Saved.');
+        message(autosave?(dirty?'Saving latest changes…':'Changes saved automatically.'):dirty?'Saved submitted changes. Newer edits still need saving.':view==='shows'?'Show saved. Add it to Calendar, a Block, or Simple.':view==='blocks'?'Block saved. Assign days for Blocks mode, add it to Calendar, or select it in Simple.':'Saved.');
         render();if(composing)await loadCompositions();return true;
     }catch(error){
         if(error.conflict)showConflict(error,base);
@@ -414,6 +495,7 @@ async function flushCalendar(){
     return !dirty;
 }
 if(autosave)page.beforeLeave=flushCalendar;
+else if(composing)page.beforeLeave=()=>!dirty||confirm('Leave without saving these edits? A recovery draft will be kept in this browser.');
 
 if(view!=='simple'){
     $('edit-selected-section').onclick=()=>{const item=selectedSection&&(composing?composition.sections:entries).find(row=>row.id===selectedSection.id);if(item)openInspector({...item,origin:selectedSection.origin},selectedSection.day);};
@@ -457,15 +539,64 @@ if($('activate-mode'))$('activate-mode').onclick=async()=>{
         const preview=await api('transition-preview',{mode:view.toUpperCase(),simple});
         $('mode-confirm-title').textContent=state.mode===view.toUpperCase()?'Change what Simple plays?':`Switch from ${state.mode} to ${view.toUpperCase()}?`;
         $('mode-confirm-detail').textContent=`Current mode: ${state.mode}. New mode: ${view.toUpperCase()}. This also interrupts any current Event or live audio.`;
-        $('mode-confirm-play').textContent=preview.source?'Will play now: '+preview.source.name+(preview.reason?' · Default playlist ('+preview.reason+')':''):'Nothing playable. Select a default playlist in Station settings.';
+        $('mode-confirm-play').textContent=preview.message;
+        $('mode-assign-block').hidden=!(view==='blocks'&&preview.code==='unassigned'&&composition.id);
         $('confirm-mode').disabled=!preview.playable;transitionId={id:uid(),current:state.mode,mode:view.toUpperCase(),revision:baseRevision,simple:clone(simple)};$('mode-confirm').showModal();
     }catch(error){message(error.message,true);}
 };
+$('mode-assign-block').onclick=()=>{$('mode-confirm').close();$('assign-block')?.click();};
 $('cancel-mode').onclick=()=>$('mode-confirm').close();
 $('confirm-mode').onclick=async()=>{const b=$('confirm-mode');b.disabled=true;try{await api('transition',transitionId);$('mode-confirm').close();adoptState(await api('state'));message('Switch requested. Waiting for the playback engine.');}catch(error){message(error.message,true);b.disabled=false;}};
 function renderPattern(){const list=$('assign-pattern');list.replaceChildren();pattern.forEach((ref,index)=>{const chip=node('span',undefined,'pattern-chip');chip.append(node('span',`${index+1}. ${ref.name}`),button('←',()=>{if(index>0)[pattern[index-1],pattern[index]]=[pattern[index],pattern[index-1]];renderPattern();}),button('×',()=>{pattern.splice(index,1);renderPattern();}));list.append(chip);});}
-if(view==='blocks'){let assignTimer;$('assign-search').oninput=()=>{clearTimeout(assignTimer);assignTimer=setTimeout(async()=>{try{const data=await api('sources?'+new URLSearchParams({kind:'block',q:$('assign-search').value}));$('assign-options').replaceChildren();for(const item of data.items){const option=new Option(item.name,item.id);option.dataset.version=item.version;$('assign-options').append(option);}}catch(error){message(error.message,true);}},200);};$('assign-block').onclick=()=>{if(!composition.id||dirty){message('Save the Block before assigning it.',true);return;}pattern=[{kind:'block',id:composition.id,version:composition.revision,name:composition.name}];$('assign-options').replaceChildren();for(const item of compositions){const option=new Option(item.name,item.id);option.dataset.version=item.revision;$('assign-options').append(option);}$('assign-start').value=selectedDate;renderPattern();$('assign-dialog').showModal();};$('add-pattern-block').onclick=()=>{const option=$('assign-options').selectedOptions[0];if(option)pattern.push({kind:'block',id:Number(option.value),version:Number(option.dataset.version),name:option.textContent});renderPattern();};$('assign-form').onsubmit=e=>{e.preventDefault();if(!pattern.length)return;before();assignments.push({id:uid(),pattern:clone(pattern),rule:{frequency:$('assign-frequency').value,anchor:$('assign-start').value,until:$('assign-end').value||null,interval:1,weekdays:[...$('assign-weekdays').querySelectorAll('input:checked')].map(i=>Number(i.value)),dates:$('assign-dates').value.split(',').map(s=>s.trim()).filter(Boolean),exceptions:[]}});selectedDate=$('assign-start').value;markDirty();$('assign-dialog').close();renderAssignments();message('Assignment added to draft. Save schedule to publish.');};$('block-dates').onclick=()=>{$('assignment-list').hidden=!$('assignment-list').hidden;renderAssignments();};}
-function renderAssignments(){const list=$('assignment-list');list.replaceChildren();list.hidden=false;list.append(node('h3','Block assignments'));const browse=document.createElement('input');browse.type='date';browse.value=selectedDate;browse.setAttribute('aria-label','Preview Block assignments from date');browse.onchange=()=>{selectedDate=browse.value;renderAssignments();};list.append(browse);for(const row of assignments){const el=node('article');el.append(node('b',row.pattern.map(p=>`${p.name} (revision ${p.version})`).join(' → ')),node('p',`${row.rule.frequency} from ${row.rule.anchor}${row.rule.until?' until '+row.rule.until:''}`),button('Remove',()=>{before();assignments=assignments.filter(a=>a.id!==row.id);markDirty();renderAssignments();}));list.append(el);}const grid=node('div',undefined,'month-grid');for(let i=0;i<28;i++){const day=shift(selectedDate,i),el=node('div',undefined,'month-day');el.append(node('b',day.slice(5)));const rows=assigned(day);for(const row of rows)el.append(node('span',row.source.name));if(!rows.length)el.append(node('span','Default playlist'));grid.append(el);}list.append(grid);}
+if(view==='blocks'){
+    let assignTimer,assignmentDraftId;
+    $('assign-search').oninput=()=>{clearTimeout(assignTimer);assignTimer=setTimeout(async()=>{try{const data=await api('sources?'+new URLSearchParams({kind:'block',q:$('assign-search').value}));$('assign-options').replaceChildren();for(const item of data.items){const option=new Option(item.name,item.id);option.dataset.version=item.version;$('assign-options').append(option);}}catch(error){message(error.message,true);}},200);};
+    $('assign-block').onclick=async()=>{
+        if(dirty&&!await save())return;
+        if(!composition.id){message('Name your Block and add content, then save it before assigning days.',true);return;}
+        assignmentDraftId=uid();pattern=[{kind:'block',id:composition.id,version:composition.revision,name:composition.name}];
+        $('assign-options').replaceChildren();for(const item of compositions){const option=new Option(item.name,item.id);option.dataset.version=item.revision;$('assign-options').append(option);}
+        $('assign-start').value=selectedDate;$('assign-end').value='';$('assign-error').textContent='';
+        $('assign-weekdays').querySelectorAll('input').forEach(el=>el.checked=Number(el.value)===weekday(selectedDate));
+        updateAssignmentFields();renderPattern();$('assign-dialog').showModal();
+    };
+    $('assign-frequency').onchange=updateAssignmentFields;
+    $('add-pattern-block').onclick=()=>{const option=$('assign-options').selectedOptions[0];if(option)pattern.push({kind:'block',id:Number(option.value),version:Number(option.dataset.version),name:option.textContent});renderPattern();};
+    $('assign-form').onsubmit=async e=>{
+        e.preventDefault();if(!pattern.length){$('assign-error').textContent='Add at least one Block to the pattern.';return;}
+        const frequency=$('assign-frequency').value,day=$('assign-start').value;
+        const weekdays=[...$('assign-weekdays').querySelectorAll('input:checked')].map(i=>Number(i.value));
+        const dates=$('assign-dates').value.split(',').map(s=>s.trim()).filter(Boolean);
+        if(frequency==='weekly'&&!weekdays.length){$('assign-error').textContent='Select at least one weekday.';return;}
+        if(frequency==='dates'&&!dates.length){$('assign-error').textContent='Enter at least one date.';return;}
+        const candidate={id:assignmentDraftId,pattern:clone(pattern),rule:{frequency,anchor:day,until:frequency==='once'?null:$('assign-end').value||null,interval:1,weekdays,dates:frequency==='dates'?dates:[],exceptions:[]}};
+        const submit=e.submitter;submit.disabled=true;$('assign-error').textContent='';
+        try{
+            const result=await api('assignments',{revision:baseRevision,base:clone(state.assignments),items:[...assignments.filter(item=>item.id!==candidate.id),candidate]});
+            assignments=clone(result.items);state.assignments=clone(result.items);baseRevision=state.revision=result.revision;
+            selectedDate=day;resetHistory();$('assign-dialog').close();render();renderAssignments();
+            message('Assignment saved. Use Blocks to activate these day assignments.');
+        }catch(error){$('assign-error').textContent=error.message;}
+        finally{submit.disabled=false;}
+    };
+    $('block-dates').onclick=()=>{if($('assignment-list').hidden)renderAssignments();else $('assignment-list').hidden=true;};
+    $('block-to-calendar').onclick=async()=>{
+        if(dirty&&!await save())return;
+        if(!composition.id){message('Save your Block before adding it to Calendar.',true);return;}
+        location.href=`/admin/stations/${root.dataset.station}/schedule-studio/calendar?view=day&date=${selectedDate}&block=${composition.id}`;
+    };
+    $('block-zoom').oninput=e=>{
+        const timeline=$('timeline'),second=secondFor(timeline.scrollTop);
+        blockHourHeight=Number(e.target.value);accordion=false;$('accordion-toggle').setAttribute('aria-pressed','false');
+        render();timeline.scrollTop=yFor(second);
+    };
+}
+function updateAssignmentFields(){
+    const frequency=$('assign-frequency').value;
+    $('assign-weekdays').hidden=frequency!=='weekly';$('assign-dates-label').hidden=frequency!=='dates';
+    $('assign-end').disabled=frequency==='once';
+}
+function renderAssignments(){const list=$('assignment-list');list.replaceChildren();list.hidden=false;list.append(node('h3','Block assignments'));const browse=document.createElement('input');browse.type='date';browse.value=selectedDate;browse.setAttribute('aria-label','Preview Block assignments from date');browse.onchange=()=>{selectedDate=browse.value;renderAssignments();};list.append(browse);for(const row of assignments){const el=node('article');el.append(node('b',row.pattern.map(p=>`${p.name} (revision ${p.version})`).join(' → ')),node('p',`${row.rule.frequency} from ${row.rule.anchor}${row.rule.until?' until '+row.rule.until:''}`),button('Remove',()=>{before();assignments=assignments.filter(a=>a.id!==row.id);markDirty();renderAssignments();}));list.append(el);}const grid=node('div',undefined,'month-grid');for(let i=0;i<28;i++){const day=shift(selectedDate,i),el=node('div',undefined,'month-day');el.append(node('b',day.slice(5)));const rows=assigned(day);for(const row of rows)el.append(node('span',row.source.name));if(!rows.length)el.append(node('span',fallbackLabel()));grid.append(el);}list.append(grid);}
 page.listen(window,'beforeunload',e=>{if(dirty){e.preventDefault();e.returnValue='';}});
 page.cleanup(()=>{searchController?.abort();clearTimeout(searchTimer);clearTimeout(hoverTimer);clearTimeout(saveTimer);previewAudio?.pause();});
 async function refreshState(){
@@ -476,6 +607,11 @@ page.interval(refreshState,4000);
 page.listen(window,'online',()=>{if(autosave&&dirty&&!saveConflict){saveBlocked=false;queueSave(0);}refreshState();});
 async function init(){
     updateStatus();syncComposition();render();await Promise.all([loadSources(),loadCompositions(),loadEvents()]);
+    if(composing&&!dirty){const opened=localStorage.getItem(localKey+':opened');if(opened)await openComposition(opened,false);}
+    if(view==='calendar'&&/^\d+$/.test(requested.get('block')||'')){
+        try{const block=await api('composition?id='+requested.get('block'));if(block.kind!=='BLOCK')throw Error('Choose a saved Block.');openInspector(null,selectedDate,{kind:'block',id:block.id,version:block.revision,name:block.name,duration:block.duration},0);}
+        catch(error){message(error.message,true);}
+    }
     try{
         const draft=JSON.parse(localStorage.getItem(localKey+':draft')||'null');
         if(draft){const restoreButton=button('Restore unsaved changes',()=>{

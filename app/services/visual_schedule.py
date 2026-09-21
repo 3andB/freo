@@ -20,7 +20,7 @@ from app.services.availability import tracks_for, artists_for, albums_for, playa
 from app.services.schedule import _wall_to_utc, utc_instant
 
 MODES = ('CALENDAR', 'BLOCKS', 'SIMPLE')
-KINDS = ('show', 'category', 'playlist', 'artist', 'album', 'song')
+KINDS = ('block', 'show', 'category', 'playlist', 'artist', 'album', 'song')
 
 
 def integer(value, low, high, label='Value'):
@@ -282,7 +282,7 @@ def clean_document(station, data, assignments=False):
             value.update(start=integer(item.get('start'),0,86399,'Start'),end=integer(item.get('end'),1,172799,'End'))
             if not 0<value['end']-value['start']<=86400:raise ValueError('Intervals must be between one second and 24 hours')
             ref=item.get('source')
-            value['source']=source(station,ref,allow_legacy=isinstance(ref,dict) and ref.get('kind')=='legacy')
+            value['source']=source(station,ref,allow_block=True,allow_legacy=isinstance(ref,dict) and ref.get('kind')=='legacy')
         result.append(value)
     from app.services.schedule_conflicts import validate_overlaps
     validate_overlaps(result, matches, assignments)
@@ -484,6 +484,44 @@ def select_visual(station, resolved, storage, now):
     return decision
 
 
+def transition_preview(station, mode, *, simple=None, calendar=None, activation='preview'):
+    """Explain the effective source, including why a saved mode cannot play now."""
+    resolved = resolve_visual(station, mode=mode, simple=simple, calendar=calendar, activation=activation)
+    if resolved is None:
+        raise ValueError('Save the mode configuration first')
+    ref, reason = resolved['source'], resolved.get('reason')
+    code = None
+    if reason == 'Nothing scheduled':
+        code = 'unassigned' if mode == 'BLOCKS' else 'unscheduled'
+        explanation = ('No Block is assigned to today. Save a Block and assign days before using Blocks.'
+                       if mode == 'BLOCKS' else 'Nothing is scheduled for this time.')
+    elif reason == 'Empty composition interval':
+        code, explanation = 'gap', 'The scheduled content has an empty section at this time.'
+    elif reason:
+        code, explanation = 'unavailable', reason + '.'
+    else:
+        explanation = ''
+    if not source_tracks(station, ref):
+        if not reason:
+            code, explanation = 'unplayable', 'The selected content has no playable songs at this time.'
+        ref = fallback(station)
+        reason = reason or 'No playable content in the selected mode'
+    playable_now = bool(source_tracks(station, ref))
+    using_default = bool(playable_now and reason)
+    if playable_now and not ref.get('name'):
+        # Older saved selections may contain only their type and identifier.
+        ref = source(station, ref, allow_legacy=True)
+    if using_default:
+        explanation += f' Will play now: {ref["name"]} (default playlist).'
+    elif not playable_now:
+        explanation += ' No playable default playlist is configured in Station settings.'
+    else:
+        explanation = f'Will play now: {ref["name"]}.'
+    return dict(source=ref, reason=reason, playable=playable_now, code=code,
+                message=explanation.strip(), using_default=using_default,
+                program=resolved['label'], local_time=resolved['local_time'].isoformat())
+
+
 def transition_request(station,data):
     identity=str(uuid.UUID(data.get('id','')))
     prior=db.session.get(ScheduleTransition,identity)
@@ -498,12 +536,12 @@ def transition_request(station,data):
         raise ValueError('A mode change is already in progress')
     mode=data.get('mode')
     if mode not in MODES:raise ValueError('Choose Calendar, Blocks, or Simple')
-    simple=source(station,data['simple']) if data.get('simple') else row.simple
+    simple=source(station,data['simple'],allow_block=True) if data.get('simple') else row.simple
     if row.activated and mode==row.mode and (mode!='SIMPLE' or simple==row.live_simple) and not station.automation.hold:
         raise ValueError('This mode and selection are already active')
-    resolved=resolve_visual(station,mode=mode,simple=simple,activation=identity)
-    if not source_tracks(station,resolved['source']) and not source_tracks(station,fallback(station)):
-        raise ValueError('There is nothing playable. Choose a default playlist in Station settings.')
+    preview=transition_preview(station,mode,simple=simple,activation=identity)
+    if not preview['playable']:
+        raise ValueError(preview['message'])
     command=ScheduleTransition(id=identity,station_id=station.id,mode=mode,previous_mode=row.mode,simple=simple,revision=row.revision)
     db.session.add(command)
     return command

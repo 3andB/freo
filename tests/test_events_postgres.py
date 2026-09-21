@@ -64,8 +64,16 @@ def test_event_upgrade_preserves_custom_playlist_and_seeds_system_collections(mo
     result=runner.invoke(args=['db','upgrade','ab28c910d642'])
     assert result.exit_code==0,result.output
     with app.app_context():
-        station=Station(name='Existing',slug='existing',description='',desired_state='stopped',timezone='Pacific/Auckland')
-        db.session.add(station);db.session.commit();identifier=station.id
+        # Seed the historical schema through reflection. Today's ORM includes
+        # columns added after this migration and cannot insert into this version.
+        from datetime import datetime, timezone
+        import uuid
+        historical=sa.Table('stations',sa.MetaData(),autoload_with=db.engine)
+        values=dict(name='Existing',slug='existing',description='',enabled=True,
+            desired_state='stopped',timezone='Pacific/Auckland',target_lufs=-16,
+            freo_station_id=str(uuid.uuid4()),created_at=datetime.now(timezone.utc),updated_at=datetime.now(timezone.utc))
+        identifier=db.session.execute(historical.insert().values(**{key:value for key,value in values.items() if key in historical.c}).returning(historical.c.id)).scalar_one()
+        db.session.commit()
         db.session.execute(sa.text("INSERT INTO playlists(station_id,name,description,mode,revision) VALUES(:station,'STATION','Custom playlist','RANDOM',1)"),dict(station=identifier));db.session.commit()
     result=runner.invoke(args=['db','upgrade'])
     assert result.exit_code==0,result.output

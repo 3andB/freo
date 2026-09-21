@@ -91,7 +91,7 @@ def restore(station,saved):
         row.next_slot_index=saved.get('rotations',{}).get(str(row.rotation_id),0)
 
 
-def refresh(station,reader,current_signature):
+def refresh(station,reader,current_signature, *, prepared_auto_id=None):
     from app.services.playout_queue import queued_ids,active_ids,socket_identity,remove_future,request_decision_id
     reader.collect(station.slug)
     rows=m.SelectionDecision.query.filter(m.SelectionDecision.station_id==station.id,
@@ -113,9 +113,13 @@ def refresh(station,reader,current_signature):
             if row:
                 row.liquidsoap_request_id=request_id;row.socket_identity=identity;row.status='queued'
     # Persist intent before the engine mutation. A restarted worker finishes it.
-    candidates=[row for row in rows if (row.socket_identity==identity and row.liquidsoap_request_id in future) or row.reason=='programming_refresh_pending']
+    prepared=next((row for row in rows if row.id==prepared_auto_id and row.socket_identity==identity),None)
+    candidates=[row for row in rows if (row.socket_identity==identity and row.liquidsoap_request_id in future) or row.reason=='programming_refresh_pending' or row is prepared]
     for row in candidates:row.reason='programming_refresh_pending'
     db.session.commit()
+    if prepared:
+        from app.services.playout_queue import _command
+        _command(station.slug, f'freo_mixer.return_discard {prepared.id}')
     ids=[row.liquidsoap_request_id for row in candidates if row.socket_identity==identity and row.liquidsoap_request_id in future]
     if ids:remove_future(station.slug,ids)
     reader.collect(station.slug)

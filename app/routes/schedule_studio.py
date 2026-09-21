@@ -163,7 +163,12 @@ def write(slug,action):
             composition=data.get('composition')
             if not isinstance(composition,dict) or composition.get('kind')!='BLOCK':
                 raise ValueError('Choose a Block')
-            row=vs.save_composition(station,composition)
+            # Assigning a saved Block must not create a new content revision.
+            row=ScheduleComposition.query.filter_by(id=composition.get('id'),station_id=station.id,kind='BLOCK',archived=False).first() if composition.get('id') else None
+            saved=vs.composition_json(row) if row else None
+            unchanged=bool(saved and all(composition.get(key)==saved.get(key) for key in ('revision','name','description','sections')))
+            if not unchanged:
+                row=vs.save_composition(station,composition)
             db.session.flush()
             items=merge_items(data['base'],data.get('items',[]),schedule.assignments) if 'base' in data else data.get('items',[])
             schedule.assignments=vs.clean_document(station,items,assignments=True)
@@ -192,11 +197,7 @@ def write(slug,action):
             if data.get('mode') not in vs.MODES:raise ValueError('Choose Calendar, Blocks, or Simple')
             row=vs.policy(station,True)
             calendar=legacy_calendar(station) if not row.calendar_saved and not row.activated else None
-            resolved=vs.resolve_visual(station,mode=data.get('mode'),simple=data.get('simple'),calendar=calendar)
-            if resolved is None:raise ValueError('Save the mode configuration first')
-            ref=resolved['source'];reason=resolved.get('reason')
-            if not vs.source_tracks(station,ref):ref=vs.fallback(station);reason='No playable content in the selected mode'
-            return jsonify(source=ref,reason=reason,playable=bool(vs.source_tracks(station,ref)))
+            return jsonify(vs.transition_preview(station,data.get('mode'),simple=data.get('simple'),calendar=calendar))
         elif action=='transition':
             if not can_control_playout(current_admin(),station):abort(403)
             row=vs.policy(station,True)
@@ -214,7 +215,7 @@ def write(slug,action):
                 setattr(row,action,vs.clean_document(station,items,assignments=action=='assignments'))
                 if action=='calendar':row.calendar_saved=True
             elif action=='simple':
-                proposed=vs.source(station,data['source']) if data.get('source') else None
+                proposed=vs.source(station,data['source'],allow_block=True) if data.get('source') else None
                 row.simple=merge_value(data['base'],proposed,row.simple) if 'base' in data else proposed
             else:
                 ref=vs.source(station,dict(kind='playlist',id=data.get('playlist')))

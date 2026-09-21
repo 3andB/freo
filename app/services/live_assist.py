@@ -35,6 +35,7 @@ def set_mode(station,user,mode):
     if mode not in ('AUTO','DJ_BOOTH'):raise ValueError('Invalid booth mode')
     state=db.session.get(AutomationState,station.id)
     if state is None or not station.enabled or station.desired_state!='running':raise ValueError('Station playout is unavailable')
+    changed = state.operator_mode != mode
     if state.operator_mode != mode and mode == 'AUTO':
         return return_to_schedule(station,user=user)
     if state.operator_mode != mode:
@@ -43,7 +44,8 @@ def set_mode(station,user,mode):
     state.operator_mode=mode;state.hold=mode=='DJ_BOOTH'
     if mode == 'AUTO':
         state.enabled = True
-    audit('live_mode_changed',user_id=user.id,station_id=station.id,target_type='station',target_id=station.slug,summary=f'DJ booth mode changed to {mode}')
+    if changed:
+        audit('live_mode_changed',user_id=user.id,station_id=station.id,target_type='station',target_id=station.slug,summary=f'DJ booth mode changed to {mode}')
     db.session.commit();return state
 
 
@@ -58,6 +60,23 @@ def return_to_schedule(station, user=None, reason='Returning to the schedule wit
           target_type='station',target_id=station.slug,summary=reason)
     db.session.commit()
     return state
+
+
+def accept_engine_return(station, identifier):
+    """Adopt a prepared EOF handoff, never one from an earlier DJ session."""
+    if station.automation.operator_mode != 'DJ_BOOTH':
+        return False
+    from app.services.playout_queue import socket_identity
+    row = db.session.get(SelectionDecision, identifier)
+    entered = AuditEvent.query.filter_by(station_id=station.id, action='live_mode_changed').order_by(AuditEvent.id.desc()).first()
+    if (row is None or row.station_id != station.id or row.status != 'started' or
+            row.playback_bus not in ('A','B') or not row.started_at or
+            row.socket_identity != socket_identity(station.slug) or
+            entered and row.started_at.replace(tzinfo=row.started_at.tzinfo or timezone.utc) <
+            entered.created_at.replace(tzinfo=entered.created_at.tzinfo or timezone.utc)):
+        return False
+    return_to_schedule(station, reason='DJ music finished. Returning to the schedule in Auto mode.')
+    return True
 
 
 def pending_cart(station):

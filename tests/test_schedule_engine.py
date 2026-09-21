@@ -16,15 +16,26 @@ from tests.test_web import app
 pytestmark=pytest.mark.skipif(os.environ.get('FREO_ENGINE_TEST')!='1',reason='Explicit isolated Liquidsoap integration')
 
 
+@pytest.mark.parametrize('target_mode', ['SIMPLE', 'BLOCKS', 'CALENDAR', 'SIMPLE_BLOCK'])
 @pytest.mark.parametrize('event_phase', ['none', 'waiting', 'playing'])
-def test_confirmed_switch_fades_immediately_and_retry_does_not_restart(app,tmp_path,monkeypatch,event_phase):
+def test_confirmed_switch_fades_immediately_and_retry_does_not_restart(app,tmp_path,monkeypatch,event_phase,target_mode):
     media=tmp_path/'media';runtime=tmp_path/'runtime';directory=runtime/'test-station';directory.mkdir(parents=True)
     originals=media/'test-station'/'originals';originals.mkdir(parents=True);key='a'*32+'.mp3'
     subprocess.run(['ffmpeg','-v','error','-f','lavfi','-i','sine=frequency=440:duration=40','-y',str(originals/key)],check=True)
     monkeypatch.setenv('FREO_MEDIA_ROOT',str(media));monkeypatch.setattr('app.services.playout_queue.SOCKET_ROOT',runtime);monkeypatch.setattr('app.automation_worker.EVENT_ROOT',runtime)
     with app.app_context():
         station=Station.query.filter_by(slug='test-station').one();song=Track.query.first();song.storage_key=key;song.duration_ms=40000
-        p=policy(station,True);db.session.commit()
+        p=policy(station,True)
+        if target_mode!='SIMPLE':
+            from app.services import visual_schedule as vs
+            from datetime import datetime, timezone
+            block=vs.save_composition(station,dict(kind='BLOCK',name='Engine Block',sections=[dict(id='song',start=0,end=86400,source=dict(kind='song',id=song.id))]));db.session.flush()
+            ref=vs.source(station,dict(kind='block',id=block.id),allow_block=True)
+            rule=dict(frequency='once',anchor=datetime.now(timezone.utc).date().isoformat())
+            p.assignments=vs.clean_document(station,[dict(id='today',rule=rule,pattern=[ref])],assignments=True)
+            p.calendar=vs.clean_document(station,[dict(id='today',rule=rule,start=0,end=86400,source=ref)])
+            p.calendar_saved=True
+        db.session.commit()
         source=render_liquidsoap(station,'test-only').replace('/run/freo/playout/test-station',str(directory))
         source='settings.init.allow_root := true\n'+source[:source.index('output.icecast(')]+f'output.file(%wav,"{tmp_path}/recording.wav",radio)\n'
         config=tmp_path/'engine.liq';config.write_text(source)
@@ -59,7 +70,9 @@ def test_confirmed_switch_fades_immediately_and_retry_does_not_restart(app,tmp_p
                             time.sleep(.1)
                         assert event.status=='started'
                     assert event_bus(station.slug)==f'123|{event_phase.upper()}'
-                payload=dict(id=str(uuid.uuid4()),mode='SIMPLE',current='CALENDAR',revision=p.revision,simple=dict(kind='song',id=song.id))
+                mode='SIMPLE' if target_mode=='SIMPLE_BLOCK' else target_mode
+                simple=ref if target_mode=='SIMPLE_BLOCK' else dict(kind='song',id=song.id)
+                payload=dict(id=str(uuid.uuid4()),mode=mode,current='CALENDAR',revision=p.revision,simple=simple)
                 command=transition_request(station,payload);db.session.commit();began=time.monotonic();levels=[]
                 for _ in range(50):
                     process_transition(station,reader);levels.append(program_rms(station.slug))
@@ -67,7 +80,7 @@ def test_confirmed_switch_fades_immediately_and_retry_does_not_restart(app,tmp_p
                     time.sleep(.1)
                 assert command.state=='APPLIED',command.error
                 assert time.monotonic()-began<8 # outgoing song still has over 30 seconds remaining
-                assert p.mode=='SIMPLE' and p.activated
+                assert p.mode==mode and p.activated
                 assert event_bus(station.slug)=='|WAITING'
                 assert _command(station.slug,'freo_event.queue')==''
                 if event_phase == 'playing':

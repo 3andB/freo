@@ -44,14 +44,16 @@ def test_song_cart_assignment_description_and_modes_in_custom_dialog(booth):
 
 
 def test_calendar_create_edit_and_mobile_layout(booth):
+    from tests.test_schedule_editor_browser import saved_calendar
     app,driver,base,tmp_path=booth
     driver.get(base+'/admin/stations/test-station/calendar?date=2026-09-14')
     driver.find_element(By.XPATH,"//nav[@id='source-tabs']/button[text()='Songs']").click()
     wait_text(driver,'#source-results','Verified Test Track')
     driver.find_element(By.CSS_SELECTOR,'.source-actions button').click()
     driver.find_element(By.CSS_SELECTOR,'#section-form button[type=submit]').click()
-    driver.find_element(By.ID,'save-schedule').click()
-    wait_text(driver,'#save-state','Saved')
+    # Calendar edits now autosave; prove persistence before reopening the item.
+    saved_calendar(app,driver,lambda rows:sum(row['source']['kind']=='song' for row in rows)==1)
+    driver.refresh()
     wait_text(driver,'#timeline','Verified Test Track')
     # Short tracks keep exact timeline bounds; their readable edit control is below it.
     driver.find_element(By.XPATH,"//*[@id='short-sections']/button[contains(., 'Verified Test Track')]").click()
@@ -118,8 +120,9 @@ def test_programming_event_series_and_content_picker(booth):
     form.find_element(By.CSS_SELECTOR,'button[type=submit]').click()
     WebDriverWait(driver,10).until(lambda d:'/events/create' not in d.current_url)
     assert 'Weekday announcement' in driver.find_element(By.TAG_NAME,'h1').text
-    driver.get(base+'/admin/stations/test-station/calendar?date=2027-01-04')
-    WebDriverWait(driver,10).until(lambda d:len(d.find_elements(By.CSS_SELECTOR,'.timeline-event'))==3)
+    driver.get(base+'/admin/stations/test-station/calendar?date=2027-01-04&view=week')
+    WebDriverWait(driver,10).until(lambda d:len(d.find_elements(By.CSS_SELECTOR,'.timeline-event-group'))==3)
+    assert all('Weekday announcement' in group.text for group in driver.find_elements(By.CSS_SELECTOR,'.timeline-event-group'))
     for width in (430,820,1440):
         driver.set_window_size(width,1000)
         assert driver.execute_script('return document.documentElement.scrollWidth<=innerWidth')

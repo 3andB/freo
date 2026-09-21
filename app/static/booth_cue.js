@@ -22,6 +22,7 @@ window.FreoCue = {
       if (!cue || saving) return false;
       saving = true; $('cue-save-state').textContent = 'Saving…';
       const ok = await post('cue-list', {operation, revision: cue.revision, nonce: crypto.randomUUID(), ...data});
+      if (scope.signal.aborted) return false;
       saving = false; $('cue-save-state').textContent = ok ? 'Saved' : 'Not saved · retry';
       return ok;
     }
@@ -141,7 +142,7 @@ window.FreoCue = {
       const params = new URLSearchParams({q: search.elements.q.value, category, offset: append ? offset : 0, paged: '1'});
       try {
         const response = await scope.fetch(`${root.dataset.songSearchUrl}?${params}`); if (!response.ok) throw new Error('Song search is unavailable. Try again.');
-        const result = await response.json(); if (version !== searchVersion) return;
+        const result = await response.json(); if (scope.signal.aborted || version !== searchVersion) return;
         const cards = result.songs.map(songCard); if (append) shelf.append(...cards); else {shelf.replaceChildren(...cards); shelf.scrollTop = 0;}
         offset = (append ? offset : 0) + result.songs.length;
         if (!offset) shelf.append(el('p', 'No enabled songs match.', 'empty-copy'));
@@ -151,7 +152,7 @@ window.FreoCue = {
     }
     scope.listen(search, 'submit', event => {event.preventDefault(); clearTimeout(searchTimer); searchSongs();});
     scope.listen(search.elements.q, 'input', () => {++searchVersion; clearTimeout(searchTimer); searchTimer = setTimeout(() => searchSongs(), 180);});
-    scope.cleanup(() => clearTimeout(searchTimer));
+    scope.cleanup(() => {clearTimeout(searchTimer); ++searchVersion;});
     scope.listen(root.querySelector('.category-strip'), 'click', event => {
       const link = event.target.closest('a'); if (!link) return; event.preventDefault();
       category = new URL(link.href).searchParams.get('category') || '';

@@ -214,7 +214,9 @@ def test_starter_migration_preserves_custom_and_renamed_playlists(app):
         db.session.commit()
     runner=app.test_cli_runner()
     assert runner.invoke(args=['db','stamp','e28a91bc7304']).exit_code==0
-    result=runner.invoke(args=['db','upgrade'])
+    # This fixture already has the current schema. Exercise only the data
+    # migration under test, not later migrations that add existing columns.
+    result=runner.invoke(args=['db','upgrade','f38c6a902e17'])
     assert result.exit_code==0,result.output
     with app.app_context():
         rows=m.Playlist.query.order_by(m.Playlist.id).all()
@@ -267,6 +269,61 @@ def test_lost_end_fails_only_absent_event_audio_and_preserves_history(app,monkey
         assert occurrence.selection_decision.status=='started'
         worker.process_timed_events(station,worker.EventReader())
         assert occurrence.state=='FAILED'
+
+
+@pytest.mark.parametrize('outcome', ['confirmed', 'vanished', 'reappeared', 'incomplete', 'restarted'])
+def test_queued_event_waits_for_rendered_confirmation(app, monkeypatch, outcome):
+    from app import automation_worker as worker
+    from app.services.automation import playback_started
+    observed = [100.0]
+    identity = ['engine']
+    active = set()
+    monkeypatch.setattr(worker.time, 'monotonic', lambda: observed[0])
+    monkeypatch.setattr(worker, 'socket_identity', lambda s: identity[0])
+    monkeypatch.setattr(worker, 'active_ids', lambda s: active)
+    monkeypatch.setattr(worker, 'queued_ids', lambda s: set())
+    monkeypatch.setattr('app.services.playout_queue._command', lambda *a: '')
+    monkeypatch.setattr('app.services.playout_queue.channel_queue', lambda *a: [])
+    with app.app_context():
+        station, track = audio()
+        event = events.save_event(station.slug, name='Rendered confirmation', recurrence_type='DAILY',
+            content_type='TRACK', content_identifier=track.uuid, local_time='12:00')
+        occurrence = event.occurrences[-1]
+        decision = m.SelectionDecision(station_id=station.id, track_id=track.id, status='queued',
+            selection_method='timed_event', socket_identity='engine', liquidsoap_request_id=42)
+        occurrence.selection_decision = decision
+        occurrence.state = 'QUEUED'
+        db.session.commit()
+        assert worker.reconcile_requests(station.slug) == 0
+        assert occurrence.state == 'QUEUED'
+        observed[0] += 4
+        if outcome == 'confirmed':
+            playback_started(decision.id, station.slug)
+        elif outcome == 'reappeared':
+            active.add(42)
+        elif outcome == 'incomplete':
+            def unavailable(*args):
+                raise OSError('socket unavailable')
+            monkeypatch.setattr('app.services.playout_queue.channel_queue', unavailable)
+        elif outcome == 'restarted':
+            identity[0] = 'new-engine'
+        worker.reconcile_requests(station.slug)
+        if outcome == 'restarted':
+            assert occurrence.state == 'FAILED' and occurrence.failure_reason == 'playout_restarted'
+        elif outcome == 'confirmed':
+            assert occurrence.state == 'STARTED' and occurrence.failure_reason is None
+            assert decision.reason != 'late_event_confirmation'
+        else:
+            assert occurrence.state == 'QUEUED'
+            active.clear()
+            observed[0] = 110.0
+            worker.reconcile_requests(station.slug)
+            if outcome == 'vanished':
+                assert occurrence.state == 'FAILED' and occurrence.failure_reason == 'request_not_started'
+            else:
+                assert occurrence.state == 'QUEUED'
+        if outcome in ('confirmed', 'vanished', 'restarted', 'incomplete'):
+            assert station.slug not in app.extensions['playout_missing_requests']
 
 
 @pytest.mark.parametrize('zone,day,expected',[('Australia/Lord_Howe','2027-10-03',94),('Australia/Lord_Howe','2027-04-04',96)])

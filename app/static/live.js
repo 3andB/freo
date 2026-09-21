@@ -2,12 +2,14 @@
   const scope = window.FreoPage;
   const root = document.getElementById('dj-booth');
   if (!root) return;
+  const active = () => !scope.signal.aborted && root.isConnected;
   let state = null;
   const pendingLoads=new Map();
-  const text = (id, value) => { const node=document.getElementById(id); if(node) node.textContent=value; };
+  const text = (id, value) => { if(!active())return; const node=document.getElementById(id); if(node) node.textContent=value; };
   const nonce = () => crypto.randomUUID();
   let noticeUntil=0;
   function systemStatus(){
+    if(!active())return;
     if(Date.now()<noticeUntil)return;
     const node=document.getElementById('booth-notice');
     const fault=state?.playout_error || (state?.broadcast?.online===false&&state?.desired_state==='running'?'Broadcast stream is offline':null);
@@ -21,13 +23,14 @@
     node.classList.toggle('error',!!fault);node.dataset.message='system';
   }
   const notice = (message, error=false) => {
+    if(!active())return;
     noticeUntil=Date.now()+15000;
     const node=document.getElementById('booth-notice');
     node.dataset.message='action';node.hidden=false; node.textContent=message; node.classList.toggle('error',error);
   };
   let busy=false;
   const post = async (action, data={}) => {
-    if(busy) return false;
+    if(busy||!active()) return false;
     busy=true; root.setAttribute('aria-busy','true'); notice('Working…');
     try {
       const body=new FormData(); body.set('csrf',root.dataset.csrf);
@@ -38,11 +41,13 @@
       if(!response.headers.get('content-type')?.includes('application/json'))
         throw new Error(response.status===400 ? 'Your session token expired. Refresh this page and try again.' : 'Session or server unavailable. Refresh this page and sign in if needed.');
       const result=await response.json();
+      if(!active())return false;
       if(!response.ok) throw new Error(result.message || 'Control failed. Try again.');
       notice(result.message); await refresh();
+      if(!active())return false;
       if(action==='assign-cart') await FreoWorkspace.navigate(location.href,{submitted:true});
       return true;
-    } catch(error) { notice(error.message || 'Connection lost. Try again.',true); if(action==='cue-list')await refresh(); return false; }
+    } catch(error) { if(!active())return false; notice(error.message || 'Connection lost. Try again.',true); if(action==='cue-list')await refresh(); return false; }
     finally {busy=false;root.removeAttribute('aria-busy');}
   };
   const fadeControl=document.getElementById('deck-fade-seconds');
@@ -57,6 +62,7 @@
     const playing=!!state.mixer[deck.toLowerCase()]&&!!state.mixer[deck.toLowerCase()+'_playing'];
     const expected=state.mixer[deck.toLowerCase()]?.decision_id;
     if(playing && !await FreoDialog.confirm({title:`Replace and go live on Deck ${deck}?`,message:'This deck is playing. Replace its song and play the dropped song from the beginning?',confirmLabel:'Replace & go live'}))return false;
+    if(!active())return false;
     if(state.mixer[deck.toLowerCase()]?.decision_id!==expected){notice('This deck changed. Drop the song again.',true);return false;}
     if(busy||state.deck_command?.status==='pending')return false;
     pendingLoads.set(deck.toLowerCase(),{expected,uuid:id});
@@ -134,11 +140,11 @@
   };
   root.querySelectorAll('[data-assign]').forEach(button=>button.addEventListener('click',()=>openAssign(button.closest('[data-role]'))));
   root.querySelectorAll('[data-open-assign]').forEach(button=>button.addEventListener('click',()=>openAssign(button.closest('section').querySelector('[data-role]'))));
-  assignForm.addEventListener('submit',async event=>{event.preventDefault();const ok=await post('assign-cart',Object.fromEntries(new FormData(assignForm)));if(ok)dialog.close();else document.getElementById('cart-assign-error').textContent=document.getElementById('booth-notice').textContent;});
+  assignForm.addEventListener('submit',async event=>{event.preventDefault();const ok=await post('assign-cart',Object.fromEntries(new FormData(assignForm)));if(!active())return;if(ok)dialog.close();else document.getElementById('cart-assign-error').textContent=document.getElementById('booth-notice').textContent;});
   function updateCartExplanation(){const over=assignForm.elements.playback_mode.value==='OVER',reduction=Number(assignForm.elements.duck_percent.value);text('cart-duck-value',`${reduction}%`);document.getElementById('cart-duck-setting').hidden=!over;text('cart-mode-explanation',over?`The program (music or live mic) plays at ${100-reduction}% of its previous volume while this cart plays, then returns to normal.`:'The cart plays by itself. Music pauses and resumes from the same position; a live mic is muted for the cart, then reopened.');}
   assignForm.elements.playback_mode.addEventListener('change',updateCartExplanation);assignForm.elements.duck_percent.addEventListener('input',updateCartExplanation);
   let cartSearchVersion=0;
-  document.getElementById('cart-audio-search').addEventListener('input',async event=>{const version=++cartSearchVersion;try{const response=await scope.fetch(root.dataset.songSearchUrl.replace('song-search','cart-search')+'?q='+encodeURIComponent(event.target.value));if(!response.ok)throw new Error();const items=await response.json();if(version!==cartSearchVersion)return;assignForm.elements.identifier.replaceChildren(...items.map(item=>new Option(item.label,item.uuid)));}catch(_){text('cart-assign-error','Audio search is unavailable. Try again.');}});
+  document.getElementById('cart-audio-search').addEventListener('input',async event=>{const version=++cartSearchVersion;try{const response=await scope.fetch(root.dataset.songSearchUrl.replace('song-search','cart-search')+'?q='+encodeURIComponent(event.target.value));if(!response.ok)throw new Error();const items=await response.json();if(!active()||version!==cartSearchVersion)return;assignForm.elements.identifier.replaceChildren(...items.map(item=>new Option(item.label,item.uuid)));}catch(_){text('cart-assign-error','Audio search is unavailable. Try again.');}});
   let localCart=null,lastCartFailure=null;
   function paintCarts(){
     const cart=state?.cart;
@@ -162,24 +168,26 @@
   const songDialog=document.getElementById('song-picker-dialog'),songSearch=document.getElementById('song-picker-search'),songResults=document.getElementById('song-picker-results');
   let searchTimer,searchVersion=0,pickerTarget='cue';
   const searchSongs=async()=>{
+    if(!active())return;
     const version=++searchVersion;songResults.textContent='Searching…';
     try {
       const response=await scope.fetch(`${root.dataset.songSearchUrl}?q=${encodeURIComponent(songSearch.value)}`,{credentials:'same-origin',cache:'no-store'});
       if(!response.ok||!response.headers.get('content-type')?.includes('application/json'))throw new Error('Search unavailable. Refresh and sign in if needed.');
-      const songs=await response.json();if(version!==searchVersion)return;songResults.replaceChildren();
+      const songs=await response.json();if(!active()||version!==searchVersion)return;songResults.replaceChildren();
       for(const song of songs){
         const button=document.createElement('button');button.type='button';
         for(const [tag,value] of [['b',song.title],['span',song.artist],['small',song.album||'Single']]){const el=document.createElement(tag);el.textContent=value;button.append(el);}
-        button.addEventListener('click',async()=>{button.disabled=true;const ok=await choose(song.uuid,pickerTarget);button.disabled=false;if(ok)songDialog.close();else document.getElementById('picker-status').textContent=document.getElementById('booth-notice').textContent;});
+        button.addEventListener('click',async()=>{button.disabled=true;const ok=await choose(song.uuid,pickerTarget);if(!active())return;button.disabled=false;if(ok)songDialog.close();else document.getElementById('picker-status').textContent=document.getElementById('booth-notice').textContent;});
         songResults.append(button);
       }
       if(!songs.length)songResults.textContent='No enabled songs found. Imported songs must be reviewed and enabled in Music.';
-    }catch(error){if(version===searchVersion)songResults.textContent=error.message;}
+    }catch(error){if(active()&&version===searchVersion)songResults.textContent=error.message;}
   };
   root.querySelectorAll('.cue-picker-button').forEach(button=>button.addEventListener('click',()=>{
     pickerTarget=button.dataset.target||'B';text('song-picker-title',`Load a song on Deck ${pickerTarget}`);text('picker-status','');songDialog.showModal();songSearch.focus();searchSongs();
   }));
   songSearch.addEventListener('input',()=>{++searchVersion;songResults.textContent='Searching…';clearTimeout(searchTimer);searchTimer=setTimeout(searchSongs,180);});
+  scope.cleanup(()=>{clearTimeout(searchTimer);++searchVersion;++cartSearchVersion;});
   const meterLevel=rms=>Number.isFinite(rms)&&rms>0?Math.max(0,Math.min(1,(20*Math.log10(rms)+60)/60)):0;
   const AudioCtx=window.AudioContext||window.webkitAudioContext;
   const analyserFor=(audio,leftId,rightId)=>{
@@ -235,12 +243,14 @@
     }
   }
   let refreshVersion=0,lastFailedCommand=null;
+  scope.cleanup(()=>{++refreshVersion;});
   async function refresh(){
+    if(!active())return;
     const version=++refreshVersion;
     try{
       const response=await scope.fetch(root.dataset.statusUrl,{credentials:'same-origin',cache:'no-store'});
       if(!response.ok)throw new Error();
-      const next=await response.json();if(version!==refreshVersion)return;
+      const next=await response.json();if(!active()||version!==refreshVersion)return;
       if(next.playout_error&&!next.mixer&&state?.mixer)next.mixer=state.mixer;
       const previous=state;
       state=next;
@@ -318,7 +328,7 @@
       timing();
       window.dispatchEvent(new CustomEvent('freo-booth-refreshed'));
     }catch(_){
-      if(version!==refreshVersion)return;
+      if(!active()||version!==refreshVersion)return;
       cueUI.disconnect();
       text('live-playout','Reconnecting — controls will recover automatically');
       if(state)state={...state,playout_error:'Connection delayed'};autoControls();paintCarts();systemStatus();
@@ -331,6 +341,7 @@
   }
   let skipRequested=null,skipFailureSeen=null;
   function autoControls(){
+    if(!active())return;
     const reliable=state?.observation_fresh&&!state?.playout_error;
     const command=state?.skip_command;
     if(command?.status==='failed'&&command.id!==skipFailureSeen){skipFailureSeen=command.id;notice(command.error||'Skip failed; refresh and try again.',true);skipRequested=null;}
