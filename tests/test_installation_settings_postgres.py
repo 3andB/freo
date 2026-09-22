@@ -65,6 +65,13 @@ def test_upgrade_and_restored_application_preserve_settings_identity_and_audio(p
     assert runner.invoke(args=['settings', 'import-environment']).exit_code == 0
     assert runner.invoke(args=['db', 'upgrade']).exit_code == 0
     with application.app_context():
+        assert AdminUser.query.one().username is None
+        assert AdminUser.query.one().setup_required is False
+        from app.models import AdminBootstrap
+        from app.services.admin_setup import bootstrap
+        assert db.session.get(AdminBootstrap, 1) is None  # Migration does not seed an account.
+        assert not bootstrap()  # Explicit bootstrap also preserves existing admins.
+        assert AdminUser.query.count() == 1
         assert AdminUser.query.one().password_hash == 'unchanged-hash'
         assert AdminUser.query.one().installation_admin is False
         from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
@@ -98,6 +105,10 @@ def test_upgrade_and_restored_application_preserve_settings_identity_and_audio(p
         assert status()['owner'] == 'Restored purchaser'
         assert status()['expires'] is None
         assert AdminUser.query.one().password_hash == 'unchanged-hash'
+        assert db.session.get(AdminBootstrap, 1) is not None
+        assert not bootstrap()
+        assert AdminUser.query.one().username is None
+        assert AdminUser.query.one().setup_required is False
         assert AdminUser.query.one().installation_admin is False
         assert get_setting('FREO_MAX_STATIONS') == 11
         assert get_setting('PUBLIC_BASE_URL') == 'https://preserved.example'

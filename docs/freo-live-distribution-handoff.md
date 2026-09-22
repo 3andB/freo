@@ -33,6 +33,9 @@ guide. Separate fresh installation from upgrades; never instruct an existing
 user to rerun the installer or replace their database.
 
 Use [install-candidate.md](install-candidate.md) as the current operator guide.
+Fresh rc.3 installs automatically create `admin` / `IAmOnTheAir` for first-use
+setup. Require a new password before administration; remove the old first-admin
+CLI instruction from website copy. The initial account is never recreated by upgrades.
 After VM acceptance and owner approval, adapt candidate wording to the approved
 version while preserving verification, recovery and platform instructions.
 License terms are in [LICENSE](../LICENSE). Technical privacy/reporting details
@@ -64,7 +67,7 @@ The index schema is:
   "download_url": "https://github.com/3andB/freo/releases/download/vVERSION/freo-vVERSION.tar.gz",
   "signature_url": "https://github.com/3andB/freo/releases/download/vVERSION/freo-vVERSION.tar.gz.asc",
   "sha256": "ACTUAL_SHA256",
-  "supported_source_revisions": ["a71d25b609ef", "d02f9a41c830", "e83b9204c6af"]
+  "supported_source_revisions": ["a71d25b609ef", "d02f9a41c830", "e83b9204c6af", "f39c8210b7de"]
 }
 ```
 

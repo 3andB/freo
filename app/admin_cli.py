@@ -83,3 +83,12 @@ def enable_admin(email):
     user.active = True
     db.session.commit()
     click.echo('Admin enabled')
+
+
+@admin.command('bootstrap')
+def bootstrap_admin():
+    """Fresh installer only: create the one-time admin account if never initialized."""
+    root_only()
+    from app.services.admin_setup import bootstrap
+    created = bootstrap()
+    click.echo('First-use admin ready; complete setup in the browser.' if created else 'Existing administrator setup retained.')

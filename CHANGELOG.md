@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.3.0-rc.3 — first-login candidate
+
+- Fix session cookies for explicitly configured HTTP installations while retaining
+  Secure cookies for HTTPS, including public/static responses that refresh sessions.
+- Create one-time `admin` / `IAmOnTheAir` setup on fresh installs, require a private
+  password before administration, and invalidate other initial-password sessions.
+- Preserve existing accounts on upgrade. Store a durable bootstrap marker so the
+  initial account cannot be recreated by rerunning bootstrap.
+- Validate the public first-login flow during installation and add real Chromium
+  HTTP/HTTPS setup, logout and application-restart acceptance tests.
+
+Migration: `e83b9204c6af` → `f39c8210b7de`, additive. Prior candidates are retained.
+Fresh VM installation, host reboot, public certificate issuance/renewal and radio
+acceptance remain required before release approval.
+
 ## 0.3.0-rc.2 — installation candidate
 
 - Correct HTTPS installation to save an HTTPS public URL before importing

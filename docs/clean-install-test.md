@@ -1,5 +1,11 @@
 # Fresh Ubuntu 24.04 acceptance test
 
+For rc.3 use the signed package and [current installation instructions](install-candidate.md).
+Fresh installations create `admin` / `IAmOnTheAir`; complete the mandatory browser
+password replacement before administration. No initial CLI account creation is
+required. Test HTTP and HTTPS login, logout, default-password rejection and host
+reboot before marking this checklist passed.
+
 For the 0.2.0 candidate, installer reruns in this historical checklist must now
 refuse safely with no changes. Perform actual upgrades with the signed bundle
 workflow in [recovery and upgrades](recovery-and-upgrades.md). In addition to the
@@ -10,7 +16,7 @@ interruption and verify every preserved original file hash and saved setting.
 
 This test must run on a separate, disposable, fresh Ubuntu 24.04 VM before Freo claims third-party installation support. Record OS image, commit, package versions, results, and defects. Do not use the production Freo database.
 
-1. Create the VM, install Git if required, clone the public Freo repository, enter the checkout, and run `sudo ./scripts/install.sh`.
+1. Create the VM, obtain and verify the signed candidate using the current installation guide, and run its installer.
 2. Confirm the installer finishes; `/opt/freo/venv` exists; Python dependencies import; PostgreSQL is active; the `freo` role/database exist; and `flask db current` and `flask db heads` agree (both at the latest revision).
 3. Confirm `freo.service` is active and its Gunicorn master/workers run as non-root `freo`. Confirm Nginx is the web entry point and Gunicorn binds only localhost. Confirm PostgreSQL does not listen publicly.
 4. Confirm `/health` and `/ready` succeed locally and through Nginx. Validate an IP-only HTTP install first.
@@ -21,7 +27,7 @@ This test must run on a separate, disposable, fresh Ubuntu 24.04 VM before Freo 
 
 The current production server is not a substitute for this clean-install test. Record a signed-off result in a future release checklist before marking installation supported.
 
-For the web UI, verify `/`, `/stations`, and `/player/<station-slug>` render without demo data or invented listener metrics. Confirm the player begins audio only after a user gesture, handles an unavailable stream, and shows confirmed history with an accurate observation label. Confirm `/admin` and admin media routes redirect to login before an account exists. Create an administrator with `flask --app wsgi:app admin set-password --email operator@example.com` using the hidden prompt; confirm successful sign-in, failed-password handling, CSRF rejection, and logout. Verify `/admin`, station detail, Media, Categories, Rotations, Clocks, Schedule, History and System render real station data and keep stations separate. Upload a generated MP3 through the browser, wait for the non-root ingest worker, review metadata, assign a category, verify and enable, then disable without restarting playout. Confirm duplicate and invalid uploads, cross-station rejection, audit entries, no raw-media URL, and the 128 MB limit. Rerun the installer and confirm it neither creates nor resets an admin account. Verify no account password or hash is committed to Git.
+For the web UI, verify `/`, `/stations`, and `/player/<station-slug>` render without demo data or invented listener metrics. Confirm the player begins audio only after a user gesture, handles an unavailable stream, and shows confirmed history with an accurate observation label. Confirm `/admin` and admin media routes redirect to login before login. Sign in with the first-use account and complete password replacement; confirm successful sign-in, failed-password handling, CSRF rejection, and logout. Verify `/admin`, station detail, Media, Categories, Rotations, Clocks, Schedule, History and System render real station data and keep stations separate. Upload a generated MP3 through the browser, wait for the non-root ingest worker, review metadata, assign a category, verify and enable, then disable without restarting playout. Confirm duplicate and invalid uploads, cross-station rejection, audit entries, no raw-media URL, and the 128 MB limit. Rerun the installer and confirm it neither creates nor resets an admin account. Verify no account password or hash is committed to Git.
 
 ## Phase 2 additions
 

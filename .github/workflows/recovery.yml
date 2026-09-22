@@ -29,7 +29,12 @@ jobs:
           python3 -m venv venv
           venv/bin/pip install -r requirements-dev.txt
       - name: Settings, artifact and failure-injection tests
-        run: venv/bin/pytest -q tests/test_installation_settings.py tests/test_release_bundles.py tests/test_upgrade.py tests/test_installer_guard.py tests/test_distribution.py tests/test_central_api.py tests/test_license_agreement.py tests/test_versions.py
+        run: venv/bin/pytest -q tests/test_installation_settings.py tests/test_release_bundles.py tests/test_upgrade.py tests/test_installer_guard.py tests/test_distribution.py tests/test_central_api.py tests/test_license_agreement.py tests/test_versions.py tests/test_admin_setup.py
+      - name: Real browser first-use setup over HTTP and HTTPS
+        run: |
+          export FREO_TEST_CHROME="$(command -v google-chrome || command -v chromium-browser)"
+          export FREO_TEST_CHROMEDRIVER="$(command -v chromedriver)"
+          venv/bin/pytest -q tests/test_first_login_browser.py tests/test_admin_validation.py
       - name: Real PostgreSQL migrations and encrypted restore
         run: bash scripts/test-recovery-postgres.sh
       - name: Build source review artifact

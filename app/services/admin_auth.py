@@ -12,7 +12,15 @@ from app.models import AdminUser
 def current_admin():
     identity = session.get('admin_user_id')
     user = db.session.get(AdminUser, identity) if isinstance(identity, int) else None
-    return user if user and user.active else None
+    if not user or not user.active:
+        return None
+    from .admin_setup import credential_stamp
+    stamp = session.get('credential_stamp')
+    if stamp is not None and (not isinstance(stamp, str) or not hmac.compare_digest(stamp, credential_stamp(user))):
+        return None
+    if user.setup_required and stamp is None:
+        return None
+    return user
 
 
 def csrf_token():
@@ -31,9 +39,12 @@ def require_csrf():
 def admin_required(view):
     @wraps(view)
     def guarded(*args, **kwargs):
-        if current_admin() is None:
+        user = current_admin()
+        if user is None:
             session.clear()
             return redirect(url_for('web.login'))
+        if user.setup_required and request.endpoint not in ('web.first_setup', 'web.logout', 'web.login'):
+            return redirect(url_for('web.first_setup'))
         return view(*args, **kwargs)
     return guarded
 

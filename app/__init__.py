@@ -108,6 +108,10 @@ def create_app(config_name=None):
     from .services.station_domains import route_public_host
     app.register_blueprint(station_domains)
     app.before_request(route_public_host)
+    from .services.admin_setup import guard_setup, cookie_policy, InstallationSessionInterface
+    app.session_interface = InstallationSessionInterface()
+    app.before_request(guard_setup)
+    app.after_request(cookie_policy)
     app.register_blueprint(song_flags)
     app.register_blueprint(admin_programming_blueprint)
     app.register_blueprint(admin_imaging_blueprint)

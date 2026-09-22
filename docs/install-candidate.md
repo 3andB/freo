@@ -1,4 +1,4 @@
-# Freo 0.3.0-rc.2 installation candidate
+# Freo 0.3.0-rc.3 installation candidate
 
 This is a release candidate for a separate Ubuntu 24.04 x86_64 VM. Public release
 requires the acceptance results below and explicit 3andB owner approval. Do not
@@ -7,7 +7,7 @@ state; upgrades use the separate recovery workflow.
 
 ## Obtain and verify
 
-The publisher supplies these files together: `freo-v0.3.0-rc.2.tar.gz`, its
+The publisher supplies these files together: `freo-v0.3.0-rc.3.tar.gz`, its
 `.asc` detached signature, `SHA256SUMS`, and `publisher.gpg`. Until approved,
 transfer these candidate files privately from the build server using SCP/SFTP.
 They are not yet a published GitHub Release. Never transfer publisher private
@@ -27,10 +27,10 @@ sudo apt-get install -y ca-certificates gnupg
 # Check the primary fingerprint against the trusted value above.
 gpg --show-keys --with-fingerprint ./publisher.gpg
 sha256sum --check SHA256SUMS
-gpgv --keyring "$PWD/publisher.gpg" freo-v0.3.0-rc.2.tar.gz.asc freo-v0.3.0-rc.2.tar.gz
-mkdir freo-v0.3.0-rc.2
-tar -xzf freo-v0.3.0-rc.2.tar.gz -C freo-v0.3.0-rc.2
-cd freo-v0.3.0-rc.2
+gpgv --keyring "$PWD/publisher.gpg" freo-v0.3.0-rc.3.tar.gz.asc freo-v0.3.0-rc.3.tar.gz
+mkdir freo-v0.3.0-rc.3
+tar -xzf freo-v0.3.0-rc.3.tar.gz -C freo-v0.3.0-rc.3
+cd freo-v0.3.0-rc.3
 ```
 
 Stop if any check fails. The signature authenticates the complete archive. The
@@ -49,22 +49,33 @@ capacity guarantee is implied by the unlimited license.
 For the first IP-only HTTP acceptance run:
 
 ```bash
-sudo env FREO_VERSION=0.3.0-rc.2 bash scripts/install.sh
+sudo env FREO_VERSION=0.3.0-rc.3 bash scripts/install.sh
 cd /opt/freo
-sudo env FREO_ENV_FILE=/opt/freo/.env venv/bin/flask --app wsgi:app admin set-password --email YOUR_EMAIL
 sudo bash scripts/validate-install.sh
 ```
 
-Replace `YOUR_EMAIL`. The command prompts twice for a password of at least 16
-characters without echoing it. No default account is installed. The first admin
-receives installation management permission. Open `http://VM_IP/admin` and sign
-in. Use an SSH tunnel for initial HTTP administration if the network is not
-trusted; complete HTTPS before normal public administration.
+Open the printed URL ending in `/admin/login`. Sign in with username **admin**
+and password **IAmOnTheAir**. The installer creates this first-use account
+automatically; no CLI account-creation step is needed. Complete setup immediately
+by entering your administrator email and choosing a private password of at least
+16 characters. You cannot manage stations or licenses until this is complete.
+You can then sign in with `admin` or your chosen email. This is a local account;
+Freo Live registration remains optional.
+
+The initial password stops working after setup. The saved bootstrap marker
+prevents recreating it, and upgrades do not seed accounts or reset passwords.
+The installer validates login and the setup page through the public URL without
+claiming setup. Browser acceptance additionally covers replacing the password,
+logout, rejection of the initial password and login after application restart.
+
+IP-only HTTP setup is supported. Configure HTTPS for public use; the HTTPS mode
+keeps Secure session cookies, while an explicitly saved HTTP origin uses cookies
+that browsers can return over HTTP. Request headers cannot change this policy.
 
 For a fresh domain installation instead, point DNS at the VM first, then use:
 
 ```bash
-sudo env FREO_VERSION=0.3.0-rc.2 FREO_DOMAIN=radio.example.com FREO_ENABLE_HTTPS=1 FREO_CERTBOT_EMAIL=operator@example.com bash scripts/install.sh
+sudo env FREO_VERSION=0.3.0-rc.3 FREO_DOMAIN=radio.example.com FREO_ENABLE_HTTPS=1 FREO_CERTBOT_EMAIL=operator@example.com bash scripts/install.sh
 ```
 
 Replace the example domain and email. This obtains a Let’s Encrypt certificate,
@@ -165,7 +176,10 @@ preparing a fresh request. Do not restore a backup over a database with new writ
 Record the candidate digest, VM image, package versions and results. On this
 separate VM verify:
 
-1. Installation finishes, `/health` and `/ready` succeed, and admin login works.
+1. Installation finishes and `/health` and `/ready` succeed. In a real browser,
+   sign in as `admin` / `IAmOnTheAir`, replace the password, reach the dashboard,
+   log out, confirm the default password fails, and log in with your chosen password.
+   Run this over both an IP-only HTTP origin and the configured HTTPS domain.
 2. Create stations, upload legal test audio, save settings/programming, and hear
    real decoded audio through the public stream. Record hashes and saved values.
 3. Reboot; verify the same accounts, settings, audio and intended running stations.

@@ -107,4 +107,8 @@ if [[ $(stat -c %U:%G:%a /var/lib/freo/uploads) != freo:freo-ingest:2770 ]]; the
   echo 'Web upload staging permissions are not restricted.' >&2
   exit 1
 fi
-printf 'Freo validation passed: web, database, scheduling imports, radio services, private listeners, health, and MP3 bytes.\n'
+(cd "$install_dir" && env FREO_ENV_FILE="$install_dir/.env" "$install_dir/venv/bin/python" "$install_dir/scripts/validate-admin-login.py")
+printf 'Freo validation passed: web, database, scheduling imports, radio services, private listeners, health, and admin login.\n'
+if [[ ${FREO_ENABLE_DIAGNOSTIC:-0} == 1 ]]; then
+  printf 'Diagnostic MP3 stream bytes also verified.\n'
+fi

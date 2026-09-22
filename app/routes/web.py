@@ -224,7 +224,7 @@ def login():
         return render_template('login.html', csrf=token, error='Try again later.'), 429
     email = request.form.get('email', '').strip().lower()[:254]
     password = request.form.get('password', '')
-    user = AdminUser.query.filter_by(email=email, active=True).first()
+    user = AdminUser.query.filter(AdminUser.active.is_(True), db.or_(AdminUser.email == email, AdminUser.username == email)).first()
     # The dummy hash reduces timing differences for unknown accounts.
     valid = check_password_hash(user.password_hash if user else _DUMMY_HASH, password)
     if not user or not valid:
@@ -234,14 +234,53 @@ def login():
             session['login_lock_until'] = time.time() + 900
         token = secrets.token_urlsafe(32)
         session['login_csrf'] = token
-        return render_template('login.html', csrf=token, error='Email or password was not accepted.'), 401
-    session.clear()
-    session['admin_user_id'] = user.id
-    # Initialize together before polling/navigation can send concurrent requests.
-    session['admin_csrf'] = secrets.token_urlsafe(32)
-    session['logout_csrf'] = secrets.token_urlsafe(32)
-    session.permanent = True
-    return redirect(url_for('web.admin_home'))
+        return render_template('login.html', csrf=token, error='Username/email or password was not accepted.'), 401
+    from app.services.admin_setup import sign_in
+    sign_in(user)
+    return redirect(url_for('web.first_setup' if user.setup_required else 'web.admin_home'))
+
+
+@web_blueprint.route('/admin/setup', methods=['GET', 'POST'])
+@admin_required
+def first_setup():
+    user = current_admin()
+    if not user.setup_required:
+        return redirect(url_for('web.admin_home'))
+    error = None
+    if request.method == 'POST':
+        from app.services.admin_auth import require_csrf
+        from app.services.admin_setup import sign_in
+        from app.models import AuditEvent
+        from sqlalchemy import update
+        from sqlalchemy.exc import IntegrityError
+        require_csrf()
+        email = request.form.get('email', '').strip().lower()
+        password = request.form.get('password', '')
+        if not email or '@' not in email or len(email) > 254 or email == 'admin@localhost.invalid':
+            error = 'Enter your administrator email address. This does not register you with Freo Live.'
+        elif len(password) < 16:
+            error = 'Choose a password of at least 16 characters.'
+        elif password != request.form.get('confirmation', ''):
+            error = 'The passwords do not match.'
+        else:
+            try:
+                result = db.session.execute(update(AdminUser).where(AdminUser.id == user.id,
+                    AdminUser.setup_required.is_(True), AdminUser.password_hash == user.password_hash).values(
+                        email=email, password_hash=generate_password_hash(password), setup_required=False))
+                if result.rowcount != 1:
+                    db.session.rollback()
+                    abort(409, 'Setup was already completed. Sign in with your chosen password.')
+                db.session.add(AuditEvent(admin_user_id=user.id, action='admin.setup.complete',
+                    target_type='installation', target_id='1', summary='Completed first-use administrator setup'))
+                db.session.commit()
+                db.session.refresh(user)
+            except IntegrityError:
+                db.session.rollback()
+                error = 'That email already belongs to an administrator.'
+            else:
+                sign_in(user)
+                return redirect(url_for('web.admin_home'))
+    return render_template('admin_setup.html', error=error), (400 if error else 200)
 
 
 @web_blueprint.post('/admin/logout')

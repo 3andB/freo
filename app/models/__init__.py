@@ -17,6 +17,12 @@ class InstallationSettings(db.Model):
     revision = db.Column(db.Integer, nullable=False)
 
 
+class AdminBootstrap(db.Model):
+    __tablename__ = 'admin_bootstrap'
+    __table_args__ = (db.CheckConstraint('id = 1', name='ck_admin_bootstrap_singleton'),)
+    id = db.Column(db.Integer, primary_key=True)
+
+
 class AdminUser(db.Model):
     __tablename__ = 'admin_users'
     id = db.Column(db.Integer, primary_key=True)
@@ -24,6 +30,8 @@ class AdminUser(db.Model):
     password_hash = db.Column(db.String(255), nullable=False)
     active = db.Column(db.Boolean, nullable=False, default=True)
     installation_admin = db.Column(db.Boolean, nullable=False, default=False)
+    username = db.Column(db.String(64), unique=True)
+    setup_required = db.Column(db.Boolean, nullable=False, default=False)
     import_notice_date = db.Column(db.Date)
     created_at = db.Column(db.DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
 

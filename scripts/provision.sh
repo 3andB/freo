@@ -191,6 +191,7 @@ if [[ -f "$install_dir/migrations/env.py" ]]; then
   (cd "$install_dir" && runuser -u freo -- env FREO_ENV_FILE="$install_dir/.env" "$install_dir/venv/bin/flask" --app wsgi:app db upgrade)
   (cd "$install_dir" && runuser -u freo -- env FREO_ENV_FILE="$install_dir/.env" "$install_dir/venv/bin/flask" --app wsgi:app settings import-environment)
 fi
+(cd "$install_dir" && env FREO_ENV_FILE="$install_dir/.env" "$install_dir/venv/bin/flask" --app wsgi:app admin bootstrap)
 unit_src=$source_dir/deploy/systemd/freo.service
 unit_dst=/etc/systemd/system/freo.service
 if [[ -f $unit_dst ]] && ! cmp -s "$unit_src" "$unit_dst"; then
@@ -298,5 +299,6 @@ fi
 bash "$source_dir/scripts/install-statistics.sh" "$source_dir"
 (cd "$install_dir" && bash "$source_dir/scripts/validate-install.sh")
 
-printf 'Create your first administrator with: cd /opt/freo && sudo venv/bin/flask --app wsgi:app admin set-password --email YOUR_EMAIL\n'
+printf 'Open %s/admin/login and sign in with username admin and password IAmOnTheAir.\n' "$public_base"
+printf 'Complete first-time setup immediately: choose your own password before accessing administration.\n'
 printf 'The first administrator manages installation upgrades and licenses. Registration is optional.\n'
