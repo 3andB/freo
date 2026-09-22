@@ -78,7 +78,7 @@ def test_fresh_production_first_login_logout_and_restart(tmp_path,monkeypatch,sc
         driver.get(base+'/')
         assert driver.get_cookie('session')['secure'] is (scheme=='https')
         driver.get(base+'/admin/software')
-        assert 'Software and license' in driver.page_source
+        WebDriverWait(driver,15).until(lambda d:'Software and license' in d.find_element(By.TAG_NAME,'body').text)
     finally:
         if driver: driver.quit()
         server.shutdown();server.server_close();thread.join(timeout=5)
