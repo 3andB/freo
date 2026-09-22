@@ -1,4 +1,5 @@
 """Browser workflows use isolated storage and an isolated station database."""
+import os
 import shutil
 import tempfile
 import threading
@@ -53,9 +54,9 @@ def booth(app_fixture, monkeypatch, tmp_path):
     server=make_server('127.0.0.1',0,app,threaded=True)
     thread=threading.Thread(target=server.serve_forever,daemon=True);thread.start()
     profile=tempfile.mkdtemp(prefix='freo-browser-',dir='/tmp')
-    options=Options();options.binary_location='/usr/bin/chromium-browser'
+    options=Options();options.binary_location=os.environ.get('FREO_TEST_CHROME','/usr/bin/chromium-browser')
     for arg in ['--headless=new','--no-sandbox','--disable-dev-shm-usage','--window-size=1600,1200',f'--user-data-dir={profile}']:options.add_argument(arg)
-    driver=webdriver.Chrome(service=Service('/usr/bin/chromedriver'),options=options)
+    driver=webdriver.Chrome(service=Service(os.environ.get('FREO_TEST_CHROMEDRIVER','/usr/bin/chromedriver')),options=options)
     try:
         base=f'http://127.0.0.1:{server.server_port}'
         driver.get(base+'/admin/login')

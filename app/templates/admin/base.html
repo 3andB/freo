@@ -5,6 +5,7 @@
 {% block header %}
 <header class="admin-topbar">
   <a class="wordmark" href="{{ url_for('web.admin_home') }}">freo<span>.world</span></a>
+  <div class="topbar-monitor-group">
   <div class="topbar-now-playing" data-now-playing role="status"><small data-now-label>Checking playback…</small><strong data-now-title>—</strong><span data-now-artist></span>{% if selected %}<a class="schedule-mode-status" data-status-url="{{ url_for('schedule_studio.read',slug=selected.slug,action='state') }}" href="{{ url_for('schedule_studio.page',slug=selected.slug,view='control') }}">Active mode: {{ selected.scheduling.mode|title if selected.scheduling else 'Calendar' }}</a>{% endif %}</div>
   <div data-station-monitors data-broadcast-url="{{ url_for('web.broadcast_snapshot') }}">
     {% for station in stations if not station.deleted_at %}
@@ -14,6 +15,7 @@
       <button type="button" data-station-monitor-toggle aria-pressed="false" aria-label="Monitor {{ station.name }}">MONITOR</button>
     </div>
     {% endfor %}
+  </div>
   </div>
   <div data-master-monitor data-available-stations='{{ stations|selectattr("enabled")|map(attribute="slug")|list|tojson }}' data-preserve-station data-station="{{ selected.slug if selected else '' }}" data-station-name="{{ selected.name if selected else '' }}" data-stream="{{ selected.stream.public_path if selected and selected.stream else '' }}"></div>
   <div class="admin-topbar-end">{% include '_appearance.html' %}<a href="{{ url_for('web.homepage') }}">Public site</a>

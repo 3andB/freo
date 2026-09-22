@@ -43,7 +43,8 @@ def test_station_homepage_responsive_and_without_javascript(booth):
         driver.get(base+'/')
         assert driver.find_element(By.ID,'station-navigation').is_displayed()
         assert len(driver.find_elements(By.CSS_SELECTOR,'.channel-link'))==2
-        assert driver.find_element(By.CSS_SELECTOR,'.hero-listen').get_attribute('href').endswith('/player/test-station')
+        driver.find_element(By.CSS_SELECTOR,'.hero-listen summary').click()
+        assert len(driver.find_elements(By.CSS_SELECTOR,'.hero-listen .listen-options a')) == 2
     finally:driver.execute_cdp_cmd('Emulation.setScriptExecutionDisabled',{'value':False})
 
 

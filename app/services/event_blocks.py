@@ -159,15 +159,17 @@ def confirm_item_started(decision, now):
     if execution.state!='STARTED': execution.state='STARTED'; execution.started_at=now
     occurrence=execution.timed_event_occurrence
     if occurrence and occurrence.state!='STARTED': occurrence.state='STARTED'; occurrence.started_at=now; occurrence.failure_reason=None
-    if occurrence and execution.playlist and occurrence.runtime.get('playlist_cursor'):
-        occurrence.event.playlist_state = occurrence.runtime['playlist_cursor']
+    if occurrence and execution.playlist:
+        cursors = (occurrence.runtime or {}).get('playlist_cursors', {})
+        cursor = cursors.get(str(item.position)) or (occurrence.runtime or {}).get('playlist_cursor')
+        if cursor:
+            occurrence.event.playlist_state = cursor
     from app.services.traffic import reconcile_placement
     reconcile_placement(item)
 
 
 def create_playlist_execution(occurrence, storage=None):
     """Freeze a finite run; the cursor commits only when its item starts."""
-    import random
     from app.services.playlists import playable_tracks, advance
     event = occurrence.event
     existing = EventBlockExecution.query.filter_by(timed_event_occurrence_id=occurrence.id).first()
@@ -178,7 +180,17 @@ def create_playlist_execution(occurrence, storage=None):
         track, cursor = advance(event.playlist, tracks, event.playlist_state)
         tracks = [track]
         occurrence.runtime = {**(occurrence.runtime or {}), 'playlist_cursor':cursor}
-    elif event.playlist.mode == 'RANDOM': random.shuffle(tracks)
+    elif event.playlist.mode == 'RANDOM':
+        shuffled = []
+        cursor = dict(event.playlist_state or {})
+        cursors = {}
+        for position in range(1, len(tracks) + 1):
+            track, cursor = advance(event.playlist, tracks, cursor,
+                exclude={item.id for item in shuffled})
+            shuffled.append(track)
+            cursors[str(position)] = dict(cursor)
+        tracks = shuffled
+        occurrence.runtime = {**(occurrence.runtime or {}), 'playlist_cursors': cursors}
     execution = EventBlockExecution(station_id=event.station_id, playlist=event.playlist,
         playlist_revision=event.playlist.revision, source='TIMED_EVENT', timed_event_occurrence=occurrence)
     db.session.add(execution)

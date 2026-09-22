@@ -358,7 +358,7 @@ def expire_due(station, now, reason='deadline_exceeded'):
 def recurrence_summary(event):
     if event.recurrence_type == 'ONE_TIME': return 'Once'
     labels = dict(QUARTER_HOUR='Every 15 minutes',HOURLY='Hourly',DAILY='Daily',WEEKLY='Weekly',MONTHLY='Monthly')
-    text = labels[event.recurrence_type]
+    text = f'Hourly at :{event.local_time.minute:02d} past the hour' if event.recurrence_type == 'HOURLY' else labels[event.recurrence_type]
     if event.recurrence_type in ('WEEKLY','HOURLY','QUARTER_HOUR'):
         text += ' · '+', '.join(['Mon','Tue','Wed','Thu','Fri','Sat','Sun'][d] for d in event.repeat_days)
     if event.recurrence_type == 'MONTHLY':

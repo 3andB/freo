@@ -86,7 +86,7 @@ def restore(station,saved):
             clock.next_slot_index=0
     for row in m.PlaylistCursor.query.filter_by(station_id=station.id):
         prior=saved.get('playlists',{}).get(str(row.clock_slot_id))
-        row.state=prior['state'] if prior and row.occurrence_key==prior['occurrence'] else {}
+        row.state=prior['state'] if prior and (row.occurrence_key==prior['occurrence'] or prior['state'].get('mode')=='RANDOM') else {}
     for row in m.RotationCursor.query.filter_by(station_id=station.id):
         row.next_slot_index=saved.get('rotations',{}).get(str(row.rotation_id),0)
 

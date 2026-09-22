@@ -23,7 +23,8 @@ web_blueprint = Blueprint('web', __name__)
 
 @web_blueprint.app_context_processor
 def admin_template_helpers():
-    return {'format_station_time': format_station_time, 'csrf_token': csrf_token}
+    from app.services.timezones import choices
+    return {'format_station_time': format_station_time, 'csrf_token': csrf_token, 'timezone_choices': choices}
 
 
 login_required = admin_required

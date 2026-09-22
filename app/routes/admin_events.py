@@ -52,12 +52,21 @@ def create(slug):
         missed=MISSED, interrupts=INTERRUPTS))
 
 
+def event_local_time(values):
+    minute = values.get('hourly_minute', '')
+    if values.get('recurrence_type') == 'HOURLY' and minute != '':
+        if not minute.isdigit() or not 0 <= int(minute) <= 59:
+            raise ValueError('Choose a minute from 00 to 59')
+        return f'00:{int(minute):02d}:00'
+    return values.get('local_time')
+
+
 def _save(station, row=None):
     return save_event(station.slug, identifier=row.uuid if row else None,
         name=request.form.get('name'), description=request.form.get('description'),
         timing_mode='SOFT' if not row or request.form.get('use_soft') else row.timing_mode, recurrence_type=request.form.get('recurrence_type'),
         content_type=request.form.get('content_type'), content_identifier=request.form.get('content_identifier'),
-        local_date=request.form.get('local_date'), local_time=request.form.get('local_time'), weekday=request.form.get('weekday'),
+        local_date=request.form.get('local_date'), local_time=event_local_time(request.form), weekday=request.form.get('weekday'),
         weekdays=request.form.getlist('weekdays') if 'repeat_days_present' in request.form else None,
         early_tolerance_seconds=0, late_tolerance_seconds=request.form.get('late_tolerance_seconds',300),
         missed_policy=request.form.get('missed_policy','SKIP'), interrupt_policy='NEVER' if not row or request.form.get('use_soft') else row.interrupt_policy, priority=request.form.get('priority',100),
@@ -127,7 +136,7 @@ def preview(slug):
     station=operator_station(slug)
     try:
         rule = recurrence_rule(station, request.args.get('recurrence_type','ONE_TIME'),
-            local_time=request.args.get('local_time'), local_date=request.args.get('local_date'),
+            local_time=event_local_time(request.args), local_date=request.args.get('local_date'),
             weekdays=request.args.getlist('weekdays') if 'repeat_days_present' in request.args or 'weekdays' in request.args else None,
             repeat_hours=request.args.getlist('repeat_hours') if request.args.get('hourly') or request.args.get('recurrence_type') in ('HOURLY','QUARTER_HOUR') else None,
             starts_on=request.args.get('starts_on'), ends_on=request.args.get('ends_on'),

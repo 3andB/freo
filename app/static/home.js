@@ -9,6 +9,10 @@
   scope.listen(menu, 'click', () => { const open = menu.getAttribute('aria-expanded') !== 'true'; nav.classList.toggle('is-open', open); menu.setAttribute('aria-expanded', String(open)); });
   scope.listen(nav, 'click', () => closeMenu());
   scope.listen(document, 'keydown', e => { if (e.key === 'Escape' && menu.getAttribute('aria-expanded') === 'true') closeMenu(true); });
+  for (const picker of document.querySelectorAll('.listen-menu')) {
+    scope.listen(picker, 'keydown', event => { if (event.key === 'Escape') { picker.open = false; picker.querySelector('summary').focus(); } });
+    scope.listen(document, 'click', event => { if (!picker.contains(event.target)) picker.open = false; });
+  }
   const toggle = document.querySelector('.site-theme-toggle');
   const preferred = matchMedia('(prefers-color-scheme: dark)');
   let choice = null;

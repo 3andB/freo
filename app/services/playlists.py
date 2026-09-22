@@ -156,7 +156,7 @@ def playable_tracks(row, station_id, storage):
             if playable(item.track, station_id) and _exists(storage, item.track.station.slug, item.track.storage_key)]
 
 
-def advance(row, tracks, saved):
+def advance(row, tracks, saved, *, exclude=()):
     """Pure cursor step shared by broadcast selection and read-only rehearsal."""
     ids = [track.id for track in tracks]
     eligible = set(ids)
@@ -168,10 +168,15 @@ def advance(row, tracks, saved):
         seen = set(played)
         remaining = [i for i in ids if i not in seen]
         if not remaining:
-            remaining = list(ids)
+            remaining = list(dict.fromkeys(ids))
             played = []
+            # A fresh cycle must not start with the preceding cycle's last song.
+            last = state.get('last') or (state.get('played') or [None])[-1]
+            if len(remaining) > 1:
+                remaining = [identifier for identifier in remaining if identifier != last]
+        remaining = [identifier for identifier in remaining if identifier not in exclude]
         identifier = random.choice(remaining)
-        state = dict(mode=row.mode, played=played + [identifier])
+        state = dict(mode=row.mode, played=played + [identifier], last=identifier)
     else:
         last = state.get('last')
         index = (ids.index(last) + 1) % len(ids) if last in ids else 0
@@ -193,7 +198,8 @@ def select_playlist(station, slot, storage, now, context):
         db.session.add(cursor)
     if cursor.occurrence_key != context['schedule_occurrence']:
         cursor.occurrence_key = context['schedule_occurrence']
-        cursor.state = {}
+        if row.mode != 'RANDOM':
+            cursor.state = {}
     if row.legacy_imaging_group_id:
         from datetime import timedelta
         history = SelectionDecision.query.filter_by(station_id=station.id,status='started').filter(SelectionDecision.track_id.in_([t.id for t in tracks])).order_by(SelectionDecision.started_at.desc()).all()

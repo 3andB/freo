@@ -11,7 +11,7 @@ from tests.test_recovery import postgres
 def test_upgrade_and_restored_application_preserve_settings_identity_and_audio(postgres, tmp_path, monkeypatch):
     from app import create_app
     from app.extensions import db
-    from app.models import Station, Track, AdminUser, SoftwareLicense
+    from app.models import Station, Track, AdminUser, SoftwareLicense, WebsiteAsset, WebsiteSettings, ScheduleCursor
     from app.services.installation_settings import get_setting
 
     target_url, new_database, created = postgres
@@ -82,6 +82,13 @@ def test_upgrade_and_restored_application_preserve_settings_identity_and_audio(p
         application.config['FREO_LICENSE_PUBLIC_KEYS'] = public_keys
         payload = dict(license_id=str(uuid.uuid4()), owner='Restored purchaser', issued_at='2000-01-01T00:00:00+00:00', product='Freo', edition='unlimited', updates='all-future', installations='all-owned', expires=None)
         activate(dict(payload=payload, key_id='fixture', signature=base64.b64encode(issuer.sign(signing_bytes(payload))).decode()))
+        from app.services.website import DEFAULTS
+        image_id='c'*64
+        website_values=dict(DEFAULTS,channel_image_1=image_id)
+        db.session.add(WebsiteAsset(id=image_id,image=b'preserved channel image',small=b'preserved thumbnail'))
+        db.session.add(WebsiteSettings(id=1,draft=website_values,published=website_values,revision=1))
+        db.session.add(ScheduleCursor(station_id=1,key='shuffle-fixture',state={'mode':'RANDOM','played':[1],'last':1}))
+        db.session.commit()
         assert get_setting('FREO_MAX_STATIONS') == 11
         assert db.session.get(Station, 1).freo_station_id == station_uuid
         db.session.remove()
@@ -112,6 +119,10 @@ def test_upgrade_and_restored_application_preserve_settings_identity_and_audio(p
         assert AdminUser.query.one().installation_admin is False
         assert get_setting('FREO_MAX_STATIONS') == 11
         assert get_setting('PUBLIC_BASE_URL') == 'https://preserved.example'
+        assert db.session.get(WebsiteSettings,1).published['channel_image_1']==image_id
+        assert db.session.get(WebsiteAsset,image_id).image==b'preserved channel image'
+        assert db.session.get(WebsiteAsset,image_id).small==b'preserved thumbnail'
+        assert db.session.get(ScheduleCursor,(1,'shuffle-fixture')).state=={'mode':'RANDOM','played':[1],'last':1}
         restored_station = Station.query.one()
         restored_track = Track.query.one()
         assert restored_station.freo_station_id == station_uuid

@@ -305,3 +305,6 @@ html{scroll-behavior:auto}.admin-primary{display:inline-flex;align-items:center;
 }
 
 .schedule-links a{margin-left:12px}.schedule-mode-status{font-size:11px;color:var(--theme-accent);text-decoration:none}.event-audio-browser{grid-column:1/-1}#event-audio-results{display:flex;flex-direction:column;max-height:300px;overflow:auto;gap:5px}
+
+/* Keep the station prompt immediately above its monitor controls. */
+.topbar-monitor-group{display:flex;flex:1 1 300px;min-width:0;flex-direction:column;gap:8px}.topbar-monitor-group .topbar-now-playing{flex:none;order:0}.topbar-monitor-group [data-station-monitors]{max-width:100%;flex:none;flex-wrap:wrap}.master-monitor .monitor-state{grid-row:1}.master-monitor button,.master-monitor .monitor-volume{grid-row:2}

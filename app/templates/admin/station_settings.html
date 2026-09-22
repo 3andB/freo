@@ -1,3 +1,4 @@
+{% from 'admin/_timezone.html' import timezone_select with context %}
 {% extends 'admin/base.html' %}
 {% block title %}{{ selected.name }} · Station settings{% endblock %}
 {% block admin_content %}
@@ -20,7 +21,7 @@
 <div class="settings-columns"><label>Contact email<input type="email" name="contact_email" value="{{ values.contact_email }}" maxlength="254"></label><label>Phone<input type="tel" name="phone" value="{{ values.phone }}" maxlength="40"></label></div>
 <label><input type="checkbox" name="publish_contact" value="yes" {% if values.publish_contact %}checked{% endif %}> Publish contact email and phone on the station’s public page</label>
 <label>Station description<textarea name="description" maxlength="500" rows="4">{{ values.description }}</textarea></label>
-<label>Timezone<input name="timezone" value="{{ values.timezone }}" required maxlength="64" placeholder="Australia/Perth"><small>Future Events keep their local date and time in the new timezone. Queued events are rescheduled; audio already playing finishes. Past playback times stay unchanged.</small></label>
+<label>Timezone{{ timezone_select(values.timezone) }}<small>Future Events keep their local date and time in the new timezone. Queued events are rescheduled; audio already playing finishes. Past playback times stay unchanged.</small></label>
 <p><a href="{{ url_for('player_experience.settings',slug=selected.slug) }}">Customize player, cover artwork, messages, social links, ads & listener votes →</a></p><h2>Station logo</h2>
 {% if selected.logo %}<img class="station-logo settings-logo" src="{{ url_for('station_settings.logo',slug=selected.slug,v=selected.logo.version) }}" alt="Current station logo"><label><input type="checkbox" name="remove_logo" value="yes"> Remove logo</label>{% endif %}
 <label>Upload or replace logo<input name="logo" type="file" accept="image/jpeg,image/png,image/webp"></label><p class="quiet">JPEG, PNG or WebP, up to 10 MB and 3000 × 3000 pixels. A square (1:1) logo is recommended.</p>

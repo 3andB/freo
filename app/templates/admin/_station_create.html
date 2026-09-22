@@ -1,3 +1,4 @@
+{% from 'admin/_timezone.html' import timezone_select with context %}
 <section class="admin-card station-create" id="add-station">
   <div class="station-create-heading"><div><h2>Add station</h2><p>A new home for your next great sound.</p></div><span class="station-capacity">{{ stations|length }} / {{ station_limit or 'unlimited' }} stations</span></div>
   {% if not station_limit or stations|length < station_limit %}
@@ -7,7 +8,7 @@
       <label>Station name<input name="name" maxlength="120" placeholder="e.g. Ocean Drive Radio" required></label>
       <label>Station ID<input name="slug" pattern="[a-z0-9]+(-[a-z0-9]+)*" maxlength="64" placeholder="e.g. ocean-drive" aria-describedby="station-id-help" required><small id="station-id-help">Use lowercase letters, numbers and hyphens. This ID cannot be changed later.</small></label>
       <label class="field-wide"><span>Description <small class="field-help">· Optional</small></span><textarea name="description" maxlength="500" rows="3" placeholder="Tell listeners what makes your station special."></textarea></label>
-      <label>Timezone<input name="timezone" value="UTC" aria-describedby="station-timezone-help" required><small id="station-timezone-help">Used for scheduling. For example, America/New_York.</small></label>
+      <label>Timezone{{ timezone_select('UTC') }}<small id="station-timezone-help">Used for scheduling. For example, America/New_York.</small></label>
     </div>
     <div class="form-actions"><button class="ui-primary" type="submit">Add station</button></div>
   </form>

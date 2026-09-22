@@ -63,7 +63,7 @@ def config(preview=False):
 
 
 def asset_ids(values):
-    return {values.get(key) for key in ASSETS if values.get(key)}
+    return {value for key, value in values.items() if (key in ASSETS or re.fullmatch(r'channel_image_[0-9]+', key)) and isinstance(value, str) and value}
 
 
 def contrast(a, b):
@@ -134,13 +134,13 @@ def validate(form, previous):
 
 def upload_assets(files, form, values):
     from app.routes.station_settings import decode_logo
-    for kind in ASSETS:
+    for kind in (*ASSETS, *(f'channel_image_{channel.id}' for channel in channels())):
         upload = files.get(kind)
         remove = form.get('remove_' + kind) == 'yes'
         if upload and upload.filename:
             if remove:
                 raise ValueError('Choose replace or remove for each image')
-            image, small = decode_logo(upload, output_limit=2000 if kind in ('hero', 'about_image', 'share_image') else 512)
+            image, small = decode_logo(upload, output_limit=2000 if kind in ('hero', 'about_image', 'share_image') or kind.startswith('channel_image_') else 512)
             identifier = hashlib.sha256(image).hexdigest()
             if not db.session.get(WebsiteAsset, identifier):
                 db.session.add(WebsiteAsset(id=identifier, image=image, small=small))
@@ -199,6 +199,8 @@ def presentation(values=None, preview=False):
         online = snapshot.broadcast_online if fresh else None
         art = (url_for('player_experience.asset', slug=station.slug, kind='cover', v=covers[station.id]) if station.id in covers else
                url_for('station_settings.logo', slug=station.slug, v=station.logo.version) if station.logo else None)
+        if values.get(f'channel_image_{station.id}'):
+            art = image_url(values, f'channel_image_{station.id}', preview)
         cards.append(dict(station=station, artwork=art, url=preferred_url(station),
                           status='On air' if online else 'Off air' if online is False else 'Status unavailable',
                           online=online, state_url=url_for('player_experience.public_state', slug=station.public_slug or station.slug)))

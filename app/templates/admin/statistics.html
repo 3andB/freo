@@ -1,3 +1,4 @@
+{% from 'admin/_timezone.html' import timezone_select with context %}
 {% extends 'admin/base.html' %}
 {% block title %}Statistics · {{ selected.name if selected else 'All stations' }} · Freo{% endblock %}
 {% block head %}{{ super() }}<link rel="stylesheet" href="{{ url_for('static',filename='vendor/maplibre/maplibre-gl.css') }}"><link rel="stylesheet" href="{{ url_for('static',filename='statistics.css',v='1') }}">{% endblock %}
@@ -9,7 +10,7 @@
     <label>Station<select id="stats-scope"><option value="{{ url_for('statistics.page') }}" {% if not selected %}selected{% endif %}>All stations</option>{% for station in stations %}<option value="{{ url_for('statistics.page',slug=station.slug) }}" {% if selected and selected.id==station.id %}selected{% endif %}>{{ station.name }}{{ ' · Archived' if station.deleted_at else '' }}</option>{% endfor %}</select></label>
     <label>Period<select name="range" id="stats-range">{% for value,label in [('live','Live · past hour'),('24h','Past 24 hours'),('yesterday','Yesterday'),('7d','Past week'),('30d','Past month'),('365d','Past year'),('month','This month'),('year','This year'),('custom','Custom dates')] %}<option value="{{ value }}" {% if value=='24h' %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
     <label class="stats-custom" hidden>From<input type="date" name="start"></label><label class="stats-custom" hidden>Through<input type="date" name="end"></label>
-    <label>Timezone<input name="timezone" aria-label="Reporting timezone" value="{{ selected.timezone if selected else 'UTC' }}" list="stats-zones"><datalist id="stats-zones"><option>UTC</option><option>Australia/Perth</option><option>Europe/London</option><option>America/New_York</option><option>America/Los_Angeles</option></datalist></label>
+    <label>Timezone{{ timezone_select(selected.timezone if selected else 'UTC') }}</label>
     <label class="stats-compare"><input type="checkbox" name="compare" value="1"> Compare previous period</label><button type="submit" class="ui-primary">Apply</button><a id="stats-export" download="freo-statistics.csv">Export CSV ↗</a>
   </form>
   <div class="stats-tabs" role="tablist" aria-label="Statistics sections">{% for value,label in [('overview','Overview'),('audience','Audience'),('music','Music'),('engagement','Engagement'),('resources','Resources'),('reliability','Reliability')] %}<button role="tab" id="stats-tab-{{ value }}" aria-controls="stats-panels" aria-selected="{{ 'true' if loop.first else 'false' }}" data-tab="{{ value }}" tabindex="{{ '0' if loop.first else '-1' }}">{{ label }}</button>{% endfor %}</div>

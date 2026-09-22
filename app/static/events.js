@@ -15,7 +15,7 @@
   }
   function update() {
     const kind=recurrence.value, repeating=['WEEKLY','HOURLY','QUARTER_HOUR'].includes(kind);
-    for(const [selector,visible] of [['[data-event-once]',kind==='ONE_TIME'],['[data-event-days]',repeating],['[data-event-hours]',repeating],['[data-weekly-hourly]',kind==='WEEKLY'],['[data-event-month]',kind==='MONTHLY'],['[data-event-range]',kind!=='ONE_TIME'],['[data-quarter-help]',kind==='QUARTER_HOUR'],['[data-playlist-playback]',fields.content_type.value==='PLAYLIST']])show(selector,visible);
+    for(const [selector,visible] of [['[data-hourly-minute]',kind==='HOURLY'],['[data-event-once]',kind==='ONE_TIME'],['[data-event-days]',repeating],['[data-event-hours]',repeating],['[data-weekly-hourly]',kind==='WEEKLY'],['[data-event-month]',kind==='MONTHLY'],['[data-event-range]',kind!=='ONE_TIME'],['[data-quarter-help]',kind==='QUARTER_HOUR'],['[data-playlist-playback]',fields.content_type.value==='PLAYLIST']])show(selector,visible);
     show('[data-event-hour-choices]',repeating && (kind!=='WEEKLY' || fields.hourly.checked));
     show('[data-event-month-day]',kind==='MONTHLY' && fields.month_nth.value==='0');
     show('[data-event-month-weekday]',kind==='MONTHLY' && !['0','-2'].includes(fields.month_nth.value));

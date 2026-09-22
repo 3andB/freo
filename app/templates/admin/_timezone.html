@@ -1,0 +1,1 @@
+{% macro timezone_select(current, name='timezone') %}<select name="{{ name }}" required aria-label="Timezone">{% for zone,label in timezone_choices() %}<option value="{{ zone }}" {% if current==zone %}selected{% endif %}>{{ label }}</option>{% endfor %}</select>{% endmacro %}

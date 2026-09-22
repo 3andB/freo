@@ -33,7 +33,7 @@ guide. Separate fresh installation from upgrades; never instruct an existing
 user to rerun the installer or replace their database.
 
 Use [install-candidate.md](install-candidate.md) as the current operator guide.
-Fresh rc.3 installs automatically create `admin` / `IAmOnTheAir` for first-use
+Fresh rc.4 installs automatically create `admin` / `IAmOnTheAir` for first-use
 setup. Require a new password before administration; remove the old first-admin
 CLI instruction from website copy. The initial account is never recreated by upgrades.
 After VM acceptance and owner approval, adapt candidate wording to the approved

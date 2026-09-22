@@ -7,7 +7,6 @@ import calendar as month_calendar
 import copy
 import hashlib
 import json
-import random
 import uuid
 from datetime import date, datetime, time, timedelta, timezone
 from zoneinfo import ZoneInfo
@@ -462,20 +461,24 @@ def select_visual(station, resolved, storage, now):
         ref=fallback(station);tracks=source_tracks(station,ref,storage)
         resolved=dict(resolved,key=resolved['key']+':fallback',reason='Source unavailable')
     if not tracks:return None
-    key=hashlib.sha256((resolved['key']+json.dumps(ref,sort_keys=True)).encode()).hexdigest()
-    cursor=ScheduleCursor.query.filter_by(station_id=station.id,key=key).with_for_update().first()
-    if not cursor:
-        cursor=ScheduleCursor(station_id=station.id,key=key,state={});db.session.add(cursor)
-    saved=dict(cursor.state or {});ids=[t.id for t in tracks]
     ordered=ref.get('order')=='straight' or ref['kind'] in ('song','album') and ref.get('order')!='shuffle'
     if ref['kind']=='playlist' and ref.get('order','default')=='default':ordered=db.session.get(Playlist,ref['id']).mode!='RANDOM'
-    if ordered:
-        index=(ids.index(saved['last'])+1)%len(ids) if saved.get('last') in ids else 0
-        chosen=tracks[index];cursor.state={'last':chosen.id}
-    else:
-        seen=set(saved.get('played',[]));remaining=[t for t in tracks if t.id not in seen]
-        if not remaining:remaining=tracks;seen=set()
-        chosen=random.choice(remaining);cursor.state={'played':list(seen|{chosen.id})}
+    # Random cycles belong to this station and source, not a date, activation,
+    # or repeated Show/Block instance. Their state remains in the database.
+    identity = resolved['key']+json.dumps(ref,sort_keys=True) if ordered else 'shuffle:'+json.dumps(
+        {k:v for k,v in ref.items() if k not in ('name','version','order')},sort_keys=True)
+    key=hashlib.sha256(identity.encode()).hexdigest()
+    cursor=ScheduleCursor.query.filter_by(station_id=station.id,key=key).with_for_update().first()
+    if not cursor:
+        previous_key=hashlib.sha256((resolved['key']+json.dumps(ref,sort_keys=True)).encode()).hexdigest()
+        previous=db.session.get(ScheduleCursor,(station.id,previous_key)) if not ordered else None
+        state=dict(previous.state,mode='RANDOM') if previous else {}
+        cursor=ScheduleCursor(station_id=station.id,key=key,state=state);db.session.add(cursor)
+    saved=dict(cursor.state or {})
+    from types import SimpleNamespace
+    from app.services.playlists import advance
+    mode='STRAIGHT' if ordered else 'RANDOM'
+    chosen,cursor.state=advance(SimpleNamespace(mode=mode),tracks,dict(saved,mode=saved.get('mode',mode)))
     decision=SelectionDecision(station_id=station.id,track_id=chosen.id,status='selected',selected_at=now,
         selection_method='schedule_insert' if resolved.get('insert') else 'visual_schedule',schedule_occurrence=resolved['key'][:120],reason='default_playlist' if resolved.get('reason') else None,
         candidate_count=len(tracks),relaxation='intentional_loop')
