@@ -1,6 +1,10 @@
 # Changelog
 
-## 0.3.0-rc.1 — installation candidate
+## 0.3.0-rc.2 — installation candidate
+
+- Correct HTTPS installation to save an HTTPS public URL before importing
+  database settings, reject incomplete HTTPS inputs before provisioning, and
+  explicitly enable the certificate renewal timer. Supersedes test candidate rc.1.
 
 - Apply the 3andB source-available terms: three stations per owner for free;
   US$99 once for unlimited stations across all owned installations and future updates.

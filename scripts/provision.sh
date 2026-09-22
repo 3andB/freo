@@ -28,6 +28,28 @@ if [[ ! -d "$source_dir/app" ]]; then
   echo 'Missing application files.' >&2
   exit 1
 fi
+# Validate HTTPS inputs before installing packages or creating any durable state.
+domain=${FREO_DOMAIN:-}
+if [[ -n $domain && ! $domain =~ ^[A-Za-z0-9.-]+$ ]]; then
+  echo 'FREO_DOMAIN contains invalid characters.' >&2
+  exit 1
+fi
+if [[ ${FREO_ENABLE_HTTPS:-0} != 0 && ${FREO_ENABLE_HTTPS:-0} != 1 ]]; then
+  echo 'FREO_ENABLE_HTTPS must be 0 or 1.' >&2
+  exit 1
+fi
+public_scheme=http
+if [[ ${FREO_ENABLE_HTTPS:-0} == 1 ]]; then
+  if [[ -z $domain || -z ${FREO_CERTBOT_EMAIL:-} ]]; then
+    echo 'HTTPS requires FREO_DOMAIN and FREO_CERTBOT_EMAIL.' >&2
+    exit 1
+  fi
+  public_scheme=https
+fi
+public_base=$public_scheme://${domain:-localhost}
+if [[ -z $domain ]]; then
+  public_base=http://$(hostname -I | awk '{print $1}')
+fi
 printf '%s\n' 'Freo automatically reports installation identity, version, machine facts, channel metadata and hourly aggregate totals to api.freo.live.' 'No owner account is required. Listener identities/IPs and music metadata are not sent; public directory listing is opt-in.'
 export DEBIAN_FRONTEND=noninteractive
 printf 'Installing Freo dependencies; Icecast will use the supported 2.5 series...\n'
@@ -126,15 +148,6 @@ CREATE ROLE freo LOGIN PASSWORD '$db_password';
 SQL
   if ! runuser -u postgres -- psql -tAc "SELECT 1 FROM pg_database WHERE datname='freo'" | grep -qx 1; then
     runuser -u postgres -- createdb -O freo freo
-  fi
-  domain=${FREO_DOMAIN:-}
-  if [[ -n $domain && ! $domain =~ ^[A-Za-z0-9.-]+$ ]]; then
-    echo 'FREO_DOMAIN contains invalid characters.' >&2
-    exit 1
-  fi
-  public_base=http://${domain:-localhost}
-  if [[ -z $domain ]]; then
-    public_base=http://$(hostname -I | awk '{print $1}')
   fi
   umask 077
   cat > "$install_dir/.env" <<ENV
@@ -267,11 +280,8 @@ install -m 0644 "$source_dir/deploy/systemd/freo-provision.timer" /etc/systemd/s
 systemctl daemon-reload
 systemctl enable --now freo-provision.timer
 if [[ ${FREO_ENABLE_HTTPS:-0} == 1 ]]; then
-  if [[ -z ${FREO_DOMAIN:-} || -z ${FREO_CERTBOT_EMAIL:-} ]]; then
-    echo 'HTTPS requires FREO_DOMAIN and FREO_CERTBOT_EMAIL.' >&2
-    exit 1
-  fi
   certbot --nginx --non-interactive --agree-tos --redirect -m "$FREO_CERTBOT_EMAIL" -d "$FREO_DOMAIN"
+  systemctl enable --now certbot.timer
 fi
 if [[ ${FREO_ENABLE_DIAGNOSTIC:-0} == 1 ]]; then
 for attempt in {1..30}; do

@@ -1,4 +1,4 @@
-# Freo 0.3.0-rc.1 installation candidate
+# Freo 0.3.0-rc.2 installation candidate
 
 This is a release candidate for a separate Ubuntu 24.04 x86_64 VM. Public release
 requires the acceptance results below and explicit 3andB owner approval. Do not
@@ -7,7 +7,7 @@ state; upgrades use the separate recovery workflow.
 
 ## Obtain and verify
 
-The publisher supplies these files together: `freo-v0.3.0-rc.1.tar.gz`, its
+The publisher supplies these files together: `freo-v0.3.0-rc.2.tar.gz`, its
 `.asc` detached signature, `SHA256SUMS`, and `publisher.gpg`. Until approved,
 transfer these candidate files privately from the build server using SCP/SFTP.
 They are not yet a published GitHub Release. Never transfer publisher private
@@ -27,10 +27,10 @@ sudo apt-get install -y ca-certificates gnupg
 # Check the primary fingerprint against the trusted value above.
 gpg --show-keys --with-fingerprint ./publisher.gpg
 sha256sum --check SHA256SUMS
-gpgv --keyring "$PWD/publisher.gpg" freo-v0.3.0-rc.1.tar.gz.asc freo-v0.3.0-rc.1.tar.gz
-mkdir freo-v0.3.0-rc.1
-tar -xzf freo-v0.3.0-rc.1.tar.gz -C freo-v0.3.0-rc.1
-cd freo-v0.3.0-rc.1
+gpgv --keyring "$PWD/publisher.gpg" freo-v0.3.0-rc.2.tar.gz.asc freo-v0.3.0-rc.2.tar.gz
+mkdir freo-v0.3.0-rc.2
+tar -xzf freo-v0.3.0-rc.2.tar.gz -C freo-v0.3.0-rc.2
+cd freo-v0.3.0-rc.2
 ```
 
 Stop if any check fails. The signature authenticates the complete archive. The
@@ -49,7 +49,7 @@ capacity guarantee is implied by the unlimited license.
 For the first IP-only HTTP acceptance run:
 
 ```bash
-sudo env FREO_VERSION=0.3.0-rc.1 bash scripts/install.sh
+sudo env FREO_VERSION=0.3.0-rc.2 bash scripts/install.sh
 cd /opt/freo
 sudo env FREO_ENV_FILE=/opt/freo/.env venv/bin/flask --app wsgi:app admin set-password --email YOUR_EMAIL
 sudo bash scripts/validate-install.sh
@@ -64,10 +64,15 @@ trusted; complete HTTPS before normal public administration.
 For a fresh domain installation instead, point DNS at the VM first, then use:
 
 ```bash
-sudo env FREO_VERSION=0.3.0-rc.1 FREO_DOMAIN=radio.example.com FREO_ENABLE_HTTPS=1 FREO_CERTBOT_EMAIL=operator@example.com bash scripts/install.sh
+sudo env FREO_VERSION=0.3.0-rc.2 FREO_DOMAIN=radio.example.com FREO_ENABLE_HTTPS=1 FREO_CERTBOT_EMAIL=operator@example.com bash scripts/install.sh
 ```
 
-Replace the example domain and email. Do not run this second install command on
+Replace the example domain and email. This obtains a Let’s Encrypt certificate,
+redirects HTTP to HTTPS, saves the HTTPS public URL and enables `certbot.timer`.
+After installation run `sudo certbot renew --dry-run` on the test VM to verify
+renewal with its actual DNS and network configuration.
+
+Replace the example values before use. Do not run this second install command on
 an already installed VM. To add HTTPS after the IP-only run, configure the
 intended Nginx server name, obtain its certificate with Certbot, and update the
 saved public URL/domain settings using `flask settings set` with the current
