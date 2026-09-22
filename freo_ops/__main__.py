@@ -40,11 +40,12 @@ def inventory(env_file, values):
     return recovery.normalize_roots(roots)
 
 
-def active_units():
+def active_units(*, include_updater=False):
     raw = recovery.run(['systemctl', 'list-units', '--all', '--no-pager', '--output=json',
                         '--type=service', '--type=timer', 'freo*'])
     return [row['unit'] for row in json.loads(raw)
-            if row['active'] not in ('inactive', 'failed')]
+            if row['active'] not in ('inactive', 'failed')
+            and (include_updater or row['unit'] not in ('freo-updater.service', 'freo-updater.timer'))]
 
 
 def installed_version():
@@ -117,7 +118,7 @@ def main(argv=None):
         elif args.command in ('inventory', 'backup'):
             values = configuration(args.env_file)
             roots = inventory(args.env_file, values)
-            units = active_units()
+            units = active_units(include_updater=True)
             if args.command == 'inventory':
                 result = dict(roots=[str(p) for p in roots], active_units=units,
                               services_stopped=not units)

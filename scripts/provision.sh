@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
+umask 022
 
 source_dir=${1:?source directory required}
 install_dir=${FREO_INSTALL_DIR:-/opt/freo}
@@ -19,6 +20,10 @@ if [[ ${ID:-} != ubuntu || ${VERSION_ID:-} != 24.04 ]]; then
   echo 'Freo installer supports Ubuntu 24.04 only.' >&2
   exit 1
 fi
+if [[ $(uname -m) != x86_64 ]]; then
+  echo 'Freo installer supports x86_64 servers only.' >&2
+  exit 1
+fi
 if [[ ! -d "$source_dir/app" ]]; then
   echo 'Missing application files.' >&2
   exit 1
@@ -30,7 +35,7 @@ apt-get update
 apt-get install --no-upgrade -y python3 ca-certificates gnupg
 bash "$source_dir/scripts/configure-icecast-repository.sh"
 apt-get update
-apt-get install --no-upgrade -y python3 python3-venv python3-pip tzdata git nginx postgresql postgresql-contrib openssl certbot python3-certbot-nginx liquidsoap ffmpeg acl
+apt-get install --no-upgrade -y python3 python3-venv python3-pip tzdata curl git nginx postgresql postgresql-contrib openssl certbot python3-certbot-nginx liquidsoap ffmpeg acl
 # The trusted-proxy configuration requires Icecast 2.5 even on existing installs.
 # Keep dpkg from removing the old package's empty directory during upgrade;
 # Xiph's post-install script still expects it but no longer ships the directory.
@@ -83,8 +88,13 @@ install -d -o freo -g freo -m 0750 /var/lib/freo/state
 install -d -o icecast2 -g icecast -m 0750 /var/log/icecast2
 # Only named release files are deployed; .env, media, .git and runtime files stay untouched.
 if [[ $source_dir != "$install_dir" ]]; then
-  cp -R "$source_dir/app" "$install_dir/"
-  cp -R "$source_dir/freo_ops" "$install_dir/"
+  for directory in app freo_ops migrations deploy scripts docs; do
+    cp -R "$source_dir/$directory" "$install_dir/"
+  done
+  install -m 0644 "$source_dir/LICENSE" "$install_dir/LICENSE"
+  if [[ -f "$source_dir/release.json" ]]; then
+    install -m 0644 "$source_dir/release.json" "$install_dir/release.json"
+  fi
 fi
 chown -R root:root "$install_dir/app"
 chown -R root:root "$install_dir/freo_ops"
@@ -107,6 +117,10 @@ if [[ ! -f "$install_dir/.env" ]]; then
   fi
   db_password=$(openssl rand -hex 32)
   app_secret=$(openssl rand -hex 32)
+  if runuser -u postgres -- psql -tAc "SELECT 1 FROM pg_database WHERE datname='freo'" | grep -qx 1; then
+    echo 'Existing Freo database found; refusing fresh installation. Use recovery/adoption.' >&2
+    exit 1
+  fi
   runuser -u postgres -- psql -v ON_ERROR_STOP=1 >/dev/null <<SQL
 CREATE ROLE freo LOGIN PASSWORD '$db_password';
 SQL
@@ -135,6 +149,7 @@ FREO_MAX_STATIONS=${FREO_MAX_STATIONS:-3}
 ENV
   unset db_password app_secret
 fi
+umask 022
 chown root:freo "$install_dir/.env"
 chmod 0640 "$install_dir/.env"
 if ! grep -q '^SECRET_KEY=' "$install_dir/.env"; then
@@ -172,7 +187,7 @@ install -m 0644 "$unit_src" "$unit_dst"
 systemctl daemon-reload
 systemctl enable --now freo.service
 systemctl restart freo.service
-for service in icecast2 freo-playout freo-playout@ freo-automation freo-ingest freo-provision freo-public-schedules freo-central-api; do
+for service in icecast2 freo-playout freo-playout@ freo-automation freo-ingest freo-provision freo-public-schedules freo-central-api freo-updater; do
   unit_src="$source_dir/deploy/systemd/$service.service"
   unit_dst="/etc/systemd/system/$service.service"
   if [[ -f $unit_dst ]] && ! cmp -s "$unit_src" "$unit_dst"; then
@@ -196,6 +211,9 @@ systemctl restart freo-central-api.service
 install -m 0644 "$source_dir/deploy/systemd/freo-public-schedules.timer" /etc/systemd/system/freo-public-schedules.timer
 systemctl daemon-reload
 systemctl enable --now freo-public-schedules.timer
+install -m 0644 "$source_dir/deploy/systemd/freo-updater.timer" /etc/systemd/system/freo-updater.timer
+systemctl daemon-reload
+systemctl enable --now freo-updater.timer
 systemctl reload icecast2.service
 install -m 0644 "$source_dir/deploy/nginx/stream-location.conf" /etc/nginx/snippets/freo-stream.conf
 install -m 0644 "$source_dir/deploy/nginx/admin-upload.conf" /etc/nginx/snippets/freo-admin-upload.conf
@@ -268,6 +286,7 @@ for attempt in {1..30}; do
 done
 fi
 bash "$source_dir/scripts/install-statistics.sh" "$source_dir"
-"$source_dir/scripts/validate-install.sh"
+(cd "$install_dir" && bash "$source_dir/scripts/validate-install.sh")
 
-printf 'Complete registration in Admin → Installation with the station manager email.\n'
+printf 'Create your first administrator with: cd /opt/freo && sudo venv/bin/flask --app wsgi:app admin set-password --email YOUR_EMAIL\n'
+printf 'The first administrator manages installation upgrades and licenses. Registration is optional.\n'

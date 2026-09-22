@@ -11,7 +11,7 @@ from tests.test_recovery import postgres
 def test_upgrade_and_restored_application_preserve_settings_identity_and_audio(postgres, tmp_path, monkeypatch):
     from app import create_app
     from app.extensions import db
-    from app.models import Station, Track
+    from app.models import Station, Track, AdminUser, SoftwareLicense
     from app.services.installation_settings import get_setting
 
     target_url, new_database, created = postgres
@@ -52,6 +52,11 @@ def test_upgrade_and_restored_application_preserve_settings_identity_and_audio(p
         db.session.commit()
         track_uuid = track.uuid
         public_id = track.freo_track_id
+    # An old admin row must be preserved without silently granting root-upgrade access.
+    con = recovery.connect(source_url)
+    with con, con.cursor() as cursor:
+        cursor.execute("INSERT INTO admin_users (email,password_hash,active,created_at) VALUES ('existing@example.test','unchanged-hash',true,now())")
+    con.close()
     result = runner.invoke(args=['db', 'upgrade'])
     assert result.exit_code == 0, result.output
     result = runner.invoke(args=['settings', 'import-environment'])
@@ -60,6 +65,16 @@ def test_upgrade_and_restored_application_preserve_settings_identity_and_audio(p
     assert runner.invoke(args=['settings', 'import-environment']).exit_code == 0
     assert runner.invoke(args=['db', 'upgrade']).exit_code == 0
     with application.app_context():
+        assert AdminUser.query.one().password_hash == 'unchanged-hash'
+        assert AdminUser.query.one().installation_admin is False
+        from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+        import base64
+        from app.services.software_license import activate, signing_bytes
+        issuer = Ed25519PrivateKey.generate()
+        public_keys = {'fixture': base64.b64encode(issuer.public_key().public_bytes_raw()).decode()}
+        application.config['FREO_LICENSE_PUBLIC_KEYS'] = public_keys
+        payload = dict(license_id=str(uuid.uuid4()), owner='Restored purchaser', issued_at='2000-01-01T00:00:00+00:00', product='Freo', edition='unlimited', updates='all-future', installations='all-owned', expires=None)
+        activate(dict(payload=payload, key_id='fixture', signature=base64.b64encode(issuer.sign(signing_bytes(payload))).decode()))
         assert get_setting('FREO_MAX_STATIONS') == 11
         assert db.session.get(Station, 1).freo_station_id == station_uuid
         db.session.remove()
@@ -77,7 +92,13 @@ def test_upgrade_and_restored_application_preserve_settings_identity_and_audio(p
     monkeypatch.setenv('DATABASE_URL', restored_uri.render_as_string(hide_password=False))
     monkeypatch.setenv('FREO_MEDIA_ROOT', str(tmp_path / 'restore/root-0'))
     restored_app = create_app('testing')
+    restored_app.config['FREO_LICENSE_PUBLIC_KEYS'] = public_keys
     with restored_app.app_context():
+        from app.services.software_license import status
+        assert status()['owner'] == 'Restored purchaser'
+        assert status()['expires'] is None
+        assert AdminUser.query.one().password_hash == 'unchanged-hash'
+        assert AdminUser.query.one().installation_admin is False
         assert get_setting('FREO_MAX_STATIONS') == 11
         assert get_setting('PUBLIC_BASE_URL') == 'https://preserved.example'
         restored_station = Station.query.one()

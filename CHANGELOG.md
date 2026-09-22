@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.3.0-rc.1 — installation candidate
+
+- Apply the 3andB source-available terms: three stations per owner for free;
+  US$99 once for unlimited stations across all owned installations and future updates.
+- Store signed perpetual licenses in PostgreSQL and verify them offline.
+- Separate installation administration from station administration; add explicit
+  browser approval of root-prepared signed upgrades with mandatory recovery checks.
+- Complete installer source layout, x86_64 guard and private-file permissions;
+  include signed dependency bundles and detailed operator/website handoff guides.
+
+Migration: `d02f9a41c830` → `e83b9204c6af`, additive. Existing accounts do not
+automatically gain installation privileges. Separate VM acceptance and owner
+approval are required before publication.
+
 ## 0.2.0 — unreleased
 
 - Persist installation URL/domain settings, station limits, upload limits and

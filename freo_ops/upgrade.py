@@ -68,6 +68,7 @@ def release_environment(values, env_file):
 def rewrite_unit(body):
     body = body.replace('/opt/freo/current/', '/opt/freo/').replace('WorkingDirectory=/opt/freo/current\n', 'WorkingDirectory=/opt/freo\n')
     return body.replace('EnvironmentFile=/opt/freo/.env', 'EnvironmentFile=/etc/freo/freo.env').replace(
+        '--env-file /opt/freo/.env', '--env-file /etc/freo/freo.env').replace(
         '/opt/freo/', '/opt/freo/current/').replace('WorkingDirectory=/opt/freo\n', 'WorkingDirectory=/opt/freo/current\n')
 
 

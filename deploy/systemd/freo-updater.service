@@ -1,0 +1,12 @@
+[Unit]
+Description=Execute installation-admin approved Freo upgrades
+After=network-online.target postgresql.service
+ConditionPathExists=/var/lib/freo-updates/plans
+
+[Service]
+Type=oneshot
+User=root
+WorkingDirectory=/opt/freo
+ExecStart=/opt/freo/venv/bin/python -m freo_ops.web_updates --env-file /opt/freo/.env run
+UMask=0077
+TimeoutStartSec=infinity

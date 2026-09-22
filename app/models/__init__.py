@@ -23,8 +23,25 @@ class AdminUser(db.Model):
     email = db.Column(db.String(254), nullable=False, unique=True)
     password_hash = db.Column(db.String(255), nullable=False)
     active = db.Column(db.Boolean, nullable=False, default=True)
+    installation_admin = db.Column(db.Boolean, nullable=False, default=False)
     import_notice_date = db.Column(db.Date)
     created_at = db.Column(db.DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+
+
+class SoftwareLicense(db.Model):
+    __tablename__ = 'software_license'
+    __table_args__ = (db.CheckConstraint('id = 1', name='ck_software_license_singleton'),)
+    id = db.Column(db.Integer, primary_key=True)
+    document = db.Column(db.JSON, nullable=False)
+
+
+class SystemUpgrade(db.Model):
+    __tablename__ = 'system_upgrades'
+    id = db.Column(db.String(36), primary_key=True)
+    version = db.Column(db.String(64), nullable=False)
+    state = db.Column(db.String(24), nullable=False)
+    message = db.Column(db.String(500), nullable=False, default='')
+    requested_by = db.Column(db.Integer, db.ForeignKey('admin_users.id'))
 
 
 class AuditEvent(db.Model):

@@ -1,0 +1,10 @@
+[Unit]
+Description=Check for administrator-approved Freo upgrades
+
+[Timer]
+OnBootSec=30
+OnUnitInactiveSec=30
+Unit=freo-updater.service
+
+[Install]
+WantedBy=timers.target

@@ -2,7 +2,7 @@
 from app.models import AuditEvent
 
 
-AGREEMENT_VERSION = '2026-09-21'
+AGREEMENT_VERSION = '2026-09-22-source-available-1'
 AGREEMENT_URL = 'https://freo.live/licensing'
 
 

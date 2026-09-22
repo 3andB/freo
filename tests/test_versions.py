@@ -28,7 +28,7 @@ def test_authoritative_version_ignores_legacy_overrides(app, monkeypatch):
     monkeypatch.setattr(Path, 'read_text', no_release_file)
     with app.app_context():
         snapshot = machine_snapshot()
-    assert snapshot['freo_version'] == VERSION == '0.2.0'
+    assert snapshot['freo_version'] == VERSION == '0.3.0-rc.1'
     assert snapshot['os'] == platform.system()
     assert snapshot['architecture'] == platform.machine()
     assert snapshot['install_type'] == 'self-hosted'
@@ -184,7 +184,7 @@ def test_transport_heartbeat_headers_and_public_discovery(transport):
 
 @pytest.mark.parametrize('latest,available', [
     ('0.2.0', False), ('0.1.9', False), ('0.3.0', True),
-    ('0.2.0-rc.1', False), ('0.2.0+new', False), ('0.3.0-rc.1', True),
+    ('0.2.0-rc.1', False), ('0.2.0+new', False), ('0.3.0-rc.1', False),
 ])
 def test_public_discovery_without_identity_or_license(app, transport, latest, available):
     transport['body'] = json.dumps({'latest_version': latest, 'future': 'ignored'}).encode()

@@ -32,7 +32,7 @@ def set_password(email):
         raise click.ClickException('Password must contain at least 16 characters')
     user = AdminUser.query.filter_by(email=normalized).first()
     if user is None:
-        user = AdminUser(email=normalized)
+        user = AdminUser(email=normalized, installation_admin=AdminUser.query.count() == 0)
         db.session.add(user)
     user.password_hash = generate_password_hash(password, method='scrypt')
     user.active = True
@@ -45,6 +45,20 @@ def list_admins():
     root_only()
     for user in AdminUser.query.order_by(AdminUser.email):
         click.echo(f'{user.email}\t{"active" if user.active else "disabled"}')
+
+
+@admin.command('installation-role')
+@click.argument('email')
+@click.option('--grant/--revoke', required=True)
+def installation_role(email, grant):
+    """Explicitly grant/revoke installation-wide license and upgrade management."""
+    root_only()
+    user = AdminUser.query.filter_by(email=email.strip().lower()).first()
+    if user is None:
+        raise click.ClickException('Admin not found')
+    user.installation_admin = grant
+    db.session.commit()
+    click.echo('Installation role updated.')
 
 
 @admin.command('disable')

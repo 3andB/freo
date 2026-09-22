@@ -33,3 +33,6 @@ radio-runtime/
 
 *.m3u
 *.m3u8
+
+/venv
+*.license.json

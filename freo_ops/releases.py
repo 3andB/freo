@@ -65,7 +65,7 @@ def source_files(root):
         path = root / name
         if path.is_symlink():
             raise RecoveryError('Release source must not contain symlinks')
-        if (path.name.startswith('.env') and name != '.env.example') or path.suffix in ('.key', '.pem', '.dump', '.db', '.sqlite', '.gpg'):
+        if (path.name.startswith('.env') and name != '.env.example') or path.name.endswith('.license.json') or path.suffix in ('.key', '.pem', '.dump', '.db', '.sqlite', '.gpg'):
             raise RecoveryError('Private runtime material must not enter release source')
         if path.is_file() and '__pycache__' not in path.parts and not path.name.endswith(('.pyc', '.bak', '.previous', '.log')):
             result.append(path)
@@ -138,7 +138,7 @@ def build(root, destination, *, development=False, wheelhouse=None):
         manifest = dict(format=1, version=version, commit=commit, development=development,
                         platform='ubuntu-24.04-x86_64', python='3.12',
                         schema_head=migration_head(root),
-                        supported_source_revisions=['a71d25b609ef', 'd02f9a41c830'],
+                        supported_source_revisions=['a71d25b609ef', 'd02f9a41c830', 'e83b9204c6af'],
                         files={})
         for path in sorted(payload.rglob('*')):
             if path.is_file():

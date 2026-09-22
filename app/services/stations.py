@@ -30,6 +30,9 @@ def create_station(name, slug, description='', *, pending=False, timezone_name='
     if Station.query.filter(db.or_(Station.slug == slug, Station.public_slug == slug)).first() or db.session.get(StationAlias, slug):
         raise ValueError('Station slug already exists')
     limit = get_setting('FREO_MAX_STATIONS')
+    from app.services.software_license import unlimited
+    if unlimited():
+        limit = 0
     if limit and active_stations().count() >= limit:
         raise ValueError(f'This installation allows a maximum of {limit} stations')
     from app.services.central_api.licensing import check_expansion

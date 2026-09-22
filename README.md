@@ -30,7 +30,11 @@ The stack is Python 3.12, Flask, Gunicorn, PostgreSQL, Nginx, systemd, Liquidsoa
 
 The installer deploys the fuller stack but has **not** been tested on a separate fresh Ubuntu VM. Public one-command installation is not yet claimed as supported. Local development needs a Python 3.12 venv, `requirements-dev.txt`, a private `.env`, and `flask --app wsgi:app db upgrade`; run `pytest` for tests. Root, a domain, and radio services are not required for unit tests.
 
-No license has been selected. The owner must choose one before broadly promoting reuse as open-source software.
+Freo is source-available under the [Freo Source-Available License](LICENSE). Up to three stations total per owner are free, including commercial use. US$99 one time covers unlimited stations across all installations owned by the purchaser and all future updates. Contact [info@3andB.com](mailto:info@3andB.com) for a Stripe invoice.
+
+Created by Lee Eyerman. Copyright © 2026 3andB.
+
+[Installer candidate and VM acceptance](docs/install-candidate.md) · [freo.live team handoff](docs/freo-live-distribution-handoff.md)
 
 [Station Control and DJ Booth system tests](docs/station-system-testing.md) provide accelerated scheduling simulations, connected browser/worker/audio checks, and unattended endurance runs with isolated streams and retained evidence.
 

@@ -1,7 +1,6 @@
 """Local expansion checks only; broadcast/start/recovery never calls the API."""
 import time
-from app.extensions import db
-from app.models import CentralInstallation, Station
+from app.models import Station
 from .client import timestamp
 
 _anchors = {}
@@ -23,20 +22,15 @@ def effective_time(cache, now=None):
 
 
 def check_expansion():
-    installation = db.session.get(CentralInstallation, 1)
-    # Optional/unconfigured open-source installations retain their existing rules.
-    if not installation or not installation.installation_id:
+    # Distribution entitlements are local and perpetual. Registration and
+    # remote cache/grace expiry must not gate the free three-station allowance.
+    from app.services.software_license import unlimited
+    if unlimited():
         return
-    cache = installation.license_cache
-    if not cache:
-        raise ValueError('Verify the installation license before enabling another station')
-    current = effective_time(cache)
-    entitlement = cache['entitlement']
-    if current is None or current > timestamp(entitlement['grace_until']) or entitlement['status'] != 'active':
-        raise ValueError('License verification is needed before enabling another station; existing broadcasts remain available')
     enabled = Station.query.filter(Station.enabled.is_(True), Station.deleted_at.is_(None)).count()
-    if enabled >= entitlement['channel_limit']:
-        raise ValueError('The installation license allows no additional enabled stations')
+    if enabled >= 3:
+        raise ValueError('Free use covers three stations total per owner. Contact info@3andB.com for the US$99 unlimited license.')
+    return
 
 
 def checkpoint(installation, now):

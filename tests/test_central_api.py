@@ -261,7 +261,7 @@ def test_unknown_metrics_are_omitted_and_backlog_is_bounded(central, monkeypatch
     assert heartbeat['stations'] == []
 
 
-def test_license_limits_grace_and_restart_recovery(central):
+def test_local_allowance_survives_remote_cache_expiry(central):
     reporter, api = central
     reporter.tick()
     row = installation()
@@ -272,7 +272,7 @@ def test_license_limits_grace_and_restart_recovery(central):
     db.session.commit()
     check_expansion()  # Expired date alone does not end outage grace.
     third = create_station('Third', 'third')
-    with pytest.raises(ValueError, match='no additional'):
+    with pytest.raises(ValueError, match='three stations'):
         check_expansion()
     set_enabled(third, False)
     check_expansion()
@@ -280,22 +280,19 @@ def test_license_limits_grace_and_restart_recovery(central):
     cache['entitlement'] = dict(cache['entitlement'], grace_until=iso(time.time() - 1))
     row.license_cache = cache
     db.session.commit()
-    with pytest.raises(ValueError, match='verification'):
-        set_enabled(third, True)
-    db.session.rollback()
+    set_enabled(third, True)  # Remote grace cannot revoke the local allowance.
     first = Station.query.filter_by(slug='test-station').one()
     set_enabled(first, True)  # Already enabled stations remain recoverable.
     assert first.enabled and first.desired_state == 'running'
-    assert not third.enabled
+    assert third.enabled
 
 
 @pytest.mark.parametrize('changes', [dict(status='suspended'), dict(status='expired'), dict(channel_limit=1)])
-def test_explicit_license_changes_only_block_expansion(central, changes):
+def test_remote_license_changes_do_not_revoke_local_allowance(central, changes):
     reporter, api = central
     api.entitlement.update(changes)
     reporter.tick()
-    with pytest.raises(ValueError):
-        check_expansion()
+    check_expansion()
     assert all(station.enabled for station in Station.query)
 
 
@@ -316,8 +313,7 @@ def test_clock_rollback_is_sticky_until_valid_verification(central):
     checkpoint(row, received - 3600)
     db.session.commit()
     assert effective_time(row.license_cache, received + 1) is None
-    with pytest.raises(ValueError):
-        check_expansion()
+    check_expansion()
     installation().state = {}
     db.session.commit()
     reporter.tick()
@@ -330,8 +326,7 @@ def test_unconfigured_self_hosted_baseline_and_registered_without_cache(central)
     row = installation()
     row.installation_id = INSTALLATION_ID
     db.session.commit()
-    with pytest.raises(ValueError, match='Verify'):
-        check_expansion()
+    check_expansion()
     assert all(station.enabled for station in Station.query)
 
 

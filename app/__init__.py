@@ -87,6 +87,10 @@ def create_app(config_name=None):
     app.register_blueprint(admin_cli, cli_group=None)
     from .settings_cli import settings_cli
     app.register_blueprint(settings_cli, cli_group=None)
+    from .routes.distribution import distribution
+    app.register_blueprint(distribution)
+    from .services.admin_auth import current_admin
+    app.jinja_env.globals['current_admin'] = current_admin
     from .routes.catalog_editor import catalog_editor
     app.register_blueprint(catalog_editor)
     from .routes.music_import import music_import

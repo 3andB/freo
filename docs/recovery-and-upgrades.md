@@ -1,4 +1,4 @@
-# Recovery and upgrades — 0.2.0 candidate
+# Recovery and upgrades
 
 The management tools are implemented and tested with disposable PostgreSQL
 databases, real encrypted bundles and signatures, plus simulated service failures.
@@ -61,7 +61,9 @@ Do not put it in command arguments, Git or the installation's public settings.
 The standalone backup command refuses while any Freo service/timer is active or
 another database client remains connected. Arrange a maintenance window, record
 active units and stop the web application, workers, timers, provisioning and
-playout before running it. It does not stop services itself. The upgrade command
+playout, including `freo-updater.timer` and any active updater, before running it.
+Never stop an updater mid-migration just to take another backup; wait for its
+operation to finish or follow interruption recovery. It does not stop services itself. The upgrade command
 coordinates those actions automatically. Keep other administrators, cron tasks
 and external database writers out of the maintenance window.
 
@@ -170,11 +172,12 @@ same verified release is a no-op. A different artifact cannot replace an
 already-installed version number. Frontend static URLs carry the release version
 to avoid combining cached assets from different releases.
 
-The initial updater supports the recorded 0.1.0 schema and 0.2.0 schema only. It
+The updater supports the recorded 0.1.0, 0.2.0 and 0.3.0 candidate schemas. It
 refuses radio/proxy template changes, operating-system/platform changes and
 application downgrades. Radio engine and PostgreSQL major-version upgrades need
-separate tested procedures. There is no unattended update scheduler, web-triggered
-root shell, automatic data deletion or claim of uninterrupted broadcasting.
+separate tested procedures. Browser approval of root-prepared plans is described in [candidate installation](install-candidate.md).
+There is no unattended upgrade, arbitrary web-triggered root shell, automatic
+data deletion or claim of uninterrupted broadcasting.
 
 **Failure and interruption recovery.**
 
@@ -229,11 +232,11 @@ release notes in a GitHub release. Publish the same `latest.json` and matching
 download link on the website/API; mirrors must retain the identical archive
 digest. The existing version-check response can consume its `latest_version`.
 
-Before launch, the owner still needs to select/commit the project license,
-configure publisher identity and private security reporting, validate both fresh
-installation and real systemd upgrade/restore on separate VMs, and connect the
-website/API release publishing process. Existing browser-local drafts/layout
-preferences, a dedicated restricted migration database role, incremental backup,
-automatic retention and unattended/web updates are not implemented by this
-candidate. Saved schedules, server-side import drafts and existing database
-settings are covered by the complete database backup.
+Before launch, configure protected release publishing and private security
+reporting, validate fresh installation and real systemd upgrade/restore on the
+separate VM, and complete the [website/API handoff](freo-live-distribution-handoff.md).
+The project license and offline paid licensing are bundled in the 0.3 candidate.
+Browser-local drafts/layout preferences, a dedicated restricted migration
+database role, incremental backup and automatic retention are not implemented.
+Saved schedules, server-side import drafts, paid licenses, account permissions
+and database settings are included in the complete database backup.

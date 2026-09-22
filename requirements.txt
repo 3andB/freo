@@ -6,3 +6,4 @@ psycopg2-binary==2.9.13
 python-dotenv==1.2.3
 dnspython==2.8.0
 maxminddb==3.2.0
+cryptography==50.0.1

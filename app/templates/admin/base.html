@@ -60,10 +60,11 @@
       <a href="{{ url_for('player_experience.directory') }}" {% if page == 'player-directory' %}aria-current="page"{% endif %}>Player Settings</a>
       <a href="{{ url_for('player_experience.operations_inbox') }}" {% if page == 'operations-feedback' %}aria-current="page"{% endif %}>Listener Feedback</a>
       <a href="{{ url_for('central_api.settings') }}" {% if page == 'installation' %}aria-current="page"{% endif %}>Installation / freo.live</a>
+      {% if current_admin() and current_admin().installation_admin %}<a href="{{ url_for('distribution.page') }}" {% if page == 'software' %}aria-current="page"{% endif %}>Software and license</a>{% endif %}
       <a href="{{ url_for('admin_media.audit_view') }}" {% if page == 'audit' %}aria-current="page"{% endif %}>Admin Audit</a>
       {% endif %}
     </nav>
-    <div class="admin-sidebar-foot">Made for your next great hour.<br><a href="https://github.com/lee-3andB/freo/tree/main/docs">Documentation ↗</a></div>
+    <div class="admin-sidebar-foot">Made for your next great hour.<br><a href="https://github.com/3andB/freo/tree/main/docs">Documentation ↗</a></div>
   </aside>
   <div class="admin-main">
     <div class="admin-toolbar">

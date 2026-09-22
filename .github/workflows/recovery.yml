@@ -29,7 +29,7 @@ jobs:
           python3 -m venv venv
           venv/bin/pip install -r requirements-dev.txt
       - name: Settings, artifact and failure-injection tests
-        run: venv/bin/pytest -q tests/test_installation_settings.py tests/test_release_bundles.py tests/test_upgrade.py tests/test_installer_guard.py
+        run: venv/bin/pytest -q tests/test_installation_settings.py tests/test_release_bundles.py tests/test_upgrade.py tests/test_installer_guard.py tests/test_distribution.py tests/test_central_api.py tests/test_license_agreement.py tests/test_versions.py
       - name: Real PostgreSQL migrations and encrypted restore
         run: bash scripts/test-recovery-postgres.sh
       - name: Build source review artifact

@@ -3,14 +3,16 @@
   <h2 id="license-agreement-title" tabindex="-1">Freo license agreement</h2>
   <p>Please read and accept this agreement before using Freo. Version {{ agreement.version }}.</p>
   <div class="license-agreement-copy">
-    <p>This agreement incorporates the licensing information published on the <a href="{{ agreement.url }}" target="_blank" rel="noopener noreferrer">Freo Live licensing page ↗</a>.</p>
+    <p>This agreement summarizes the bundled Freo Source-Available License. See the <a href="{{ agreement.url }}" target="_blank" rel="noopener noreferrer">Freo Live licensing page ↗</a> for purchase information.</p>
     <h3>Software licensing</h3>
-    <p>Freo runs on infrastructure you provide, including hosting, storage and bandwidth. The published Community allowance is two channels, with an optional Freo Live owner account. Consult the website for additional capacity and licensing availability.</p>
+    <p>Freo runs on infrastructure you provide. Up to three stations total per person or company are free, including commercial use, across all installations. This combined limit is honor-based and registration is optional.</p>
+    <p>More than three stations requires a US$99 one-time license from 3andB. It covers unlimited stations across all installations you own, works offline after activation, and includes all future updates, including major versions. Email <a href="mailto:info@3andB.com">info@3andB.com</a> for a Stripe invoice and license after payment.</p>
     <h3>Broadcasting and copyright</h3>
     <p>A Freo software entitlement does not grant music or other content broadcast rights. You are responsible for obtaining permission for the material you broadcast.</p>
     <p class="license-copyright"><strong>You may not broadcast copyrighted material without permission. Doing so is a direct violation of this license.</strong></p>
     <h3>Source code</h3>
-    <p>Source-code terms are separate from installation entitlements. Consult the <a href="https://github.com/lee-3andB/freo" target="_blank" rel="noopener noreferrer">project repository ↗</a> for those terms.</p>
+    <p>You may modify and redistribute Freo under the same licensing and payment terms, retaining its notices and corresponding source. Read the <a href="https://github.com/3andB/freo/blob/main/LICENSE" target="_blank" rel="noopener noreferrer">complete source-available license ↗</a>.</p>
+    <p><small>© 2026 3andB. Created by Lee Eyerman.</small></p>
   </div>
   <form id="license-accept-form" action="{{ url_for('license_agreement.accept') }}" method="post" {% if not agreement.required %}hidden{% endif %}>
     <input type="hidden" name="csrf" value="{{ csrf_token() }}">
