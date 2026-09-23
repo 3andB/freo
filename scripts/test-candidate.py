@@ -4,8 +4,10 @@ import argparse
 import json
 import os
 from pathlib import Path
+import shutil
 import subprocess
 import sys
+import tempfile
 
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument('suite', choices=['backend', 'browser-primary', 'browser-programming', 'audio'])
@@ -40,8 +42,11 @@ else:
              'tests/test_live_mic.py::test_real_microphone_fade_return_and_disconnect']
     os.environ.update(FREO_SYSTEM_TEST='1', FREO_ENGINE_TEST='1')
 (evidence/'files.json').write_text(json.dumps(files, indent=2) + '\n')
+# Liquidsoap's Unix sockets must fit sockaddr_un (108 bytes on Linux). GitHub's
+# RUNNER_TEMP plus pytest's descriptive test directory names can exceed that.
+fixture_root = Path(tempfile.mkdtemp(prefix='fc-', dir='/tmp'))
 command = [sys.executable, '-m', 'pytest', '-q', '--tb=short', '--show-capture=no',
-           '--basetemp=' + str(evidence/'fixtures'), '--junitxml=' + str(evidence/'results.xml'), *files]
+           '--basetemp=' + str(fixture_root/'fixtures'), '--junitxml=' + str(evidence/'results.xml'), *files]
 with (evidence/'pytest.log').open('w') as log:
     process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
     for line in process.stdout:
@@ -49,6 +54,9 @@ with (evidence/'pytest.log').open('w') as log:
         log.flush()
         print(line, end='', flush=True)
     code = process.wait()
+if (fixture_root/'fixtures').exists():
+    shutil.move(str(fixture_root/'fixtures'), str(evidence/'fixtures'))
+fixture_root.rmdir()
 (evidence/'exit.txt').write_text(str(code) + '\n')
 subprocess.run([sys.executable, 'scripts/summarize-tests.py', str(evidence/'results.xml')], check=False)
 raise SystemExit(code)
