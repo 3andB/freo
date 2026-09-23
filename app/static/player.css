@@ -17,10 +17,10 @@
 .vinyl-label img+i{display:none}
 
 /* Rotate the groove surface, leaving the circular lava window on a stable layer. */
-.radio-deck{--vinyl-teal:#008f91;--vinyl-violet:#6437ce;--vinyl-magenta:#b91c75}
-.radio-orbit{background:conic-gradient(from 30deg,var(--vinyl-teal),var(--vinyl-violet) 38%,var(--vinyl-magenta) 70%,var(--vinyl-teal))}
-.orbit-one{opacity:.38}.orbit-two{inset:1px;opacity:1}
-.radio-vinyl{animation:none}
+.radio-deck{--vinyl-cyan:#14edff;--vinyl-blue:#348bff;--vinyl-violet:#a66bff;--vinyl-pink:#ff72e0}
+.radio-orbit{background:conic-gradient(from 30deg,var(--vinyl-cyan),var(--vinyl-blue) 28%,var(--vinyl-violet) 55%,var(--vinyl-pink) 76%,var(--vinyl-violet) 84%,var(--vinyl-cyan))}
+.orbit-one{inset:3px;filter:blur(17px);opacity:.55}.orbit-two{inset:1px;opacity:1}
+.radio-vinyl{animation:none;box-shadow:inset 0 0 20px #000,0 10px 28px #0002}
 .vinyl-grooves{animation:radio-spin 12s linear infinite;animation-play-state:paused}
 .vinyl-grooves:after{background:conic-gradient(from 18deg,transparent 0deg,#b6d8ef12 20deg,#b6d8ef55 34deg,#b6d8ef12 49deg,transparent 67deg,transparent 178deg,#a7a2d322 207deg,transparent 239deg,transparent 304deg,#ffffff18 309deg,transparent 315deg)}
 .is-playing .vinyl-grooves{animation-play-state:running}
