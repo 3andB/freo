@@ -1,5 +1,6 @@
 """Confirmed airplay totals preserve selection-time attribution."""
 from datetime import datetime, timezone
+import re
 from app.extensions import db
 from app.models import MediaCategory, SelectionDecision, Station, Track
 from app.services.automation import playback_started
@@ -36,4 +37,8 @@ def test_counts_use_confirmed_starts_and_original_category(app):
     assert client.get(f'/admin/api/stations/test-station/music/{uuid}').json['play_count'] == 2
     assert '2 plays' in client.get(f'/admin/stations/test-station/media/{uuid}').text
     assert '1 plays' in client.get('/admin/stations/test-station/categories/power').text
-    assert '1 plays' in client.get('/admin/stations/test-station/categories').text
+    page = client.get('/admin/stations/test-station/categories').text
+    rows = re.findall(r'<tr data-category-row>(.*?)</tr>', page, re.S)
+    counts = {re.search(r'/categories/([^"/]+)"', row).group(1):
+              re.findall(r'<td>(.*?)</td>', row, re.S)[2].strip() for row in rows}
+    assert counts == {'power': '1', 'other': '0'}

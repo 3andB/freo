@@ -4,6 +4,7 @@ import os
 from urllib.parse import urlsplit
 from flask import current_app
 from sqlalchemy import select, update, text
+from sqlalchemy.exc import SQLAlchemyError
 from app.extensions import db
 from app.models import InstallationSettings, AuditEvent
 
@@ -64,8 +65,12 @@ def legacy_values(*, validated=True):
 
 
 def snapshot():
-    row = db.session.execute(select(InstallationSettings.values, InstallationSettings.revision)
-                             .where(InstallationSettings.id == 1)).first()
+    try:
+        row = db.session.execute(select(InstallationSettings.values, InstallationSettings.revision)
+                                 .where(InstallationSettings.id == 1)).first()
+    except SQLAlchemyError as error:
+        db.session.rollback()
+        raise SettingsUnavailable('Installation settings could not be read') from error
     if row is None:
         if current_app.testing:
             return legacy_values(validated=False), 0

@@ -14,9 +14,17 @@ def app(monkeypatch):
     return create_app("testing")
 
 
-def test_factory_and_health(app):
+@pytest.mark.parametrize('path', ['/', '/admin/login'])
+@pytest.mark.parametrize('existing_session', [False, True])
+def test_factory_and_health(app, path, existing_session):
     client = app.test_client()
-    assert client.get("/").status_code == 503  # A missing schema is not an empty installation.
+    if existing_session:
+        with client.session_transaction() as state:
+            state['admin_user_id'] = 1
+    response = client.get(path)
+    assert response.status_code == 503  # A missing schema is not an empty installation.
+    assert response.json == {'status': 'unavailable'}
+    client.delete_cookie(app.config['SESSION_COOKIE_NAME'])
     assert client.get("/health").json == {"status": "ok"}
 
 

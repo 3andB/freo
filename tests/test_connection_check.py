@@ -5,6 +5,7 @@ from concurrent.futures import ThreadPoolExecutor
 from threading import Barrier
 
 import pytest
+from packaging.version import Version
 
 from app import create_app
 from app.extensions import db
@@ -164,7 +165,8 @@ def test_failed_heartbeat_is_not_success_and_public_version_is_separate(central,
     stations = [(s.id, s.enabled, s.desired_state) for s in Station.query]
     api.fail['/v1/heartbeat'] = APIError('connection_or_response_error')
     api.fail['/v1/license'] = APIError('http_503', status=503)
-    api.release = {'latest_version': '0.2.0'}
+    newer_version = f'{Version(VERSION).major + 1}.0.0'
+    api.release = {'latest_version': newer_version}
     if not fallback:
         api.fail['/v1/releases/latest'] = APIError('connection_or_response_error')
     queue_check()
@@ -178,7 +180,7 @@ def test_failed_heartbeat_is_not_success_and_public_version_is_separate(central,
     assert not panel['connected']
     assert panel['last_contact'] == receipt['server_time']
     if fallback:
-        assert panel['latest_version'] == '0.2.0'
+        assert panel['latest_version'] == newer_version
         assert panel['update_status'] == 'Update available'
         assert panel['version_source'] == 'Public release discovery'
     else:

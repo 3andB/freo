@@ -158,6 +158,10 @@ def create_app(config_name=None):
     from .services.installation_settings import SettingsUnavailable
     @app.errorhandler(SettingsUnavailable)
     def settings_unavailable(error):
+        from flask import g
+        # Finalizing a session must not query the unavailable settings again.
+        # Retain a known cookie policy, otherwise use the host's secure default.
+        g.freo_cookie_secure = getattr(g, 'freo_cookie_secure', app.config['SESSION_COOKIE_SECURE'])
         return {'status': 'unavailable'}, 503
 
     from .services.loudness import gain_for
