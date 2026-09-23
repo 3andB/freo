@@ -66,6 +66,11 @@
       if (scope.signal.aborted) return;
       root.querySelectorAll('[data-summary]').forEach(el => {el.textContent = value(data.summary[el.dataset.summary]);});
       root.querySelectorAll('[data-connection]').forEach(el => {el.textContent = value(data.connection[el.dataset.connection], '');});
+      root.querySelector('[data-version-notice]').hidden = data.connection.update_available !== true;
+      const releaseLink = root.querySelector('[data-release-link]');
+      releaseLink.hidden = !data.connection.release_url;
+      if (data.connection.release_url) releaseLink.href = data.connection.release_url;
+      else releaseLink.removeAttribute('href');
       // A snapshot started before a click must not replace its queued response.
       if (!submitting && generation === checkGeneration) renderCheck(data.connection.check);
       root.querySelector('[data-storage]').textContent = data.summary.storage == null ? 'Not yet measured' : `${(data.summary.storage / 1000000).toLocaleString(undefined, {maximumFractionDigits: 1})} MB`;

@@ -10,7 +10,7 @@ from app.models import (AutomationHeartbeat, BroadcastIncident, CentralInstallat
 from app.services.admin_view import aware, format_station_time
 from app.services.statistics import aggregate
 from app.services.schedule import resolve
-from app.version import VERSION
+from app.services.central_api.releases import version_view
 
 
 def fresh(at, now, seconds):
@@ -29,7 +29,7 @@ def connection(stations, now):
     last = receipt.get('server_time')
     try:
         last_at = timestamp(last)
-        recent = fresh(last_at, now, 3900)
+        recent = fresh(last_at, now, receipt.get('next_heartbeat_seconds', 3600) + 300)
     except (ValueError, TypeError):
         last_at = 0
         recent = False
@@ -49,23 +49,9 @@ def connection(stations, now):
     local_license = license_status()
     paid = local_license['edition'] == 'unlimited'
     local_limit = get_setting('FREO_MAX_STATIONS')
-    version = receipt
-    version_source = 'Heartbeat' if last else 'Not yet checked'
-    version_checked_at = last or 'Not yet checked'
-    available = receipt.get('update_available')
-    if receipt.get('freo_version') != VERSION or state.get('report', {}).get('failures') or failed_check:
-        available = None
-    if (manual and (manual.finished_at or 0) >= last_at
-            and manual.result.get('version_source') == 'public'):
-        version = manual.result
-        available = version.get('update_available') if version.get('freo_version') == VERSION else None
-        version_source = 'Public release discovery'
-        version_checked_at = datetime.fromtimestamp(version['checked_at'], timezone.utc).isoformat()
-    update_status = ('Update available' if available is True else
-                     'No newer version available' if available is False else 'Unknown')
+    version = version_view(state, now, manual=manual)
     return dict(status=status, connected=connected, last_contact=last or 'Not yet observed',
-                installed_version=VERSION, latest_version=version.get('latest_version') or 'Unknown',
-                update_status=update_status, version_source=version_source, version_checked_at=version_checked_at,
+                **version,
                 check=check_status(now),
                 synced=f'{synced_count} / {len(stations)} stations up to date',
                 plan='Unlimited · perpetual' if paid else 'Free · three stations per owner',

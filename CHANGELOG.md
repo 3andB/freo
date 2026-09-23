@@ -2,6 +2,11 @@
 
 ## 0.3.0-rc.6 — in development, not yet frozen
 
+- Report the actual running development version through the existing reporter;
+  display server-provided Current, Update Available, Ahead, or Unknown status,
+  cached release details, and stale contact information. See the
+  [version-awareness handoff](docs/version-awareness-client.md).
+
 - Refine installation, feedback, tags, and category administration; present
   categories as an informative list and keep controls aligned on smaller screens.
 - Combine station settings into one save operation, preserve validation edits,

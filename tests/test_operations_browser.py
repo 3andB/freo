@@ -18,7 +18,7 @@ def test_manual_connection_check_progress_and_version_result(booth, monkeypatch)
     monkeypatch.setattr('app.services.central_api.metrics.observation', lambda slug: (True, 4))
     api = FakeAPI()
     newer_version = f'{Version(VERSION).major + 1}.0.0'
-    api.heartbeat_fields = {'latest_version': newer_version, 'update_available': True}
+    api.heartbeat_fields = {'latest_version': newer_version, 'update_available': True, 'version_status': 'UPDATE_AVAILABLE'}
     entered, release = Event(), Event()
     errors = []
     def worker():
@@ -57,7 +57,7 @@ def test_manual_connection_check_progress_and_version_result(booth, monkeypatch)
     wait_text(driver, '#connection-check-status', 'Heartbeat accepted')
     wait_text(driver, '[data-connection="installed_version"]', VERSION)
     wait_text(driver, '[data-connection="latest_version"]', newer_version)
-    wait_text(driver, '[data-connection="update_status"]', 'Update available')
+    wait_text(driver, '[data-connection="update_status"]', 'Update Available')
     assert driver.execute_script('return window.connectionPageMarker === true')
     with app.app_context():
         assert db.session.get(CentralConnectionCheck, 1).request_id == request_id

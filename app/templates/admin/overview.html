@@ -1,6 +1,6 @@
 {% extends 'admin/base.html' %}
 {% block title %}Overview · Radio Station Ops · Freo{% endblock %}
-{% block scripts %}{{ super() }}<script defer src="{{ url_for('static',filename='operations.js',v='rc5') }}"></script>{% endblock %}
+{% block scripts %}{{ super() }}<script defer src="{{ url_for('static',filename='operations.js',v='rc6-version-awareness') }}"></script>{% endblock %}
 {% block admin_content %}
 <div id="operations" data-url="{{ url_for('web.operations_snapshot') }}">
   <header class="ops-heading"><div><span class="eyebrow">RADIO STATION OPS / ALL STATIONS</span><h1>Operations overview</h1><p>Your stations, audience, and system in one place.</p></div><a class="admin-primary" href="#add-station">Add station</a></header>
@@ -15,14 +15,18 @@
       <div><dt>Last successful heartbeat</dt><dd data-connection="last_contact">{{ ops.connection.last_contact }}</dd></div>
       <div><dt>Station synchronization</dt><dd data-connection="synced">{{ ops.connection.synced }}</dd></div>
       <div><dt>Installed version</dt><dd data-connection="installed_version">{{ ops.connection.installed_version }}</dd></div>
-      <div><dt>Latest published version</dt><dd data-connection="latest_version">{{ ops.connection.latest_version }}</dd></div>
+      <div><dt>Latest stable version</dt><dd data-connection="latest_version">{{ ops.connection.latest_version }}</dd></div>
       <div><dt>Update status</dt><dd data-connection="update_status">{{ ops.connection.update_status }}</dd></div>
       <div><dt>Version source</dt><dd data-connection="version_source">{{ ops.connection.version_source }}</dd></div>
-      <div><dt>Version checked at</dt><dd data-connection="version_checked_at">{{ ops.connection.version_checked_at }}</dd></div>
+      <div><dt>Status received at</dt><dd data-connection="version_checked_at">{{ ops.connection.version_checked_at }}</dd></div>
+      <div><dt>Release discovered at</dt><dd data-connection="release_checked_at">{{ ops.connection.release_checked_at }}</dd></div>
       <div><dt>Plan</dt><dd data-connection="plan">{{ ops.connection.plan }}</dd></div>
       <div><dt>License status</dt><dd data-connection="entitlement_status">{{ ops.connection.entitlement_status }}</dd></div>
       <div><dt>Local station limit</dt><dd data-connection="channel_limit">{{ ops.connection.channel_limit }}</dd></div>
     </dl><p data-connection="error" class="quiet">{{ ops.connection.error }}</p>
+      <p class="quiet" data-connection="version_note">{{ ops.connection.version_note }}</p>
+      <p data-version-notice {% if ops.connection.update_available is not sameas true %}hidden{% endif %}>An update is available according to the last successful heartbeat.</p>
+      <p><a data-release-link {% if ops.connection.release_url %}href="{{ ops.connection.release_url }}"{% else %}hidden{% endif %} target="_blank" rel="noopener noreferrer">View stable release on GitHub ↗</a></p>
       <form id="connection-check" method="post" action="{{ url_for('central_api.request_connection_check') }}">
         <input type="hidden" name="csrf" value="{{ csrf_token() }}">
         <button type="submit" class="admin-primary" {% if ops.connection.check.busy or ops.connection.check.retry_at > ops.generated_at %}disabled{% endif %}>Check connection now</button>

@@ -69,7 +69,7 @@ def validate_heartbeat(response, station_count, metric_count):
         for key, expected in [('stations_accepted', station_count), ('metrics_accepted', metric_count)]:
             if type(response[key]) is not int or response[key] != expected:
                 raise ValueError()
-        if type(response['next_heartbeat_seconds']) is not int or response['next_heartbeat_seconds'] != 3600:
+        if type(response['next_heartbeat_seconds']) is not int or response['next_heartbeat_seconds'] <= 0:
             raise ValueError()
     except (KeyError, TypeError, ValueError):
         raise APIError('invalid_heartbeat_response') from None
@@ -286,7 +286,7 @@ class Reporter:
         # Unknown station observations still allow installation-only reporting.
         if not heartbeat_sent:
             self.heartbeat(row, client, [])
-        self.success(row, 'report', now)
+        self.success(row, 'report', now, row.state['last_heartbeat']['next_heartbeat_seconds'])
 
     def reserve_calls(self, row, now, count):
         window = int(now // 3600)
@@ -296,6 +296,24 @@ class Reporter:
             return False
         self.save_state(row, budget={'hour': window, 'reserved': reserved + count})
         return True
+
+    def discover_release(self, row, now):
+        cached = row.state.get('release_discovery', {})
+        if now < row.state.get('release_discovery_due', 0):
+            return cached or None
+        if now < row.state.get('retry_after', 0) or not self.reserve_calls(row, now, 1):
+            return cached or None
+        self.save_state(row, release_discovery_due=now + 3600)
+        try:
+            result = check_version(current_app.config['FREO_API_URL'], self.client_factory)
+        except APIError as error:
+            if error.retry_after:
+                self.save_state(row, retry_after=now + error.retry_after,
+                                release_discovery_due=now + max(3600, error.retry_after))
+            raise
+        result['fetched_at'] = now
+        self.save_state(row, release_discovery=result)
+        return result
 
     def process_connection_check(self, now=None):
         """Called under the reporter's existing process lock, never by the web app."""
@@ -325,6 +343,10 @@ class Reporter:
                 if outcome.get('license_error'):
                     result['message'] += ' License refresh unavailable; previous license information retained.'
                 status = 'succeeded'
+                try:
+                    self.discover_release(row, now)
+                except APIError:
+                    result['message'] += ' Release details unavailable; heartbeat status retained.'
             else:
                 status = 'failed'
                 error = outcome.get('error') or row.last_error or 'retry_pending'
@@ -345,17 +367,15 @@ class Reporter:
                 result['retry_at'] = retry_at
                 # Public discovery is useful even when credentials/enrollment fail.
                 # It never proves that an installation heartbeat was accepted.
-                if now >= row.state.get('retry_after', 0) and self.reserve_calls(row, now, 1):
-                    try:
-                        result.update(check_version(current_app.config['FREO_API_URL'], self.client_factory),
-                                      version_source='public', checked_at=time.time())
-                        result['message'] += ' Public release information refreshed.'
-                    except APIError as error:
-                        if error.retry_after:
-                            retry_at = max(retry_at, now + error.retry_after)
-                            self.save_state(row, retry_after=retry_at)
-                            result['retry_at'] = retry_at
-                        result['message'] += ' Version check unavailable; update status unknown.'
+                try:
+                    discovery = self.discover_release(row, now)
+                    if discovery:
+                        result.update(discovery, version_source='public')
+                        result['message'] += ' Public release information available; version status unknown.'
+                except APIError as error:
+                    if error.retry_after:
+                        result['retry_at'] = max(retry_at, now + error.retry_after)
+                    result['message'] += ' Version check unavailable; update status unknown.'
         except Exception as error:
             db.session.rollback()
             status = 'failed'
@@ -389,9 +409,12 @@ class Reporter:
             return dict(outcome, error='credentials_rejected')
         on_air = sample(now)
         client = self.client_factory(current_app.config['FREO_API_URL'], credentials['access_token'])
-        # A process start refreshes the license, while honoring persisted backoff.
-        if self.startup and not row.state.get('license', {}).get('failures'):
-            self.save_state(row, license={'due': 0})
+        # Refresh startup snapshots through this worker, preserving durable retry guards.
+        if self.startup:
+            for name in ('license', 'report'):
+                state = row.state.get(name, {})
+                if not state.get('failures') and not state.get('blocked'):
+                    self.save_state(row, **{name: {'due': 0}})
         self.startup = False
         if manual:
             # Bypass the normal interval, but never a failure backoff, blocked

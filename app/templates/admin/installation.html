@@ -7,10 +7,17 @@
 <p>Reporting setup: <strong>{{ "enrolled" if installation.registration_state == "registered" else installation.registration_state|replace("_", " ") }}</strong></p>
 {% if installation.state.get('last_heartbeat') %}<p>Last successful heartbeat: <time>{{ installation.state.last_heartbeat.server_time }}</time>.</p>{% endif %}
 <h2>Version</h2>
-<p>Installed version: <strong>{{ installed_version }}</strong></p>
-<p>Latest reported version: <strong>{{ installation.state.get('last_heartbeat', {}).get('latest_version') or 'Unknown' }}</strong></p>
-<p>Update status: <strong>{% if update_available is sameas true %}Update available{% elif update_available is sameas false %}No newer version available{% else %}Unknown{% endif %}</strong></p>
-<p>Version information comes from the last successful heartbeat. A failed report leaves the current update status unknown; the previous release information remains visible.</p>
+<dl class="detail-list">
+<div><dt>Installed version</dt><dd>{{ version.installed_version }}</dd></div>
+<div><dt>Latest stable version</dt><dd>{{ version.latest_version }}</dd></div>
+<div><dt>Version status</dt><dd>{{ version.update_status }}</dd></div>
+<div><dt>Status received at</dt><dd>{{ version.version_checked_at }}</dd></div>
+<div><dt>Release discovered at</dt><dd>{{ version.release_checked_at }}</dd></div>
+</dl>
+{% if version.version_note %}<p class="quiet">{{ version.version_note }}</p>{% endif %}
+{% if version.update_available is sameas true %}<p class="admin-notice" role="status">An update is available according to the last successful heartbeat.</p>{% endif %}
+{% if version.release_url %}<p><a href="{{ version.release_url }}" target="_blank" rel="noopener noreferrer">View stable release on GitHub ↗</a></p>{% endif %}
+<p class="quiet">Version status comes from Freo Live. Unknown is normal before a stable release is published. Use Check connection now on the overview to refresh release details.</p>
 <h2>Register with Freo (optional)</h2>
 <p>Registration links your owner account. A paid license is optional; Community reporting works before and after registration.</p>
 <p><a href="https://freo.live/account" target="_blank" rel="noopener">Open your Freo Live account</a>, choose your station, and generate a connection code. Existing installation and channel identities are preserved.</p>

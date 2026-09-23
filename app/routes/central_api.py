@@ -4,6 +4,7 @@ import click
 import time
 from flask import Blueprint, current_app, flash, jsonify, redirect, render_template, request, url_for
 from app.extensions import db
+from app.models import CentralConnectionCheck
 from app.version import VERSION
 from app.routes.web import admin_stations
 from app.services.admin_auth import admin_required, current_admin, require_csrf
@@ -12,7 +13,7 @@ from app.services.central_api import Reporter, installation
 from app.services.central_api.client import APIError, uuid_string, timestamp
 from app.services.central_api.identity import IdentityStore
 from app.services.central_api.licensing import effective_time
-from app.services.central_api.releases import check_version
+from app.services.central_api.releases import check_version, version_view
 from app.services.central_api.connection_check import queue_check, check_status
 
 central_api = Blueprint('central_api', __name__)
@@ -102,12 +103,9 @@ def settings():
     grace_elapsed = bool(cache and server_now is not None and server_now > timestamp(cache['entitlement']['grace_until']))
     expiry = cache['entitlement']['expires_at'] if cache else None
     using_grace = bool(expiry and server_now is not None and server_now > timestamp(expiry))
-    receipt = row.state.get('last_heartbeat', {})
-    update_available = receipt.get('update_available')
-    if receipt.get('freo_version') != VERSION or row.state.get('report', {}).get('failures'):
-        update_available = None
+    version = version_view(row.state, time.time(), manual=db.session.get(CentralConnectionCheck, 1))
     response = current_app.make_response((render_template('admin/installation.html', installation=row,
-        installed_version=VERSION, update_available=update_available,
+        version=version,
         cache=cache, server_now=server_now, grace_elapsed=grace_elapsed, using_grace=using_grace, error=error, stations=admin_stations(), selected=None, page='installation'), 400 if error else 200))
     response.headers['Cache-Control'] = 'private, no-store'
     return response
@@ -126,8 +124,11 @@ def check_version_command():
         result = check_version(current_app.config['FREO_API_URL'])
     except APIError as error:
         raise click.ClickException('Version check unavailable; update status unknown (' + error.code + ').') from None
-    click.echo('Latest version: ' + result['latest_version'])
-    click.echo('Update available.' if result['update_available'] else 'No newer version available.')
+    click.echo('Latest stable version: ' + (result['latest_version'] or 'Unknown'))
+    click.echo('Version status: Unknown. An authenticated heartbeat supplies version status.')
+    click.echo('Release discovered at: ' + (result['checked_at'] or 'Unknown'))
+    if result['release_url']:
+        click.echo('Release: ' + result['release_url'])
 
 
 @cli.command('configure')

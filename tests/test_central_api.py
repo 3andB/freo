@@ -832,7 +832,10 @@ def test_heartbeat_receipt_is_validated_durable_and_private(central, caplog, mon
     assert receipt['server_time'] in caplog.text
     assert TOKEN not in caplog.text
     Reporter(api.factory).tick()
-    assert installation().state['last_heartbeat'] == receipt
+    refreshed = dict(installation().state['last_heartbeat'])
+    assert refreshed['server_time'] >= receipt['server_time']
+    assert refreshed['freo_version'] == receipt['freo_version']
+    receipt = refreshed
     class InvalidHeartbeat:
         def request(self, method, path, payload):
             return dict(server_time=iso(time.time()), stations_accepted=999,

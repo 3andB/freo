@@ -86,7 +86,7 @@ def test_manual_check_refreshes_before_hourly_due_and_preserves_identity(central
     old_receipt = copy.deepcopy(row.state['last_heartbeat'])
     identity = reporter.store.read()
     api.calls.clear()
-    api.heartbeat_fields = {'latest_version': '0.2.0', 'update_available': True}
+    api.heartbeat_fields = {'latest_version': '0.2.0', 'update_available': True, 'version_status': 'UPDATE_AVAILABLE'}
     api.entitlement['channel_limit'] = 4
     station = Station.query.first()
     station.description = 'Changed metadata'
@@ -96,7 +96,7 @@ def test_manual_check_refreshes_before_hourly_due_and_preserves_identity(central
     # Restart before processing must retain the queued request.
     reporter = Reporter(api.factory)
     assert reporter.process_connection_check()
-    assert [call[1] for call in api.calls] == ['/v1/license', '/v1/stations/sync', '/v1/heartbeat']
+    assert [call[1] for call in api.calls] == ['/v1/license', '/v1/stations/sync', '/v1/heartbeat', '/v1/releases/latest']
     check = db.session.get(CentralConnectionCheck, 1)
     assert check.request_id == request_id and check.status == 'succeeded'
     assert check.result['latest_version'] == '0.2.0' and check.result['update_available'] is True
@@ -108,9 +108,9 @@ def test_manual_check_refreshes_before_hourly_due_and_preserves_identity(central
     assert 3595 < row.state['report']['due'] - time.time() <= 3660
     assert not reporter.process_connection_check()
     reporter.tick()
-    assert len(api.calls) == 3
+    assert len(api.calls) == 4
     panel = connection(Station.query.all(), time.time())
-    assert panel['connected'] and panel['update_status'] == 'Update available'
+    assert panel['connected'] and panel['update_status'] == 'Update Available'
     assert panel['installed_version'] == VERSION
 
 
@@ -123,7 +123,7 @@ def test_manual_check_can_automatically_enroll_without_owner_or_paid_license(cen
     queue_check()
     reporter.process_connection_check()
     assert check_status()['status'] == 'succeeded'
-    assert [call[1] for call in api.calls] == ['/v1/enroll', '/v1/license', '/v1/stations/sync', '/v1/heartbeat']
+    assert [call[1] for call in api.calls] == ['/v1/enroll', '/v1/license', '/v1/stations/sync', '/v1/heartbeat', '/v1/releases/latest']
     assert not row.state.get('owner_profile_id')
 
 
@@ -151,7 +151,7 @@ def test_existing_license_backoff_is_shown_as_partial_result(central):
     reporter.process_connection_check()
     assert check_status()['status'] == 'succeeded'
     assert 'License refresh unavailable' in check_status()['message']
-    assert [call[1] for call in api.calls] == ['/v1/heartbeat']
+    assert [call[1] for call in api.calls] == ['/v1/heartbeat', '/v1/releases/latest']
 
 
 @pytest.mark.parametrize('fallback', [True, False])
@@ -181,7 +181,7 @@ def test_failed_heartbeat_is_not_success_and_public_version_is_separate(central,
     assert panel['last_contact'] == receipt['server_time']
     if fallback:
         assert panel['latest_version'] == newer_version
-        assert panel['update_status'] == 'Update available'
+        assert panel['update_status'] == 'Unknown'
         assert panel['version_source'] == 'Public release discovery'
     else:
         assert panel['update_status'] == 'Unknown'
