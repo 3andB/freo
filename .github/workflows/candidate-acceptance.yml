@@ -45,12 +45,15 @@ jobs:
       - name: Prepare private audio engines
         if: matrix.suite == 'audio'
         run: |
-          sudo bash scripts/configure-icecast-repository.sh
-          sudo apt-get update
-          sudo apt-get install -y liquidsoap icecast2
-          venv/bin/pip install -r requirements-live-mic.txt
-          liquidsoap --version
-          icecast2 -v
+          (
+            set -e
+            sudo bash scripts/configure-icecast-repository.sh
+            sudo apt-get update
+            sudo apt-get install -y liquidsoap icecast2
+            venv/bin/pip install -r requirements-live-mic.txt
+            liquidsoap --version
+            icecast2 -v
+          ) 2>&1 | tee "$RUNNER_TEMP/audio-setup.log"
       - name: Exercise candidate fixtures
         env:
           ACCEPTANCE_SUITE: ${{ matrix.suite }}
@@ -63,6 +66,10 @@ jobs:
         if: always()
         run: |
           mkdir -p "$RUNNER_TEMP/freo-acceptance"
+          python3 scripts/summarize-tests.py "$RUNNER_TEMP/freo-acceptance/results.xml" --setup-log "$RUNNER_TEMP/audio-setup.log"
+          if [ -f "$RUNNER_TEMP/audio-setup.log" ]; then
+            cp "$RUNNER_TEMP/audio-setup.log" "$RUNNER_TEMP/freo-acceptance/"
+          fi
           if [ -f /tmp/freo-browser-failure.png ]; then
             sudo cp /tmp/freo-browser-failure.png "$RUNNER_TEMP/freo-acceptance/"
           fi

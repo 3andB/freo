@@ -50,4 +50,5 @@ with (evidence/'pytest.log').open('w') as log:
         print(line, end='', flush=True)
     code = process.wait()
 (evidence/'exit.txt').write_text(str(code) + '\n')
+subprocess.run([sys.executable, 'scripts/summarize-tests.py', str(evidence/'results.xml')], check=False)
 raise SystemExit(code)
