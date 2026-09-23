@@ -1,5 +1,12 @@
 # Fresh Ubuntu 24.04 acceptance test
 
+For RC6, start with the [current readiness audit](rc6-release-readiness-2026-09-23.md)
+and its outstanding VM acceptance gates. RC6 is still in development. The rc.3,
+0.2.0, and phase-specific references below are historical checks, not an RC6
+acceptance record. Use a separate disposable VM, never the preserved accepted
+RC5 VM. Every installer rerun must refuse existing state without changes;
+populated installations use the signed-bundle upgrade workflow instead.
+
 For rc.3 use the signed package and [current installation instructions](install-candidate.md).
 Fresh installations create `admin` / `IAmOnTheAir`; complete the mandatory browser
 password replacement before administration. No initial CLI account creation is

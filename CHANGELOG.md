@@ -1,5 +1,31 @@
 # Changelog
 
+## 0.3.0-rc.6 — in development, not yet frozen
+
+- Refine installation, feedback, tags, and category administration; present
+  categories as an informative list and keep controls aligned on smaller screens.
+- Combine station settings into one save operation, preserve validation edits,
+  and make pending changes and applied audio settings clearer.
+- Add playlist destinations to music import, reset completed imports for the next
+  song, and reduce repeated work when loading music-library summaries.
+- Prevent song details from saving a stale selection while a new artist or album
+  is still being created.
+- Keep cart controls locked while the authoritative status after a command loads,
+  so background polls cannot briefly restore stale button states.
+- Restore textured vinyl in the public player with a circular animated center,
+  brighter outer colors, and separate stationary artwork; respect reduced motion.
+- Keep statistics maps within a single world and verify live listener counts,
+  located pins, and historical chart updates.
+- Wait for station audio after upgrade restarts, return controlled responses when
+  installation settings are unavailable, and preserve migration diagnostics.
+- Run repeatable backend, browser, recovery, and real-engine acceptance on
+  disposable CI hosts. See the [RC6 readiness audit](docs/rc6-release-readiness-2026-09-23.md)
+  for evidence, limitations, and remaining VM acceptance gates.
+
+RC5 remains an immutable historical candidate. No signed RC6 artifact or release
+approval is implied by this development entry. The current schema remains
+`f39c8210b7de`; these RC6 changes introduce no additional migration.
+
 ## 0.3.0-rc.3 — first-login candidate
 
 - Fix session cookies for explicitly configured HTTP installations while retaining
