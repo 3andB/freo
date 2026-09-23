@@ -1,6 +1,6 @@
 {% extends 'admin/base.html' %}
 {% block title %}Import music · {{ selected.name }} · Freo{% endblock %}
-{% block scripts %}{{ super() }}<script defer src="{{ url_for('static',filename='catalog_controls.js',v='rc6') }}"></script><script defer src="{{ url_for('static',filename='media_upload.js',v='rc6') }}"></script>{% endblock %}
+{% block scripts %}{{ super() }}<script defer src="{{ url_for('static',filename='catalog_controls.js',v='rc6-catalog-save') }}"></script><script defer src="{{ url_for('static',filename='media_upload.js',v='rc6') }}"></script>{% endblock %}
 {% block admin_content %}
 <div class="section-title"><div><span class="eyebrow">YOUR MUSIC LIBRARY</span><h1>Import music</h1><p>Add a song, a few favourites, or an entire album.</p></div><a href="{{ url_for('admin_media.library',slug=selected.slug) }}">← Music</a></div>
 <section class="admin-card import-workspace"><form id="media-upload-form" data-base="{{ url_for('catalog_editor.catalog',slug=selected.slug) }}" data-imports="{{ url_for('music_import.sessions',slug=selected.slug) }}" data-csrf="{{ csrf_token() }}" data-notice-url="{{ url_for('admin_media.import_notice',slug=selected.slug) }}" data-library-url="{{ url_for('admin_media.library',slug=selected.slug) }}" data-file-limit="{{ config.MAX_MEDIA_UPLOAD_BYTES }}" method="post" enctype="multipart/form-data">

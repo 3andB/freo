@@ -80,3 +80,43 @@ def test_import_and_edit_catalog(booth, request):
     driver.save_screenshot('/tmp/freo-media-editor-mobile.png')
     with app.app_context():
         song=Track.query.filter_by(uuid=identifier).one();assert song.title=='Edited in browser' and not song.enabled and song.album_id is None
+
+
+def test_save_waits_for_artist_creation(booth):
+    app, driver, base, tmp_path = booth
+    with app.app_context():
+        song = Track.query.first()
+        identifier, original_artist = song.uuid, song.artist
+    driver.get(base + '/admin/stations/test-station/media/' + identifier)
+    WebDriverWait(driver, 10).until(lambda d:d.execute_script('return !document.getElementById("media-editor").inert'))
+    driver.execute_script('''
+        const original = window.fetch;
+        window.fetch = async function(url, options) {
+            if (String(url).endsWith('/catalog/artists') && options?.method === 'POST') {
+                await new Promise(resolve => window.releaseCatalogCreate = resolve);
+            }
+            return original.call(this, url, options);
+        };
+    ''')
+    field = driver.find_element(By.CSS_SELECTOR, '#editor-catalog input[aria-label="Artist"]')
+    driver.execute_script('arguments[0].scrollIntoView({block:"center"})', field)
+    field.clear(); field.send_keys('Delayed artist')
+    driver.find_element(By.CSS_SELECTOR, '[aria-label="Create artist Delayed artist"]').click()
+    WebDriverWait(driver, 8).until(lambda d:d.execute_script('return typeof window.releaseCatalogCreate === "function"'))
+    save = driver.find_element(By.CSS_SELECTOR, '#song-details button[type=submit]')
+    assert not save.is_enabled()
+    # Artwork also saves song details first; it must not persist stale selections.
+    cover = driver.find_element(By.ID, 'cover-edit')
+    driver.execute_script('arguments[0].scrollIntoView({block:"center"})', cover)
+    cover.click()
+    wait_text(driver, '#editor-status', 'Wait for artist or album creation')
+    assert not driver.find_elements(By.CSS_SELECTOR, '.artwork-dialog')
+    with app.app_context():
+        assert Track.query.filter_by(uuid=identifier).one().artist == original_artist
+    driver.execute_script('window.releaseCatalogCreate()')
+    WebDriverWait(driver, 8).until(lambda d:save.is_enabled() and field.get_attribute('value') == 'Delayed artist')
+    driver.execute_script('arguments[0].scrollIntoView({block:"center"})', save)
+    save.click()
+    wait_text(driver, '#editor-subtitle', 'Delayed artist')
+    with app.app_context():
+        assert Track.query.filter_by(uuid=identifier).one().artist == 'Delayed artist'

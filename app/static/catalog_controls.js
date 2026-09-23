@@ -100,7 +100,7 @@
         rows.slice(0,30).forEach(row=>option(row.name+(key==='album_id'?' · '+(catalog.artists.find(a=>a.id===row.artist_id)?.name||''):''),()=>select(key,row.id)));
         if(query&&!rows.some(row=>identity(row.name)===identity(query))){
           const button=option(`Create “${query}”`,async()=>{
-            if(creating)return;creating=true;button.disabled=true;notice.textContent='';
+            if(creating)return;creating=true;button.disabled=true;notice.textContent='';config.pending?.(true);
             try{
               let owner=fields.artist_id;
               if(kind==='albums'&&!owner){
@@ -110,7 +110,7 @@
               }
               const result=await api(config.base+'/'+kind,config.csrf,{name:query,artist_id:owner||''});
               upsert(catalog,kind,result);select(key,result.id);config.message?.(`${label} selected${config.target?' for '+config.target:''}.`);
-            }catch(error){notice.textContent=error.message;button.disabled=false;}finally{creating=false;}
+            }catch(error){notice.textContent=error.message;button.disabled=false;}finally{creating=false;config.pending?.(false);}
           });button.setAttribute('aria-label',`Create ${label.toLowerCase()} ${query}`);
         }
       }
@@ -125,6 +125,7 @@
     }
     const dispose=subscribe(catalog,paint);paint();
     return {detected(data){detected=data||{};paint();},values(){const result={};if(!fields.artist_id&&fields.artist_name)result.artist_name=fields.artist_name;if(fields.album_id===undefined&&fields.album_name){result.album_name=fields.album_name;if(fields.album_artist)result.album_artist=fields.album_artist;}if(fields.artist_id)result.artist_id=Number(fields.artist_id);if(fields.album_id!==undefined)result.album_id=fields.album_id;if(fields.album_artist_id&&fields.album_id)result.album_artist_id=fields.album_artist_id;return result;},
+      get pending(){return creating;},
       patch(){return Object.fromEntries([...touched].map(key=>[key,fields[key]??(key==='album_id'&&fields[key]===null?null:'file')]));},
       set(values){fields={...values};paint();},reset(){fields={};touched.clear();paint();},destroy:dispose,refresh:()=>load(config.base)};
   }

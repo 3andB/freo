@@ -49,7 +49,7 @@ def choose(driver,host,label,name,create=False):
     assert matches, (field.get_attribute('value'),[(b.text,b.get_attribute('textContent')) for b in options],driver.execute_script('return document.activeElement.outerHTML'))
     target=matches[0]
     target.click()
-    WebDriverWait(driver,8).until(lambda d:field.get_attribute('value')==name)
+    WebDriverWait(driver,8).until(lambda d:field.get_attribute('value')==name and field.get_attribute('aria-expanded')=='false')
 
 
 def wait_saved(app,title=None,artist=None):
