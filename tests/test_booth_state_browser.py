@@ -49,7 +49,10 @@ def test_cart_glow_global_lock_and_completion_in_both_modes(booth, delayed_statu
             const pending = [];
             window.restoreCartFetch = () => {window.fetch = original; pending.forEach(resolve => resolve());};
             window.fetch = async function(url, options) {
-                const holdStatus = String(url).endsWith('/live-status') && commandComplete;
+                // The persistent header also polls this endpoint. Hold only
+                // booth requests, which explicitly include credentials.
+                const holdStatus = String(url).endsWith('/live-status') &&
+                    options?.credentials === 'same-origin' && commandComplete;
                 const response = await original.call(this, url, options);
                 if (String(url).endsWith('/fire-cart') && options?.method === 'POST') commandComplete = true;
                 else if (holdStatus) {
