@@ -1,4 +1,5 @@
 from datetime import datetime,timezone
+import pytest
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from app.extensions import db
@@ -31,7 +32,8 @@ def test_auto_context_persistent_status_and_message_expiry(booth):
     driver.save_screenshot('/tmp/freo-auto-state.png')
 
 
-def test_cart_glow_global_lock_and_completion_in_both_modes(booth):
+@pytest.mark.parametrize('delayed_status', [False, True])
+def test_cart_glow_global_lock_and_completion_in_both_modes(booth, delayed_status):
     app,driver,base,tmp_path=booth
     with app.app_context():
         station=Station.query.filter_by(slug='test-station').one();track=Track.query.first()
@@ -40,8 +42,36 @@ def test_cart_glow_global_lock_and_completion_in_both_modes(booth):
     driver.refresh()
     first='[data-role="HOT"][data-position="1"]'
     WebDriverWait(driver,8).until(lambda d:d.find_element(By.CSS_SELECTOR,first+' [data-fire-cart]').is_enabled())
+    if delayed_status:
+        driver.execute_script('''
+            const original = window.fetch;
+            let commandComplete = false, firstHeld = false;
+            const pending = [];
+            window.restoreCartFetch = () => {window.fetch = original; pending.forEach(resolve => resolve());};
+            window.fetch = async function(url, options) {
+                const holdStatus = String(url).endsWith('/live-status') && commandComplete;
+                const response = await original.call(this, url, options);
+                if (String(url).endsWith('/fire-cart') && options?.method === 'POST') commandComplete = true;
+                else if (holdStatus) {
+                    await new Promise(resolve => {
+                        if (!firstHeld) {firstHeld = true; window.releaseCartStatus = resolve;}
+                        else pending.push(resolve);
+                    });
+                }
+                return response;
+            };
+        ''')
     driver.find_element(By.CSS_SELECTOR,first+' [data-fire-cart]').click()
     wait_text(driver,first,'QUEUED')
+    if delayed_status:
+        WebDriverWait(driver,8).until(lambda d:d.execute_script('return typeof window.releaseCartStatus === "function"'))
+        # Let multiple 250 ms background-poll opportunities pass while the
+        # command's own authoritative status response is held back.
+        driver.execute_async_script('const done=arguments[0];setTimeout(done,1100)')
+        driver.execute_script('window.releaseCartStatus()')
+        WebDriverWait(driver,8).until(lambda d:d.find_element(By.ID,'dj-booth').get_attribute('aria-busy')!='true')
+        assert all(not button.is_enabled() for button in driver.find_elements(By.CSS_SELECTOR,'[data-fire-cart]'))
+        driver.execute_script('window.restoreCartFetch()')
     assert all(not button.is_enabled() for button in driver.find_elements(By.CSS_SELECTOR,'[data-fire-cart]'))
     assert 'cart-queued' in driver.find_element(By.CSS_SELECTOR,first).get_attribute('class')
     with app.app_context():

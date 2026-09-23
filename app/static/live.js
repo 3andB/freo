@@ -28,7 +28,7 @@
     const node=document.getElementById('booth-notice');
     node.dataset.message='action';node.hidden=false; node.textContent=message; node.classList.toggle('error',error);
   };
-  let busy=false;
+  let busy=false,commandRefresh=false;
   const post = async (action, data={}) => {
     if(busy||!active()) return false;
     busy=true; root.setAttribute('aria-busy','true'); notice('Working…');
@@ -43,11 +43,11 @@
       const result=await response.json();
       if(!active())return false;
       if(!response.ok) throw new Error(result.message || 'Control failed. Try again.');
-      notice(result.message); await refresh();
+      notice(result.message); await refresh(true);
       if(!active())return false;
       if(action==='assign-cart') await FreoWorkspace.navigate(location.href,{submitted:true});
       return true;
-    } catch(error) { if(!active())return false; notice(error.message || 'Connection lost. Try again.',true); if(action==='cue-list')await refresh(); return false; }
+    } catch(error) { if(!active())return false; notice(error.message || 'Connection lost. Try again.',true); if(action==='cue-list')await refresh(true); return false; }
     finally {busy=false;root.removeAttribute('aria-busy');}
   };
   const fadeControl=document.getElementById('deck-fade-seconds');
@@ -244,9 +244,10 @@
   }
   let refreshVersion=0,lastFailedCommand=null;
   scope.cleanup(()=>{++refreshVersion;});
-  async function refresh(){
+  async function refresh(afterCommand=false){
     if(!active())return;
     const version=++refreshVersion;
+    if(afterCommand)commandRefresh=true;
     try{
       const response=await scope.fetch(root.dataset.statusUrl,{credentials:'same-origin',cache:'no-store'});
       if(!response.ok)throw new Error();
@@ -337,7 +338,7 @@
       root.querySelectorAll('.deck-take').forEach(button=>button.classList.remove('is-live','is-incoming'));
       root.querySelectorAll('[data-operation]').forEach(button=>button.disabled=true);
 
-    }
+    }finally{if(afterCommand)commandRefresh=false;}
   }
   let skipRequested=null,skipFailureSeen=null;
   function autoControls(){
@@ -365,6 +366,6 @@
   });
   scope.listen(document,'song-flag-saved',()=>notice('Song flag saved. Review flagged songs in Music.'));
   let polling=false,lastPoll=0;
-  scope.interval(()=>{const delay=root.dataset.mode==='DJ_BOOTH'&&!document.hidden?250:2000;if(!polling&&Date.now()-lastPoll>=delay){polling=true;lastPoll=Date.now();refresh().finally(()=>polling=false);}},250);
+  scope.interval(()=>{const delay=root.dataset.mode==='DJ_BOOTH'&&!document.hidden?250:2000;if(!commandRefresh&&!polling&&Date.now()-lastPoll>=delay){polling=true;lastPoll=Date.now();refresh().finally(()=>polling=false);}},250);
   scope.interval(systemStatus,250);scope.interval(timing,250);refresh();
 })();
