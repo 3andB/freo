@@ -22,7 +22,7 @@ if args.xml.exists():
         detail = (failure.text or failure.get('message', ''))[-5500:]
         print('::error::' + escaped(name + '\n' + detail))
         summary += '\n- `' + name.replace('`', '') + '`\n'
-    print(summary)
+    print('::notice::' + escaped(summary))
 elif args.setup_log and args.setup_log.exists():
     summary = 'Tests did not run. Runner setup failed; see the setup log artifact.\n'
     print('::error::' + escaped(summary + args.setup_log.read_text(errors='replace')[-5500:]))

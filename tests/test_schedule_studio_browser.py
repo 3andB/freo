@@ -159,7 +159,9 @@ def test_blocks_default_playlist_and_full_day_calendar_song(booth):
         from app.services import visual_schedule as vs
         policy=vs.policy(Station.query.filter_by(slug='test-station').one(),True)
         policy.revision+=1;db.session.commit()
-    driver.find_element(By.CSS_SELECTOR,'#fallback-results button').click()
+    fallback = driver.find_element(By.CSS_SELECTOR,'#fallback-results button')
+    driver.execute_script('arguments[0].scrollIntoView({block:"center"})', fallback)
+    fallback.click()
     wait_text(driver,'#fallback-status','Save changes to apply')
     driver.find_element(By.CSS_SELECTOR,'#station-settings-form .settings-save-bar button').click()
     wait_text(driver,'#station-save-status','All changes saved')

@@ -22,7 +22,7 @@ def test_forms_and_headers_across_pages(booth):
     for path in paths:
         if path.endswith('/media/upload'): open_import(driver, base)
         else: driver.get(base + path)
-        assert driver.find_elements(By.CSS_SELECTOR, '.admin-topbar'), path
+        WebDriverWait(driver, 10).until(lambda d:d.find_elements(By.CSS_SELECTOR, '.admin-topbar'))
         for theme in ('day', 'night'):
             driver.find_element(By.CSS_SELECTOR, f'[data-appearance={theme}]').click()
             driver.save_screenshot(str(tmp_path / (path.replace('/', '_') + '-' + theme + '.png')))
