@@ -369,6 +369,8 @@ def test_renderer_preserves_directory_settings_on_provision(public_app, monkeypa
     monkeypatch.setattr(renderer, 'KEYS', keys)
     monkeypatch.setattr(renderer.os, 'geteuid', lambda: 0)
     monkeypatch.setattr(renderer.os, 'chown', lambda *a: None)
+    monkeypatch.setattr(renderer.pwd, 'getpwnam', lambda name: SimpleNamespace(pw_uid=0))
+    monkeypatch.setattr(renderer.grp, 'getgrnam', lambda name: SimpleNamespace(gr_gid=0))
     monkeypatch.setattr(renderer.subprocess, 'run', lambda *a, **kw: SimpleNamespace(returncode=0))
     renderer.main()
     root = yp.parse_config((radio / 'icecast.xml').read_bytes())

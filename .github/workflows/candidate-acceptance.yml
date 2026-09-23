@@ -49,7 +49,10 @@ jobs:
             set -e
             sudo bash scripts/configure-icecast-repository.sh
             sudo apt-get update
-            sudo apt-get install -y liquidsoap icecast2
+            # Match provision.sh's guard for Xiph's package post-install script.
+            sudo install -d -m 0750 /var/log/icecast2
+            sudo touch /var/log/icecast2/.freo-keep
+            sudo apt-get install --no-remove -y liquidsoap 'icecast2=2.5.*'
             venv/bin/pip install -r requirements-live-mic.txt
             liquidsoap --version
             icecast2 -v
