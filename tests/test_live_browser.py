@@ -69,6 +69,9 @@ def booth(app_fixture, monkeypatch, tmp_path):
         driver.find_element(By.CSS_SELECTOR,'#license-accept-form button[type=submit]').click()
         WebDriverWait(driver,10).until(lambda d:not d.find_element(By.ID,'license-agreement').is_displayed())
         driver.get(base+'/admin/stations/test-station/live')
+        # The initial HTML can already say EMPTY on deck B while the client
+        # still has no engine snapshot. Wait for confirmed playback to render.
+        wait_text(driver, '#morph-text', 'Verified Test Track')
         yield app,driver,base,tmp_path
     except Exception:
         driver.save_screenshot("/tmp/freo-browser-failure.png")

@@ -32,6 +32,7 @@ def test_player_report_and_isrc_editor(booth):
         assert DMCACase.query.one().snapshot['freo_track_id'] == public_id
         assert Track.query.first().enabled
     driver.get(base + f'/admin/stations/test-station/media/{uuid}')
+    WebDriverWait(driver, 8).until(lambda d:not d.find_element(By.ID, 'media-editor').get_property('inert'))
     field = WebDriverWait(driver, 8).until(lambda d:d.find_element(By.CSS_SELECTOR, '#song-details [name=isrc]'))
     field.send_keys('us-ab1-23-45678')
     driver.find_element(By.CSS_SELECTOR, '#song-details button[type=submit]').click()
