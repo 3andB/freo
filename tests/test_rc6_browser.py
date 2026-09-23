@@ -18,7 +18,7 @@ def test_settings_single_save_keeps_edits_and_layout(booth):
     driver.execute_script("const f=document.getElementById('station-settings-form');f.elements.city.value='Keep this draft';f.elements.country.value='X';f.elements.city.dispatchEvent(new Event('input',{bubbles:true}));f.dispatchEvent(new Event('submit',{bubbles:true,cancelable:true}));")
     wait_text(driver,'#station-save-status','two-letter')
     assert driver.find_element(By.NAME,'city').get_attribute('value')=='Keep this draft'
-    for width in (390,1280):
+    for width in (390,820,1280):
         driver.set_window_size(width,1000)
         assert driver.execute_script('return document.documentElement.scrollWidth<=innerWidth+1')
         driver.save_screenshot(f'/tmp/freo-rc6-settings-{width}.png')
@@ -29,7 +29,7 @@ def test_settings_single_save_keeps_edits_and_layout(booth):
         try: driver.switch_to.alert.accept()
         except Exception: pass
         wait.until(lambda d:d.find_elements(By.CSS_SELECTOR,'.admin-main'))
-        for width in (390,1280):
+        for width in (390,820,1280):
             driver.set_window_size(width,1000)
             assert driver.execute_script('return document.documentElement.scrollWidth<=innerWidth+1'),path
         driver.save_screenshot('/tmp/freo-rc6-'+path.rsplit('/',1)[-1]+'.png')
@@ -52,7 +52,7 @@ def test_player_vinyl_lava_and_stationary_cover(booth):
     assert not driver.find_elements(By.CSS_SELECTOR,'.radio-vinyl img')
     WebDriverWait(driver,12).until(lambda d:d.find_element(By.ID,'playing-artwork').is_displayed())
     assert driver.execute_script("const a=document.getElementById('playing-artwork'),t=document.getElementById('radio-transport');return a.getBoundingClientRect().top>=t.getBoundingClientRect().bottom && a.getBoundingClientRect().width<=160 && getComputedStyle(a).animationName==='none'")
-    for width in (390,1280):
+    for width in (390,820,1280):
         driver.set_window_size(width,1000)
         assert driver.execute_script('return document.documentElement.scrollWidth<=innerWidth+1')
         driver.save_screenshot(f'/tmp/freo-rc6-player-{width}.png')
