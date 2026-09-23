@@ -16,8 +16,18 @@
 
 .vinyl-label img+i{display:none}
 
-/* RC6: the record moves; the artist's cover stays still. */
-.vinyl-label.vinyl-lava{width:39%;height:39%;position:relative;isolation:isolate;background:radial-gradient(circle at 40% 30%,#313357,#0d1426 80%);box-shadow:0 0 0 4px #09090f,inset 0 0 20px #0008,0 0 25px #9970ff40}
+/* Rotate the groove surface, leaving the circular lava window on a stable layer. */
+.radio-deck{--vinyl-teal:#008f91;--vinyl-violet:#6437ce;--vinyl-magenta:#b91c75}
+.radio-orbit{background:conic-gradient(from 30deg,var(--vinyl-teal),var(--vinyl-violet) 38%,var(--vinyl-magenta) 70%,var(--vinyl-teal))}
+.orbit-one{opacity:.38}.orbit-two{inset:1px;opacity:1}
+.radio-vinyl{animation:none}
+.vinyl-grooves{animation:radio-spin 12s linear infinite;animation-play-state:paused}
+.vinyl-grooves:after{background:conic-gradient(from 18deg,transparent 0deg,#b6d8ef12 20deg,#b6d8ef55 34deg,#b6d8ef12 49deg,transparent 67deg,transparent 178deg,#a7a2d322 207deg,transparent 239deg,transparent 304deg,#ffffff18 309deg,transparent 315deg)}
+.is-playing .vinyl-grooves{animation-play-state:running}
+.low-motion .vinyl-grooves,.tab-hidden .vinyl-grooves{animation-play-state:paused}
+@media(prefers-reduced-motion:reduce){.vinyl-grooves{animation:none}}
+/* Explicit clipping contains blurred and blended layers throughout their animation. */
+.vinyl-label.vinyl-lava{width:39%;height:39%;position:relative;isolation:isolate;border-radius:50%;overflow:hidden;clip-path:circle(50%);contain:paint;background:radial-gradient(circle at 40% 30%,#313357,#0d1426 80%);box-shadow:0 0 0 4px #09090f,inset 0 0 20px #0008,0 0 25px #9970ff40}
 .vinyl-lava>span{position:absolute;width:85%;height:85%;border-radius:43% 57% 60% 40%;filter:blur(9px);opacity:.85;background:var(--radio-accent);animation:lava-flow 19s ease-in-out infinite alternate;mix-blend-mode:screen;left:-30%;top:0}
 .vinyl-lava>span:nth-child(2){background:var(--radio-second);animation-duration:25s;animation-delay:-11s;left:40%;top:30%}.vinyl-lava>span:nth-child(3){background:var(--radio-third);animation-duration:31s;animation-delay:-19s;left:5%;top:65%;width:70%;height:70%}.vinyl-lava i{z-index:2}
 @keyframes lava-flow{0%{transform:translate(-10%,-20%) scale(.8) rotate(0deg)}50%{transform:translate(30%,15%) scale(1.1) rotate(60deg)}100%{transform:translate(5%,-40%) scale(.9) rotate(120deg)}}
