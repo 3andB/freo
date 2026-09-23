@@ -2,6 +2,7 @@
 import base64
 import fcntl
 import grp
+from http.client import HTTPException
 import json
 import os
 from pathlib import Path
@@ -15,6 +16,22 @@ import uuid
 from psycopg2.extensions import make_dsn, parse_dsn
 
 from . import recovery, releases
+
+
+def wait_for_station_audio(opener, slug, timeout=60):
+    """Allow an active Liquidsoap process time to connect its Icecast mount."""
+    deadline = time.monotonic() + timeout
+    while (remaining := deadline - time.monotonic()) > 0:
+        try:
+            with opener.open('http://127.0.0.1:8001/' + slug, timeout=min(3, remaining)) as response:
+                if (response.status == 200
+                        and response.headers.get_content_type().startswith('audio/')
+                        and response.read(4096)):
+                    return
+        except (OSError, HTTPException):
+            pass
+        time.sleep(min(1, max(0, deadline - time.monotonic())))
+    raise recovery.RecoveryError('A previously active station did not deliver audio before the startup deadline: ' + slug)
 
 
 def sync_directory(path):
@@ -367,9 +384,7 @@ def upgrade(artifact, signature, keyring, env_file, backup, passphrase, verifica
                     import re
                     if not re.fullmatch(r'[a-z0-9-]+', slug):
                         raise recovery.RecoveryError('Unexpected playout unit identifier')
-                    with opener.open('http://127.0.0.1:8001/' + slug, timeout=10) as response:
-                        if not response.headers.get_content_type().startswith('audio/') or not response.read(4096):
-                            raise recovery.RecoveryError('A previously active station is not delivering audio')
+                    wait_for_station_audio(opener, slug)
             journal['phase'] = 'complete'
             atomic_json(journal_path, journal)
             return dict(status='complete', version=manifest['version'], backup=journal['backup'],

@@ -182,3 +182,49 @@ def test_privileged_journal_rejects_links_and_writable_directories(tmp_path):
     link.symlink_to(directory)
     with pytest.raises(recovery.RecoveryError):
         updater.require_root_directory(link)
+
+
+@pytest.mark.parametrize('outcome', ['delayed', 'unavailable', 'empty', 'wrong-type'])
+def test_upgrade_waits_for_station_audio_and_preserves_failure_recovery(host, monkeypatch, outcome):
+    """An active playout unit does not yet guarantee an Icecast mount exists."""
+    from email.message import Message
+    host.active.append('freo-playout@fixture.service')
+    elapsed = [0.0]
+    monkeypatch.setattr(updater.time, 'monotonic', lambda: elapsed[0])
+    monkeypatch.setattr(updater.time, 'sleep', lambda seconds: elapsed.__setitem__(0, elapsed[0] + seconds))
+    attempts = []
+
+    class Response:
+        status = 200
+        def __init__(self, content_type='audio/mpeg', body=b'fixture-mp3-data'):
+            self.headers = Message()
+            self.headers['Content-Type'] = content_type
+            self.body = body
+        def read(self, size): return self.body[:size]
+        def __enter__(self): return self
+        def __exit__(self, *args): pass
+
+    def open_url(url, timeout):
+        if url.endswith('/ready'):
+            return Response('application/json', b'{}')
+        assert url == 'http://127.0.0.1:8001/fixture'
+        assert 0 < timeout <= 10
+        attempts.append(elapsed[0])
+        if outcome == 'unavailable' or (outcome == 'delayed' and len(attempts) <= 2):
+            raise OSError('Mount has not connected yet')
+        return Response('text/html' if outcome == 'wrong-type' else 'audio/mpeg',
+                        b'' if outcome == 'empty' else b'fixture-mp3-data')
+
+    monkeypatch.setattr(updater, 'build_opener', lambda *args: SimpleNamespace(open=open_url))
+    if outcome == 'delayed':
+        assert host.execute()['status'] == 'complete'
+        assert len(attempts) == 3 and elapsed[0] >= 2
+        assert 'freo-playout@fixture.service' in host.active
+        assert not (host.state / 'maintenance').exists()
+    else:
+        with pytest.raises(recovery.RecoveryError, match='station.*audio'):
+            host.execute()
+        assert 1 < len(attempts) <= 60 and elapsed[0] == 60
+        journal = json.loads((host.state / 'journal.json').read_text())
+        assert journal['phase'] == 'recovery_required' and journal['failure_phase'] == 'starting'
+        assert host.active == [] and (host.state / 'maintenance').exists()
