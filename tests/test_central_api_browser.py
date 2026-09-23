@@ -27,8 +27,9 @@ def test_installation_setup_and_station_location(booth):
         field.clear()
         field.send_keys(value)
     driver.find_element(By.NAME, 'directory_opt_in').click()
-    driver.find_element(By.CSS_SELECTOR, '.station-settings button[type=submit]').click()
-    wait_text(driver, '.admin-content', 'Station settings saved')
+    driver.find_element(By.CSS_SELECTOR, '#station-settings-form .settings-save-bar button').click()
+    wait_text(driver, '#station-save-status', 'All changes saved')
+    driver.refresh()
     assert driver.find_element(By.NAME, 'country').get_attribute('value') == 'AU'
     assert identity in driver.find_element(By.CSS_SELECTOR, '.station-settings').text
     driver.set_window_size(390, 1000)

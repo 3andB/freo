@@ -55,7 +55,8 @@ def test_import_and_edit_catalog(booth, request):
         Track.query.filter(Track.id!=song.id).update({'analysis_status':'complete'});db.session.commit()
         assert process_analysis();db.session.refresh(song);assert song.enabled and song.waveform
         identifier=song.uuid
-    wait_text(driver,'.import-card','Enabled for broadcast')
+    wait_text(driver,'#import-success','imported successfully')
+    assert not driver.find_elements(By.CSS_SELECTOR,'.import-card')
     driver.get(base+'/admin/stations/test-station/media/'+identifier)
     wait_text(driver,'#broadcast-status','Enabled for broadcast')
     assert driver.find_element(By.ID,'editor-cover').is_displayed()

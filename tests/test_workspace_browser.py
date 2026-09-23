@@ -15,7 +15,7 @@ def test_monitor_survives_navigation_and_preview_requires_reactivation(booth):
     WebDriverWait(driver,10).until(lambda d:d.execute_script('return !FreoMonitor.audio.paused'))
     driver.execute_script('window.originalMonitor=FreoMonitor.audio')
     driver.find_element(By.CSS_SELECTOR,'.admin-nav a[href$="/categories"]').click()
-    WebDriverWait(driver,10).until(lambda d:'/categories' in d.current_url and d.find_elements(By.CSS_SELECTOR,'.list-card'))
+    WebDriverWait(driver,10).until(lambda d:'/categories' in d.current_url and d.find_elements(By.CSS_SELECTOR,'[data-category-row]'))
     assert driver.execute_script('return originalMonitor===FreoMonitor.audio && !FreoMonitor.audio.paused')
     driver.back()
     WebDriverWait(driver,10).until(lambda d:d.find_elements(By.ID,'dj-booth'))

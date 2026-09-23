@@ -47,7 +47,7 @@ def test_playlist_music_bubbles_editor_undo_and_schedule(booth):
     wait_text(driver,'#source-results','Friday Drive')
     driver.find_element(By.CSS_SELECTOR,'button[aria-label="Add Friday Drive"]').click()
     driver.find_element(By.CSS_SELECTOR,'#section-form button[type=submit]').click()
-    driver.find_element(By.ID,'save-schedule').click()
+    WebDriverWait(driver,8).until(lambda d:not d.find_element(By.ID,'section-inspector').is_displayed())
     wait_text(driver,'#save-state','Saved')
     with app.app_context():
         row=Playlist.query.filter_by(name='Friday Drive').one();assert row.mode=='RANDOM' and len(row.items)==1

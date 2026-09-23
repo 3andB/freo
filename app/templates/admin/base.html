@@ -1,5 +1,5 @@
 {% extends 'base.html' %}
-{% block head %}{{ super() }}<link rel="stylesheet" href="{{ url_for('static',filename='admin_refinements.css',v='rc6') }}"><link rel="stylesheet" href="{{ url_for('static',filename='license_agreement.css',v='20260921') }}"><link rel="stylesheet" href="{{ url_for('static',filename='operations.css',v='rc5') }}">{% if page in ['media','sound-room','tags','playlists'] %}<link rel="stylesheet" href="{{ url_for('static',filename='music.css',v='rc5') }}">{% endif %}{% endblock %}
+{% block head %}{{ super() }}<link rel="stylesheet" href="{{ url_for('static',filename='admin_refinements.css',v='rc6-save-space') }}"><link rel="stylesheet" href="{{ url_for('static',filename='license_agreement.css',v='20260921') }}"><link rel="stylesheet" href="{{ url_for('static',filename='operations.css',v='rc5') }}">{% if page in ['media','sound-room','tags','playlists'] %}<link rel="stylesheet" href="{{ url_for('static',filename='music.css',v='rc5') }}">{% endif %}{% endblock %}
 {% block body_class %}dashboard-page admin-page{% endblock %}
 {% block footer %}{{ super() }}{% include 'admin/_license_agreement.html' %}{% endblock %}
 {% block header %}

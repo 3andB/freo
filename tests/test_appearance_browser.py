@@ -19,7 +19,7 @@ def test_appearance_persistence_navigation_and_audio(booth):
     choose(driver, 'night')
     assert driver.execute_script('return originalMonitor === FreoMonitor.audio && !FreoMonitor.audio.paused')
     driver.find_element(By.CSS_SELECTOR, '.admin-nav a[href$="/categories"]').click()
-    WebDriverWait(driver, 10).until(lambda d: '/categories' in d.current_url and d.find_elements(By.CSS_SELECTOR, '.list-card'))
+    WebDriverWait(driver, 10).until(lambda d: '/categories' in d.current_url and d.find_elements(By.CSS_SELECTOR, '[data-category-row]'))
     assert driver.find_element(By.CSS_SELECTOR, '[data-appearance=night]').get_attribute('aria-pressed') == 'true'
     assert driver.execute_script('return originalMonitor === FreoMonitor.audio && !FreoMonitor.audio.paused')
     driver.refresh()

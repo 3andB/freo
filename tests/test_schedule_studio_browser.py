@@ -160,7 +160,11 @@ def test_blocks_default_playlist_and_full_day_calendar_song(booth):
         policy=vs.policy(Station.query.filter_by(slug='test-station').one(),True)
         policy.revision+=1;db.session.commit()
     driver.find_element(By.CSS_SELECTOR,'#fallback-results button').click()
-    wait_text(driver,'#fallback-status','Default playlist saved')
+    wait_text(driver,'#fallback-status','Save changes to apply')
+    driver.find_element(By.CSS_SELECTOR,'#station-settings-form .settings-save-bar button').click()
+    wait_text(driver,'#station-save-status','All changes saved')
+    with app.app_context():
+        assert ChannelSchedule.query.one().default_playlist.name == 'Always available'
     driver.get(base+'/admin/stations/test-station/schedule-studio/blocks')
     driver.find_element(By.ID,'composition-name').send_keys('Weekday format')
     driver.find_element(By.XPATH,"//nav[@id='source-tabs']/button[text()='Playlists']").click()

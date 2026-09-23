@@ -244,9 +244,13 @@ def test_delayed_poll_cannot_undo_edits_or_restore_previous_workspace(booth):
     choose(driver,'.import-card','Artist','Second change',True);wait_saved(app,artist='Second change')
     driver.execute_script('window.importPollWaiting=false;window.holdImportPoll=true;')
     WebDriverWait(driver,8).until(lambda d:d.execute_script('return window.importPollWaiting'))
-    click(driver,'#new-import');wait_text(driver,'#selection-summary','Choose music')
+    click(driver,'#new-import')
+    WebDriverWait(driver,8).until(lambda d:not d.find_elements(By.CSS_SELECTOR,'.import-card')
+        and d.find_element(By.ID,'import-sessions').get_attribute('value') != identifier)
+    new_session=driver.find_element(By.ID,'import-sessions').get_attribute('value')
     driver.execute_script('window.releaseImportPoll()')
     # Let the old response and the next normal polling interval both complete.
     driver.execute_async_script('setTimeout(arguments[0],3000)')
     assert not driver.find_elements(By.CSS_SELECTOR,'.import-card')
-    assert 'Choose music' in driver.find_element(By.ID,'selection-summary').text
+    assert driver.find_element(By.ID,'import-sessions').get_attribute('value') == new_session
+    assert 'has-files' not in driver.find_element(By.ID,'media-upload-form').get_attribute('class').split()

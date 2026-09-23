@@ -73,8 +73,8 @@ def test_settings_navigation_and_persistence(booth):
     WebDriverWait(driver,8).until(lambda d:d.find_elements(By.NAME,'city'))
     for name,value in [('name','Harbour Radio'),('city','Fremantle'),('region','WA'),('contact_email','private@example.test'),('phone','08 1234 5678'),('description','Music by the sea'),('public_slug','harbour-radio')]:
         field=driver.find_element(By.NAME,name);field.clear();field.send_keys(value)
-    driver.find_element(By.CSS_SELECTOR,'.station-settings button[type=submit]').click()
-    wait_text(driver,'.admin-notice','Station settings saved')
+    driver.find_element(By.CSS_SELECTOR,'#station-settings-form .settings-save-bar button').click()
+    wait_text(driver,'#station-save-status','All changes saved')
     assert driver.find_element(By.ID,'station-public-url').get_attribute('value').endswith('/player/harbour-radio')
     driver.save_screenshot('/tmp/freo-station-settings.png')
     driver.find_element(By.LINK_TEXT,'Overview').click()

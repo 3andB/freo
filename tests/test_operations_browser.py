@@ -2,6 +2,8 @@
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import Select, WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
+from packaging.version import Version
+from app.version import VERSION
 from tests.test_live_browser import booth, app_fixture, wait_text
 
 
@@ -15,7 +17,8 @@ def test_manual_connection_check_progress_and_version_result(booth, monkeypatch)
     app.config['FREO_API_STATE_DIR'] = str(tmp_path / 'central-identity')
     monkeypatch.setattr('app.services.central_api.metrics.observation', lambda slug: (True, 4))
     api = FakeAPI()
-    api.heartbeat_fields = {'latest_version': '0.2.0', 'update_available': True}
+    newer_version = f'{Version(VERSION).major + 1}.0.0'
+    api.heartbeat_fields = {'latest_version': newer_version, 'update_available': True}
     entered, release = Event(), Event()
     errors = []
     def worker():
@@ -52,8 +55,8 @@ def test_manual_connection_check_progress_and_version_result(booth, monkeypatch)
         thread.join(timeout=20)
     assert not errors and not thread.is_alive()
     wait_text(driver, '#connection-check-status', 'Heartbeat accepted')
-    wait_text(driver, '[data-connection="installed_version"]', '0.1.0')
-    wait_text(driver, '[data-connection="latest_version"]', '0.2.0')
+    wait_text(driver, '[data-connection="installed_version"]', VERSION)
+    wait_text(driver, '[data-connection="latest_version"]', newer_version)
     wait_text(driver, '[data-connection="update_status"]', 'Update available')
     assert driver.execute_script('return window.connectionPageMarker === true')
     with app.app_context():
