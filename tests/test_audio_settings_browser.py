@@ -49,7 +49,7 @@ def test_audio_settings_queue_and_status_in_browser(booth):
         element=driver.find_element(By.CSS_SELECTOR, f'#audio-settings [name={name}]')
         driver.execute_script('arguments[0].scrollIntoView({block:"center"})', element);element.click()
     field=driver.find_element(By.CSS_SELECTOR, '#audio-settings [name=bass]');field.clear();field.send_keys('2')
-    button=driver.find_element(By.CSS_SELECTOR, '#audio-settings button[type=submit]')
+    button=driver.find_element(By.CSS_SELECTOR, '#station-settings-form .settings-save-bar button[type=submit]')
     driver.execute_script('arguments[0].scrollIntoView({block:"center"})', button);button.click()
     wait_text(driver, '#audio-settings-status', 'pending')
     with app.app_context():
@@ -58,7 +58,7 @@ def test_audio_settings_queue_and_status_in_browser(booth):
         assert stream.pending_audio['agc'] and stream.pending_audio['eq'] and stream.pending_audio['multiband']
         stream.audio_status='failed';stream.audio_error='Previous settings retained.';db.session.commit()
     wait_text(driver, '#audio-settings-status', 'Previous settings retained.')
-    assert driver.find_element(By.CSS_SELECTOR, '#audio-settings button[type=submit]').is_enabled()
+    assert driver.find_element(By.CSS_SELECTOR, '#station-settings-form .settings-save-bar button[type=submit]').is_enabled()
     for width in (390, 820, 1440):
         driver.set_window_size(width, 1100)
         assert driver.execute_script('return document.documentElement.scrollWidth <= innerWidth')

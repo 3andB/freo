@@ -103,7 +103,7 @@ def catalog(slug):
     from app.services.player import vote_stats
     ratings=vote_stats(station.id,[x.id for x in songs])
     result=dict(flagged_count=base.filter(Track.id.in_(db.session.query(SongFlag.track_id).filter_by(station_id=station.id,resolved_at=None))).count(),songs=[song_data(x, song_plays.get(x.id, 0), station, flags, ratings) for x in songs],total=total,page=page,pages=max(1,(total+49)//50),target_lufs=station.target_lufs,
-        playlists=[playlist_service.summary(row) for row in playlist_service.listing(station.id)],
+        playlists=playlist_service.summaries(station.id),
         categories=[dict(id=x.id,name=x.name,count=category_counts.get(x.id,0),play_count=category_plays.get(x.id,0),enabled=x.enabled,description=x.description) for x in MediaCategory.query.filter_by(station_id=station.id).order_by(MediaCategory.name)],
         tags=[dict(id=x.id,name=x.name,color=x.color,description=x.description,count=tag_counts.get(x.id,0)) for x in MusicTag.query.filter_by(station_id=station.id).order_by(MusicTag.name)],
         unfinished=base.filter(Track.analysis_status!='complete').count())

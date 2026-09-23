@@ -28,6 +28,16 @@ def page(station, section, **extra):
     from app.services.airplay import play_counts
     if section == 'categories':
         extra['play_counts'] = play_counts(station.id, 'category')
+        if 'rows' in extra:
+            from sqlalchemy import func
+            from app.models import track_categories, RotationSlot, ClockSlot
+            extra['category_counts'] = dict(db.session.query(track_categories.c.category_id,func.count()).join(MediaCategory,MediaCategory.id==track_categories.c.category_id).filter(MediaCategory.station_id==station.id).group_by(track_categories.c.category_id).all())
+            uses = {}
+            for category_id, name in db.session.query(RotationSlot.category_id,Rotation.name).join(Rotation).filter(Rotation.station_id==station.id):
+                uses.setdefault(category_id,set()).add(name)
+            for category_id, name in db.session.query(ClockSlot.category_id,Clock.name).join(Clock).filter(Clock.station_id==station.id):
+                uses.setdefault(category_id,set()).add(name)
+            extra['category_uses'] = {key:sorted(value) for key,value in uses.items()}
     return render_template('admin/programming.html', stations=admin_stations(), selected=station,
         page=section, section=section, kind=KINDS.get(section), data=admin_context(station, with_status=False), **extra)
 

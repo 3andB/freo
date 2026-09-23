@@ -3,7 +3,7 @@
   const root=document.getElementById('sound-room');if(!root)return;
   const $=id=>document.getElementById(id), selected=new Set();
   const processing=new Set();
-  let data=null,active=null,activeSong=null,page=1,filter={},version=0,busy=false,undo=null,drag=null,editing=null,notesDirty=false,editingCategory=null,suppressClickUntil=0;
+  let loading=false,nextRefresh=0,data=null,active=null,activeSong=null,page=1,filter={},version=0,busy=false,undo=null,drag=null,editing=null,notesDirty=false,editingCategory=null,suppressClickUntil=0;
   const initial=new URLSearchParams(location.search);active=initial.get('song');
   if(initial.get('import_session')){filter.import_session=initial.get('import_session');$('collection-title').textContent='Imported songs';}
   const el=(tag,text,cls)=>{const node=document.createElement(tag);if(text!==undefined)node.textContent=text;if(cls)node.className=cls;return node;};
@@ -160,12 +160,14 @@
     if(data){destinations();$('room-songs').dataset.render=rowsSignature();}
     if(activeSong&&!notesDirty)inspector(activeSong);
   });
-  async function load(){
-    if(FreoMusicToggles.pending)return;
+  async function load(background=false){
+    if(FreoMusicToggles.pending||(background&&loading))return;
+    loading=true;
     const attempt=++version;const params=new URLSearchParams({...filter,page});
     const form=$('room-search');for(const key of ['q','analysis','enabled'])if(form.elements[key].value)params.set(key,form.elements[key].value);
-    try{const response=await scope.fetch(root.dataset.catalog+'?'+params,{cache:'no-store'});if(!response.ok||!response.headers.get('content-type')?.includes('application/json'))throw Error();const next=await response.json();if(attempt!==version||FreoMusicToggles.pending||drag)return;data=next;destinations();rows();fitWorkspace();if(editingCategory&&!notesDirty){const category=data.categories.find(x=>x.id===editingCategory);if(category)categoryInspector(category);}else if(active&&!notesDirty)await inspect(active);}
+    try{const response=await scope.fetch(root.dataset.catalog+'?'+params,{cache:'no-store'});if(!response.ok||!response.headers.get('content-type')?.includes('application/json'))throw Error();const next=await response.json();if(attempt!==version||FreoMusicToggles.pending||drag||root.querySelector('.song-menu[open]'))return;data=next;destinations();rows();fitWorkspace();if(editingCategory&&!notesDirty){const category=data.categories.find(x=>x.id===editingCategory);if(category)categoryInspector(category);}else if(active&&!notesDirty)await inspect(active);}
     catch(_){message('Music could not load. Check your connection or refresh to sign in again.',true);}
+    finally{if(attempt===version){loading=false;nextRefresh=Date.now()+(processing.size||data?.songs.some(s=>s.requested||['pending','processing'].includes(s.analysis))?2500:15000);}}
   }
   async function process(ids){
     if(!ids.length||busy)return;ids.forEach(id=>processing.add(id));message('Queuing audio processing…');
@@ -238,5 +240,6 @@
     const poll=async()=>{if(done||polling)return;polling=true;try{const response=await scope.fetch(result.status_url,{headers:{Accept:'application/json'},cache:'no-store'});if(!response.ok)throw Error();const job=await response.json();if(job.status==='accepted'){notice.textContent='Song permanently deleted from all channels.';done=true;}else if(['error','rejected'].includes(job.status)){done=true;notice.textContent='Song removed from Music, but file cleanup failed. ';const retry=el('a','Review and retry deletion');retry.href=result.job_url;notice.append(retry);}else notice.textContent='Song removed. Clearing playback and deleting files…';}catch(_){notice.textContent='Deletion status unavailable. ';const link=el('a','Check deletion status');link.href=result.job_url;notice.append(link);}finally{polling=false;}};
     poll();scope.interval(poll,2000);
   }
-  load();scope.interval(()=>{if(!drag&&!busy&&!document.hidden&&!document.querySelector('dialog[open]')&&!root.querySelector('.song-menu[open]'))load();},2000);
+  scope.listen(document,'visibilitychange',()=>{if(!document.hidden)load(true);});
+  load();scope.interval(()=>{if(Date.now()>=nextRefresh&&!drag&&!busy&&!document.hidden&&!document.querySelector('dialog[open]')&&!root.querySelector('.song-menu[open]'))load(true);},2500);
 })();

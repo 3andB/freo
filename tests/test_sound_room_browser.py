@@ -90,8 +90,13 @@ def test_sound_room_processing_and_delete_menu(booth):
 def test_availability_shortcuts_save_and_editor_layout(booth):
     app,driver,base,tmp_path=booth
     def click(selector):
-        node=driver.find_element(By.CSS_SELECTOR,selector)
-        driver.execute_script('arguments[0].scrollIntoView({block:"center"})',node);node.click()
+        from selenium.common.exceptions import StaleElementReferenceException, ElementClickInterceptedException
+        def ready(browser):
+            node=browser.find_element(By.CSS_SELECTOR,selector)
+            browser.execute_script('arguments[0].scrollIntoView({block:"center"})',node)
+            node.click()
+            return True
+        WebDriverWait(driver,10,ignored_exceptions=(StaleElementReferenceException,ElementClickInterceptedException)).until(ready)
     driver.get(base+'/admin/stations/test-station/media')
     wait_text(driver,'#room-songs','Verified Test Track');click('.song-row-copy b')
     wait_text(driver,'#song-inspector','Channel availability');click('#song-inspector .availability-shortcut')
@@ -102,7 +107,7 @@ def test_availability_shortcuts_save_and_editor_layout(booth):
     wait_text(driver,'#editor-title','Verified Test Track')
     assert driver.execute_script('return document.getElementById("media-editor").lastElementChild.id')=='channel-availability'
     click('#editor-availability')
-    assert driver.find_element(By.CSS_SELECTOR,'.availability-dialog [name=available_to_all]').is_selected()
+    WebDriverWait(driver,10).until(lambda d:d.find_element(By.CSS_SELECTOR,'.availability-dialog [name=available_to_all]').is_selected())
     click('.availability-dialog [type=button]')
     assert not driver.find_elements(By.CSS_SELECTOR,'.availability-dialog')
     click('#channel-availability [name=available_to_all]');click('#channel-availability [type=submit]')

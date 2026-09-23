@@ -90,6 +90,55 @@ def decode_logo(upload, output_limit=None):
         raise ValueError('Logo could not be decoded; choose a valid JPEG, PNG or WebP image') from error
 
 
+def settings_token(station):
+    """Fingerprint editable values, excluding worker progress and heartbeat state."""
+    row = policy(station)
+    fields = ('name', 'description', 'public_slug', 'timezone', 'city', 'region', 'country',
+              'genre', 'contact_email', 'phone', 'directory_categories', 'directory_opt_in',
+              'publish_contact')
+    value = {key: getattr(station, key) for key in fields}
+    value.update(directory=station.internet_radio_pending if station.internet_radio_pending is not None else station.internet_radio_enabled, logo=station.logo.version if station.logo else None,
+                 audio_revision=station.stream.audio_revision,
+                 playlist=row.default_playlist_id if row else None)
+    return hashlib.sha256(json.dumps(value, sort_keys=True).encode()).hexdigest()
+
+
+def save_combined(station):
+    from app.services.station_audio import active_settings, from_form, queue_settings
+    from app.services.radio_directories import queue_internet_radio
+    from app.services import visual_schedule as vs
+    from app.models import ChannelSchedule, ScheduleTransition
+    row = ChannelSchedule.query.filter_by(station_id=station.id).with_for_update().first()
+    if row:
+        db.session.refresh(row)
+    if request.form.get('settings_token') != settings_token(station):
+        raise ValueError('Settings changed in another window. Your edits are still here. Open this page in a new tab to compare before trying again.')
+    # Queue durable work in this transaction; workers see it only after commit.
+    if 'bitrate' in request.form:
+        values = from_form(request.form)
+        if values != (station.stream.pending_audio or active_settings(station.stream)):
+            queue_settings(station, values, int(request.form.get('revision', '-1')), current_admin())
+    if 'directory_enabled' in request.form:
+        enabled = request.form['directory_enabled'] == 'yes'
+        if request.form['directory_enabled'] not in ('yes', 'no'):
+            raise ValueError('Choose ON or OFF for the public directory listing.')
+        effective = station.internet_radio_pending if station.internet_radio_pending is not None else station.internet_radio_enabled
+        if enabled != effective:
+            queue_internet_radio(station, enabled, current_admin())
+    proposed = request.form.get('default_playlist', '')
+    proposed = int(proposed) if proposed else None
+    if proposed != (row.default_playlist_id if row else None):
+        if ScheduleTransition.query.filter_by(station_id=station.id).filter(ScheduleTransition.state.in_(('PENDING', 'PREPARING', 'FADING'))).first():
+            raise ValueError('Wait for the playback mode change to finish before saving.')
+        if proposed is not None:
+            ref = vs.source(station, dict(kind='playlist', id=proposed))
+            if not vs.source_tracks(station, ref):
+                raise ValueError('Choose a playlist with playable songs.')
+        row = row or vs.policy(station, True)
+        row.default_playlist_id = proposed
+        row.revision += 1
+
+
 @station_settings.route('/admin/stations/<slug>/settings', methods=['GET','POST'])
 @admin_required
 def page(slug):
@@ -100,6 +149,12 @@ def page(slug):
     if request.method == 'POST':
         require_csrf()
         try:
+            if request.form.get('combined') == 'yes':
+                from app.services.stations import allocation_lock
+                allocation_lock()
+                from app.models import Station
+                station = Station.query.filter_by(id=station.id).with_for_update().populate_existing().one()
+                save_combined(station)
             fields = {key:clean_text(request.form.get(key,''),limit) for key,limit in
                       [('city',120),('region',120),('country',2),('genre',100),('contact_email',254),('phone',40)]}
             if fields['contact_email'] and not re.fullmatch(r'[^\s@]+@[^\s@]+\.[^\s@]+', fields['contact_email']):
@@ -128,13 +183,17 @@ def page(slug):
             elif request.form.get('remove_logo'):
                 station.logo = None
             db.session.commit()
+            if request.accept_mimetypes.best == 'application/json':
+                return jsonify(message='All changes saved. Queued audio and directory changes are applied in the background.', token=settings_token(station), audio_revision=station.stream.audio_revision, public_url=preferred_url(station), logo_url=url_for('.logo',slug=station.slug,v=station.logo.version) if station.logo else None)
             flash('Station settings saved','success')
             return redirect(url_for('.page',slug=station.slug))
         except ValueError as exc:
             db.session.rollback()
             error = str(exc)
+            if request.accept_mimetypes.best == 'application/json':
+                return jsonify(error=error), 400
     from app.services.station_audio import active_settings
-    return render_template('admin/station_settings.html',selected=station,stations=admin_stations(),page='settings',error=error,public_url=preferred_url(station),playback_policy=policy(station),audio_values=station.stream.pending_audio or active_settings(station.stream)), 400 if error else 200
+    return render_template('admin/station_settings.html',selected=station,stations=admin_stations(),page='settings',error=error,public_url=preferred_url(station),settings_token=settings_token(station),playback_policy=policy(station),audio_values=station.stream.pending_audio or active_settings(station.stream)), 400 if error else 200
 
 
 @station_settings.route('/admin/stations/<slug>/settings/audio', methods=['GET', 'POST'])

@@ -1,7 +1,7 @@
 {% extends 'admin/base.html' %}
 {% block title %}Installation · Freo{% endblock %}
 {% block admin_content %}
-<section class="admin-card"><h1>Freo installation</h1>
+<section class="admin-card installation-settings"><h1>Freo installation</h1>
 <p>Freo automatically contacts api.freo.live to identify this installation and report its version, machine information, channel metadata, and hourly listener and library totals. No email or owner account is needed for Community. Listener identities, listener IP addresses and music metadata are never sent. Public directory listing is a separate opt-in for each channel.</p>
 <p>Registration: <strong>{{ "Registered with Freo" if installation.state.get("owner_profile_id") else "Unregistered" }}</strong></p>
 <p>Reporting setup: <strong>{{ "enrolled" if installation.registration_state == "registered" else installation.registration_state|replace("_", " ") }}</strong></p>

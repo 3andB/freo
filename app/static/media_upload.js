@@ -8,7 +8,8 @@
   const jsonGet=async url=>FreoCatalog.readResponse(await scope.fetch(url,{cache:'no-store',headers:{Accept:'application/json'}}),'load your import');
   scope.listen(document,'freo:authentication-required',()=>{authPaused=true;$('import-auth').hidden=false;});
   const isDuplicate=item=>!!item.remote?.duplicate||item.remote?.job_status==='duplicate';
-  let rotation='';
+  let rotation='',resetAfterImport=false,completedImport=null;
+  const playlistChoices=()=>({playlists:[...$('import-playlists').selectedOptions].map(o=>Number(o.value))});
   const rotationKey=config.imports+'/rotation';
   try{rotation=localStorage.getItem(rotationKey)||'';}catch(_){}
   const rotationChoices=()=>rotation?{categories:rotation==='library'?[]:[Number(rotation)]}:{};
@@ -45,14 +46,14 @@
     const active=all.some(i=>!isDuplicate(i)&&(['pending','preparing'].includes(i.remote?.status)||['pending','processing'].includes(i.remote?.job_status)));
     const processing=all.some(i=>!isDuplicate(i)&&['pending','processing'].includes(i.remote?.song?.analysis));
     submit.hidden=!!all.length&&!selectable.length&&!active;
-    $('view-imported').hidden=!imported;$('view-imported').href=session?.library_url||config.libraryUrl;
+    $('view-imported').hidden=!imported&&!completedImport;$('view-imported').href=imported?session.library_url:completedImport?.url||config.libraryUrl;
     if(all.length&&!selectable.length&&!active)$('selection-summary').textContent=failed?'Some songs need attention':processing?'Imported · finishing audio processing':'Import complete';
     else if(active&&!selectable.length)$('selection-summary').textContent='Importing your songs…';
     $('select-all').checked=!!selectable.length&&selectable.every(i=>i.selected);
     $('select-all').indeterminate=selectable.some(i=>i.selected)&&!$('select-all').checked;
     $('edit-selected').disabled=!all.some(i=>i.selected&&editable(i)&&pending(i));
     $('new-import').disabled=uploading||finalizing||batchBusy||switching;$('import-sessions').disabled=uploading||finalizing||batchBusy||switching;
-    $('import-rotation').disabled=uploading||finalizing||batchBusy;
+    $('import-rotation').disabled=$('import-playlists').disabled=uploading||finalizing||batchBusy;
     positionActions();
   }
   function drawRow(item){
@@ -105,7 +106,7 @@
   }
   for(const id of ['import-audio-kind','import-audio-subtype'])$(id).onchange=()=>{for(const item of items.values()){if(item.selected&&pending(item)&&editable(item)){item.choices.audio_kind=$('import-audio-kind').value;item.choices.audio_subtype=item.choices.audio_kind==='STATION'?$('import-audio-subtype').value:'';if(item.choices.audio_kind!=='MUSIC')item.choices.available_to_all=false;fill(item);change(item);}}};
   function makeItem(data,file=null){
-    const item={id:data.id,name:data.name,size:data.size,path:data.path||'',choices:structuredClone(data.choices||(file?{...structuredClone(groups.__defaults__||{}),...rotationChoices(),audio_kind:$('import-audio-kind').value,audio_subtype:$('import-audio-kind').value==='STATION'?$('import-audio-subtype').value:''}:{})),remote:data.status?data:null,file,selected:!data.duplicate,dirty:false,generation:0};
+    const item={id:data.id,name:data.name,size:data.size,path:data.path||'',choices:structuredClone(data.choices||(file?{...structuredClone(groups.__defaults__||{}),...rotationChoices(),...playlistChoices(),audio_kind:$('import-audio-kind').value,audio_subtype:$('import-audio-kind').value==='STATION'?$('import-audio-subtype').value:''}:{})),remote:data.status?data:null,file,selected:!data.duplicate,dirty:false,generation:0};
     if(item.choices.audio_kind&&item.choices.audio_kind!=='MUSIC')item.choices.available_to_all=false;
     if(data.song)item.choices={...songChoices(data.song),group:groupKey(item)};
     item.source=file?URL.createObjectURL(file):null;
@@ -180,7 +181,19 @@
     }
     renderGroups();
   }
-  async function poll(){if(!session||polling||finalizing||switching||authPaused)return;polling=true;try{const next=await jsonGet(session.url);if(next.items.some(i=>i.song&&(!catalog.artists.some(a=>a.id===i.song.artist_id)||(i.song.album_id&&!catalog.albums.some(a=>a.id===i.song.album_id)))))await FreoCatalog.load(config.base);merge(next);return true;}catch(e){message(e.message);return false;}finally{polling=false;const busy=[...items.values()].some(i=>pending(i)&&!isDuplicate(i)||['pending','processing'].includes(i.remote?.job_status)||['pending','processing'].includes(i.remote?.song?.analysis));nextPollAt=Date.now()+(busy?2500:30000);}}
+  async function poll(){if(!session||polling||finalizing||switching||authPaused)return;polling=true;try{const next=await jsonGet(session.url);if(next.items.some(i=>i.song&&(!catalog.artists.some(a=>a.id===i.song.artist_id)||(i.song.album_id&&!catalog.albums.some(a=>a.id===i.song.album_id)))))await FreoCatalog.load(config.base);merge(next);await completeImport();return true;}catch(e){message(e.message);return false;}finally{polling=false;const busy=[...items.values()].some(i=>pending(i)&&!isDuplicate(i)||['pending','processing'].includes(i.remote?.job_status)||['pending','processing'].includes(i.remote?.song?.analysis));nextPollAt=Date.now()+(busy?2500:30000);}}
+  async function completeImport(){
+    if(!resetAfterImport||uploading||finalizing||batchBusy||switching)return;
+    const rows=[...items.values()];
+    if(!rows.length||rows.some(i=>i.dirty||i.saving||i.error||(!isDuplicate(i)&&(!i.remote?.song||i.remote.song.analysis!=='complete'))))return;
+    const count=rows.filter(i=>!isDuplicate(i)).length,url=session.library_url;
+    await openSession();resetAfterImport=false;completedImport={url,count};
+    for(const id of ['media-file','media-folder'])$(id).value='';
+    $('attention-only').checked=false;
+    $('import-success').hidden=false;$('import-success').textContent=`${count} song${count===1?'':'s'} imported successfully. Ready for your next song.`;
+    $('view-imported').href=url;$('view-imported').hidden=false;
+    message('Choose more music, or select Done to return to your library.');
+  }
   async function sessionList(){const result=await jsonGet(config.imports);if(result.csrf)config.csrf=result.csrf;const select=$('import-sessions');select.replaceChildren();for(const row of result.sessions)select.append(new Option(`${row.name||'Import'} · ${{empty:'Ready for songs',draft:'Resume draft',processing:'Processing',attention:'Needs attention',complete:'Completed'}[row.state]||'Import'} · ${row.count} files · ${new Date(row.created_at).toLocaleDateString()}`,row.id));if(session&&!result.sessions.some(s=>s.id===session.id))select.append(new Option('New import',session.id));if(session)select.value=session.id;return result.sessions;}
   async function openSession(identifier){
     if(switching)return;switching=true;form.inert=true;try{
@@ -290,6 +303,7 @@
     const response=await scope.fetch(config.noticeUrl,{method:'POST',body:new URLSearchParams({csrf:config.csrf})});
     if((await FreoCatalog.readResponse(response,'open the importer')).show&&!await FreoDialog.confirm({title:'Before importing music',message:'Only upload and broadcast material you own or are legally authorized to use. Uploading or broadcasting copyrighted material without the necessary rights can violate copyright law and lead to removal, legal action, or financial liability. You are responsible for obtaining the required permissions and licences.',confirmLabel:'Continue to import',signal:scope.signal})){FreoWorkspace.navigate(config.libraryUrl);return;}
     catalog=await FreoCatalog.load(config.base);batchSelectors=FreoCatalog.selectors($('batch-catalog'),catalog,{}, {...config,get csrf(){return form.dataset.csrf;},importing:true,batch:true,message,target:'the selected songs'});batchChips=FreoCatalog.chips($('batch-classification'),catalog,{},['playlists','categories','tags']);
+    for(const playlist of catalog.playlists.filter(p=>!p.system_key))$('import-playlists').append(new Option(playlist.name,String(playlist.id)));
     const rotationSelect=$('import-rotation');for(const category of catalog.categories.filter(c=>c.enabled))rotationSelect.append(new Option('Rotation: '+category.name,String(category.id)));if(![...rotationSelect.options].some(o=>o.value===rotation))rotation='';rotationSelect.value=rotation;
     const list=await sessionList();const requested=new URLSearchParams(location.search).get('import_session');const resume=['draft','attention','empty'].includes(list[0]?.state)?list[0]:null;await openSession(requested||resume?.id||list.find(row=>row.state==='empty')?.id);form.inert=false;form.setAttribute('aria-busy','false');message('Choose music or drop files here to get started.');
   }catch(e){message('Could not open music import. '+e.message);form.inert=false;form.setAttribute('aria-busy','false');const retry=button('Reload importer',()=>location.reload());$('import-message').append(document.createTextNode(' '),retry);return;}
@@ -297,18 +311,19 @@
   async function walk(entry,prefix=''){if(entry.isFile){const file=await new Promise((resolve,reject)=>entry.file(resolve,reject));Object.defineProperty(file,'webkitRelativePath',{value:prefix+file.name});return[file];}if(!entry.isDirectory)return[];const reader=entry.createReader();let result=[];while(true){const chunk=await new Promise((resolve,reject)=>reader.readEntries(resolve,reject));if(!chunk.length)return result;for(const child of chunk)result.push(...await walk(child,prefix+entry.name+'/'));}}
   const zone=form.querySelector('.drop-zone');zone.ondragover=e=>{e.preventDefault();zone.classList.add('is-dragging');};zone.ondragleave=()=>zone.classList.remove('is-dragging');zone.ondrop=async e=>{e.preventDefault();zone.classList.remove('is-dragging');const entries=[...e.dataTransfer.items].map(i=>i.webkitGetAsEntry?.()).filter(Boolean),files=[...e.dataTransfer.files];try{let found=[];if(entries.length)for(const entry of entries)found.push(...await walk(entry));else found=files;addFiles(found);}catch(_){message('Could not read the folder. Use Choose folder.');}};
   scope.listen(window,'dragover',e=>{if([...e.dataTransfer.types].includes('Files'))e.preventDefault();});scope.listen(window,'drop',e=>{if([...e.dataTransfer.types].includes('Files'))e.preventDefault();});
-  $('new-import').onclick=()=>openSession().catch(e=>message(e.message));$('import-sessions').onchange=e=>openSession(e.target.value).catch(error=>message(error.message));
+  $('new-import').onclick=()=>{resetAfterImport=false;return openSession().catch(e=>message(e.message));};$('import-sessions').onchange=e=>{resetAfterImport=false;return openSession(e.target.value).catch(error=>message(error.message));};
   $('select-all').onchange=e=>{for(const item of items.values())if(pending(item)&&!isDuplicate(item))item.selected=e.target.checked;renderGroups();};$('attention-only').onchange=renderGroups;
   $('edit-selected').onclick=()=>openBatch();$('close-batch').onclick=()=>{$('import-defaults').hidden=true;};
   $('folder-artwork').onclick=async()=>{folderCover=folderCovers.get($('folder-artworks').value);if(!folderCover)return;const cover=await FreoCatalog.chooseCover(config,{},folderCover);if(cover){const folder=folderCover.webkitRelativePath?.split('/').slice(0,-1).join('/');if(folder)for(const item of items.values())item.selected=pending(item)&&item.path.split('/').slice(0,-1).join('/')===folder;const selected=[...items.values()].filter(i=>i.selected&&pending(i));const keys=new Set(selected.map(groupKey));openBatch(keys.size===1&&[...keys][0]!=='songs'?[...keys][0]:null);batchCover=cover;$('batch-status').textContent='Folder artwork selected. Apply it to the selected songs.';}};
   $('batch-artwork').onclick=async()=>{batchCover=await FreoCatalog.chooseCover(config);if(batchCover)$('batch-status').textContent='Artwork selected. Apply it to the selected songs.';};
   $('apply-batch').onclick=()=>applyBatch();$('number-tracks').onclick=()=>applyBatch(true);
   $('undo-batch').onclick=async()=>{if(!undo||batchBusy)return;batchBusy=true;$('undo-batch').disabled=true;summary();for(const previous of undo.items){const item=items.get(previous.id);if(item&&editable(item)){item.choices=previous.choices;fill(item);change(item);}}try{await flush();if(undo.group){const result=await post(session.url,{action:'group',key:undo.group,choices:undo.defaults});groups=result.groups;}if('future' in undo){const result=await post(session.url,{action:'group',key:'__defaults__',choices:undo.future});groups=result.groups;}undo=null;$('undo-batch').hidden=true;renderGroups();message('Shared changes undone.');}catch(e){message(e.message);}finally{batchBusy=false;$('undo-batch').disabled=false;summary();}};
-  form.onsubmit=async e=>{e.preventDefault();if(finalizing)return;try{const selected=[...items.values()].filter(i=>i.selected&&!isDuplicate(i)&&i.remote?.status==='ready');if(!selected.length)return;await flush(selected);finalizing=true;summary();merge(await post(session.url,{action:'finalize',items:selected.map(i=>({id:i.id,revision:i.remote.revision}))}));message('Import started. You can add more music while these songs process.');$('import-defaults').hidden=true;$('undo-batch').hidden=true;}catch(error){message(error.message);}finally{finalizing=false;renderGroups();}};
+  form.onsubmit=async e=>{e.preventDefault();if(finalizing)return;try{const selected=[...items.values()].filter(i=>i.selected&&!isDuplicate(i)&&i.remote?.status==='ready');if(!selected.length)return;await flush(selected);finalizing=true;summary();merge(await post(session.url,{action:'finalize',items:selected.map(i=>({id:i.id,revision:i.remote.revision}))}));resetAfterImport=true;$('import-success').hidden=true;message('Import started. You can add more music while these songs process.');$('import-defaults').hidden=true;$('undo-batch').hidden=true;}catch(error){message(error.message);}finally{finalizing=false;renderGroups();}};
   scope.beforeLeave=async()=>{if(uploading&&!await FreoDialog.confirm({title:'Leave while files upload?',message:'Uploaded files are saved. Unfinished uploads will need to be reselected when you return.',confirmLabel:'Leave import',signal:scope.signal}))return false;try{await flush();return true;}catch(e){message(e.message);return false;}};
   scope.listen(window,'beforeunload',e=>{if(uploading||[...items.values()].some(i=>i.dirty)){e.preventDefault();e.returnValue='';}});
   scope.cleanup(()=>{for(const item of items.values()){clearTimeout(item.timer);if(item.source)URL.revokeObjectURL(item.source);}});
   for(const id of ['media-file','media-folder'])if($(id).files.length){addFiles([...$(id).files]);$(id).value='';}
+  $('import-playlists').onchange=()=>{for(const item of items.values())if(item.selected&&pending(item)&&!isDuplicate(item)){Object.assign(item.choices,playlistChoices());fill(item);if(item.remote)change(item);}remember();summary();};
   $('import-rotation').onchange=e=>{rotation=e.target.value;try{localStorage.setItem(rotationKey,rotation);}catch(_){}if(!rotation)return;for(const item of items.values())if(item.selected&&pending(item)&&!isDuplicate(item)){Object.assign(item.choices,rotationChoices());fill(item);if(item.remote)change(item);}remember();summary();};
   $('resume-import').onclick=async()=>{try{await sessionList();authPaused=false;$('import-auth').hidden=true;await flush();if(await poll())message('Import resumed. Retry any interrupted uploads.');}catch(e){message(e.message);}};
   scope.listen(document,'visibilitychange',()=>{if(!document.hidden)poll();});

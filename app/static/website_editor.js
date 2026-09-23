@@ -7,6 +7,11 @@
   scope.listen(form,'input',changed); scope.listen(form,'change',changed);
   scope.listen(form,'submit',() => {dirty = false;});
   scope.listen(window,'beforeunload',event => {if(dirty){event.preventDefault();event.returnValue='';}});
+  scope.listen(document,'submit',event=>{
+    if(event.target===form||!dirty||!event.target.closest('.website-history'))return;
+    event.preventDefault();event.stopImmediatePropagation();
+    FreoDialog.confirm({title:'Discard unsaved website edits?',message:'This action replaces the draft. The edits currently on this page will be lost.',confirmLabel:'Continue and discard edits',signal:scope.signal}).then(ok=>{if(ok){dirty=false;event.target.requestSubmit(event.submitter);}});
+  },{capture:true});
   // The workspace otherwise intercepts internal links before beforeunload can run.
   scope.listen(document,'click',event => {
     const link = event.target.closest('a[href]');

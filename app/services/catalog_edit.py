@@ -35,7 +35,7 @@ def validate_metadata(station_id, data):
         result['playlists'] = []
         for value in values:
             playlist = get_playlist(station_id, value)
-            if playlist.system_key:
+            if playlist.system_key in ('STATION', 'COMMERCIALS'):
                 raise ValueError('Use Audio type to choose a system collection')
             if playlist.id not in result['playlists']:
                 result['playlists'].append(playlist.id)
@@ -145,7 +145,7 @@ def apply_metadata(song, data, station_id=None):
         db.session.query(Station.id).filter_by(id=station_id).with_for_update().first()
         wanted = set(data['playlists'])
         rows = Playlist.query.filter_by(station_id=station_id, deleted_at=None).filter(
-            Playlist.system_key.is_(None), or_(Playlist.id.in_(wanted),
+            or_(Playlist.system_key.is_(None), Playlist.system_key.in_(('PLAYLIST_1', 'PLAYLIST_2'))), or_(Playlist.id.in_(wanted),
                 Playlist.items.any(PlaylistItem.track_id == song.id))).options(
                     selectinload(Playlist.items)).order_by(Playlist.id).populate_existing().with_for_update().all()
         for row in rows:

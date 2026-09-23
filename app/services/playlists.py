@@ -3,7 +3,7 @@ from datetime import datetime, timezone, timedelta
 import random
 import uuid
 from sqlalchemy.orm import selectinload
-from sqlalchemy import case
+from sqlalchemy import case, func
 from app.extensions import db
 from app.models import (Playlist, PlaylistItem, PlaylistCursor, MusicEdit, Track,
                         MediaCategory, Artist, Album, ClockSlot, ScheduleProgram,
@@ -21,6 +21,19 @@ def seed_playlists(station_id):
 
 def listing(station_id):
     return Playlist.query.options(selectinload(Playlist.items).joinedload(PlaylistItem.track)).filter_by(station_id=station_id, deleted_at=None).order_by(case(*[(Playlist.system_key==key, index) for index,key in enumerate(('PLAYLIST_1','PLAYLIST_2','STATION','COMMERCIALS'))],else_=4),Playlist.id).all()
+
+
+def summaries(station_id):
+    """Library navigation needs counts, not every playlist's audio objects."""
+    rows = db.session.query(Playlist, func.count(PlaylistItem.track_id),
+        func.coalesce(func.sum(Track.duration_ms), 0)).outerjoin(PlaylistItem,
+        PlaylistItem.playlist_id == Playlist.id).outerjoin(Track, Track.id == PlaylistItem.track_id).filter(
+        Playlist.station_id == station_id, Playlist.deleted_at.is_(None)).group_by(Playlist.id).order_by(
+        case(*[(Playlist.system_key == key, index) for index, key in enumerate(
+            ('PLAYLIST_1', 'PLAYLIST_2', 'STATION', 'COMMERCIALS'))], else_=4), Playlist.id)
+    return [dict(id=row.id, name=row.name, description=row.description, mode=row.mode,
+        purpose=row.purpose, system_key=row.system_key, revision=row.revision, count=count,
+        duration_ms=duration) for row, count, duration in rows]
 
 
 def get_playlist(station_id, identifier):

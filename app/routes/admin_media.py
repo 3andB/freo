@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 
 from flask import Blueprint, abort, current_app, flash, jsonify, redirect, render_template, request, send_file, url_for
 from sqlalchemy import or_
+from sqlalchemy.orm import selectinload
 
 from app.extensions import db
 from app.models import Album,Artist,AuditEvent,MediaCategory,MusicTag,MediaIngestJob,SelectionDecision,Track,MusicImportItem,MusicImportSession
@@ -95,8 +96,9 @@ def library(slug):
             .order_by(MediaIngestJob.created_at.desc()).limit(5).all())
     return render_template('admin/media.html', **page_context(station, tracks=tracks, total=total,view=view,
                            page_number=page, pages=max(1, (total + 49) // 50), jobs=jobs,
-                           artists=artists_for(station.id).order_by(Artist.name).all(),
-                           albums=albums_for(station.id).order_by(Album.title).all(),
+                           artist_count=artists_for(station.id).count(), album_count=albums_for(station.id).count(),
+                           artists=artists_for(station.id).options(selectinload(Artist.songs),selectinload(Artist.albums)).order_by(Artist.name).all() if view=='artists' else [],
+                           albums=albums_for(station.id).options(selectinload(Album.artist),selectinload(Album.songs)).order_by(Album.title).all() if view=='albums' else [],
                            categories=MediaCategory.query.filter_by(station_id=station.id).order_by(MediaCategory.name).all()))
 
 @admin_media_blueprint.get('/admin/stations/<slug>/media/artists/<int:artist_id>')

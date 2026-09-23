@@ -18,3 +18,5 @@
     form.requestSubmit(form.querySelector('button[type="submit"]'));
   });
 })();
+
+(() => {const search=document.getElementById('category-search');if(!search)return;FreoPage.listen(search,'input',()=>{let visible=0;document.querySelectorAll('[data-category-row]').forEach(row=>{row.hidden=!row.textContent.toLocaleLowerCase().includes(search.value.toLocaleLowerCase());if(!row.hidden)visible++;});document.getElementById('category-no-match').hidden=visible>0;});})();

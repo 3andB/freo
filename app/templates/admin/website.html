@@ -46,4 +46,4 @@
 </form>
 <section class="website-panel website-history"><h2>Publication history</h2><p>Restore a previous publication, or discard your unpublished draft.</p><form method="post"><input type="hidden" name="csrf" value="{{ csrf_token() }}"><input type="hidden" name="revision" value="{{ revision }}"><label class="website-field">Previous publications<select name="publication">{% for publication in publications %}<option value="{{ publication.id }}">{{ publication.created_at.strftime('%d %b %Y · %H:%M:%S') }} UTC — {{ publication.config.name }}</option>{% endfor %}</select></label><div class="website-history-actions"><button name="action" value="restore" {% if not publications %}disabled{% endif %}>Restore & publish selected version</button><button name="action" value="discard">Discard draft</button></div></form></section>
 {% endblock %}
-{% block scripts %}{{ super() }}<script defer src="{{ url_for('static',filename='website_editor.js') }}"></script>{% endblock %}
+{% block scripts %}{{ super() }}<script defer src="{{ url_for('static',filename='website_editor.js',v='rc6') }}"></script>{% endblock %}

@@ -2,7 +2,7 @@
 {% extends 'admin/base.html' %}
 {% block title %}Statistics · {{ selected.name if selected else 'All stations' }} · Freo{% endblock %}
 {% block head %}{{ super() }}<link rel="stylesheet" href="{{ url_for('static',filename='vendor/maplibre/maplibre-gl.css') }}"><link rel="stylesheet" href="{{ url_for('static',filename='statistics.css',v='1') }}">{% endblock %}
-{% block scripts %}{{ super() }}<script defer src="{{ url_for('static',filename='vendor/maplibre/maplibre-gl-csp.js') }}"></script><script defer src="{{ url_for('static',filename='statistics.js',v='ops-1') }}"></script>{% endblock %}
+{% block scripts %}{{ super() }}<script defer src="{{ url_for('static',filename='vendor/maplibre/maplibre-gl-csp.js') }}"></script><script defer src="{{ url_for('static',filename='statistics.js',v='rc6') }}"></script>{% endblock %}
 {% block admin_content %}
 <div id="statistics" data-url="{{ url_for('statistics.data',slug=selected.slug) if selected else url_for('statistics.data') }}" data-export="{{ url_for('statistics.export',slug=selected.slug) if selected else url_for('statistics.export') }}" data-worker="{{ url_for('static',filename='vendor/maplibre/maplibre-gl-csp-worker.js') }}" data-world="{{ url_for('static',filename='world-countries.json') }}" data-timezone="{{ selected.timezone if selected else 'UTC' }}">
   <header class="stats-heading"><div><span class="eyebrow">{{ 'STATION STATISTICS' if selected else 'RADIO STATION OPS / ALL STATIONS' }}</span><h1>{{ selected.name if selected else 'All stations' }}<span>Statistics</span></h1><p>See who's listening. Discover what connects.</p></div><div class="stats-freshness"><span id="stats-live-dot"></span><b id="stats-freshness">Connecting…</b><small id="stats-origin"></small></div></header>

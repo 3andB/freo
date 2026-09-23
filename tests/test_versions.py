@@ -28,7 +28,7 @@ def test_authoritative_version_ignores_legacy_overrides(app, monkeypatch):
     monkeypatch.setattr(Path, 'read_text', no_release_file)
     with app.app_context():
         snapshot = machine_snapshot()
-    assert snapshot['freo_version'] == VERSION == '0.3.0-rc.5'
+    assert snapshot['freo_version'] == VERSION == '0.3.0-rc.6.dev1'
     assert snapshot['os'] == platform.system()
     assert snapshot['architecture'] == platform.machine()
     assert snapshot['install_type'] == 'self-hosted'

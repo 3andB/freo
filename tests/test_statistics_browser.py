@@ -52,3 +52,31 @@ def test_statistics_dashboard_and_world_map(booth):
         with app.app_context():
             return AudiencePresence.query.filter_by(scope=1,source='website').count()==2
     WebDriverWait(driver,10).until(visitor_recorded)
+
+
+def test_stream_pin_and_chart_refresh_arrival_and_departure(booth, monkeypatch):
+    app,driver,base,tmp_path=booth
+    place=dict(place='perth',country='Australia',country_code='AU',city='Perth',region='WA',lat=-31.95,lon=115.86)
+    monkeypatch.setattr('app.services.statistics.geo.lookup',lambda address:place)
+    now=int(time.time())
+    with app.app_context():
+        collect.tick({1:dict(online=True,listeners=0,bytes=0,epoch='refresh',source_epoch='s',clients=[]),2:dict(online=False,listeners=0,clients=[])},now-15)
+        collect.tick({1:dict(online=True,listeners=1,bytes=1000,epoch='refresh',source_epoch='s',clients=[dict(id='real-listener',ip='8.8.8.8',connected=1)]),2:dict(online=False,listeners=0,clients=[])},now)
+        db.session.commit()
+    driver.get(base+'/admin/stats?range=live&map=live&source=stream')
+    wait=WebDriverWait(driver,25)
+    wait.until(lambda d:d.find_element(By.ID,'statistics').get_attribute('data-map-locations')=='1')
+    wait_text(driver,'#location-list','Perth')
+    assert driver.find_elements(By.CSS_SELECTOR,'#audience-chart svg polyline')
+    first=driver.find_element(By.ID,'statistics').get_attribute('data-observed-at')
+    with app.app_context():
+        # A later valid observation removes the departed client on the next poll.
+        collect.tick({1:dict(online=True,listeners=0,bytes=2000,epoch='refresh',source_epoch='s',clients=[]),2:dict(online=False,listeners=0,clients=[])},int(time.time()))
+        db.session.commit()
+    wait.until(lambda d:d.find_element(By.ID,'statistics').get_attribute('data-observed-at')!=first)
+    wait.until(lambda d:d.find_element(By.ID,'statistics').get_attribute('data-map-locations')=='0')
+    wait_text(driver,'#location-list','No active stream connections')
+    # Client-side navigation mounts a fresh map and refresh lifecycle.
+    driver.execute_script("FreoWorkspace.navigate('/admin/stations/test-station/stats?range=live')")
+    wait.until(lambda d:'/admin/stations/test-station/stats?range=live' in d.current_url and d.find_element(By.ID,'statistics').get_attribute('data-map-ready')=='true')
+    assert driver.find_elements(By.CSS_SELECTOR,'#audience-chart svg polyline')

@@ -1,6 +1,7 @@
 (async () => {
   const root=document.getElementById('media-editor');if(!root)return;
   const scope=FreoPage,$=id=>document.getElementById(id),config=root.dataset;
+  root.inert=true;root.setAttribute('aria-busy','true');
   let state=null,selectors,busy=false,peaks=[],seekDragging=false;
   const message=text=>$('editor-status').textContent=text;
   function draw(){const canvas=$('song-waveform'),ctx=canvas.getContext('2d');canvas.width=Math.max(300,canvas.clientWidth*devicePixelRatio);canvas.height=100*devicePixelRatio;ctx.clearRect(0,0,canvas.width,canvas.height);const colors=getComputedStyle(document.documentElement),played=colors.getPropertyValue('--theme-accent').trim(),unplayed=colors.getPropertyValue('--theme-border').trim();const progress=Number($('waveform-seek').value)/1000;peaks.forEach((p,i)=>{ctx.fillStyle=i/peaks.length<progress?played:unplayed;const h=Math.max(2,p*canvas.height*.9);ctx.fillRect(i*canvas.width/peaks.length,(canvas.height-h)/2,Math.max(1,canvas.width/peaks.length-1),h);});}
@@ -16,7 +17,7 @@
       const advanced=root.querySelector('details form');for(const key of ['title','artist','album','track_number'])if(advanced.elements[key])advanced.elements[key].value=next[key]??'';
       root.querySelector('[data-preview]').dataset.title=next.title;message('Saved');return true;
     }catch(e){message(e.message);return false;}finally{busy=false;}}
-  try{const catalog=await FreoCatalog.load(config.base);selectors=FreoCatalog.selectors($('editor-catalog'),catalog,{artist_id:config.artist,album_id:config.album||null},{...config,message,searchable:true});await refresh();}catch(e){message(e.message);return;}
+  try{const catalog=await FreoCatalog.load(config.base);selectors=FreoCatalog.selectors($('editor-catalog'),catalog,{artist_id:config.artist,album_id:config.album||null},{...config,message,searchable:true});await refresh();if(!state)throw Error('Song details are unavailable. Reload to try again.');}catch(e){message(e.message);const retry=document.createElement('a');retry.href=location.href;retry.textContent='Could not load the editor. Reload to try again.';retry.className='admin-notice error';root.before(retry);scope.cleanup(()=>retry.remove());return;}
   $('editor-availability')?.addEventListener('click',()=>{if(state?.availability&&window.FreoAvailability)FreoAvailability.open(state,config.csrf);});
   $('song-details').onsubmit=e=>{e.preventDefault();save();};
   $('cover-edit').onclick=async()=>{if(await save()){const result=await FreoCatalog.chooseCover(config,{song_id:config.song});if(result){message('Artwork saved');refresh();}}};
@@ -30,4 +31,5 @@
   scope.listen(window,'resize',draw);scope.listen(document,'music-toggle-saved',()=>setTimeout(refresh,0));scope.interval(refresh,3000);
   // Save advanced settings in place too; the server retains validation and CSRF.
   const advanced=root.querySelector('details form');advanced.onsubmit=async e=>{e.preventDefault();message('Saving advanced settings…');try{const response=await scope.fetch(advanced.action,{method:'POST',body:new FormData(advanced),headers:{Accept:'application/json'}});const result=await response.json();if(!response.ok)throw Error(result.message);message('Advanced settings saved');document.dispatchEvent(new CustomEvent('freo:form-saved',{detail:{form:advanced}}));refresh();}catch(e){message(e.message);}};
+  root.inert=false;root.removeAttribute('aria-busy');
 })();

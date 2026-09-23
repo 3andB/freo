@@ -44,8 +44,8 @@ def test_ten_channels_listen_menu_monitor_prompt_and_artwork(booth):
     wait.until(lambda d:'/player/second-station' in d.current_url)
     vinyl=driver.find_element(By.CSS_SELECTOR,'.radio-vinyl').rect
     label=driver.find_element(By.CSS_SELECTOR,'.vinyl-label').rect
-    assert label['width'] >= vinyl['width']-20
-    assert label['height'] >= vinyl['height']-20
+    assert label['width'] < vinyl['width'] * .5
+    assert label['height'] < vinyl['height'] * .5
     assert driver.find_element(By.LINK_TEXT,'Learn more about Freo Free Radio').get_attribute('href')=='https://freo.live/'
     driver.get(base+'/admin/stations/test-station/settings')
     Select(driver.find_element(By.NAME,'timezone')).select_by_value('Australia/Perth')

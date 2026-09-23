@@ -1,6 +1,6 @@
 {% extends 'admin/base.html' %}
 {% block title %}Tags · {{ selected.name }} · Freo{% endblock %}
-{% block scripts %}{{ super() }}<script defer src="{{ url_for('static',filename='music_tags.js',v='1') }}"></script>{% endblock %}
+{% block scripts %}{{ super() }}<script defer src="{{ url_for('static',filename='music_tags.js',v='rc6') }}"></script>{% endblock %}
 {% block admin_content %}
 <div class="section-title"><div><span class="eyebrow">PROGRAMMING</span><h1>Tags</h1><p>Create labels for your music. Turn them on or off directly on each song.</p></div><a href="{{ url_for('admin_media.library',slug=selected.slug) }}">Go to Music →</a></div>
 <section id="tag-manager" data-actions="{{ url_for('sound_room.mutate',slug=selected.slug,action='ACTION') }}" data-csrf="{{ csrf_token() }}">
