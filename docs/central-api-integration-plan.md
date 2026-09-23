@@ -127,15 +127,16 @@ The reporter logs only the installation UUID, server time and accepted counts,
 never bearer credentials or activation codes. A failed or malformed response
 does not overwrite the last successful receipt.
 
-The optional `latest_version` and `update_available` response fields are stored
-with the receipt, separately from the license cache. The API's boolean is
-authoritative: true means a newer release exists; false means the installed
-version is equal to or newer than the published release. Null, missing or
-malformed update status is unknown, never false. Invalid optional version fields
-are treated as unknown without discarding an otherwise valid acknowledgement;
-unrecognized fields are ignored. Failed reporting retains the receipt and shows
-the current update status as unknown. A receipt for a different installed
-version also cannot establish current update status.
+The optional `installed_version`, `latest_version`, `version_status` and
+`update_available` response fields are stored separately from the license cache.
+The server's explicit status is authoritative: Current, Update Available, Ahead
+or Unknown. A false boolean alone cannot establish Current. Only explicit true
+with an Update Available status displays an update notice. Missing/unfamiliar
+status and a null latest release are Unknown without invalidating telemetry.
+A successful Unknown response replaces the previous status. Failed reporting
+retains the last known information with a stale note; a receipt for a different
+running build cannot establish its status. The displayed installed version always
+comes from `app/version.py`, not the server's latest-version field.
 
 The Community entitlement is a valid active license even without an account or
 paid purchase. Read channel limits and grace deadlines from the API. A 503
@@ -151,14 +152,18 @@ it neither reads the identity store nor reads/writes installation or license
 state. It uses the configured API origin (default `https://api.freo.live`) and
 always omits authorization on this public endpoint.
 
-The command displays installed/latest versions and compares strict
-[SemVer 2.0.0](https://semver.org/) precedence, including prereleases and ignoring
-build metadata. Unavailable or invalid responses produce an unknown-status
-message and a nonzero exit code. HTTP requests retain the existing bounded
-timeouts, TLS verification and response-size limit. No additional polling is
-introduced: normal discovery comes from existing hourly heartbeats, and admin
-page rendering uses cached data only. Nothing downloads, installs or rolls back
-releases, and failures never control broadcasts or replace cached entitlements.
+The command displays the installed and latest stable versions, release link and
+mothership discovery time when available. It performs no version comparison;
+authenticated heartbeat responses establish the installation's status. A null
+latest release is a normal successful lookup showing Unknown. Network/malformed
+response failures return a nonzero exit code with an unknown-status message.
+Transport retains bounded timeouts, TLS verification and response-size limits.
+Normal heartbeats introduce no public-release requests, and admin rendering uses
+cached data only. The existing manual connection check can refresh release details
+at most hourly, separately preserving the server's `checked_at` and local fetch
+time. Nothing downloads or installs releases, and failures do not control
+broadcasts or replace cached entitlements. See the
+[RC6 version-awareness handoff](version-awareness-client.md).
 
 ## Manual connection checks
 
@@ -174,7 +179,9 @@ A separate `central_connection_check` singleton stores a request UUID and its
 result. Atomic insertion/replacement coalesces concurrent clicks; requests have
 a 60-second cooldown. The reporter checks this queue every two seconds under its
 existing process lock. Normal sampling still runs every minute, and successful
-reports schedule the next heartbeat approximately an hour later. Manual checks
+reports schedule the next heartbeat using the positive server interval plus
+existing jitter (normally about an hour). Startup also requests a prompt report
+without bypassing persisted failures or Retry-After. Manual checks
 refresh license information, synchronize changed station metadata and send a
 heartbeat early, while retaining failure backoff, server `Retry-After`, blocked
 credentials and the hourly request budget. A queued request survives restarts;

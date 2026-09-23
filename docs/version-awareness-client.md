@@ -120,7 +120,10 @@ errors do not interrupt broadcasting. No credentials appear in UI or logs.
   `tests/test_connection_check.py`, `tests/test_central_api_browser.py`,
   `tests/test_operations_browser.py`: contract, lifecycle, outage, identity,
   telemetry preservation and browser coverage.
-- `CHANGELOG.md` and this document: development handoff.
+- `CHANGELOG.md`, `docs/central-api-integration-plan.md` and this document:
+  updated version-awareness behavior and development handoff.
+- `docs/rc6-readiness-deployment-2026-09-23.md`: the separately authorized
+  deployment of the previously tested audit fixes.
 
 Focused tests exercise actual payloads, restarted reporting, all four statuses,
 older/malformed responses, null latest, nonboolean flags, server cadence, transport
@@ -128,3 +131,28 @@ errors, free/absent/expired/suspended entitlement, cached discovery and timestam
 untrusted links, persistent credentials and the existing singleton process lock.
 Browser coverage checks both screens, notices and links at mobile/tablet/desktop
 widths. Full regression validation runs on disposable GitHub runners.
+
+## Local verification and CI links
+
+Code commit: `626748b60eeb156af62f1a19a55eaf4d51bcf22d`.
+
+- Focused version/connection/central API/operations: 145 passed, one optional
+  upstream-contract checkout check skipped. Subsequent shared-projection checks:
+  88 passed. Final legacy-cache and link validation checks: eight passed.
+- Browser version states and manual check: two passed. The pre-existing setup
+  test initially clicked while the preceding page was still navigating; after
+  waiting for navigation completion, its isolated rerun passed. All three target
+  scenarios passed. Full CI covers the committed test versions together.
+- Python syntax, JavaScript syntax, whitespace and package/application version
+  agreement checks passed.
+- The new discovery-only CLI also passed against the actual public API with a
+  disposable test app and no installation credential. It displayed installed
+  `0.3.0-rc.6.dev2`, latest Unknown and the actual discovery timestamp.
+- [Full candidate CI](https://github.com/3andB/freo/actions/runs/35923963767)
+  and [recovery CI](https://github.com/3andB/freo/actions/runs/35923963840)
+  validate the implementation commit. Consult their final status for results;
+  they were running when this documentation was committed.
+
+The original code/data of the production installation was not used as a fixture.
+No client-version change was deployed. Fresh/populated VM acceptance remains a
+separate release gate, using the owner's new disposable VM when available.

@@ -8,7 +8,7 @@ Main and origin/main were verified synchronized after deployment.
 
 The deployed code was already validated by the full candidate run with 1,059
 passed and 12 skipped checks, plus successful recovery validation. Main push
-triggered the existing recovery workflow (run `35922478793`). No release/signing
+triggered the existing recovery workflow (run `35922478793`), which passed. No release/signing
 workflow was triggered, and no tag, GitHub Release or stable/latest pointer moved.
 
 ## Recovery and activation
