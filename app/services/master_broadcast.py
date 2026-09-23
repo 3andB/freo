@@ -49,7 +49,10 @@ def process_broadcast(station):
                 runtime.wait_audio_online(station)
             elif runtime.service_action(station.slug, 'status'):
                 raise RuntimeError('Station did not stop')
-        except Exception:
+        except Exception as exception:
+            from flask import current_app
+            current_app.logger.error('Broadcast action failed: station=%s action=%s error_type=%s',
+                                     station.slug, 'start' if running else 'stop', type(exception).__name__)
             error = 'Broadcast change failed. Check station status and retry.'
         db.session.refresh(station, with_for_update=True)
         if station.broadcast_revision == revision:

@@ -217,6 +217,7 @@ fi
 systemctl enable --now freo-automation.service
 systemctl enable --now freo-ingest.service
 install -d -o root -g root -m 0755 /etc/freo
+install -d -o root -g root -m 0755 /etc/freo/radio /etc/freo/radio/stations
 freo_release=$(git -C "$source_dir" rev-parse --short HEAD 2>/dev/null || printf '%s' "${FREO_VERSION:-development}")
 printf '%s\n' "$freo_release" > /etc/freo/release
 chmod 0644 /etc/freo/release

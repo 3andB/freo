@@ -34,14 +34,20 @@
     const broadcast = state.broadcast;
     const toggle = $('master-broadcast-toggle');
     if (toggle) {
-      toggle.disabled = broadcastBusy;
+      toggle.disabled = broadcastBusy || (!broadcast.enabled && !broadcast.ready);
       toggle.setAttribute('aria-checked', String(broadcast.enabled));
       toggle.textContent = broadcast.enabled ? 'ON' : 'OFF';
     }
     $('broadcast-retry').hidden = broadcast.status !== 'failed' || !toggle;
     $('broadcast-retry').disabled = broadcastBusy;
+    const hint = $('broadcast-hint');
+    if (hint) hint.textContent = broadcast.enabled ? 'Your station. Your sound.'
+      : broadcast.ready ? 'Ready when you are—go on air.' : 'Getting your station ready…';
     $('broadcast-message').textContent = broadcast.error || (['pending', 'applying'].includes(broadcast.status)
       ? (broadcast.enabled ? 'Starting broadcast…' : 'Stopping broadcast…')
+      : !broadcast.ready ? (broadcast.lifecycle === 'pending_create' ? 'Preparing your station… Controls will become available automatically.'
+        : 'Station setup needs attention. Check Station settings and the operations overview.')
+      : !broadcast.enabled && broadcast.online !== true ? 'Broadcast is OFF'
       : broadcast.online === null ? 'Broadcast status unavailable. Checking…'
       : broadcast.online ? (broadcast.tone ? 'Broadcasting tone' : 'Station is broadcasting')
       : broadcast.enabled ? 'Master is ON, but the stream is offline.' : 'Broadcast is OFF');
@@ -64,7 +70,7 @@
     if (label) label.textContent = pending() ? `Switching ${title(state.mode)} → ${title(state.transition.mode)}…` : `Active mode: ${title(state.mode)}`;
   }
   async function setBroadcast(enabled) {
-    if (broadcastBusy) return;
+    if (broadcastBusy || (enabled && !state.broadcast.ready)) return;
     broadcastBusy = true; render(); message('');
     try { state = await api('broadcast', {enabled, revision: state.broadcast.revision}); }
     catch (error) { message(error.message, true); }
@@ -77,7 +83,10 @@
     refreshing = true;
     try {
       const latest = await api('state');
-      if (!busy && !broadcastBusy && latest.broadcast.revision >= state.broadcast.revision && latest.revision >= state.revision) { state = latest; render(); if (refreshFailed) message(''); refreshFailed = false; }
+      if (!busy && !broadcastBusy && latest.broadcast.revision >= state.broadcast.revision && latest.revision >= state.revision) {
+        const becameReady = !state.broadcast.ready && latest.broadcast.ready;
+        state = latest; render(); if (refreshFailed || becameReady) message(''); refreshFailed = false;
+      }
     }
     catch { if (!busy && !broadcastBusy) {
       refreshFailed = true; state.broadcast.online = null; state.broadcast.tone = null;
@@ -95,7 +104,7 @@
         const mode = button.dataset.switchMode;
         const preview = await api('transition-preview', {mode});
         if (!preview.playable) throw Error(preview.message);
-        const payload = {id: crypto.randomUUID(), current: state.mode, mode, revision: state.revision};
+        const payload = {id: FreoUUID(), current: state.mode, mode, revision: state.revision};
         const confirmed = await window.FreoDialog.confirm({
           title: `Switch from ${title(state.mode)} to ${title(mode)}?`,
           message: `This fades the current audio now, including any Event or live audio. Saved schedules are kept and future Events remain enabled. ${preview.message}`,

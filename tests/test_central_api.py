@@ -816,8 +816,12 @@ def test_license_unavailable_preserves_cache_and_allows_reporting(central, cache
     assert not row.state['license']['blocked']
 
 
-def test_heartbeat_receipt_is_validated_durable_and_private(central, caplog):
+def test_heartbeat_receipt_is_validated_durable_and_private(central, caplog, monkeypatch):
     import logging
+    # Alembic's logging configuration in earlier migration tests may disable
+    # existing application loggers. Keep this assertion independent of order.
+    from flask import current_app
+    monkeypatch.setattr(current_app.logger, 'disabled', False)
     reporter, api = central
     with caplog.at_level(logging.INFO):
         reporter.tick()

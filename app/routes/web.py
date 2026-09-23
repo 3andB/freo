@@ -101,10 +101,11 @@ def admin_home():
     stations = admin_stations()
     from app.services.operations import snapshot
     from app.services.stations import deletion_impact
+    from app.services.software_license import unlimited
     return render_template('admin/overview.html', stations=stations, selected=None,
                            ops=snapshot(stations), page='overview',
                            impacts={station.slug: deletion_impact(station) for station in stations},
-                           station_limit=get_setting('FREO_MAX_STATIONS'))
+                           station_limit=0 if unlimited() else get_setting('FREO_MAX_STATIONS'))
 
 
 @web_blueprint.get('/admin/stations')

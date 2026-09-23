@@ -1,6 +1,6 @@
 {% extends 'admin/base.html' %}
 {% block title %}Overview · Radio Station Ops · Freo{% endblock %}
-{% block scripts %}{{ super() }}<script defer src="{{ url_for('static',filename='operations.js',v='2') }}"></script>{% endblock %}
+{% block scripts %}{{ super() }}<script defer src="{{ url_for('static',filename='operations.js',v='rc5') }}"></script>{% endblock %}
 {% block admin_content %}
 <div id="operations" data-url="{{ url_for('web.operations_snapshot') }}">
   <header class="ops-heading"><div><span class="eyebrow">RADIO STATION OPS / ALL STATIONS</span><h1>Operations overview</h1><p>Your stations, audience, and system in one place.</p></div><a class="admin-primary" href="#add-station">Add station</a></header>
@@ -21,7 +21,7 @@
       <div><dt>Version checked at</dt><dd data-connection="version_checked_at">{{ ops.connection.version_checked_at }}</dd></div>
       <div><dt>Plan</dt><dd data-connection="plan">{{ ops.connection.plan }}</dd></div>
       <div><dt>License status</dt><dd data-connection="entitlement_status">{{ ops.connection.entitlement_status }}</dd></div>
-      <div><dt>Enabled station limit</dt><dd data-connection="channel_limit">{{ ops.connection.channel_limit or 'Awaiting verification' }}</dd></div>
+      <div><dt>Local station limit</dt><dd data-connection="channel_limit">{{ ops.connection.channel_limit }}</dd></div>
     </dl><p data-connection="error" class="quiet">{{ ops.connection.error }}</p>
       <form id="connection-check" method="post" action="{{ url_for('central_api.request_connection_check') }}">
         <input type="hidden" name="csrf" value="{{ csrf_token() }}">

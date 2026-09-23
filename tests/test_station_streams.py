@@ -32,7 +32,7 @@ def test_stream_survives_other_station_creation_deletion_and_owner_removal(stati
         with socket.socket() as listener:
             listener.bind(('127.0.0.1',0));port=listener.getsockname()[1]
         configs=root/'radio'/'stations';secrets=root/'secrets';snippets=root/'snippets';playlists=root/'playlists';sockets=root/'sockets'
-        for name in (configs,secrets,snippets,playlists,sockets):name.mkdir(parents=True,exist_ok=True)
+        for name in (configs.parent,secrets,playlists,sockets):name.mkdir(parents=True,exist_ok=True)
         monkeypatch.setattr(runtime,'ROOT',root)
         monkeypatch.setattr(runtime,'CONFIGS',configs)
         monkeypatch.setattr(runtime,'SECRETS',secrets)
@@ -58,14 +58,24 @@ def test_stream_survives_other_station_creation_deletion_and_owner_removal(stati
                 assert response.headers.get_content_type()=='audio/mpeg'
                 assert len(response.read(512))==512
         def wait_for_stream(slug):
-            for _ in range(180):
+            # Cold Liquidsoap initialization competes with browser/encoder
+            # checks on CI. Bound wall time and fail immediately on process exit.
+            deadline=time.monotonic()+120
+            while time.monotonic()<deadline:
                 try:stream(slug);return
-                except OSError:time.sleep(.25)
-            pytest.fail(f'Stream {slug} never became available')
+                except OSError:
+                    if processes[slug].poll() is not None:break
+                    time.sleep(.5)
+            detail=(root/(slug+'.log')).read_text()[-3000:]
+            pytest.fail(f'Stream {slug} never became available (process={processes[slug].poll()}): {detail}')
         original_render=runtime.render_liquidsoap
         def render(station,password):
-            (sockets/station.slug).mkdir(exist_ok=True)
-            return 'settings.init.allow_root := true\n'+original_render(station,password).replace('/run/freo/playout',str(sockets)).replace('/var/lib/freo/playlists',str(playlists)).replace('port=8001',f'port={port}')
+            import pwd, grp
+            directory=sockets/station.slug
+            directory.mkdir(exist_ok=True)
+            os.chown(directory,pwd.getpwnam('freo-playout').pw_uid,grp.getgrnam('freo-playout').gr_gid)
+            directory.chmod(0o750)
+            return original_render(station,password).replace('/run/freo/playout',str(sockets)).replace('/var/lib/freo/playlists',str(playlists)).replace('port=8001',f'port={port}')
         monkeypatch.setattr(runtime,'render_liquidsoap',render)
         def service(slug,action):
             proc=processes.get(slug)
@@ -76,7 +86,8 @@ def test_stream_survives_other_station_creation_deletion_and_owner_removal(stati
                 return
             assert action=='start'
             log=(root/(slug+'.log')).open('w');logs.append(log)
-            processes[slug]=subprocess.Popen(['liquidsoap',str(configs/(slug+'.liq'))],stdout=log,stderr=log)
+            processes[slug]=subprocess.Popen(['liquidsoap',str(configs/(slug+'.liq'))],stdout=log,stderr=log,
+                cwd=root,user='freo-playout',group='freo-playout',extra_groups=[])
         monkeypatch.setattr(runtime,'service_action',service)
         def checked(args):
             if 'render-radio-config.py' in args[-1]:render_icecast()
@@ -85,12 +96,17 @@ def test_stream_survives_other_station_creation_deletion_and_owner_removal(stati
                 if args[-1]=='icecast2.service':os.killpg(icecast.pid,signal.SIGHUP)
             else:subprocess.run(args,check=True,capture_output=True,timeout=90)
         monkeypatch.setattr(runtime,'run_checked',checked)
+        original_process = process_station
+        def provision(station):
+            mask=os.umask(0o077)
+            try:original_process(station)
+            finally:os.umask(mask)
         try:
             with station_app.app_context():
-                first=create_station('First','first',pending=True);process_station(first)
+                first=create_station('First','first',pending=True);provision(first)
                 runtime.service_action(first.slug,'start');first.desired_state='running';db.session.commit();wait_for_stream('first')
                 first_pid=processes['first'].pid
-                second=create_station('Second','second',pending=True);process_station(second)
+                second=create_station('Second','second',pending=True);provision(second)
                 runtime.service_action(second.slug,'start');second.desired_state='running';db.session.commit();wait_for_stream('second')
                 stream('first');assert processes['first'].pid==first_pid
                 # An approved shared track remains in its original media namespace.
@@ -112,7 +128,7 @@ def test_stream_survives_other_station_creation_deletion_and_owner_removal(stati
                     pytest.fail('Shared track was queued but never reached the program output')
                 stream('second')
                 assert not (configs/'first.liq').exists() and not (secrets/'first.json').exists()
-                third=create_station('Replacement','replacement',pending=True);process_station(third)
+                third=create_station('Replacement','replacement',pending=True);provision(third)
                 runtime.service_action(third.slug,'start');wait_for_stream('replacement');stream('second')
                 request_delete(third);process_station(third);stream('second')
                 request_delete(second);process_station(second)

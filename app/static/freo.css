@@ -308,3 +308,4 @@ html{scroll-behavior:auto}.admin-primary{display:inline-flex;align-items:center;
 
 /* Keep the station prompt immediately above its monitor controls. */
 .topbar-monitor-group{display:flex;flex:1 1 300px;min-width:0;flex-direction:column;gap:8px}.topbar-monitor-group .topbar-now-playing{flex:none;order:0}.topbar-monitor-group [data-station-monitors]{max-width:100%;flex:none;flex-wrap:wrap}.master-monitor .monitor-state{grid-row:1}.master-monitor button,.master-monitor .monitor-volume{grid-row:2}
+@media(max-width:700px){.admin-topbar .topbar-monitor-group{grid-column:1/-1;grid-row:2}}

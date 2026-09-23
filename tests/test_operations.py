@@ -13,6 +13,18 @@ def navigation(response):
     return response.get_data(as_text=True).split('<nav class="admin-nav"', 1)[1].split('</nav>', 1)[0]
 
 
+def test_local_license_ignores_legacy_remote_two_station_limit(app):
+    with app.app_context():
+        from app.services.operations import connection
+        db.session.add(CentralInstallation(id=1, license_cache={
+            'entitlement': {'plan': 'free', 'status': 'expired', 'channel_limit': 2}}))
+        db.session.commit()
+        result = connection(Station.query.all(), int(time.time()))
+        assert result['channel_limit'] == 3
+        assert result['plan'] == 'Free · three stations per owner'
+        assert result['entitlement_status'] == 'Active · registration optional'
+
+
 def test_operations_navigation_never_selects_a_station(app, monkeypatch):
     def no_network(*args, **kwargs):
         raise AssertionError('Overview must read local observations')

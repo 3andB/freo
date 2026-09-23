@@ -6,7 +6,7 @@
   let state = null;
   const pendingLoads=new Map();
   const text = (id, value) => { if(!active())return; const node=document.getElementById(id); if(node) node.textContent=value; };
-  const nonce = () => crypto.randomUUID();
+  const nonce = () => FreoUUID();
   let noticeUntil=0;
   function systemStatus(){
     if(!active())return;

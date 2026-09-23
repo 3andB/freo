@@ -1,6 +1,7 @@
 const {test}=require('node:test');
 const assert=require('node:assert/strict');
 const {webcrypto}=require('node:crypto');global.crypto=webcrypto;
+global.FreoUUID=()=>webcrypto.randomUUID();
 const editor=require('../app/static/schedule_editor.js');
 const rule={frequency:'weekly',anchor:'2026-09-21',weekdays:[0],interval:2,exceptions:['2026-10-19']};
 const section=(extra={})=>({id:'a',start:0,end:3600,source:{kind:'song',id:1},...extra});

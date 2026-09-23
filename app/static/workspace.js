@@ -1,6 +1,16 @@
 /* Persistent listening and document navigation. Page scripts own disposable work. */
 (() => {
   if (window.FreoWorkspace) return;
+  // randomUUID requires HTTPS (except localhost). getRandomValues also works
+  // on the IP-only HTTP installation workflow, without weakening randomness.
+  window.FreoUUID = () => {
+    if (typeof crypto.randomUUID === 'function') return crypto.randomUUID();
+    const bytes = crypto.getRandomValues(new Uint8Array(16));
+    bytes[6] = (bytes[6] & 0x0f) | 0x40;
+    bytes[8] = (bytes[8] & 0x3f) | 0x80;
+    const hex = Array.from(bytes, value => value.toString(16).padStart(2, '0')).join('');
+    return `${hex.slice(0,8)}-${hex.slice(8,12)}-${hex.slice(12,16)}-${hex.slice(16,20)}-${hex.slice(20)}`;
+  };
   const makeScope = () => {
     const controller = new AbortController(), timers = new Set(), frames = new Set(), cleanups = [];
     return {
@@ -31,7 +41,7 @@
         if(signal?.aborted){resolve(false);return;}
         const dialog = document.createElement('dialog'); dialog.className = 'freo-dialog';
         const heading = document.createElement('h2'); heading.textContent = title;
-        heading.id = `dialog-${crypto.randomUUID()}`; dialog.setAttribute('aria-labelledby', heading.id);
+        heading.id = `dialog-${FreoUUID()}`; dialog.setAttribute('aria-labelledby', heading.id);
         const copy = document.createElement('p'); copy.textContent = message;
         const actions = document.createElement('div'); actions.className = 'dialog-actions';
         const cancel = document.createElement('button'); cancel.textContent = 'Cancel'; cancel.type = 'button';
@@ -144,13 +154,47 @@
     const strip = document.querySelector('[data-station-monitors]');
     if (!strip) return;
     const scope = window.FreoPage;
-    strip.querySelectorAll('[data-monitor-station]').forEach(row => {
-      scope.listen(row.querySelector('button'), 'click', () => {
+    scope.listen(strip, 'click', event => {
+      const button = event.target.closest('[data-station-monitor-toggle]');
+      const row = button?.closest('[data-monitor-station]');
+      if (row && !button.disabled) {
         if (wanted && station === row.dataset.monitorStation) {stop(); return;}
         stop(); station = row.dataset.monitorStation; stationName = row.dataset.stationName;
         stream = row.dataset.stream; play();
-      });
+      }
     });
+    const reconcile = stations => {
+      const existing = new Map([...strip.querySelectorAll('[data-monitor-station]')].map(row => [row.dataset.monitorStation, row]));
+      for (const [slug, data] of Object.entries(stations)) {
+        let row = existing.get(slug);
+        if (!row) {
+          row = document.createElement('div'); row.className = 'station-monitor'; row.dataset.monitorStation = slug;
+          // Static markup only; station names and URLs are assigned as data/text.
+          row.innerHTML = '<strong></strong><span class="on-air-icon"><i aria-hidden="true"></i> <b data-broadcast-label>CHECKING</b><span class="sr-only" data-broadcast-description></span></span><button type="button" data-station-monitor-toggle aria-pressed="false">MONITOR</button><small data-monitor-setup></small>';
+          row.querySelector('.on-air-icon').dataset.broadcastStation = slug;
+          strip.append(row);
+        }
+        existing.delete(slug);
+        row.dataset.stationName = data.name;
+        row.dataset.stream = data.stream || '';
+        row.querySelector('strong').textContent = data.name;
+        row.querySelector('button').setAttribute('aria-label', `Monitor ${data.name}`);
+        row.querySelector('[data-monitor-setup]').textContent = data.lifecycle === 'pending_create' ? 'Preparing…'
+          : !data.ready ? 'Unavailable' : data.status === 'failed' ? 'Needs attention'
+          : data.online === true ? 'On air' : !data.enabled ? 'Stopped'
+          : ['pending','applying'].includes(data.status) ? 'Starting…' : data.online === false ? 'Offline' : 'Checking…';
+        if (station === slug) {
+          stationName = data.name;
+          stream = data.stream || '';
+          if (!stream && wanted) stop();
+        }
+      }
+      for (const [slug, row] of existing) {
+        row.remove();
+        if (station === slug) {stop(); station = ''; stationName = ''; stream = '';}
+      }
+      render();
+    };
     let pending = false;
     const paint = stations => document.querySelectorAll('[data-broadcast-station]').forEach(el => {
       const row = stations[el.dataset.broadcastStation];
@@ -161,7 +205,7 @@
       el.title = description;
       el.querySelector('[data-broadcast-description]').textContent = ' · ' + description;
       const label = el.querySelector('[data-broadcast-label]');
-      if (label) label.textContent = online ? 'STATION LIVE' : 'NOT LIVE';
+      if (label) label.textContent = online ? 'STATION LIVE' : row?.online === false ? 'NOT LIVE' : 'CHECKING';
     });
     const refresh = async () => {
       if (pending || document.hidden) return;
@@ -174,7 +218,7 @@
         const response = await scope.fetch(strip.dataset.broadcastUrl, {cache:'no-store', signal:controller.signal});
         if (!response.ok) throw Error('Status unavailable');
         const data = await response.json();
-        if (!scope.signal.aborted) paint(data.stations);
+        if (!scope.signal.aborted) {reconcile(data.stations); paint(data.stations);}
       } catch (_) { if (!scope.signal.aborted) paint({}); }
       finally {clearTimeout(timeout); scope.signal.removeEventListener('abort', abort); pending = false;}
     };

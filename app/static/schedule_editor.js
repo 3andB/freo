@@ -4,7 +4,7 @@
 const copy = value => structuredClone(value);
 const dayNumber = day => Date.parse(day + 'T12:00:00Z') / 86400000;
 const shift = (day, n) => new Date((dayNumber(day) + n) * 86400000).toISOString().slice(0, 10);
-const identity = () => crypto.randomUUID();
+const identity = () => FreoUUID();
 
 function equal(a, b) {
     if (a === b) return true;

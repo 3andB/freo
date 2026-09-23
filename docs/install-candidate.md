@@ -1,4 +1,4 @@
-# Freo 0.3.0-rc.4 installation candidate
+# Freo 0.3.0-rc.5 installation candidate
 
 This is a release candidate for a separate Ubuntu 24.04 x86_64 VM. Public release
 requires the acceptance results below and explicit 3andB owner approval. Do not
@@ -7,7 +7,7 @@ state; upgrades use the separate recovery workflow.
 
 ## Obtain and verify
 
-The publisher supplies these files together: `freo-v0.3.0-rc.4.tar.gz`, its
+The publisher supplies these files together: `freo-v0.3.0-rc.5.tar.gz`, its
 `.asc` detached signature, `SHA256SUMS`, and `publisher.gpg`. Until approved,
 transfer these candidate files privately from the build server using SCP/SFTP.
 They are not yet a published GitHub Release. Never transfer publisher private
@@ -27,10 +27,10 @@ sudo apt-get install -y ca-certificates gnupg
 # Check the primary fingerprint against the trusted value above.
 gpg --show-keys --with-fingerprint ./publisher.gpg
 sha256sum --check SHA256SUMS
-gpgv --keyring "$PWD/publisher.gpg" freo-v0.3.0-rc.4.tar.gz.asc freo-v0.3.0-rc.4.tar.gz
-mkdir freo-v0.3.0-rc.4
-tar -xzf freo-v0.3.0-rc.4.tar.gz -C freo-v0.3.0-rc.4
-cd freo-v0.3.0-rc.4
+gpgv --keyring "$PWD/publisher.gpg" freo-v0.3.0-rc.5.tar.gz.asc freo-v0.3.0-rc.5.tar.gz
+mkdir freo-v0.3.0-rc.5
+tar -xzf freo-v0.3.0-rc.5.tar.gz -C freo-v0.3.0-rc.5
+cd freo-v0.3.0-rc.5
 ```
 
 Stop if any check fails. The signature authenticates the complete archive. The
@@ -38,8 +38,8 @@ checksum alone does not establish publisher identity. Dependencies are bundled
 as wheels and installed with required hashes; system packages still need access
 to Ubuntu and the official Xiph package repository.
 
-See [rc.4 changes and acceptance checklist](rc4-acceptance.md) for channel discovery,
-hourly repeats, random playback, artwork and admin monitor checks.
+See [RC.5 changes and acceptance checklist](rc5-acceptance.md) for HTTP music
+import, station startup, header monitors and the retained RC.4 feature checks.
 
 ## Fresh installation
 
@@ -52,7 +52,7 @@ capacity guarantee is implied by the unlimited license.
 For the first IP-only HTTP acceptance run:
 
 ```bash
-sudo env FREO_VERSION=0.3.0-rc.4 bash scripts/install.sh
+sudo env FREO_VERSION=0.3.0-rc.5 bash scripts/install.sh
 cd /opt/freo
 sudo bash scripts/validate-install.sh
 ```
@@ -78,7 +78,7 @@ that browsers can return over HTTP. Request headers cannot change this policy.
 For a fresh domain installation instead, point DNS at the VM first, then use:
 
 ```bash
-sudo env FREO_VERSION=0.3.0-rc.4 FREO_DOMAIN=radio.example.com FREO_ENABLE_HTTPS=1 FREO_CERTBOT_EMAIL=operator@example.com bash scripts/install.sh
+sudo env FREO_VERSION=0.3.0-rc.5 FREO_DOMAIN=radio.example.com FREO_ENABLE_HTTPS=1 FREO_CERTBOT_EMAIL=operator@example.com bash scripts/install.sh
 ```
 
 Replace the example domain and email. This obtains a Let’s Encrypt certificate,

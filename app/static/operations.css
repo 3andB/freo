@@ -39,6 +39,8 @@
 [data-station-monitors] { display:flex; flex-wrap:wrap; gap:10px; min-width:0; flex:1 1 340px; }
 .station-monitor { display:flex; align-items:center; flex-wrap:wrap; gap:8px; padding:8px 10px; border:1px solid var(--theme-border); border-radius:10px; min-width:0; }
 .station-monitor > strong { font-size:12px; overflow-wrap:anywhere; }
+.station-monitor [data-monitor-setup] { font-size:11px; color:var(--theme-muted); }
+.station-monitor button:disabled { opacity:.55; cursor:default; }
 .station-monitor button { font:700 11px system-ui,sans-serif; padding:7px 9px; cursor:pointer; border:1px solid var(--theme-border); border-radius:6px; background:var(--theme-raised); color:var(--theme-text); }
 .station-monitor button[aria-pressed="true"] { border-color:var(--theme-accent); color:var(--theme-accent); }
 .on-air-icon { display:inline-flex; align-items:center; gap:5px; white-space:nowrap; font:800 10px system-ui,sans-serif; letter-spacing:.06em; color:var(--theme-text); }

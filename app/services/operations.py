@@ -42,7 +42,13 @@ def connection(stations, now):
               'Connection stale' if last else 'Awaiting first connection')
     synced = {s.station_id: s.synced_digest for s in CentralStationState.query.all()}
     synced_count = sum(synced.get(s.id) == digest(metadata(s)) for s in stations)
-    entitlement = (row.license_cache or {}).get('entitlement', {}) if row else {}
+    # This installation uses the offline perpetual license, not legacy remote
+    # entitlements (older API responses can still advertise a two-station plan).
+    from app.services.software_license import status as license_status
+    from app.services.installation_settings import get_setting
+    local_license = license_status()
+    paid = local_license['edition'] == 'unlimited'
+    local_limit = get_setting('FREO_MAX_STATIONS')
     version = receipt
     version_source = 'Heartbeat' if last else 'Not yet checked'
     version_checked_at = last or 'Not yet checked'
@@ -62,9 +68,9 @@ def connection(stations, now):
                 update_status=update_status, version_source=version_source, version_checked_at=version_checked_at,
                 check=check_status(now),
                 synced=f'{synced_count} / {len(stations)} stations up to date',
-                plan=entitlement.get('plan', 'Awaiting verification'),
-                entitlement_status=entitlement.get('status', 'Unverified'),
-                channel_limit=entitlement.get('channel_limit'),
+                plan='Unlimited · perpetual' if paid else 'Free · three stations per owner',
+                entitlement_status=local_license.get('error') or 'Active · registration optional',
+                channel_limit='Unlimited' if paid else min(local_limit or 3, 3),
                 error=row.last_error if row else '')
 
 

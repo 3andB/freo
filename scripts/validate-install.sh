@@ -65,6 +65,14 @@ if not version.startswith('Icecast 2.5.'):
     raise SystemExit('The running Icecast service must use the supported 2.5 series.')
 PY
 systemctl is-active --quiet freo-provision.timer
+for station_config in /etc/freo/radio/stations/*.liq; do
+  if [[ -f $station_config ]]; then
+    if ! runuser -u freo-playout -- test -r "$station_config"; then
+      echo 'A station configuration is not readable by the playout service.' >&2
+      exit 1
+    fi
+  fi
+done
 if [[ ${FREO_ENABLE_DIAGNOSTIC:-0} == 1 ]]; then
 for endpoint in icecast playout stream; do
   curl --fail --silent --show-error "http://127.0.0.1:8000/health/$endpoint" >/dev/null

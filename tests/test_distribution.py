@@ -44,6 +44,10 @@ def test_perpetual_license_survives_sessions_and_allows_more_than_three(app, sig
     app.config['PUBLIC_BASE_URL'] = 'https://another-owned-install.example'
     with app.app_context():
         assert software_license.verify(document)['expires'] is None
+    overview = admin_client(app).get('/admin').text
+    assert '5 / unlimited stations' in overview
+    assert 'action="/admin/stations/create"' in overview
+    assert 'Unlimited · perpetual' in overview
 
 
 @pytest.mark.parametrize('change', ['tamper', 'key', 'signature', 'expiry', 'id', 'payload'])

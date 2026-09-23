@@ -155,12 +155,21 @@ def render(station):
     snippet_path = SNIPPETS / f'{slug}.conf'
     CONFIGS.mkdir(parents=True, exist_ok=True, mode=0o755)
     SNIPPETS.mkdir(parents=True, exist_ok=True, mode=0o755)
+    # The provisioner runs with UMask=0077. mkdir's mode is filtered by that
+    # mask, so explicitly allow services to traverse these directories. This
+    # also repairs directories created by earlier versions; config files stay
+    # root:freo-playout 0640 and the separate credentials remain root-only.
+    os.chmod(CONFIGS, 0o755)
+    os.chmod(SNIPPETS, 0o755)
     config_tmp = atomic_install(config_path, liquidsoap, 0o640, 'root', 'freo-playout')
     snippet_tmp = atomic_install(snippet_path, snippet, 0o644, 'root', 'root')
     prior_icecast = (ROOT / 'radio/icecast.xml').read_bytes()
     snippet_existed = snippet_path.exists()
     try:
-        run_checked(['/usr/bin/liquidsoap', '--check', str(config_tmp)])
+        # Validate as the account that will actually broadcast, including all
+        # directory traversal and config/playlist read permissions.
+        run_checked(['/usr/sbin/runuser', '-u', 'freo-playout', '--',
+                     '/usr/bin/liquidsoap', '--check', str(config_tmp)])
         install_staged(config_path, config_tmp)
         install_staged(snippet_path, snippet_tmp)
     finally:

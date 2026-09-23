@@ -89,7 +89,7 @@
     }
     for(const [key,label] of Object.entries(names)){
       const kind=key==='artist_id'?'artists':'albums',wrap=el('div',undefined,'catalog-field catalog-combobox'),notice=el('p',undefined,'catalog-error'),heading=el('label',label),input=el('input'),list=el('div',undefined,'catalog-options');
-      input.type='text';input.maxLength=200;input.autocomplete='off';input.setAttribute('aria-label',label);input.setAttribute('role','combobox');input.setAttribute('aria-autocomplete','list');input.setAttribute('aria-expanded','false');list.id='catalog-'+crypto.randomUUID();list.setAttribute('role','listbox');input.setAttribute('aria-controls',list.id);list.hidden=true;heading.append(input);notice.setAttribute('role','status');wrap.append(heading,list,notice);container.append(wrap);controls[key]={input,list};
+      input.type='text';input.maxLength=200;input.autocomplete='off';input.setAttribute('aria-label',label);input.setAttribute('role','combobox');input.setAttribute('aria-autocomplete','list');input.setAttribute('aria-expanded','false');list.id='catalog-'+FreoUUID();list.setAttribute('role','listbox');input.setAttribute('aria-controls',list.id);list.hidden=true;heading.append(input);notice.setAttribute('role','status');wrap.append(heading,list,notice);container.append(wrap);controls[key]={input,list};
       function option(text,fn){const button=el('button',text);button.type='button';button.setAttribute('role','option');button.onmousedown=e=>e.preventDefault();button.onclick=()=>{fn();};list.append(button);return button;}
       function suggestions(){
         if(creating)return;list.replaceChildren();list.hidden=false;input.setAttribute('aria-expanded','true');

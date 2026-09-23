@@ -56,6 +56,11 @@ def cached_status(stations, now=None):
         tone = ((snapshot.mixer or {}).get('tone') if snapshot and not snapshot.error_code
                 and 0 <= now - timestamp(snapshot.observed_at) <= 10 and online is True else None)
         result[station.slug] = dict(online=online, listeners=listeners, observed_at=at, tone=tone,
+            name=station.name, lifecycle=station.lifecycle_state,
+            ready=bool(station.enabled and station.lifecycle_state == 'ready'
+                       and station.stream and station.stream.enabled),
+            stream=station.stream.public_path if station.enabled and station.stream and station.stream.enabled
+                   and station.lifecycle_state == 'ready' else '',
             enabled=station.desired_state == 'running', revision=station.broadcast_revision,
             status=station.broadcast_status, error=station.broadcast_error)
     return result

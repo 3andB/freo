@@ -23,7 +23,10 @@ def test_fresh_production_first_login_logout_and_restart(tmp_path,monkeypatch,sc
     monkeypatch.setenv('FREO_ENV_FILE','/dev/null')
     monkeypatch.setenv('DATABASE_URL','sqlite:///'+str(tmp_path/'browser.sqlite'))
     monkeypatch.setenv('SECRET_KEY','isolated-browser-test-only')
+    monkeypatch.setenv('FREO_MEDIA_ROOT',str(tmp_path/'media'))
     app=create_app('production')
+    (tmp_path/'uploads').mkdir()
+    app.config['FREO_UPLOAD_ROOT']=str(tmp_path/'uploads')
     tls=None
     if scheme == 'https':
         cert,key=tmp_path/'cert.pem',tmp_path/'key.pem'
@@ -38,7 +41,7 @@ def test_fresh_production_first_login_logout_and_restart(tmp_path,monkeypatch,sc
     profile=tempfile.mkdtemp(prefix='freo-first-login-',dir='/tmp')
     options=Options()
     options.binary_location=os.environ.get('FREO_TEST_CHROME','/usr/bin/chromium-browser')
-    for arg in ['--headless=new','--no-sandbox','--disable-dev-shm-usage','--no-proxy-server','--ignore-certificate-errors','--host-resolver-rules=MAP freo-test.invalid 127.0.0.1',f'--user-data-dir={profile}']: options.add_argument(arg)
+    for arg in ['--headless=new','--no-sandbox','--disable-dev-shm-usage','--window-size=1440,1000','--no-proxy-server','--ignore-certificate-errors','--host-resolver-rules=MAP freo-test.invalid 127.0.0.1',f'--user-data-dir={profile}']: options.add_argument(arg)
     driver=None
     try:
         driver=webdriver.Chrome(service=Service(os.environ.get('FREO_TEST_CHROMEDRIVER','/usr/bin/chromedriver')),options=options)
@@ -62,6 +65,8 @@ def test_fresh_production_first_login_logout_and_restart(tmp_path,monkeypatch,sc
         driver.find_element(By.CSS_SELECTOR,'#license-accept-form input[name=agree]').click()
         driver.find_element(By.CSS_SELECTOR,'#license-accept-form button[type=submit]').click()
         WebDriverWait(driver,10).until(lambda d:not d.find_element(By.ID,'license-agreement').is_displayed())
+        from tests.rc5_browser_workflow import first_station_workflow
+        first_station_workflow(app, driver, base, tmp_path)
         driver.find_element(By.CSS_SELECTOR,'form[action="/admin/logout"] button').click()
         WebDriverWait(driver,10).until(lambda d:d.current_url==base+'/')
         sign_in('IAmOnTheAir')
@@ -69,8 +74,12 @@ def test_fresh_production_first_login_logout_and_restart(tmp_path,monkeypatch,sc
         # Recreate the application/server against the same DB to simulate process restart.
         server.shutdown();server.server_close();thread.join(timeout=5)
         replacement=create_app('production')
+        replacement.config['FREO_UPLOAD_ROOT']=str(tmp_path/'uploads')
         with replacement.app_context():
             assert not bootstrap()
+            from app.models import Station, Track
+            assert Station.query.filter_by(slug='1').count() == 1
+            assert Track.query.count() == 2
         server=make_server('127.0.0.1',int(base.rsplit(':',1)[1]),replacement,threaded=True,ssl_context=tls)
         thread=threading.Thread(target=server.serve_forever,daemon=True);thread.start()
         sign_in('private browser fixture passphrase')

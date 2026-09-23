@@ -1,5 +1,5 @@
 {% extends 'base.html' %}
-{% block head %}{{ super() }}<link rel="stylesheet" href="{{ url_for('static',filename='license_agreement.css',v='20260921') }}"><link rel="stylesheet" href="{{ url_for('static',filename='operations.css',v='broadcast-20260918') }}">{% if page in ['media','sound-room','tags','playlists'] %}<link rel="stylesheet" href="{{ url_for('static',filename='music.css',v='music-workflow-20260919') }}">{% endif %}{% endblock %}
+{% block head %}{{ super() }}<link rel="stylesheet" href="{{ url_for('static',filename='license_agreement.css',v='20260921') }}"><link rel="stylesheet" href="{{ url_for('static',filename='operations.css',v='rc5') }}">{% if page in ['media','sound-room','tags','playlists'] %}<link rel="stylesheet" href="{{ url_for('static',filename='music.css',v='rc5') }}">{% endif %}{% endblock %}
 {% block body_class %}dashboard-page admin-page{% endblock %}
 {% block footer %}{{ super() }}{% include 'admin/_license_agreement.html' %}{% endblock %}
 {% block header %}
@@ -9,10 +9,11 @@
   <div class="topbar-now-playing" data-now-playing role="status"><small data-now-label>Checking playback…</small><strong data-now-title>—</strong><span data-now-artist></span>{% if selected %}<a class="schedule-mode-status" data-status-url="{{ url_for('schedule_studio.read',slug=selected.slug,action='state') }}" href="{{ url_for('schedule_studio.page',slug=selected.slug,view='control') }}">Active mode: {{ selected.scheduling.mode|title if selected.scheduling else 'Calendar' }}</a>{% endif %}</div>
   <div data-station-monitors data-broadcast-url="{{ url_for('web.broadcast_snapshot') }}">
     {% for station in stations if not station.deleted_at %}
-    <div class="station-monitor" data-monitor-station="{{ station.slug }}" data-station-name="{{ station.name }}" data-stream="{{ station.stream.public_path if station.stream and station.enabled else '' }}">
+    <div class="station-monitor" data-monitor-station="{{ station.slug }}" data-station-name="{{ station.name }}" data-stream="{{ station.stream.public_path if station.stream and station.stream.enabled and station.enabled and station.lifecycle_state == 'ready' else '' }}">
       <strong>{{ station.name }}</strong>
-      <span class="on-air-icon" data-broadcast-station="{{ station.slug }}" title="Broadcast status unknown"><i aria-hidden="true"></i> ON AIR<span class="sr-only" data-broadcast-description> · Status unknown</span></span>
-      <button type="button" data-station-monitor-toggle aria-pressed="false" aria-label="Monitor {{ station.name }}">MONITOR</button>
+      <span class="on-air-icon" data-broadcast-station="{{ station.slug }}" title="Broadcast status unknown"><i aria-hidden="true"></i> <b data-broadcast-label>CHECKING</b><span class="sr-only" data-broadcast-description> · Status unknown</span></span>
+      <button type="button" data-station-monitor-toggle aria-pressed="false" aria-label="Monitor {{ station.name }}" {% if station.lifecycle_state != 'ready' or not station.enabled or not station.stream or not station.stream.enabled %}disabled{% endif %}>MONITOR</button>
+      <small data-monitor-setup>{{ 'Preparing…' if station.lifecycle_state == 'pending_create' else 'Stopped' if station.desired_state == 'stopped' else '' }}</small>
     </div>
     {% endfor %}
   </div>

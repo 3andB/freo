@@ -158,6 +158,25 @@ def test_all_admin_pages_have_each_station_monitor(app):
         assert html.count('data-station-monitor-toggle') == 2
         assert 'data-monitor-station="test-station"' in html
         assert 'data-monitor-station="second-station"' in html
+
+
+def test_readiness_and_stream_access_follow_provisioning(app):
+    client = admin_client(app)
+    with app.app_context():
+        station = Station.query.filter_by(slug='test-station').one()
+        station.lifecycle_state = 'pending_create'
+        db.session.commit()
+    data = client.get(BASE+'state').json['broadcast']
+    assert data['ready'] is False and data['stream'] == ''
+    assert data['lifecycle'] == 'pending_create'
+    assert change(client, True).status_code == 400
+    with app.app_context():
+        station = Station.query.filter_by(slug='test-station').one()
+        station.lifecycle_state = 'ready'
+        db.session.commit()
+    data = client.get(BASE+'state').json['broadcast']
+    assert data['ready'] and data['stream'] == '/stream/test-station'
+    assert change(client, True).status_code == 200
     html = client.get('/admin').text
     assert html.count('data-broadcast-station="test-station"') == 2
 

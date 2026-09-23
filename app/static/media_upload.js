@@ -203,7 +203,7 @@
           xhr.upload.onprogress=e=>{if(e.lengthComputable){item.progress=Math.round(e.loaded/e.total*100);drawRow(item);}};
           xhr.onload=()=>{try{resolve(uploadResult(xhr));}catch(e){reject(e);}};xhr.onerror=xhr.ontimeout=xhr.onabort=()=>reject(Error('Upload interrupted. Retry this file.'));xhr.send(body);
         });item.remote=data;if(isDuplicate(item))item.selected=false;remember();fill(item);
-      }catch(e){item.errorMode='upload';if(e.message.includes('fresh file identifier')){items.delete(item.id);item.id=crypto.randomUUID();items.set(item.id,item);remember();item.error='Upload interrupted. Retry this file.';}else item.error=e.message;}finally{item.uploading=false;drawRow(item);summary();}
+      }catch(e){item.errorMode='upload';if(e.message.includes('fresh file identifier')){items.delete(item.id);item.id=FreoUUID();items.set(item.id,item);remember();item.error='Upload interrupted. Retry this file.';}else item.error=e.message;}finally{item.uploading=false;drawRow(item);summary();}
     }
     uploading=false;summary();try{await sessionList();await poll();}catch(e){message(e.message);}
   }
@@ -213,7 +213,7 @@
       if(!/\.(mp3|wav|m4a|flac)$/i.test(file.name)){if(/^(cover|folder)\.(jpe?g|png)$/i.test(file.name)){const key=file.webkitRelativePath||file.name;folderCovers.set(key,file);if(![...$('folder-artworks').options].some(o=>o.value===key))$('folder-artworks').append(new Option(key,key));$('folder-artwork-choice').hidden=false;}else skipped++;continue;}
       let item=[...items.values()].find(i=>i.name===file.name&&i.size===file.size&&i.path===(file.webkitRelativePath||'')&&(!i.remote||i.file?.lastModified===file.lastModified)&&!['finalized','expired','cancelled'].includes(i.remote?.status));
       if(item?.remote||item?.uploading)continue;
-      if(!item)item=makeItem({id:crypto.randomUUID(),name:file.name,size:file.size,path:file.webkitRelativePath||''},file);else{item.file=file;item.source=URL.createObjectURL(file);}
+      if(!item)item=makeItem({id:FreoUUID(),name:file.name,size:file.size,path:file.webkitRelativePath||''},file);else{item.file=file;item.source=URL.createObjectURL(file);}
       if(!file.size||file.size>Number(config.fileLimit)){item.error=!file.size?'This file is empty.':'This file exceeds the per-song size limit.';item.selected=false;drawRow(item);continue;}
       if(!uploadQueue.includes(item))uploadQueue.push(item);
     }
@@ -285,13 +285,14 @@
   positionActions();scope.listen(window,'resize',()=>scope.frame(positionActions));
   const layoutObserver=new ResizeObserver(positionActions);layoutObserver.observe(form.querySelector('.import-action-bar'));if($('music-player'))layoutObserver.observe($('music-player'));scope.cleanup(()=>layoutObserver.disconnect());
   form.inert=true;
+  form.setAttribute('aria-busy','true');message('Opening music import…');
   try{
     const response=await scope.fetch(config.noticeUrl,{method:'POST',body:new URLSearchParams({csrf:config.csrf})});
     if((await FreoCatalog.readResponse(response,'open the importer')).show&&!await FreoDialog.confirm({title:'Before importing music',message:'Only upload and broadcast material you own or are legally authorized to use. Uploading or broadcasting copyrighted material without the necessary rights can violate copyright law and lead to removal, legal action, or financial liability. You are responsible for obtaining the required permissions and licences.',confirmLabel:'Continue to import',signal:scope.signal})){FreoWorkspace.navigate(config.libraryUrl);return;}
     catalog=await FreoCatalog.load(config.base);batchSelectors=FreoCatalog.selectors($('batch-catalog'),catalog,{}, {...config,get csrf(){return form.dataset.csrf;},importing:true,batch:true,message,target:'the selected songs'});batchChips=FreoCatalog.chips($('batch-classification'),catalog,{},['playlists','categories','tags']);
     const rotationSelect=$('import-rotation');for(const category of catalog.categories.filter(c=>c.enabled))rotationSelect.append(new Option('Rotation: '+category.name,String(category.id)));if(![...rotationSelect.options].some(o=>o.value===rotation))rotation='';rotationSelect.value=rotation;
-    const list=await sessionList();const requested=new URLSearchParams(location.search).get('import_session');const resume=['draft','attention','empty'].includes(list[0]?.state)?list[0]:null;await openSession(requested||resume?.id||list.find(row=>row.state==='empty')?.id);form.inert=false;
-  }catch(e){message(e.message);form.inert=false;const retry=button('Reload importer',()=>location.reload());$('import-message').append(document.createTextNode(' '),retry);return;}
+    const list=await sessionList();const requested=new URLSearchParams(location.search).get('import_session');const resume=['draft','attention','empty'].includes(list[0]?.state)?list[0]:null;await openSession(requested||resume?.id||list.find(row=>row.state==='empty')?.id);form.inert=false;form.setAttribute('aria-busy','false');message('Choose music or drop files here to get started.');
+  }catch(e){message('Could not open music import. '+e.message);form.inert=false;form.setAttribute('aria-busy','false');const retry=button('Reload importer',()=>location.reload());$('import-message').append(document.createTextNode(' '),retry);return;}
   $('choose-files').onclick=()=>$('media-file').click();$('choose-folder').onclick=()=>$('media-folder').click();for(const id of ['media-file','media-folder'])$(id).onchange=e=>{addFiles([...e.target.files]);e.target.value='';};
   async function walk(entry,prefix=''){if(entry.isFile){const file=await new Promise((resolve,reject)=>entry.file(resolve,reject));Object.defineProperty(file,'webkitRelativePath',{value:prefix+file.name});return[file];}if(!entry.isDirectory)return[];const reader=entry.createReader();let result=[];while(true){const chunk=await new Promise((resolve,reject)=>reader.readEntries(resolve,reject));if(!chunk.length)return result;for(const child of chunk)result.push(...await walk(child,prefix+entry.name+'/'));}}
   const zone=form.querySelector('.drop-zone');zone.ondragover=e=>{e.preventDefault();zone.classList.add('is-dragging');};zone.ondragleave=()=>zone.classList.remove('is-dragging');zone.ondrop=async e=>{e.preventDefault();zone.classList.remove('is-dragging');const entries=[...e.dataTransfer.items].map(i=>i.webkitGetAsEntry?.()).filter(Boolean),files=[...e.dataTransfer.files];try{let found=[];if(entries.length)for(const entry of entries)found.push(...await walk(entry));else found=files;addFiles(found);}catch(_){message('Could not read the folder. Use Choose folder.');}};

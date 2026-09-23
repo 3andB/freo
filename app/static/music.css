@@ -85,6 +85,7 @@ html:has(#music-player:not([hidden])){scroll-padding-bottom:150px}
 .import-destination>label{font-weight:600}.import-destination>small{grid-column:1/-1;color:var(--theme-muted)}
 .import-workspace select{min-width:0}.import-row-copy{overflow-wrap:anywhere}
 .import-action-bar>[hidden]{display:none}.import-action-bar>a{white-space:nowrap}
+.import-workspace form:not(.has-files) .import-action-bar{display:none}
 #preview-close{flex:none;min-width:36px;min-height:36px;font-size:1.35rem}
 @media(max-width:750px){.import-destination{grid-template-columns:1fr}.import-workspace .has-files .drop-zone{flex-direction:column;gap:4px}.import-action-bar>a{text-align:center}.import-row-copy{min-width:0;flex-basis:calc(100% - 40px)}}
 

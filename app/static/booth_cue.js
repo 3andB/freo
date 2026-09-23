@@ -21,7 +21,7 @@ window.FreoCue = {
     async function edit(operation, data = {}) {
       if (!cue || saving) return false;
       saving = true; $('cue-save-state').textContent = 'Saving…';
-      const ok = await post('cue-list', {operation, revision: cue.revision, nonce: crypto.randomUUID(), ...data});
+      const ok = await post('cue-list', {operation, revision: cue.revision, nonce: FreoUUID(), ...data});
       if (scope.signal.aborted) return false;
       saving = false; $('cue-save-state').textContent = ok ? 'Saved' : 'Not saved · retry';
       return ok;

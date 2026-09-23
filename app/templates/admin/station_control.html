@@ -1,13 +1,13 @@
 {% extends 'admin/base.html' %}
 {% block title %}Station Control · {{ selected.name }} · Freo{% endblock %}
-{% block head %}{{ super() }}<link rel="stylesheet" href="{{ url_for('static',filename='station_control.css') }}">{% endblock %}
+{% block head %}{{ super() }}<link rel="stylesheet" href="{{ url_for('static',filename='station_control.css',v='rc5') }}">{% endblock %}
 {% block admin_content %}
 <section id="station-control" data-api="{{ url_for('schedule_studio.read',slug=selected.slug,action='state')|replace('/state','/') }}" data-csrf="{{ csrf_token() }}">
   <input type="hidden" id="control-initial" value="{{ initial|tojson|forceescape }}">
   <header class="studio-heading"><div><span class="eyebrow">{{ selected.name }} / SYSTEM CONTROL</span><h1>Station Control</h1><p>Choose how your station runs and open its schedule.</p></div></header>
   <section class="admin-card master-broadcast" aria-labelledby="master-broadcast-heading">
     <div><h2 id="master-broadcast-heading">MASTER BROADCAST</h2><p>ON broadcasts your schedule, DJ or live audio. If no audio is available, the station broadcasts tone. OFF stops all broadcasting.</p></div>
-    {% if can_switch %}<button id="master-broadcast-toggle" type="button" role="switch" aria-checked="{{ 'true' if initial.broadcast.enabled else 'false' }}" aria-label="Master broadcast">{{ 'ON' if initial.broadcast.enabled else 'OFF' }}</button>{% endif %}
+    {% if can_switch %}<div class="broadcast-switch"><button id="master-broadcast-toggle" type="button" role="switch" aria-checked="{{ 'true' if initial.broadcast.enabled else 'false' }}" aria-label="Master broadcast" aria-describedby="broadcast-hint" {% if not initial.broadcast.enabled and not initial.broadcast.ready %}disabled{% endif %}>{{ 'ON' if initial.broadcast.enabled else 'OFF' }}</button><strong>BROADCAST</strong><small id="broadcast-hint"></small></div>{% endif %}
     <span class="on-air-icon station-live-icon {{ 'is-online' if initial.broadcast.online else '' }}" data-broadcast-station="{{ selected.slug }}" data-live-label><i aria-hidden="true"></i><b data-broadcast-label>{{ 'STATION LIVE' if initial.broadcast.online else 'NOT LIVE' }}</b><span class="sr-only" data-broadcast-description> · {{ 'Online' if initial.broadcast.online else 'Offline' if initial.broadcast.online is sameas false else 'Status unknown' }}</span></span>
     <p id="broadcast-message" role="status" aria-live="polite"></p>
     <button id="broadcast-retry" type="button" hidden>Retry broadcast change</button>
@@ -36,4 +36,4 @@
   <button type="button" data-license-open aria-haspopup="dialog" aria-controls="license-agreement">License agreement</button>
 </section>
 {% endblock %}
-{% block scripts %}{{ super() }}<script defer src="{{ url_for('static',filename='station_control.js',v='release-20260921') }}"></script>{% endblock %}
+{% block scripts %}{{ super() }}<script defer src="{{ url_for('static',filename='station_control.js',v='rc5') }}"></script>{% endblock %}

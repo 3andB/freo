@@ -3,7 +3,7 @@
 'use strict';
 const root=document.getElementById('schedule-studio');if(!root)return;
 const page=window.FreoPage, editor=window.FreoScheduleEditor;
-const $=id=>document.getElementById(id), clone=value=>structuredClone(value), uid=()=>crypto.randomUUID();
+const $=id=>document.getElementById(id), clone=value=>structuredClone(value), uid=()=>FreoUUID();
 const view=root.dataset.view, composing=['shows','blocks'].includes(view), autosave=view==='calendar';
 let state=JSON.parse($('schedule-initial').value), compositions=[], composition={kind:view==='blocks'?'BLOCK':'SHOW',name:'',description:'',duration:view==='blocks'?86400:3600,sections:[]};
 let entries=clone(state.calendar), assignments=clone(state.assignments), simple=clone(state.simple), dirty=false, undo=[],redo=[],libraryKind=composing?'playlist':'show',sourcePage=1,dragged=null,editing=null,accordion=false,expanded=new Set(composing?[0]:[9,10,11]),events=[],pattern=[];
