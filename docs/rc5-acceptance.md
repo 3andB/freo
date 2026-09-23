@@ -1,7 +1,10 @@
 # Freo 0.3.0-rc.5: fresh installation acceptance
 
 RC.5 includes all RC.4 features plus the fixes below. This is a private test
-candidate for a separate Ubuntu 24.04 x86_64 VM, pending owner acceptance.
+candidate for a separate Ubuntu 24.04 x86_64 VM. Fresh-VM acceptance was
+confirmed by the owner on 2026-09-23; see the
+[dated acceptance record](rc5-fresh-vm-acceptance-2026-09-23.md). The exact tested
+RC.5 artifacts are frozen. Public release remains subject to owner approval.
 
 ## What changed
 
