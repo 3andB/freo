@@ -36,7 +36,7 @@ jobs:
         run: |
           export FREO_TEST_CHROME="$(command -v google-chrome || command -v chromium-browser)"
           export FREO_TEST_CHROMEDRIVER="$(command -v chromedriver)"
-          sudo env FREO_ENV_FILE=/dev/null FLASK_ENV=testing DATABASE_URL=sqlite:// FREO_TEST_CHROME="$FREO_TEST_CHROME" FREO_TEST_CHROMEDRIVER="$FREO_TEST_CHROMEDRIVER" venv/bin/pytest -q tests/test_first_login_browser.py tests/test_admin_validation.py tests/test_rc4_browser.py tests/test_rc5_browser.py tests/test_rc6_browser.py tests/test_statistics_browser.py tests/test_import_flow_browser.py
+          sudo env FREO_ENV_FILE=/dev/null FLASK_ENV=testing DATABASE_URL=sqlite:// FREO_TEST_CHROME="$FREO_TEST_CHROME" FREO_TEST_CHROMEDRIVER="$FREO_TEST_CHROMEDRIVER" venv/bin/pytest -q tests/test_first_login_browser.py tests/test_admin_validation.py tests/test_rc4_browser.py tests/test_rc5_browser.py tests/test_rc6_browser.py tests/test_statistics_browser.py tests/test_import_flow_browser.py tests/test_import_review_browser.py
       - name: Real PostgreSQL migrations and encrypted restore
         run: bash scripts/test-recovery-postgres.sh
       - name: Build source review artifact

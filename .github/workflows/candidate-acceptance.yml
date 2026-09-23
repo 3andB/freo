@@ -1,0 +1,75 @@
+name: Full candidate acceptance
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ['feature/rc*-candidate', 'feature/rc*-release-readiness']
+    paths:
+      - 'app/**'
+      - 'freo_ops/**'
+      - 'migrations/**'
+      - 'tests/**'
+      - 'scripts/**'
+      - 'deploy/**'
+      - 'requirements*.txt'
+      - '.github/workflows/candidate-acceptance.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  acceptance:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        suite: [backend, browser-primary, browser-programming, audio]
+    env:
+      FREO_ENV_FILE: /dev/null
+      FLASK_ENV: testing
+      DATABASE_URL: 'sqlite://'
+      PYTHONDONTWRITEBYTECODE: '1'
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Prepare isolated test host
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y python3-venv postgresql postgresql-client gnupg acl ffmpeg
+          sudo groupadd --system freo-playout
+          sudo useradd --system --user-group --no-create-home freo-ingest
+          python3 -m venv venv
+          venv/bin/pip install -r requirements-dev.txt
+      - name: Prepare private audio engines
+        if: matrix.suite == 'audio'
+        run: |
+          sudo bash scripts/configure-icecast-repository.sh
+          sudo apt-get update
+          sudo apt-get install -y liquidsoap icecast2
+          venv/bin/pip install -r requirements-live-mic.txt
+          liquidsoap --version
+          icecast2 -v
+      - name: Exercise candidate fixtures
+        env:
+          ACCEPTANCE_SUITE: ${{ matrix.suite }}
+        run: |
+          export FREO_TEST_CHROME="$(command -v google-chrome || command -v chromium-browser)"
+          export FREO_TEST_CHROMEDRIVER="$(command -v chromedriver)"
+          mkdir -p "$RUNNER_TEMP/freo-acceptance"
+          sudo env FREO_ENV_FILE=/dev/null FLASK_ENV=testing DATABASE_URL=sqlite:// PYTHONDONTWRITEBYTECODE=1 FREO_TEST_CHROME="$FREO_TEST_CHROME" FREO_TEST_CHROMEDRIVER="$FREO_TEST_CHROMEDRIVER" venv/bin/python scripts/test-candidate.py "$ACCEPTANCE_SUITE" "$RUNNER_TEMP/freo-acceptance"
+      - name: Preserve disposable test evidence
+        if: always()
+        run: |
+          mkdir -p "$RUNNER_TEMP/freo-acceptance"
+          if [ -f /tmp/freo-browser-failure.png ]; then
+            sudo cp /tmp/freo-browser-failure.png "$RUNNER_TEMP/freo-acceptance/"
+          fi
+          sudo tar -czf "$RUNNER_TEMP/freo-acceptance-${{ matrix.suite }}.tar.gz" -C "$RUNNER_TEMP/freo-acceptance" .
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: always()
+        with:
+          name: candidate-acceptance-${{ matrix.suite }}
+          path: ${{ runner.temp }}/freo-acceptance-${{ matrix.suite }}.tar.gz
+          retention-days: 14

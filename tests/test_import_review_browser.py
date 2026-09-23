@@ -21,7 +21,10 @@ def test_expired_session_during_polling_has_actionable_message(booth,monkeypatch
             return Response(status=302,headers={'Location':'/admin/login'})(environ,start_response)
         return original(environ,start_response)
     monkeypatch.setattr(app,'wsgi_app',expired)
-    WebDriverWait(driver,8).until(lambda d:d.find_element(By.ID,'import-message').text)
+    # Returning to the tab polls immediately; idle imports otherwise poll every
+    # 30 seconds. The opening instruction is already nonempty before expiry.
+    driver.execute_script("document.dispatchEvent(new Event('visibilitychange'))")
+    WebDriverWait(driver,10).until(lambda d:d.find_element(By.ID,'import-auth').is_displayed())
     message=driver.find_element(By.ID,'import-message').text
     assert 'sign in' in message.lower() and 'Unexpected token' not in message, message
     assert driver.find_element(By.ID,'import-auth').is_displayed()
