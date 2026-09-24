@@ -7,9 +7,12 @@ source tag and test VM remain unchanged. This note supplements that historical
 candidate; it does not amend the package or claim that unobserved acceptance
 checklist items were independently verified.
 
-Current development version: **0.3.0-rc.7.dev5**. This identifies the newer software
-honestly in the UI and existing heartbeat. It is not an announced stable release
-or a newly signed installation candidate.
+The approved production baseline is **0.3.0-rc.7.dev5**, commit
+`cd29c398c66665fb7996685c4f7354fb28ee6571`. The next isolated signed candidate is
+**0.3.0-rc.8**; RC7 was used only for development identities. Production remains
+on its tested baseline while the new VM is tested. See [RC8 installation](rc8-installation.md),
+[acceptance](rc8-acceptance.md). The owner scoped this round to a fresh VM;
+historical RC5/RC6 upgrade rehearsals are not required for this testing handoff.
 
 The changes after RC6 are:
 
@@ -67,9 +70,9 @@ migration then advances it to `b72e19d4c603`. The accepted RC5 ancestry is retai
 
 1. Finish the owner's live checks of both UI fixes. Record the exact approved
    source commit; include later fixes before choosing the package commit.
-2. Give the installation candidate a new identity, such as `0.3.0-rc.7`, and
+2. Give the installation candidate a new identity, `0.3.0-rc.8`, and
    update the existing canonical version metadata and matching tests. Never
-   overwrite or repoint RC6. Do not present a development build as an accepted RC7 build.
+   overwrite or repoint RC6. Do not present a development build as an accepted RC8 build.
 3. Recheck push/tag workflows before creating or pushing a release tag: the
    existing `v*` tag workflow builds and signs another artifact. Choose one
    authoritative signing path and preserve its exact bytes, manifest and hashes.
@@ -88,14 +91,8 @@ migration then advances it to `b72e19d4c603`. The accepted RC5 ancestry is retai
    playlist bubbles, import reset, Software page spacing, settings, player,
    statistics, accurate version heartbeat and reboot persistence. Verify HTTPS
    issuance/renewal where applicable and observe uninterrupted playback.
-8. Exercise a populated upgrade and encrypted restore using additional disposable
-   state. Preserve database, media, settings and installation credentials. Do not
-   use either historical accepted candidate VM for destructive rehearsals.
-   For RC5/RC6, use the next candidate's signature-verified upgrade tools staged
-   separately, not the frozen installed updater: its strict preservation check
-   rejects the new primary-admin permission change. Include this operator path
-   in the test kit, prove the role correction survives recovery validation, and
-   verify the owner can open Software and license without a separate role command.
+8. Record the fresh installation results against the exact signed package. The
+   owner has excluded historical RC5/RC6 upgrade rehearsals from this round.
 
 Use `docs/recovery-and-upgrades.md` for the existing signed-bundle upgrade and
 recovery procedures. The new kit must carry its own version-specific installation
