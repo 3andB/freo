@@ -41,7 +41,10 @@ def admin_required(view):
     def guarded(*args, **kwargs):
         user = current_admin()
         if user is None:
-            session.clear()
+            # Signed-out tabs still poll protected endpoints. Do not erase an
+            # anonymous login form's CSRF token or failed-attempt counters.
+            if 'admin_user_id' in session:
+                session.clear()
             return redirect(url_for('web.login'))
         if user.setup_required and request.endpoint not in ('web.first_setup', 'web.logout', 'web.login'):
             return redirect(url_for('web.first_setup'))

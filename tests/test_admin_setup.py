@@ -74,3 +74,52 @@ def test_cookie_scheme_uses_saved_origin_not_client_headers(app,scheme,secure):
     cookie=response.headers['Set-Cookie']
     assert ('; Secure;' in cookie) is secure
     assert '; HttpOnly;' in cookie and 'SameSite=Lax' in cookie
+
+
+def test_background_polls_and_other_login_tabs_preserve_login_form(app):
+    client = app.test_client()
+    client.get('/admin/login')
+    with client.session_transaction() as state:
+        token = state['login_csrf']
+    for path in ('/admin/api/broadcast-status',
+                 '/admin/api/stations/test-station/live-status', '/admin/login'):
+        response = client.get(path, follow_redirects=True)
+        assert response.status_code == 200
+        assert 'Set-Cookie' not in response.headers
+        with client.session_transaction() as state:
+            assert state['login_csrf'] == token
+    response = client.post('/admin/login', data=dict(email='admin@example.test',
+        password='test-password-long-enough', csrf=token))
+    assert response.status_code == 302 and response.location.endswith('/admin')
+    with client.session_transaction() as state:
+        assert state['admin_user_id']
+        assert 'login_csrf' not in state
+
+
+def test_login_csrf_recovery_and_cross_session_protection(app):
+    first, second = app.test_client(), app.test_client()
+    first.get('/admin/login')
+    with first.session_transaction() as state:
+        foreign_token = state['login_csrf']
+    credentials = dict(email='admin@example.test', password='test-password-long-enough')
+    for token in ('', 'expired', foreign_token):
+        response = second.post('/admin/login', data={**credentials, 'csrf': token})
+        assert response.status_code == 400
+        assert 'Please sign in again' in response.get_data(as_text=True)
+        with second.session_transaction() as state:
+            assert 'admin_user_id' not in state
+            valid_token = state['login_csrf']
+    assert second.post('/admin/login', data={**credentials, 'csrf': valid_token}).status_code == 302
+
+
+def test_background_requests_do_not_reset_login_throttling(app):
+    client = app.test_client()
+    client.get('/admin/login')
+    with client.session_transaction() as state:
+        token = state['login_csrf']
+    for _ in range(5):
+        assert client.post('/admin/login', data=dict(email='admin@example.test',
+            password='wrong-password', csrf=token)).status_code == 401
+        client.get('/admin/api/broadcast-status', follow_redirects=True)
+    assert client.post('/admin/login', data=dict(email='admin@example.test',
+        password='test-password-long-enough', csrf=token)).status_code == 429

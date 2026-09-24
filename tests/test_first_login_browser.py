@@ -49,6 +49,21 @@ def test_fresh_production_first_login_logout_and_restart(tmp_path,monkeypatch,sc
             driver.get(base+'/admin/login')
             driver.find_element(By.NAME,'email').send_keys('admin')
             driver.find_element(By.NAME,'password').send_keys(password)
+            # A second tab and signed-out admin polling must not invalidate
+            # the form already filled in the first tab.
+            login_tab = driver.current_window_handle
+            driver.switch_to.new_window('tab')
+            driver.get(base+'/admin/login')
+            statuses = driver.execute_async_script("""
+                const done = arguments[0];
+                Promise.all(['/admin/api/broadcast-status',
+                    '/admin/api/stations/1/live-status'].map(path =>
+                    fetch(path).then(response => response.status)))
+                    .then(done).catch(() => done([]));
+            """)
+            assert statuses == [200, 200]
+            driver.close()
+            driver.switch_to.window(login_tab)
             driver.find_element(By.CSS_SELECTOR,'.login-card button[type=submit]').click()
         sign_in('IAmOnTheAir')
         WebDriverWait(driver,15).until(lambda d:d.current_url==base+'/admin/setup')

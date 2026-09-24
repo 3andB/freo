@@ -214,16 +214,21 @@ def admin_now(slug):
 
 @web_blueprint.route('/admin/login', methods=['GET', 'POST'])
 def login():
+    def show_form(error=None, status=200):
+        # Other tabs and redirected background polls must not invalidate an
+        # already-open form. Successful sign-in and sign-out clear the session.
+        token = session.get('login_csrf')
+        if not token:
+            token = secrets.token_urlsafe(32)
+            session['login_csrf'] = token
+        return render_template('login.html', csrf=token, error=error), status
+
     if request.method == 'GET':
-        token = secrets.token_urlsafe(32)
-        session['login_csrf'] = token
-        return render_template('login.html', csrf=token, error=None)
+        return show_form()
     if not session.get('login_csrf') or not hmac.compare_digest(request.form.get('csrf', ''), session['login_csrf']):
-        abort(400)
+        return show_form('Your sign-in form expired. Please sign in again.', 400)
     if session.get('login_lock_until', 0) > time.time():
-        token = secrets.token_urlsafe(32)
-        session['login_csrf'] = token
-        return render_template('login.html', csrf=token, error='Try again later.'), 429
+        return show_form('Try again later.', 429)
     email = request.form.get('email', '').strip().lower()[:254]
     password = request.form.get('password', '')
     user = AdminUser.query.filter(AdminUser.active.is_(True), db.or_(AdminUser.email == email, AdminUser.username == email)).first()
@@ -234,9 +239,7 @@ def login():
         session['login_failures'] = attempts
         if attempts >= 5:
             session['login_lock_until'] = time.time() + 900
-        token = secrets.token_urlsafe(32)
-        session['login_csrf'] = token
-        return render_template('login.html', csrf=token, error='Username/email or password was not accepted.'), 401
+        return show_form('Username/email or password was not accepted.', 401)
     from app.services.admin_setup import sign_in
     sign_in(user)
     return redirect(url_for('web.first_setup' if user.setup_required else 'web.admin_home'))
