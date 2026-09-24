@@ -90,8 +90,8 @@ def test_concurrent_flags_keep_one_station_review_and_reject_lost_updates(monkey
         barrier=Barrier(2)
         def flag(index):
             client=app.test_client()
-            with client.session_transaction() as session:
-                session['admin_user_id']=user_id;session['admin_csrf']='test-csrf'
+            from tests.auth import authenticate
+            authenticate(client, user_id, 'test-csrf')
             barrier.wait(timeout=10)
             return client.post(f'/admin/api/stations/{slug}/flags/{identifier}',data={'csrf':'test-csrf','revision':revision,'note':f'Edit {index}'}).status_code
         with ThreadPoolExecutor(max_workers=2) as pool:

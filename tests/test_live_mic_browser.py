@@ -137,6 +137,7 @@ def test_signout_waits_for_mic_return(booth, monkeypatch):
     wait.until(lambda d:d.current_url==base+'/')
     assert calls.count('disconnect')==1 and state['phase']=='OFF AIR'
     driver.get(base+'/admin/software')
+    wait.until(lambda d:d.current_url.endswith('/admin/login') and d.find_elements(By.CSS_SELECTOR,'.login-card'))
     assert driver.current_url.endswith('/admin/login')
 
 
@@ -218,3 +219,50 @@ def test_mode_switch_cancels_pending_permission_without_late_capture(booth, monk
     """)
     wait.until(lambda d:d.execute_script('return lateTrack.readyState')=='ended')
     assert not driver.find_element(By.ID,'mic-go').is_enabled()
+
+
+def test_live_mic_logout_with_delayed_response_in_another_tab(booth, monkeypatch):
+    """Another tab survives booth disposal and must not restore its login."""
+    from threading import Event
+    from flask import request as flask_request
+    app,driver,base,_=booth
+    state,calls=connected_mic(booth,monkeypatch)
+    entered,release=Event(),Event()
+    def hold_response(response):
+        if flask_request.args.get('logout_race')=='held':
+            entered.set()
+            if not release.wait(30):
+                raise RuntimeError('Test did not release its delayed response')
+        return response
+    app.after_request_funcs.setdefault(None,[]).append(hold_response)
+    booth_tab=driver.current_window_handle
+    wait=WebDriverWait(driver,10)
+    try:
+        driver.switch_to.new_window('tab')
+        second_tab=driver.current_window_handle
+        driver.get(base+'/')
+        driver.execute_script("window.heldResponseDone=false;fetch('/admin/api/broadcast-status?logout_race=held').then(r=>r.text()).then(()=>window.heldResponseDone=true)")
+        assert entered.wait(10)
+        driver.switch_to.window(booth_tab)
+        driver.find_element(By.CSS_SELECTOR,'form[action="/admin/logout"] button').click()
+        wait.until(lambda d:d.find_elements(By.CSS_SELECTOR,'.freo-dialog[open]'))
+        # Cancellation must keep both authentication and microphone ownership.
+        driver.find_element(By.CSS_SELECTOR,'.freo-dialog button:not(.admin-primary)').click()
+        assert driver.execute_script('return micFixtureTrack.readyState')=='live'
+        assert 'disconnect' not in calls
+        driver.find_element(By.CSS_SELECTOR,'form[action="/admin/logout"] button').click()
+        wait.until(lambda d:d.find_elements(By.CSS_SELECTOR,'.freo-dialog[open]'))
+        driver.find_element(By.CSS_SELECTOR,'.freo-dialog .admin-primary').click()
+        wait.until(lambda d:d.current_url==base+'/')
+        assert calls.count('disconnect')==1 and state['phase']=='OFF AIR'
+        release.set()
+        driver.switch_to.window(second_tab)
+        wait.until(lambda d:d.execute_script('return window.heldResponseDone===true'))
+        for tab in (second_tab,booth_tab):
+            driver.switch_to.window(tab)
+            driver.get(base+'/admin/software')
+            wait.until(lambda d:d.current_url.endswith('/admin/login') and d.find_elements(By.CSS_SELECTOR,'.login-card'))
+            assert not driver.find_elements(By.CSS_SELECTOR,'.admin-sidebar')
+    finally:
+        release.set()
+        app.after_request_funcs[None].remove(hold_response)

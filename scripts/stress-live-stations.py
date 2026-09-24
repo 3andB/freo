@@ -90,8 +90,13 @@ class LiveStress:
                 admin=db.session.get(AdminUser, self.admin_id)
                 if admin is None or not admin.active:
                     raise RuntimeError('Stress administrator is no longer active')
-                self.cookie = self.app.session_interface.get_signing_serializer(self.app).dumps(
-                    dict(admin_user_id=self.admin_id, admin_csrf=self.csrf))
+                from flask import session
+                from app.services.admin_setup import sign_in
+                headers = {'Cookie': f'{self.cookie_name}={self.cookie}'} if self.cookie else {}
+                with self.app.test_request_context(headers=headers):
+                    sign_in(admin)
+                    session['admin_csrf'] = self.csrf
+                    self.cookie = self.app.session_interface.get_signing_serializer(self.app).dumps(dict(session))
             self.auth_until = time.monotonic() + min(600, self.app.permanent_session_lifetime.total_seconds()/2)
             self.metrics['auth_renewals']=self.metrics.get('auth_renewals',0)+1
         if browser and self.driver and self.browser_cookie != self.cookie:

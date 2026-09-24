@@ -14,11 +14,13 @@ def current_admin():
     user = db.session.get(AdminUser, identity) if isinstance(identity, int) else None
     if not user or not user.active:
         return None
-    from .admin_setup import credential_stamp
+    from .admin_setup import credential_stamp, login_session_valid
     stamp = session.get('credential_stamp')
     if stamp is not None and (not isinstance(stamp, str) or not hmac.compare_digest(stamp, credential_stamp(user))):
         return None
     if user.setup_required and stamp is None:
+        return None
+    if not login_session_valid(user):
         return None
     return user
 

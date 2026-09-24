@@ -12,9 +12,8 @@ from tests.test_web import app
 
 
 def operator(client):
-    with client.session_transaction() as session:
-        session['admin_user_id'] = 1
-        session['admin_csrf'] = 'mic-csrf'
+    from tests.auth import authenticate
+    authenticate(client, 1, 'mic-csrf')
 
 
 def test_mic_requires_login_csrf_and_station_access(app, monkeypatch):

@@ -114,9 +114,8 @@ def test_retired_imaging_redirects_and_rejects_writes(world):
     assert client.get('/admin/stations/one/imaging').headers['Location'].endswith('/admin/login')
     user = AdminUser(email='test@example.com', password_hash='unused', active=True)
     db.session.add(user); db.session.commit()
-    with client.session_transaction() as session:
-        session['admin_user_id'] = user.id
-        session['admin_csrf'] = 'test-csrf'
+    from tests.auth import authenticate
+    authenticate(client, user.id, 'test-csrf')
     for path in ('', '/'+asset.uuid, '/upload', '/groups'):
         response=client.get('/admin/stations/one/imaging'+path)
         assert response.status_code==302 and response.headers['Location'].endswith('/playlists')
@@ -131,9 +130,8 @@ def test_clock_editor_rejects_cross_station_imaging_target(world):
     user = AdminUser(email='clock@example.com', password_hash='unused', active=True)
     db.session.add(user); db.session.commit()
     client = app.test_client()
-    with client.session_transaction() as session:
-        session['admin_user_id'] = user.id
-        session['admin_csrf'] = 'csrf'
+    from tests.auth import authenticate
+    authenticate(client, user.id, 'csrf')
     url = '/admin/stations/one/clocks/clock/slots/add'
     assert client.post(url, data={'slot_type':'CART','target':asset.uuid}).status_code == 400
     response = client.post(url, data={'csrf':'csrf','slot_type':'CART','target':asset.uuid})
@@ -174,8 +172,8 @@ def test_retired_imaging_upload_cannot_create_jobs(world):
     user=AdminUser(email='ingest@example.com',password_hash='unused',active=True)
     db.session.add(user);db.session.commit()
     client=app.test_client()
-    with client.session_transaction() as session:
-        session['admin_user_id']=user.id;session['admin_csrf']='csrf'
+    from tests.auth import authenticate
+    authenticate(client, user.id, 'csrf')
     response=client.post('/admin/stations/one/imaging/upload',data={'csrf':'csrf','file':(io.BytesIO(b'audio'),'id.mp3')},content_type='multipart/form-data')
     assert response.status_code==405
     assert MediaIngestJob.query.count()==0 and ImagingAsset.query.count()==0

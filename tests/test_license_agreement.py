@@ -27,8 +27,8 @@ def test_first_use_acceptance_is_durable_and_per_account(app):
     fresh = admin_client(app)
     assert 'data-required="false"' in fresh.get('/admin').text
     assert 'data-license-open' in fresh.get('/admin/stations/test-station/schedule-studio/control').text
-    with fresh.session_transaction() as state:
-        state['admin_user_id'] = second_id
+    from tests.auth import authenticate
+    authenticate(fresh, second_id)
     assert 'data-required="true" open' in fresh.get('/admin').text
     assert 'id="license-agreement"' not in client.get('/').text
 

@@ -14,7 +14,7 @@ from freo_ops.upgrade import verify_preservation
 from tests.test_recovery import postgres
 
 OLD_REVISION = 'f39c8210b7de'
-NEW_REVISION = 'b72e19d4c603'
+NEW_REVISION = 'c83d4e5f9012'
 PASSWORD = 'private migration fixture password'
 
 

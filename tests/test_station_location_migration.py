@@ -35,7 +35,7 @@ def test_both_migrations_preserve_station_identity_and_restart_state(installed):
         migrate(app)
         with con.cursor() as cur:
             cur.execute('SELECT version_num FROM alembic_version')
-            assert cur.fetchone()[0] == 'b72e19d4c603'
+            assert cur.fetchone()[0] == 'c83d4e5f9012'
             cur.execute('SELECT row_to_json(s) FROM stations s ORDER BY id')
             assert [r[0] for r in cur.fetchall()] == [dict(r, latitude=None, longitude=None) for r in original]
         assert next(r for r in rows(source) if r['username'] == 'admin')['installation_admin']
@@ -80,7 +80,8 @@ def test_location_migration_follows_approved_admin_migration():
     cfg = Config()
     cfg.set_main_option('script_location', 'migrations')
     script = ScriptDirectory.from_config(cfg)
-    assert script.get_heads() == ['b72e19d4c603']
+    assert script.get_heads() == ['c83d4e5f9012']
+    assert script.get_revision('c83d4e5f9012').down_revision == 'b72e19d4c603'
     assert script.get_revision('b72e19d4c603').down_revision == 'a64f09e2b731'
     assert script.get_revision('a64f09e2b731').down_revision == 'f39c8210b7de'
 

@@ -293,6 +293,8 @@ def first_setup():
 def logout():
     if not hmac.compare_digest(request.form.get('csrf', ''), session.get('logout_csrf', '')):
         abort(400)
+    from app.services.admin_setup import revoke_login_session
+    revoke_login_session()
     session.clear()
     return redirect(url_for('web.homepage'))
 

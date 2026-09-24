@@ -36,6 +36,14 @@ class AdminUser(db.Model):
     created_at = db.Column(db.DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
 
 
+class AdminLoginSession(db.Model):
+    """Revocable login authority; the browser still uses Freo's signed cookie."""
+    __tablename__ = 'admin_login_sessions'
+    id = db.Column(db.String(64), primary_key=True)
+    admin_user_id = db.Column(db.Integer, db.ForeignKey('admin_users.id', ondelete='CASCADE'), nullable=False)
+    expires_at = db.Column(db.DateTime(timezone=True), nullable=False, index=True)
+
+
 class SoftwareLicense(db.Model):
     __tablename__ = 'software_license'
     __table_args__ = (db.CheckConstraint('id = 1', name='ck_software_license_singleton'),)

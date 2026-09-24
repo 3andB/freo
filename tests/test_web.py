@@ -138,9 +138,8 @@ def admin_client(app):
     with app.app_context():
         user = AdminUser.query.filter_by(email='admin@example.test').first()
         identity = user.id
-    with client.session_transaction() as state:
-        state['admin_user_id'] = identity
-        state['admin_csrf'] = 'test-admin-csrf-token'
+    from tests.auth import authenticate
+    authenticate(client, identity)
     return client
 
 

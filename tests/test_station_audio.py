@@ -130,8 +130,8 @@ def test_notice_once_per_user_per_utc_day_across_stations(app):
     with app.app_context():
         user=AdminUser(email='other@example.test',password_hash='unused');db.session.add(user);db.session.commit();identifier=user.id
     other=app.test_client()
-    with other.session_transaction() as session:
-        session['admin_user_id']=identifier;session['admin_csrf']=CSRF['csrf']
+    from tests.auth import authenticate
+    authenticate(other, identifier, CSRF['csrf'])
     assert other.post(url, data=CSRF).json == {'show': True}
 
 
