@@ -93,7 +93,13 @@ class MediaIngestJob(db.Model):
 
 class Station(db.Model):
     __tablename__ = 'stations'
-    __table_args__ = (db.CheckConstraint("desired_state IN ('stopped','running')", name='ck_stations_desired_state'),)
+    __table_args__ = (
+        db.CheckConstraint("desired_state IN ('stopped','running')", name='ck_stations_desired_state'),
+        db.CheckConstraint('(latitude IS NULL AND longitude IS NULL) OR '
+            '(latitude IS NOT NULL AND longitude IS NOT NULL AND '
+            'latitude BETWEEN -90 AND 90 AND longitude BETWEEN -180 AND 180)',
+            name='ck_stations_coordinates'),
+    )
     id = db.Column(db.Integer, primary_key=True)
     freo_station_id = db.Column(db.String(36), nullable=False, unique=True, default=lambda: str(uuid4()))
     country = db.Column(db.String(2), nullable=False, default='', server_default='')
@@ -125,6 +131,8 @@ class Station(db.Model):
     lifecycle_error = db.Column(db.String(500), nullable=False, default='', server_default='')
     city = db.Column(db.String(120), nullable=False, default='', server_default='')
     region = db.Column(db.String(120), nullable=False, default='', server_default='')
+    latitude = db.Column(db.Float, nullable=True)
+    longitude = db.Column(db.Float, nullable=True)
     contact_email = db.Column(db.String(254), nullable=False, default='', server_default='')
     phone = db.Column(db.String(40), nullable=False, default='', server_default='')
     publish_contact = db.Column(db.Boolean, nullable=False, default=False, server_default=db.false())
@@ -1156,6 +1164,13 @@ def preserve_freo_track_id(mapper, connection, target):
 def permanent_station_identity(mapper, connection, station):
     if inspect(station).attrs.freo_station_id.history.has_changes():
         raise ValueError('Freo Station UUID cannot be changed')
+
+
+@event.listens_for(Station, 'before_insert')
+@event.listens_for(Station, 'before_update')
+def validate_station_coordinates(mapper, connection, station):
+    from app.services.station_location import coordinates
+    station.latitude, station.longitude = coordinates(station.latitude, station.longitude)
 
 
 class CentralInstallation(db.Model):

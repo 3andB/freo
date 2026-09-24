@@ -146,7 +146,7 @@ def verify_preservation(source_url, restored_url):
         # never the actual upgraded row. Same-schema recovery stays byte-exact.
         primary_admin_grant = (
             recovery.schema_revision(old) == 'f39c8210b7de'
-            and recovery.schema_revision(new) == 'a64f09e2b731'
+            and recovery.schema_revision(new) in ('a64f09e2b731', 'b72e19d4c603')
         )
         with old.cursor() as cursor:
             cursor.execute("SELECT tablename FROM pg_tables WHERE schemaname='public' AND tablename!='alembic_version' ORDER BY tablename")

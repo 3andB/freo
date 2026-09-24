@@ -3,6 +3,7 @@ import wave
 import uuid
 from psycopg2.extensions import make_dsn, parse_dsn
 from sqlalchemy.engine import URL
+from sqlalchemy import text
 
 from freo_ops import recovery
 from tests.test_recovery import postgres
@@ -39,11 +40,14 @@ def test_upgrade_and_restored_application_preserve_settings_identity_and_audio(p
         stream.writeframes(b'\0\0' * 800)
     original_hash = recovery.digest(originals / key)
     with application.app_context():
-        station = Station(name='Keep this station', slug='preserved', timezone='Australia/Perth')
-        db.session.add(station)
-        db.session.flush()
-        station_uuid = station.freo_station_id
-        track = Track(station_id=station.id, uuid=str(uuid.uuid4()), title='Original audio', artist='Fixture',
+        # Seed the historical columns directly: the current Station model now
+        # includes coordinates, which intentionally do not exist at this revision.
+        station_uuid = str(uuid.uuid4())
+        station_id = db.session.execute(text("""INSERT INTO stations
+            (name,slug,description,enabled,desired_state,timezone,target_lufs,created_at,updated_at,freo_station_id)
+            VALUES ('Keep this station','preserved','',true,'stopped','Australia/Perth',-16,now(),now(),:uuid)
+            RETURNING id"""), {'uuid': station_uuid}).scalar_one()
+        track = Track(station_id=station_id, uuid=str(uuid.uuid4()), title='Original audio', artist='Fixture',
                       original_filename='original.wav', storage_key=key, media_type='wav',
                       duration_ms=100, sample_rate_hz=8000, channels=1,
                       file_size_bytes=(originals / key).stat().st_size,

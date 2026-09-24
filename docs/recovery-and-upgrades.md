@@ -155,7 +155,8 @@ creates the encrypted backup and verifies it through an actual restore. Only
 then does it run migrations and import missing settings. It compares every
 pre-existing row's original columns against the restored recovery point, allowing
 new columns, tables and seed/audit rows. There is one narrowly scoped exception:
-the transition from `f39c8210b7de` to `a64f09e2b731` must set
+the transition from `f39c8210b7de` to `a64f09e2b731` (or through it to the
+station-coordinate schema `b72e19d4c603`) must set
 `admin_users.installation_admin=true` for the unique `username='admin'` row.
 The checker derives that expected value from the restored backup and compares
 every other original field unchanged. It does not ignore the permission column,

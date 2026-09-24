@@ -31,7 +31,7 @@ jobs:
           python3 -m venv venv
           venv/bin/pip install -r requirements-dev.txt
       - name: Settings, artifact and failure-injection tests
-        run: venv/bin/pytest -q --junitxml="$RUNNER_TEMP/settings-tests.xml" tests/test_installation_settings.py tests/test_release_bundles.py tests/test_upgrade.py tests/test_installer_guard.py tests/test_distribution.py tests/test_central_api.py tests/test_license_agreement.py tests/test_versions.py tests/test_admin_setup.py tests/test_rc4.py tests/test_station_runtime_permissions.py tests/test_rc6_settings.py tests/test_statistics.py tests/test_homepage.py tests/test_sound_room.py tests/test_catalog_editor.py tests/test_airplay.py tests/test_app.py tests/test_connection_check.py tests/test_music_delete.py tests/test_live_stress_runner.py tests/test_dj_return.py
+        run: venv/bin/pytest -q --junitxml="$RUNNER_TEMP/settings-tests.xml" tests/test_installation_settings.py tests/test_release_bundles.py tests/test_upgrade.py tests/test_installer_guard.py tests/test_distribution.py tests/test_central_api.py tests/test_station_location.py tests/test_license_agreement.py tests/test_versions.py tests/test_admin_setup.py tests/test_rc4.py tests/test_station_runtime_permissions.py tests/test_rc6_settings.py tests/test_statistics.py tests/test_homepage.py tests/test_sound_room.py tests/test_catalog_editor.py tests/test_airplay.py tests/test_app.py tests/test_connection_check.py tests/test_music_delete.py tests/test_live_stress_runner.py tests/test_dj_return.py
       - name: Summarize settings and regression checks
         if: always()
         run: python3 scripts/summarize-tests.py "$RUNNER_TEMP/settings-tests.xml"
@@ -39,7 +39,7 @@ jobs:
         run: |
           export FREO_TEST_CHROME="$(command -v google-chrome || command -v chromium-browser)"
           export FREO_TEST_CHROMEDRIVER="$(command -v chromedriver)"
-          sudo env FREO_ENV_FILE=/dev/null FLASK_ENV=testing DATABASE_URL=sqlite:// FREO_TEST_CHROME="$FREO_TEST_CHROME" FREO_TEST_CHROMEDRIVER="$FREO_TEST_CHROMEDRIVER" venv/bin/pytest -q --junitxml="$RUNNER_TEMP/browser-tests.xml" tests/test_first_login_browser.py tests/test_admin_validation.py tests/test_rc4_browser.py tests/test_rc5_browser.py tests/test_rc6_browser.py tests/test_statistics_browser.py tests/test_import_flow_browser.py tests/test_import_review_browser.py
+          sudo env FREO_ENV_FILE=/dev/null FLASK_ENV=testing DATABASE_URL=sqlite:// FREO_TEST_CHROME="$FREO_TEST_CHROME" FREO_TEST_CHROMEDRIVER="$FREO_TEST_CHROMEDRIVER" venv/bin/pytest -q --junitxml="$RUNNER_TEMP/browser-tests.xml" tests/test_first_login_browser.py tests/test_admin_validation.py tests/test_rc4_browser.py tests/test_rc5_browser.py tests/test_rc6_browser.py tests/test_statistics_browser.py tests/test_import_flow_browser.py tests/test_import_review_browser.py tests/test_station_location_browser.py
       - name: Summarize browser checks
         if: always()
         run: python3 scripts/summarize-tests.py "$RUNNER_TEMP/browser-tests.xml"

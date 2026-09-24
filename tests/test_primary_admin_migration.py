@@ -14,7 +14,7 @@ from freo_ops.upgrade import verify_preservation
 from tests.test_recovery import postgres
 
 OLD_REVISION = 'f39c8210b7de'
-NEW_REVISION = 'a64f09e2b731'
+NEW_REVISION = 'b72e19d4c603'
 PASSWORD = 'private migration fixture password'
 
 
@@ -141,7 +141,8 @@ def test_completed_migration_does_not_regrant_on_later_upgrade(installed):
         con.close()
 
 
-def test_restored_backup_allows_only_exact_primary_grant(installed, postgres, tmp_path):
+@pytest.mark.parametrize('target_revision', ['a64f09e2b731', NEW_REVISION])
+def test_restored_backup_allows_only_exact_primary_grant(installed, postgres, tmp_path, target_revision):
     from app.extensions import db
 
     app, source = installed
@@ -161,7 +162,8 @@ def test_restored_backup_allows_only_exact_primary_grant(installed, postgres, tm
     restored_params['dbname'] = report['database']
     restored = make_dsn(**restored_params)
     assert rows(restored) == original
-    migrate(app)
+    result = app.test_cli_runner().invoke(args=['db', 'upgrade', target_revision])
+    assert result.exit_code == 0, result.output
     verify_preservation(source, restored)
 
     # Every other field/role remains protected, and a missing grant is rejected.
@@ -201,7 +203,7 @@ def test_restored_backup_allows_only_exact_primary_grant(installed, postgres, tm
     con = recovery.connect(restored)
     try:
         with con, con.cursor() as cur:
-            cur.execute('UPDATE alembic_version SET version_num=%s', (NEW_REVISION,))
+            cur.execute('UPDATE alembic_version SET version_num=%s', (target_revision,))
         with pytest.raises(recovery.RecoveryError, match='pre-existing records'):
             verify_preservation(source, restored)
     finally:

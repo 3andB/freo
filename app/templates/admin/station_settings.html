@@ -13,6 +13,15 @@
 <div class="settings-columns"><label>City<input name="city" value="{{ values.city }}" maxlength="120"></label><label>State / province / region<input name="region" value="{{ values.region }}" maxlength="120"></label></div>
 <label>Country code<input name="country" value="{{ values.country }}" maxlength="2" pattern="[A-Za-z]{2}" placeholder="AU"></label>
 <p class="quiet">City, region and country only; no street address is needed.</p>
+{% set latitude = values.latitude if values.latitude is defined and values.latitude is not none else '' %}
+{% set longitude = values.longitude if values.longitude is defined and values.longitude is not none else '' %}
+<div class="settings-columns">
+<label>Latitude (optional)<input name="latitude" type="number" min="-90" max="90" step="any" value="{{ latitude }}" aria-describedby="station-location-help"></label>
+<label>Longitude (optional)<input name="longitude" type="number" min="-180" max="180" step="any" value="{{ longitude }}" aria-describedby="station-location-help"></label>
+</div>
+<p id="station-location-help" class="quiet">Use approximate city coordinates for the station’s location, not a street address or your server’s location. Values are rounded to two decimal places. Supply both coordinates for the freo.live admin map, or leave both empty. No paid plan or public directory listing is required.</p>
+<label><input type="checkbox" name="location_confirmation" value="{{ [values.city or '', values.region or '', values.country or '', latitude|string, longitude|string]|tojson|forceescape }}"> I confirm these coordinates match the city, region and country above.</label>
+<p class="quiet">Confirmation is only required when changing the named place while supplying coordinates. Changing any location field clears the confirmation.</p>
 <p>Freo Station UUID: <code>{{ selected.freo_station_id }}</code></p>
 <label>Genre<input name="genre" value="{{ values.genre }}" maxlength="100"></label>
 <label>Directory categories (comma-separated)<input name="directory_categories" value="{{ request.form.directory_categories if request.method == 'POST' else selected.directory_categories|join(', ') }}" maxlength="2020"></label>
@@ -85,4 +94,4 @@
 {% include 'admin/_station_domains.html' %}
 </div>
 {% endblock %}
-{% block scripts %}{{ super() }}<script defer src="{{ url_for('static',filename='station_settings.js',v='rc6') }}"></script><script defer src="{{ url_for('static',filename='schedule_settings.js',v='rc6') }}"></script>{% endblock %}
+{% block scripts %}{{ super() }}<script defer src="{{ url_for('static',filename='station_settings.js',v='station-location-1') }}"></script><script defer src="{{ url_for('static',filename='schedule_settings.js',v='rc6') }}"></script>{% endblock %}

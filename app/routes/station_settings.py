@@ -93,7 +93,7 @@ def decode_logo(upload, output_limit=None):
 def settings_token(station):
     """Fingerprint editable values, excluding worker progress and heartbeat state."""
     row = policy(station)
-    fields = ('name', 'description', 'public_slug', 'timezone', 'city', 'region', 'country',
+    fields = ('name', 'description', 'public_slug', 'timezone', 'city', 'region', 'country', 'latitude', 'longitude',
               'genre', 'contact_email', 'phone', 'directory_categories', 'directory_opt_in',
               'publish_contact')
     value = {key: getattr(station, key) for key in fields}
@@ -162,6 +162,8 @@ def page(slug):
             fields['country'] = fields['country'].upper()
             if fields['country'] and not re.fullmatch(r'[A-Z]{2}', fields['country']):
                 raise ValueError('Use a two-letter country code, such as AU, US or GB')
+            from app.services.station_location import from_settings
+            fields['latitude'], fields['longitude'] = from_settings(station, fields, request.form)
             categories = [clean_text(value,100,True) for value in request.form.get('directory_categories','').split(',') if value.strip()]
             if len(categories) > 20:
                 raise ValueError('Use at most 20 directory categories')
@@ -184,7 +186,7 @@ def page(slug):
                 station.logo = None
             db.session.commit()
             if request.accept_mimetypes.best == 'application/json':
-                return jsonify(message='All changes saved. Queued audio and directory changes are applied in the background.', token=settings_token(station), audio_revision=station.stream.audio_revision, public_url=preferred_url(station), logo_url=url_for('.logo',slug=station.slug,v=station.logo.version) if station.logo else None)
+                return jsonify(message='All changes saved. Queued audio and directory changes are applied in the background.', token=settings_token(station), latitude=station.latitude, longitude=station.longitude, audio_revision=station.stream.audio_revision, public_url=preferred_url(station), logo_url=url_for('.logo',slug=station.slug,v=station.logo.version) if station.logo else None)
             flash('Station settings saved','success')
             return redirect(url_for('.page',slug=station.slug))
         except ValueError as exc:

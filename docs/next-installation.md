@@ -7,7 +7,7 @@ source tag and test VM remain unchanged. This note supplements that historical
 candidate; it does not amend the package or claim that unobserved acceptance
 checklist items were independently verified.
 
-Current development version: **0.3.0-rc.7.dev2**. This identifies the newer software
+Current development version: **0.3.0-rc.7.dev3**. This identifies the newer software
 honestly in the UI and existing heartbeat. It is not an announced stable release
 or a newly signed installation candidate.
 
@@ -22,12 +22,22 @@ The changes after RC6 are:
 - A one-time migration grants installation administration to the existing unique
   `username='admin'` account. It changes no other account fields or users and
   does not select a substitute owner when that username is absent.
+- Station settings accept optional city-level latitude/longitude and report them
+  through the existing station sync. Existing stations start with null coordinates;
+  operators must configure their actual location before a new map pin can appear.
+  See [station location reporting](station-location-reporting.md).
 
 The UI fixes need no dependency update. The primary-admin migration advances the
-schema from `f39c8210b7de` to `a64f09e2b731`. The accepted RC5 ancestry is retained.
+schema from `f39c8210b7de` through `a64f09e2b731`; the optional station-location
+migration then advances it to `b72e19d4c603`. The accepted RC5 ancestry is retained.
 
 ## Evidence already collected
 
+- Station location client fix: 247 checks passed, with one optional mothership
+  source-contract test skipped. This includes both pending migrations on real
+  disposable PostgreSQL, restart persistence, authenticated sync serialization,
+  unchanged reporting cadence/identity and real browser save workflows. See the
+  location handoff for evidence and the unrelated historical index drift found.
 - Playlist/import and version checks: 66 passed, including real browser import,
   playlist assignment, defaults for later files and completion reset.
 - Existing licensing/upgrade tests: 16 passed.

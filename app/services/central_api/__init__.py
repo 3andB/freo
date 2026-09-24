@@ -39,7 +39,7 @@ def metadata(station):
     return dict(station_id=station.freo_station_id, name=station.name, description=station.description,
                 genre=station.genre or None, categories=station.directory_categories,
                 city=station.city or None, region=station.region or None, country=station.country or None,
-                latitude=None, longitude=None, public_url=url if url.startswith(('https://', 'http://')) else None,
+                latitude=station.latitude, longitude=station.longitude, public_url=url if url.startswith(('https://', 'http://')) else None,
                 directory_opt_in=bool(station.directory_opt_in and not removed))
 
 
