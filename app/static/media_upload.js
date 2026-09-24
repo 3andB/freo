@@ -9,7 +9,6 @@
   scope.listen(document,'freo:authentication-required',()=>{authPaused=true;$('import-auth').hidden=false;});
   const isDuplicate=item=>!!item.remote?.duplicate||item.remote?.job_status==='duplicate';
   let rotation='',resetAfterImport=false,completedImport=null;
-  const playlistChoices=()=>({playlists:[...$('import-playlists').selectedOptions].map(o=>Number(o.value))});
   const rotationKey=config.imports+'/rotation';
   try{rotation=localStorage.getItem(rotationKey)||'';}catch(_){}
   const rotationChoices=()=>rotation?{categories:rotation==='library'?[]:[Number(rotation)]}:{};
@@ -53,7 +52,7 @@
     $('select-all').indeterminate=selectable.some(i=>i.selected)&&!$('select-all').checked;
     $('edit-selected').disabled=!all.some(i=>i.selected&&editable(i)&&pending(i));
     $('new-import').disabled=uploading||finalizing||batchBusy||switching;$('import-sessions').disabled=uploading||finalizing||batchBusy||switching;
-    $('import-rotation').disabled=$('import-playlists').disabled=uploading||finalizing||batchBusy;
+    $('import-rotation').disabled=uploading||finalizing||batchBusy;
     positionActions();
   }
   function drawRow(item){
@@ -106,7 +105,7 @@
   }
   for(const id of ['import-audio-kind','import-audio-subtype'])$(id).onchange=()=>{for(const item of items.values()){if(item.selected&&pending(item)&&editable(item)){item.choices.audio_kind=$('import-audio-kind').value;item.choices.audio_subtype=item.choices.audio_kind==='STATION'?$('import-audio-subtype').value:'';if(item.choices.audio_kind!=='MUSIC')item.choices.available_to_all=false;fill(item);change(item);}}};
   function makeItem(data,file=null){
-    const item={id:data.id,name:data.name,size:data.size,path:data.path||'',choices:structuredClone(data.choices||(file?{...structuredClone(groups.__defaults__||{}),...rotationChoices(),...playlistChoices(),audio_kind:$('import-audio-kind').value,audio_subtype:$('import-audio-kind').value==='STATION'?$('import-audio-subtype').value:''}:{})),remote:data.status?data:null,file,selected:!data.duplicate,dirty:false,generation:0};
+    const item={id:data.id,name:data.name,size:data.size,path:data.path||'',choices:structuredClone(data.choices||(file?{...structuredClone(groups.__defaults__||{}),...rotationChoices(),audio_kind:$('import-audio-kind').value,audio_subtype:$('import-audio-kind').value==='STATION'?$('import-audio-subtype').value:''}:{})),remote:data.status?data:null,file,selected:!data.duplicate,dirty:false,generation:0};
     if(item.choices.audio_kind&&item.choices.audio_kind!=='MUSIC')item.choices.available_to_all=false;
     if(data.song)item.choices={...songChoices(data.song),group:groupKey(item)};
     item.source=file?URL.createObjectURL(file):null;
@@ -303,7 +302,6 @@
     const response=await scope.fetch(config.noticeUrl,{method:'POST',body:new URLSearchParams({csrf:config.csrf})});
     if((await FreoCatalog.readResponse(response,'open the importer')).show&&!await FreoDialog.confirm({title:'Before importing music',message:'Only upload and broadcast material you own or are legally authorized to use. Uploading or broadcasting copyrighted material without the necessary rights can violate copyright law and lead to removal, legal action, or financial liability. You are responsible for obtaining the required permissions and licences.',confirmLabel:'Continue to import',signal:scope.signal})){FreoWorkspace.navigate(config.libraryUrl);return;}
     catalog=await FreoCatalog.load(config.base);batchSelectors=FreoCatalog.selectors($('batch-catalog'),catalog,{}, {...config,get csrf(){return form.dataset.csrf;},importing:true,batch:true,message,target:'the selected songs'});batchChips=FreoCatalog.chips($('batch-classification'),catalog,{},['playlists','categories','tags']);
-    for(const playlist of catalog.playlists.filter(p=>!p.system_key))$('import-playlists').append(new Option(playlist.name,String(playlist.id)));
     const rotationSelect=$('import-rotation');for(const category of catalog.categories.filter(c=>c.enabled))rotationSelect.append(new Option('Rotation: '+category.name,String(category.id)));if(![...rotationSelect.options].some(o=>o.value===rotation))rotation='';rotationSelect.value=rotation;
     const list=await sessionList();const requested=new URLSearchParams(location.search).get('import_session');const resume=['draft','attention','empty'].includes(list[0]?.state)?list[0]:null;await openSession(requested||resume?.id||list.find(row=>row.state==='empty')?.id);form.inert=false;form.setAttribute('aria-busy','false');message('Choose music or drop files here to get started.');
   }catch(e){message('Could not open music import. '+e.message);form.inert=false;form.setAttribute('aria-busy','false');const retry=button('Reload importer',()=>location.reload());$('import-message').append(document.createTextNode(' '),retry);return;}
@@ -323,7 +321,6 @@
   scope.listen(window,'beforeunload',e=>{if(uploading||[...items.values()].some(i=>i.dirty)){e.preventDefault();e.returnValue='';}});
   scope.cleanup(()=>{for(const item of items.values()){clearTimeout(item.timer);if(item.source)URL.revokeObjectURL(item.source);}});
   for(const id of ['media-file','media-folder'])if($(id).files.length){addFiles([...$(id).files]);$(id).value='';}
-  $('import-playlists').onchange=()=>{for(const item of items.values())if(item.selected&&pending(item)&&!isDuplicate(item)){Object.assign(item.choices,playlistChoices());fill(item);if(item.remote)change(item);}remember();summary();};
   $('import-rotation').onchange=e=>{rotation=e.target.value;try{localStorage.setItem(rotationKey,rotation);}catch(_){}if(!rotation)return;for(const item of items.values())if(item.selected&&pending(item)&&!isDuplicate(item)){Object.assign(item.choices,rotationChoices());fill(item);if(item.remote)change(item);}remember();summary();};
   $('resume-import').onclick=async()=>{try{await sessionList();authPaused=false;$('import-auth').hidden=true;await flush();if(await poll())message('Import resumed. Retry any interrupted uploads.');}catch(e){message(e.message);}};
   scope.listen(document,'visibilitychange',()=>{if(!document.hidden)poll();});

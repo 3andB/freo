@@ -49,7 +49,7 @@ def test_mobile_listen_import_rotation_duplicate_and_filtered_results(booth):
     click(driver,'#room-all');wait_text(driver,'#room-total','2 songs')
 
 
-def test_playlist_destination_and_success_resets_import(booth):
+def test_playlist_bubbles_defaults_and_success_resets_import(booth):
     from app.models import Playlist
     app,driver,base,tmp_path=booth
     with app.app_context():
@@ -57,23 +57,49 @@ def test_playlist_destination_and_success_resets_import(booth):
         seed_playlists(1)
         playlist=Playlist(station_id=1,name='New songs',mode='RANDOM')
         db.session.add(playlist);db.session.commit();identifier=playlist.id
+        batch_identifier=Playlist.query.filter_by(station_id=1,name='Playlist 1').one().id
     open_import(driver,base)
-    assert 'Playlist 1' in driver.find_element(By.ID,'import-playlists').text
-    assert 'Playlist 2' in driver.find_element(By.ID,'import-playlists').text
-    Select(driver.find_element(By.ID,'import-playlists')).select_by_value(str(identifier))
+    assert not driver.find_elements(By.ID,'import-playlists')
     add_audio(driver,tmp_path,artist='Reset artist');work(app,True);wait_text(driver,'.import-card','Ready to import')
-    with app.app_context():assert MusicImportItem.query.one().choices['playlists']==[identifier]
+    bubbles='.import-card [aria-label=playlists] button'
+    assert any('Playlist 1' in b.text for b in driver.find_elements(By.CSS_SELECTOR,bubbles))
+    assert any('Playlist 2' in b.text for b in driver.find_elements(By.CSS_SELECTOR,bubbles))
+    selected=next(b for b in driver.find_elements(By.CSS_SELECTOR,bubbles) if 'New songs' in b.text)
+    for width in (390,1440):
+        driver.set_window_size(width,1000)
+        driver.execute_script('arguments[0].scrollIntoView({block:"center"})',selected)
+        assert selected.is_displayed()
+        assert driver.execute_script('return document.documentElement.scrollWidth<=innerWidth')
+    selected.click()
+    assert selected.get_attribute('aria-pressed')=='true'
+    # Import must flush this individual choice, while batch defaults carry over
+    # to later files without overwriting the first song's playlist selection.
+    click(driver,'#edit-selected')
+    batch=next(b for b in driver.find_elements(By.CSS_SELECTOR,'#batch-classification [aria-label=playlists] button') if b.text=='+ Playlist 1')
+    driver.execute_script('arguments[0].scrollIntoView({block:"center"})',batch);batch.click()
+    click(driver,'#batch-future');click(driver,'#apply-batch');wait_text(driver,'#batch-status','Updated 1 songs')
+    click(driver,'#close-batch')
+    add_audio(driver,tmp_path,index=2,artist='Later artist');work(app,True)
+    wait_text(driver,'.import-card:last-child','Ready to import')
+    with app.app_context():
+        first=MusicImportItem.query.filter_by(original_filename='song-1.mp3').one()
+        later=MusicImportItem.query.filter_by(original_filename='song-2.mp3').one()
+        assert set(first.choices['playlists'])=={identifier,batch_identifier}
+        assert later.choices['playlists']==[batch_identifier]
     click(driver,'#media-upload-form [type=submit]');wait_text(driver,'#import-message','Import started');work(app)
     with app.app_context():
         song=Track.query.filter_by(artist='Reset artist').one()
-        assert identifier in [p.id for p in song.playlists]
+        assert {p.id for p in song.playlists}=={identifier,batch_identifier}
+        later=Track.query.filter_by(artist='Later artist').one()
+        assert [p.id for p in later.playlists]==[batch_identifier]
         # Completion normally comes from the analysis worker, separately from ingest.
-        song.analysis_status='complete';db.session.commit()
+        song.analysis_status=later.analysis_status='complete';db.session.commit()
     wait_text(driver,'#import-success','imported successfully')
     assert not driver.find_elements(By.CSS_SELECTOR,'.import-card')
     assert driver.find_element(By.ID,'media-file').get_attribute('value')==''
     assert driver.find_element(By.ID,'import-done').is_displayed()
     assert driver.find_element(By.ID,'view-imported').is_displayed()
-    add_audio(driver,tmp_path,index=2,artist='Next song');work(app,True)
+    add_audio(driver,tmp_path,index=3,artist='Next song');work(app,True)
     wait_text(driver,'.import-card','Ready to import')
     assert len(driver.find_elements(By.CSS_SELECTOR,'.import-card'))==1
+    assert not [entry for entry in driver.get_log('browser') if entry['level']=='SEVERE']
