@@ -57,4 +57,4 @@ def test_ten_channels_listen_menu_monitor_prompt_and_artwork(booth):
     wait.until(lambda d:len(d.find_elements(By.CSS_SELECTOR,'#event-next-runs li'))==10)
     assert all(':10:00' in el.text for el in driver.find_elements(By.CSS_SELECTOR,'#event-next-runs li'))
     driver.get(base+'/admin/website')
-    assert len(driver.find_elements(By.CSS_SELECTOR,'input[type=file][name^=channel_image_]'))==10
+    wait.until(lambda d: len(d.find_elements(By.CSS_SELECTOR,'input[type=file][name^=channel_image_]')) == 10)

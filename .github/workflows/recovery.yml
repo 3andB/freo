@@ -39,14 +39,21 @@ jobs:
         run: |
           export FREO_TEST_CHROME="$(command -v google-chrome || command -v chromium-browser)"
           export FREO_TEST_CHROMEDRIVER="$(command -v chromedriver)"
-          sudo env FREO_ENV_FILE=/dev/null FLASK_ENV=testing DATABASE_URL=sqlite:// FREO_TEST_CHROME="$FREO_TEST_CHROME" FREO_TEST_CHROMEDRIVER="$FREO_TEST_CHROMEDRIVER" venv/bin/pytest -q tests/test_first_login_browser.py tests/test_admin_validation.py tests/test_rc4_browser.py tests/test_rc5_browser.py tests/test_rc6_browser.py tests/test_statistics_browser.py tests/test_import_flow_browser.py tests/test_import_review_browser.py
+          sudo env FREO_ENV_FILE=/dev/null FLASK_ENV=testing DATABASE_URL=sqlite:// FREO_TEST_CHROME="$FREO_TEST_CHROME" FREO_TEST_CHROMEDRIVER="$FREO_TEST_CHROMEDRIVER" venv/bin/pytest -q --junitxml="$RUNNER_TEMP/browser-tests.xml" tests/test_first_login_browser.py tests/test_admin_validation.py tests/test_rc4_browser.py tests/test_rc5_browser.py tests/test_rc6_browser.py tests/test_statistics_browser.py tests/test_import_flow_browser.py tests/test_import_review_browser.py
+      - name: Summarize browser checks
+        if: always()
+        run: python3 scripts/summarize-tests.py "$RUNNER_TEMP/browser-tests.xml"
       - name: Real PostgreSQL migrations and encrypted restore
         run: bash scripts/test-recovery-postgres.sh
       - name: Build source review artifact
         run: venv/bin/python scripts/build-release.py --development --output "$RUNNER_TEMP/freo-review.tar.gz"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: always()
         with:
           name: freo-source-review
-          path: ${{ runner.temp }}/freo-review.tar.gz
+          path: |
+            ${{ runner.temp }}/freo-review.tar.gz
+            ${{ runner.temp }}/settings-tests.xml
+            ${{ runner.temp }}/browser-tests.xml
           if-no-files-found: error
           retention-days: 14

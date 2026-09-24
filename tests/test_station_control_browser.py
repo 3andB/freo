@@ -8,6 +8,8 @@ from app.models import Station
 def test_stalled_station_status_times_out_and_recovers(booth):
     app, driver, base, tmp_path = booth
     driver.get(base + '/admin/stations/test-station/schedule-studio/control')
+    # The rendered hint confirms the page script attached its control handlers.
+    WebDriverWait(driver, 12).until(lambda d: d.find_element(By.ID, 'broadcast-hint').text)
     driver.execute_script('''
         window.originalStatusFetch = window.fetch;
         window.stalledStatusRequests = 0;
@@ -36,6 +38,8 @@ def test_stalled_station_status_times_out_and_recovers(booth):
 def test_lost_broadcast_response_recovers_without_duplicate_request(booth):
     app, driver, base, tmp_path = booth
     driver.get(base + '/admin/stations/test-station/schedule-studio/control')
+    # The rendered hint confirms the page script attached its control handlers.
+    WebDriverWait(driver, 12).until(lambda d: d.find_element(By.ID, 'broadcast-hint').text)
     with app.app_context():
         revision = Station.query.filter_by(slug='test-station').one().broadcast_revision
     driver.execute_script('''
