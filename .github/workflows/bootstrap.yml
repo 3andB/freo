@@ -1,0 +1,31 @@
+name: Bootstrap delivery checks
+
+on:
+  pull_request:
+    paths: ['bootstrap/**', '.github/workflows/bootstrap.yml']
+  push:
+    branches: ['main', 'feature/public-bootstrap']
+    paths: ['bootstrap/**', '.github/workflows/bootstrap.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  bootstrap:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Install test tools on disposable runner
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y shellcheck gnupg gpgv nginx openssl
+      - name: Shell syntax and static analysis
+        run: |
+          bash -n bootstrap/install.sh
+          shellcheck bootstrap/install.sh
+      - name: Isolated security, cryptography, lifecycle and HTTPS delivery tests
+        run: python3 -I -m unittest discover -s bootstrap/tests -v
