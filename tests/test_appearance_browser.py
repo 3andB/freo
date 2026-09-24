@@ -5,6 +5,15 @@ from tests.test_live_browser import booth
 from tests.test_web import app as app_fixture
 
 
+def wait_for_appearance(driver, theme):
+    # A refresh can expose the replacement document before its theme script
+    # and DOMContentLoaded control synchronization have finished on CI.
+    WebDriverWait(driver, 10).until(lambda d: d.execute_script(
+        "return document.documentElement.dataset.theme === arguments[0] && "
+        "document.querySelector('[data-appearance=\"' + arguments[0] + '\"]')"
+        "?.getAttribute('aria-pressed') === 'true'", theme))
+
+
 def choose(driver, theme):
     driver.find_element(By.CSS_SELECTOR, f'[data-appearance="{theme}"]').click()
     assert driver.execute_script('return document.documentElement.dataset.theme') == theme
@@ -23,6 +32,7 @@ def test_appearance_persistence_navigation_and_audio(booth):
     assert driver.find_element(By.CSS_SELECTOR, '[data-appearance=night]').get_attribute('aria-pressed') == 'true'
     assert driver.execute_script('return originalMonitor === FreoMonitor.audio && !FreoMonitor.audio.paused')
     driver.refresh()
+    wait_for_appearance(driver, 'night')
     assert driver.execute_script('return document.documentElement.dataset.theme') == 'night'
     for path in ('/player/test-station', '/admin/stations/test-station/playlists', '/admin/stations/test-station/calendar', '/admin/stations/test-station/live', '/admin/stations/test-station/media'):
         driver.get(base + path)
@@ -42,6 +52,7 @@ def test_legacy_preference_storage_and_unsaved_input(booth):
     driver.execute_script("localStorage.setItem('freo.appearance','system')")
     driver.execute_cdp_cmd('Emulation.setEmulatedMedia', {'features': [{'name': 'prefers-color-scheme', 'value': 'dark'}]})
     driver.refresh()
+    wait_for_appearance(driver, 'day')
     assert driver.execute_script('return document.documentElement.dataset.theme') == 'day'
     assert not driver.find_elements(By.CSS_SELECTOR, '[data-appearance=system]')
     choose(driver, 'night')
@@ -54,6 +65,7 @@ def test_legacy_preference_storage_and_unsaved_input(booth):
     assert driver.execute_script('return document.documentElement.dataset.theme') == 'night'
     driver.execute_script("localStorage.setItem('freo.appearance','invalid')")
     driver.refresh()
+    wait_for_appearance(driver, 'day')
     assert driver.find_element(By.CSS_SELECTOR, '[data-appearance=day]').get_attribute('aria-pressed') == 'true'
 
 
@@ -61,6 +73,7 @@ def test_unavailable_storage_and_dynamic_dialog(booth):
     app, driver, base, tmp_path = booth
     driver.execute_cdp_cmd('Page.addScriptToEvaluateOnNewDocument', {'source': "Object.defineProperty(window,'localStorage',{get(){throw new DOMException('Blocked','SecurityError')}})"})
     driver.refresh()
+    wait_for_appearance(driver, 'day')
     choose(driver, 'day')
     driver.execute_script("FreoDialog.notify({title:'Appearance check',message:'This dialog follows your appearance.'})")
     dialog = driver.find_element(By.CSS_SELECTOR, 'dialog[open]')
