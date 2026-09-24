@@ -41,6 +41,7 @@ def test_bundle_contains_complete_manifest_without_ignored_runtime_state(source,
         manifest = json.load(archive.extractfile('release.json'))
         assert set(names) == set(manifest['files']) | {'release.json'}
         assert manifest['schema_head'] == 'head'
+        assert {'f39c8210b7de', 'a64f09e2b731'} <= set(manifest['supported_source_revisions'])
     with pytest.raises(recovery.RecoveryError, match='already exists'):
         releases.build(source, target, development=True)
 

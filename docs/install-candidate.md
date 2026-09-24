@@ -123,13 +123,22 @@ with a signed release, a private recovery key, a full backup, and an isolated
 PostgreSQL verification connection. That process verifies an actual restore
 before migration and preserves existing rows and media hashes.
 
-The 0.3 migration grants no new installation privileges to existing accounts.
-After a CLI upgrade, the root operator explicitly grants the chosen owner admin:
+For the current installer-based release line, the primary account retains the
+unique username `admin` after first-login setup. The next candidate's one-time
+migration grants this account installation administration automatically, including
+access to **Software and license**. No separate role-grant command is needed.
+Other accounts and existing grants remain unchanged; disabled accounts stay
+disabled and unfinished first-login setup must still be completed. If no `admin`
+username exists, the migration does nothing; it does not infer ownership from
+email addresses or account IDs. Fresh installation already grants this role.
 
-```bash
-cd /opt/freo/current
-sudo env FREO_ENV_FILE=/etc/freo/freo.env venv/bin/flask --app wsgi:app admin installation-role YOUR_EMAIL --grant
-```
+The RC5/RC6 updater enforces strictly additive data changes and cannot execute
+this permission migration successfully when a grant is needed. For this transition,
+the operator must use the next candidate's signature-verified upgrade tools from
+a separate staging directory, as described in [recovery and upgrades](recovery-and-upgrades.md).
+Do not queue this transition through an unchanged RC5/RC6 updater. This is release
+preparation, not a customer account-repair step; the next installer handoff must
+include and rehearse this path.
 
 The first upgrade from 0.2 uses the CLI. On legacy systems, install the new runner
 once after a successful upgrade (fresh 0.3 installations already have it):

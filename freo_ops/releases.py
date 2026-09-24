@@ -138,7 +138,7 @@ def build(root, destination, *, development=False, wheelhouse=None):
         manifest = dict(format=1, version=version, commit=commit, development=development,
                         platform='ubuntu-24.04-x86_64', python='3.12',
                         schema_head=migration_head(root),
-                        supported_source_revisions=['a71d25b609ef', 'd02f9a41c830', 'e83b9204c6af', 'f39c8210b7de'],
+                        supported_source_revisions=['a71d25b609ef', 'd02f9a41c830', 'e83b9204c6af', 'f39c8210b7de', 'a64f09e2b731'],
                         files={})
         for path in sorted(payload.rglob('*')):
             if path.is_file():

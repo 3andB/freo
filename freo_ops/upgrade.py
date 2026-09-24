@@ -142,6 +142,12 @@ def verify_preservation(source_url, restored_url):
     try:
         old.set_session(isolation_level='REPEATABLE READ', readonly=True)
         new.set_session(isolation_level='REPEATABLE READ', readonly=True)
+        # One reviewed data migration: transform only the expected backup value,
+        # never the actual upgraded row. Same-schema recovery stays byte-exact.
+        primary_admin_grant = (
+            recovery.schema_revision(old) == 'f39c8210b7de'
+            and recovery.schema_revision(new) == 'a64f09e2b731'
+        )
         with old.cursor() as cursor:
             cursor.execute("SELECT tablename FROM pg_tables WHERE schemaname='public' AND tablename!='alembic_version' ORDER BY tablename")
             tables = [row[0] for row in cursor.fetchall()]
@@ -158,10 +164,21 @@ def verify_preservation(source_url, restored_url):
             query = sql.SQL('SELECT value FROM (SELECT row_to_json(t)::text AS value FROM '
                             '(SELECT {} FROM public.{}) t) rows ORDER BY value COLLATE "C"').format(
                                 sql.SQL(',').join(map(sql.Identifier, columns)), sql.Identifier(table))
+            expected_query = query
+            if primary_admin_grant and table == 'admin_users' and {'username', 'installation_admin'} <= set(columns):
+                expected_columns = [
+                    sql.SQL("CASE WHEN username = 'admin' THEN true ELSE installation_admin END AS installation_admin")
+                    if column == 'installation_admin' else sql.Identifier(column)
+                    for column in columns
+                ]
+                expected_query = sql.SQL(
+                    'SELECT value FROM (SELECT row_to_json(t)::text AS value FROM '
+                    '(SELECT {} FROM public.{}) t) rows ORDER BY value COLLATE "C"'
+                ).format(sql.SQL(',').join(expected_columns), sql.Identifier(table))
             # Compare the original columns as a sorted multiset. New columns,
             # tables and seed rows are allowed; every prior row must survive.
             with old.cursor(name='old_' + uuid.uuid4().hex) as prior, new.cursor(name='new_' + uuid.uuid4().hex) as current:
-                prior.execute(query)
+                prior.execute(expected_query)
                 current.execute(query)
                 candidate = next(current, None)
                 for original in prior:

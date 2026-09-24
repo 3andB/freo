@@ -154,8 +154,22 @@ offline into a separate virtual environment, records/stops active Freo units,
 creates the encrypted backup and verifies it through an actual restore. Only
 then does it run migrations and import missing settings. It compares every
 pre-existing row's original columns against the restored recovery point, allowing
-new columns, tables and seed/audit rows. Original records must not change in this
-initial additive-upgrade policy; the migration revision is checked separately.
+new columns, tables and seed/audit rows. There is one narrowly scoped exception:
+the transition from `f39c8210b7de` to `a64f09e2b731` must set
+`admin_users.installation_admin=true` for the unique `username='admin'` row.
+The checker derives that expected value from the restored backup and compares
+every other original field unchanged. It does not ignore the permission column,
+allow changes to other accounts, or apply the exception to same-schema restores.
+The migration revision is also checked separately.
+
+For the RC5/RC6 transition, run the next candidate's verified tools from a separate
+staging directory using the existing supported Python environment. Verify the
+publisher signature before executing extracted code and verify the complete
+release through its normal preflight. The frozen RC5/RC6 updater does not know
+this data-migration exception; using it would stop activation after migration
+when the primary account needs the grant. Do not submit this transition to its
+old web runner. Preparing and rehearsing the updated tools is an operator release
+step; the customer does not run a Flask permission command.
 
 It preserves the legacy tree, installs code under `/opt/freo/releases/<id>`, and
 switches `/opt/freo/current`. Managed service definitions are updated to that
