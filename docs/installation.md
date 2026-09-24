@@ -6,7 +6,9 @@
 
 # Installation and deployment
 
-For the signed 0.3 candidate, begin with [candidate installation](install-candidate.md).
+For the staged signed 0.3.0 installer, begin with [stable installation](stable-installation.md).
+Publication is separate from package preparation. Historical candidate instructions
+remain in [candidate installation](install-candidate.md).
 For existing installations, use [recovery and upgrades](recovery-and-upgrades.md) for existing
 installations. The installer now refuses existing state before making changes;
 the historical rerun-based upgrade instructions below are superseded by the

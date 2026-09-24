@@ -1,5 +1,33 @@
 # Changelog
 
+## 0.3.0 — staged for publication
+
+This production installer is prepared from tested RC9 source
+`95234867b647e41ca36272e4d81d29d8bd1ba621`. The only application change
+is the canonical installed version. Preparing this package does not publish
+a GitHub Release or update an existing installation. See the
+[0.3.0 installation guide](docs/stable-installation.md).
+
+Changes since RC6 include:
+
+- Revoke logged-out sessions despite delayed background responses, while
+  preserving independent browser logins and active-session renewal. Existing
+  installations require one fresh sign-in after upgrading.
+- End LIVE MIC on booth exit and tab changes and restore the interrupted feed.
+- Grant installation administration to the existing primary `admin` account
+  with an idempotent migration.
+- Save optional city-level station coordinates and include them in the existing
+  station metadata sync, without inferring a location or requiring directory opt-in.
+- Simplify playlist selection during import and improve Software page spacing.
+
+Schema: `c83d4e5f9012`. RC9 artifacts remain unchanged. The owner reported the
+new RC9 VM running; public health, readiness, player and decoded stream checks
+passed. The owner also supplied a successful installed validator result covering
+web, database, radio services, private listeners and login. This is not a claim
+that all manual acceptance items were observed.
+The separately delivered validation record records the exact stable package
+checks and any outstanding acceptance items.
+
 ## 0.3.0-rc.6 — signed test candidate; VM acceptance pending
 
 - Report the actual running development version through the existing reporter;
