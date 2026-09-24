@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.3.0-rc.6 — in development, not yet frozen
+## 0.3.0-rc.6 — signed test candidate; VM acceptance pending
 
 - Report the actual running development version through the existing reporter;
   display server-provided Current, Update Available, Ahead, or Unknown status,
@@ -27,8 +27,9 @@
   disposable CI hosts. See the [RC6 readiness audit](docs/rc6-release-readiness-2026-09-23.md)
   for evidence, limitations, and remaining VM acceptance gates.
 
-RC5 remains an immutable historical candidate. No signed RC6 artifact or release
-approval is implied by this development entry. The current schema remains
+RC5 remains an immutable historical candidate. RC6 packaging and verification
+are described in [the test installation guide](rc6-installation.md). A signed
+test package is not VM acceptance or approval for a stable public release. The current schema remains
 `f39c8210b7de`; these RC6 changes introduce no additional migration.
 
 ## 0.3.0-rc.3 — first-login candidate
