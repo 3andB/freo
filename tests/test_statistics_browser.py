@@ -45,6 +45,10 @@ def test_statistics_dashboard_and_world_map(booth):
     errors=[r for r in driver.get_log('browser') if r['level']=='SEVERE' and 'favicon.ico' not in r['message']]
     assert not errors,errors
 
+    # Sign out before clearing the jar: an in-flight authenticated poll can
+    # otherwise legitimately refresh the still-active login cookie.
+    driver.find_element(By.CSS_SELECTOR,'form[action="/admin/logout"] button').click()
+    WebDriverWait(driver,10).until(lambda d:d.current_url==base+'/')
     driver.delete_all_cookies()
     driver.get(base+'/player/test-station')
     def visitor_recorded(_):

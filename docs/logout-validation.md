@@ -15,7 +15,8 @@ that record, and a response finishing after revocation does not rewrite it.
 
 Flask's one-hour signed-cookie expiry and renewal remain in effect. Login records
 have five minutes of cleanup grace, allowing their expiry to be renewed at most
-once per five minutes while covering every freshly issued cookie. The grace does
+once per five minutes before view processing. Session response finalization only reads the record,
+so it cannot commit an unrelated page draft or renew a revoked login. The grace does
 not extend the browser cookie's one-hour validity. Expired records are pruned on
 subsequent sign-in. Separate browser logins are independently revocable; tabs
 sharing a cookie share the login. Existing pre-upgrade cookies require a fresh

@@ -47,6 +47,30 @@ def login_session_valid(user):
         AdminLoginSession.expires_at > datetime.now(timezone.utc))).scalar_one_or_none() is not None
 
 
+def renew_login_session():
+    """Renew before any view work, so login maintenance cannot commit its edits."""
+    key = login_session_key(session.get('logout_csrf'))
+    if not session.get('admin_user_id'):
+        return
+    from .admin_auth import current_admin
+    if key is None or current_admin() is None:
+        # Normalize a replayed/revoked cookie before public visitor endpoints
+        # create their anonymous CSRF state, as well as before protected views.
+        session.clear()
+        return
+    now = datetime.now(timezone.utc)
+    due = db.session.execute(select(AdminLoginSession.id).where(
+        AdminLoginSession.id == key,
+        AdminLoginSession.expires_at <= now + current_app.permanent_session_lifetime,
+    )).scalar_one_or_none()
+    if due is not None:
+        db.session.execute(update(AdminLoginSession).where(
+            AdminLoginSession.id == key, AdminLoginSession.expires_at > now,
+            AdminLoginSession.expires_at <= now + current_app.permanent_session_lifetime,
+        ).values(expires_at=now + current_app.permanent_session_lifetime + LOGIN_RENEWAL_WINDOW))
+        db.session.commit()
+
+
 def revoke_login_session():
     key = login_session_key(session.get('logout_csrf'))
     if key is not None:
@@ -95,22 +119,15 @@ class InstallationSessionInterface(SecureCookieSessionInterface):
             if key is None:
                 return
             now = datetime.now(timezone.utc)
-            # Use a fresh connection, not a request's cached ORM object. Never
-            # insert here: an in-flight response cannot recreate a revoked login.
-            with db.engine.begin() as connection:
-                expires = connection.execute(select(AdminLoginSession.expires_at).where(
-                    AdminLoginSession.id == key,
-                    AdminLoginSession.admin_user_id == state['admin_user_id'],
-                    AdminLoginSession.expires_at > now)).scalar_one_or_none()
-                if expires is None:
-                    return
-                expires = expires.astimezone(timezone.utc) if expires.tzinfo else expires.replace(tzinfo=timezone.utc)
-                if expires <= now + app.permanent_session_lifetime:
-                    connection.execute(update(AdminLoginSession).where(
-                        AdminLoginSession.id == key,
-                        AdminLoginSession.expires_at > now,
-                        AdminLoginSession.expires_at <= now + app.permanent_session_lifetime,
-                    ).values(expires_at=now + app.permanent_session_lifetime + LOGIN_RENEWAL_WINDOW))
+            # Read columns directly without flushing or committing any view
+            # work. PostgreSQL READ COMMITTED observes a concurrent revocation.
+            # Never recreate or renew authority while finalizing a response.
+            valid = db.session.connection().execute(select(AdminLoginSession.id).where(
+                AdminLoginSession.id == key,
+                AdminLoginSession.admin_user_id == state['admin_user_id'],
+                AdminLoginSession.expires_at > now)).scalar_one_or_none()
+            if valid is None:
+                return
         super().save_session(app, state, response)
 
 

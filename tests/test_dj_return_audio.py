@@ -147,7 +147,10 @@ def test_prepared_return_respects_deck_changes_and_worker_lifetime(handoff_stack
             (stack.evidence/'schedule-edit-at.json').write_text(json.dumps(dict(at=datetime.now(timezone.utc).isoformat(),current=program_decision_id(stack.slug))))
         stack.query(change)
         wait_for(lambda: stack.query(lambda: station().automation.operator_mode=='AUTO'))
-        current=stack.query(lambda: program_decision_id(stack.slug))
+        # AUTO mode is selected before the engine finishes loading its request.
+        # Wait for the actual programme decision; the audio-gap assertion below
+        # still bounds recovery and verifies that the correct track is audible.
+        current=wait_for(lambda: stack.query(lambda: program_decision_id(stack.slug)))
         assert current!=replacement
         assert stack.query(lambda: db.session.get(SelectionDecision,current).track_id)==stack.track_ids[1]
         assert stack.query(lambda: db.session.get(SelectionDecision,replacement).status)=='failed'

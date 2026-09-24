@@ -163,3 +163,41 @@ def test_inflight_response_cannot_recreate_revoked_login_or_replace_new_cookie(t
     assert restored.get('/admin/software').status_code == 200
     with restarted.app_context():
         assert db.session.query(AdminLoginSession).count() == 1
+
+
+def test_cookie_finalization_does_not_commit_unsaved_view_work(app):
+    from app.extensions import db
+    from app.models import AdminUser
+    from app.services.admin_auth import admin_required
+    @app.get('/unsaved-profile-draft')
+    @admin_required
+    def draft():
+        user = db.session.query(AdminUser).one()
+        user.email = 'must-not-be-saved@example.test'
+        db.session.flush()
+        return 'Preview only'
+    client = app.test_client()
+    login(client, 'test-password-long-enough', 'admin@example.test')
+    assert client.get('/unsaved-profile-draft').status_code == 200
+    with app.app_context():
+        assert db.session.query(AdminUser).one().email == 'admin@example.test'
+
+
+def test_replayed_revoked_cookie_becomes_usable_anonymous_player_session(app):
+    client = app.test_client()
+    login(client, 'test-password-long-enough', 'admin@example.test')
+    name = app.config['SESSION_COOKIE_NAME']
+    old = client.get_cookie(name).value
+    with client.session_transaction() as state:
+        csrf = state['logout_csrf']
+    client.post('/admin/logout', data={'csrf': csrf})
+    client.set_cookie(name, old)
+    response = client.get('/api/stations/test-station/presence')
+    assert response.status_code == 200 and response.json.get('csrf')
+    assert not response.json.get('ignored')
+    with client.session_transaction() as state:
+        assert 'admin_user_id' not in state
+        assert state['stats_csrf'] == response.json['csrf']
+    assert client.post('/api/stations/test-station/presence', json={},
+        headers={'X-Presence-CSRF':response.json['csrf']}).status_code == 204
+    assert client.get('/admin').location.endswith('/admin/login')

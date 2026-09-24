@@ -63,6 +63,8 @@ def create_app(config_name=None):
     db.init_app(app)
     from . import models  # noqa: F401 - register migration metadata
     migrate.init_app(app, db)
+    from .services.admin_setup import renew_login_session
+    app.before_request(renew_login_session)
     app.register_blueprint(health_blueprint)
     app.register_blueprint(radio_health_blueprint)
     app.register_blueprint(stations_blueprint)
