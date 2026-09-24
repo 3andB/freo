@@ -41,13 +41,16 @@ def test_cart_glow_global_lock_and_completion_in_both_modes(booth, delayed_statu
         db.session.commit()
     driver.refresh()
     first='[data-role="HOT"][data-position="1"]'
+    # The initial HTML has an enabled cart before the first live observation.
+    # This regression delays a post-command response, not initial readiness.
+    wait_text(driver,'#morph-text','Verified Test Track')
     WebDriverWait(driver,8).until(lambda d:d.find_element(By.CSS_SELECTOR,first+' [data-fire-cart]').is_enabled())
     if delayed_status:
         driver.execute_script('''
             const original = window.fetch;
-            let commandComplete = false, firstHeld = false;
+            let commandComplete = false, firstHeld = false, restored = false;
             const pending = [];
-            window.restoreCartFetch = () => {window.fetch = original; pending.forEach(resolve => resolve());};
+            window.restoreCartFetch = () => {restored = true; window.fetch = original; pending.forEach(resolve => resolve());};
             window.fetch = async function(url, options) {
                 // The persistent header also polls this endpoint. Hold only
                 // booth requests, which explicitly include credentials.
@@ -55,7 +58,8 @@ def test_cart_glow_global_lock_and_completion_in_both_modes(booth, delayed_statu
                     options?.credentials === 'same-origin' && commandComplete;
                 const response = await original.call(this, url, options);
                 if (String(url).endsWith('/fire-cart') && options?.method === 'POST') commandComplete = true;
-                else if (holdStatus) {
+                // A response already in flight may arrive after restoration.
+                else if (holdStatus && !restored) {
                     await new Promise(resolve => {
                         if (!firstHeld) {firstHeld = true; window.releaseCartStatus = resolve;}
                         else pending.push(resolve);
