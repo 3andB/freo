@@ -89,7 +89,7 @@ def action(slug, action):
             from app.services.live_mic import enabled, gateway
             if enabled():
                 mic = gateway(slug, 'status')
-                if (mic.get('desired') == 'LIVE' and mic.get('phase') != 'FAILED') or mic.get('phase') in ('FADING','LIVE','RETURNING'):
+                if mic.get('leaving') or (mic.get('desired') == 'LIVE' and mic.get('phase') != 'FAILED') or mic.get('phase') in ('FADING','LIVE','RETURNING'):
                     raise ValueError('End the live microphone broadcast before changing the program source.')
         if action=='cue-list':
             from app.services.booth_cue import mutate

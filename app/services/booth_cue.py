@@ -173,7 +173,7 @@ def mutate(station, user, data):
             from app.services.live_mic import enabled as mic_enabled, gateway
             if mic_enabled():
                 mic = gateway(station.slug, 'status')
-                if (mic.get('desired') == 'LIVE' and mic.get('phase') != 'FAILED') or mic.get('phase') in ('FADING', 'LIVE', 'RETURNING'):
+                if mic.get('leaving') or (mic.get('desired') == 'LIVE' and mic.get('phase') != 'FAILED') or mic.get('phase') in ('FADING', 'LIVE', 'RETURNING'):
                     raise ValueError('End the live microphone broadcast before arming AUTO_CUE')
             if not entries:
                 raise ValueError('Add a song to Cue first')

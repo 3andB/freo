@@ -21,7 +21,7 @@ from tests.test_web import app as app_fixture
 
 
 @pytest.fixture
-def booth(app_fixture, monkeypatch, tmp_path):
+def booth(app_fixture, monkeypatch, tmp_path, request):
     app=app_fixture
     monkeypatch.setenv('FREO_MEDIA_ROOT',str(tmp_path/'media'))
     originals=tmp_path/'media'/'test-station'/'originals';originals.mkdir(parents=True)
@@ -45,18 +45,25 @@ def booth(app_fixture, monkeypatch, tmp_path):
         wav.setnchannels(1);wav.setsampwidth(2);wav.setframerate(8000);wav.writeframes(samples*120)
     app.add_url_rule('/stream/test-station','test_monitor_stream',lambda:Response(audio_bytes.getvalue(),mimetype='audio/wav'))
     # This fixture supplies stable engine observations; audio is tested separately.
-    from flask import request
+    from flask import request as flask_request
     @app.before_request
     def fixture_observer_heartbeat():
-        if request.path.endswith('/live-status'):
+        if flask_request.path.endswith('/live-status'):
             LiveQueueSnapshot.query.update({'observed_at':datetime.now(timezone.utc)})
             db.session.commit()
     server=make_server('127.0.0.1',0,app,threaded=True)
     thread=threading.Thread(target=server.serve_forever,daemon=True);thread.start()
     profile=tempfile.mkdtemp(prefix='freo-browser-',dir='/tmp')
     options=Options();options.binary_location=os.environ.get('FREO_TEST_CHROME','/usr/bin/chromium-browser')
+    if 'native_prompts' in request.fixturenames:
+        # ChromeDriver otherwise auto-accepts beforeunload, even when the app
+        # correctly requests a warning. Explicitly exercise the actual dialog.
+        options.enable_bidi=True
+        options.set_capability('unhandledPromptBehavior',{'default':'ignore','beforeUnload':'ignore'})
     for arg in ['--headless=new','--no-sandbox','--disable-dev-shm-usage','--window-size=1600,1200',f'--user-data-dir={profile}']:options.add_argument(arg)
     driver=webdriver.Chrome(service=Service(os.environ.get('FREO_TEST_CHROMEDRIVER','/usr/bin/chromedriver')),options=options)
+    if 'native_prompts' in request.fixturenames:
+        driver.browsing_context  # Establish the BiDi connection before navigation.
     try:
         base=f'http://127.0.0.1:{server.server_port}'
         driver.get(base+'/admin/login')

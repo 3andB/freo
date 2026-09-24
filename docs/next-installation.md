@@ -7,11 +7,16 @@ source tag and test VM remain unchanged. This note supplements that historical
 candidate; it does not amend the package or claim that unobserved acceptance
 checklist items were independently verified.
 
-Current development version: **0.3.0-rc.7.dev3**. This identifies the newer software
+Current development version: **0.3.0-rc.7.dev5**. This identifies the newer software
 honestly in the UI and existing heartbeat. It is not an announced stable release
 or a newly signed installation candidate.
 
 The changes after RC6 are:
+
+- Signed-out admin tabs no longer invalidate an open login form's security token.
+- LIVE MIC ends before AUTO/DJ tab changes. Leaving the booth warns the owner and
+  resumes the interrupted feed; the microphone gateway supports a bounded return
+  handoff during page closure. See [LIVE MIC](live-mic.md) for tests and fallback behavior.
 
 - Music import uses the existing playlist bubbles; the redundant playlist list
   is removed. Individual choices, batch defaults and reset after import remain.

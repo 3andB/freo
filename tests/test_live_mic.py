@@ -77,7 +77,7 @@ def test_gateway_web_rtc_ownership_and_engine_readiness():
     asyncio.run(gateway_roundtrip())
 
 
-async def gateway_roundtrip(engine_dir=None, station=None):
+async def gateway_roundtrip(engine_dir=None, station=None, graceful=False, feed_mode='DJ_BOOTH'):
     from aiohttp.test_utils import TestServer, TestClient
     from aiortc import RTCPeerConnection, RTCConfiguration, RTCSessionDescription, AudioStreamTrack
     from app.mic_gateway import create_gateway
@@ -138,6 +138,7 @@ async def gateway_roundtrip(engine_dir=None, station=None):
         source = source.replace('/run/freo/playout/test-station', str(engine_dir))
         source = source.replace('http://127.0.0.1:8091/', str(client.make_url('/')))
         source = 'settings.init.allow_root := true\n' + source[:source.index('output.icecast(')]
+        source += 'server.register(namespace="freo_test", "elapsed", fun (_) -> string.float(queue.elapsed()))\n'
         source += f'output.file(%wav, "{engine_dir}/output.wav", radio)\n'
         config = engine_dir/'engine.liq'; config.write_text(source)
         with (engine_dir/'engine.log').open('w') as log:
@@ -148,7 +149,9 @@ async def gateway_roundtrip(engine_dir=None, station=None):
             data = await asyncio.wait_for(reader.readuntil(b'END\r\n'), 3)
             writer.close(); await writer.wait_closed()
             return data.decode().split('END')[0].strip()
-        for _ in range(400):
+        # Liquidsoap parses the complete station graph before opening its socket.
+        # Shared/slow acceptance hosts can need longer than 40 seconds to start.
+        for _ in range(1200):
             await post('heartbeat', owner=1, token=token)
             if (engine_dir/'control.sock').exists(): break
             if proc.returncode is not None:
@@ -159,10 +162,16 @@ async def gateway_roundtrip(engine_dir=None, station=None):
         generator = await asyncio.create_subprocess_exec('ffmpeg','-v','error','-f','lavfi','-i',
             'sine=frequency=440:duration=60','-y',str(song))
         assert await generator.wait() == 0
-        assert await command('freo_mixer.mode DJ_BOOTH') == 'OK'
-        assert (await command('freo_a.push annotate:freo_decision=1234:'+str(song))).isdigit()
+        assert await command('freo_mixer.mode '+feed_mode) == 'OK'
+        bus='freo_a' if feed_mode=='DJ_BOOTH' else 'freo_queue'
+        assert (await command(bus+'.push annotate:freo_decision=1234:'+str(song))).isdigit()
         await asyncio.sleep(.2)
-        assert await command('freo_deck.take_a 0.000') == 'OK'
+        if feed_mode=='DJ_BOOTH':
+            assert await command('freo_deck.take_a 0.000') == 'OK'
+        async def position():
+            if feed_mode=='AUTO':
+                return float(await command('freo_test.elapsed'))
+            return float((await command('freo_mixer.state')).split('|')[7])
         assert 'Decoding failed' not in (engine_dir/'engine.log').read_text(), 'Idle microphone attempted HTTP decoding'
         assert await command('freo_mic.prepare '+token) == 'OK'
         async def observed():
@@ -182,14 +191,14 @@ async def gateway_roundtrip(engine_dir=None, station=None):
             await post('heartbeat',owner=1,token=token)
             await asyncio.sleep(.1)
         assert (await command('freo_mic.state')).split('|')[1]=='OFF AIR'
-        assert (await command('freo_mixer.state')).split('|')[0]=='DJ_BOOTH'
+        assert (await command('freo_mixer.state')).split('|')[0]==feed_mode
         assert await command('freo_mic.prepare '+token)=='OK'
         for _ in range(120):
             fields=await observed()
             if fields[2]=='true':break
             await asyncio.sleep(.1)
         assert fields[2]=='true'
-        def voice_level():
+        def voice_level(frequency=880):
             # Measure the received 880 Hz voice in the actual rendered WAV,
             # independently of engine control/state acknowledgements.
             raw = (engine_dir/'output.wav').read_bytes()
@@ -197,8 +206,8 @@ async def gateway_roundtrip(engine_dir=None, station=None):
                 return 0.0
             samples = array('h'); samples.frombytes(raw[-35280:])
             mono = samples[::2]
-            real = sum(value*math.cos(2*math.pi*880*n/44100) for n,value in enumerate(mono))
-            imag = sum(value*math.sin(2*math.pi*880*n/44100) for n,value in enumerate(mono))
+            real = sum(value*math.cos(2*math.pi*frequency*n/44100) for n,value in enumerate(mono))
+            imag = sum(value*math.sin(2*math.pi*frequency*n/44100) for n,value in enumerate(mono))
             return 2*math.hypot(real,imag)/len(mono)/32768
         async def wait_voice(predicate):
             for _ in range(50):
@@ -223,7 +232,7 @@ async def gateway_roundtrip(engine_dir=None, station=None):
         await wait_voice(lambda level: level > .11)
         await asyncio.sleep(.5)
         baseline = voice_level()
-        paused_at = float((await command('freo_mixer.state')).split('|')[7])
+        paused_at = await position()
         # Existing OVER and TAKEOVER carts must apply to microphone audio.
         cart_path = engine_dir/'cart.wav'
         generator = await asyncio.create_subprocess_exec('ffmpeg','-v','error','-f','lavfi','-i',
@@ -238,15 +247,42 @@ async def gateway_roundtrip(engine_dir=None, station=None):
         assert (await command('freo_cart.push '+str(cart_path))).isdigit()
         await wait_voice(lambda level: level < .01)
         await wait_voice(lambda level: level > baseline*.9)
-        assert abs(float((await command('freo_mixer.state')).split('|')[7])-paused_at) < .15
+        assert abs(await position()-paused_at) < .15
         assert await command(f'freo_mic.end {token} 0.300') == 'OK'
         await asyncio.sleep(.5)
         assert (await observed())[1] == 'READY'
         await wait_voice(lambda level: level < .01)
-        assert float((await command('freo_mixer.state')).split('|')[7]) > paused_at+.2
+        assert await position() > paused_at+.2
         assert await command(f'freo_mic.take {token} 0.000') == 'OK'
         await asyncio.sleep(.2)
         assert (await observed())[1] == 'LIVE'
+        if graceful:
+            before_return = await position()
+            await post('worker', token=token, engine={'token':token,'phase':'LIVE','ready':True})
+            # Same authenticated gateway action sent by pagehide or a tab switch.
+            # UDP/WebRTC closure can arrive before the HTTP departure beacon.
+            await pc.close()
+            await asyncio.sleep(.15)
+            assert (await post('disconnect', owner=1, token=token)).status == 200
+            for _ in range(100):
+                fields = (await command('freo_mic.state')).split('|')
+                session = await (await post('worker', token=token,
+                    engine=dict(token=fields[0], phase=fields[1], ready=fields[2]=='true'))).json()
+                if not session:
+                    break
+                if session['healthy']:
+                    await command('freo_mic.lease '+token)
+                if session['desired']=='END' and fields[1] in ('FADING','LIVE'):
+                    await command(f'freo_mic.end {token} {session["fade"]:.3f}')
+                await asyncio.sleep(.1)
+            assert not session, 'Intentional departure did not finish returning'
+            await asyncio.sleep(.5)
+            assert voice_level() < .01, 'Microphone is still audible after leaving'
+            mixer = (await command('freo_mixer.state')).split('|')
+            assert mixer[0] == feed_mode, 'Page exit changed the interrupted program mode'
+            assert await position() > before_return+.2, 'Interrupted song did not resume'
+            assert voice_level(440) > .02, 'Restored music is not audible'
+            return
         await pc.close()
         for _ in range(90):
             fields = (await command('freo_mic.state')).split('|')
@@ -270,6 +306,72 @@ def test_real_microphone_fade_return_and_disconnect(app, tmp_path, monkeypatch):
     with app.app_context():
         station=Station.query.filter_by(slug='test-station').one()
         asyncio.run(gateway_roundtrip(tmp_path, station))
+
+
+@pytest.mark.skipif(os.environ.get('FREO_ENGINE_TEST') != '1', reason='Explicit isolated Liquidsoap/WebRTC integration')
+@pytest.mark.parametrize('feed_mode',['AUTO','DJ_BOOTH'])
+def test_real_microphone_page_exit_restores_interrupted_feed(app, tmp_path, monkeypatch, feed_mode):
+    pytest.importorskip('aiortc')
+    from app.models import Station
+    monkeypatch.setenv('FREO_LIVE_MIC','1')
+    with app.app_context():
+        station=Station.query.filter_by(slug='test-station').one()
+        asyncio.run(gateway_roundtrip(tmp_path, station, graceful=True, feed_mode=feed_mode))
+
+
+def test_gateway_departure_cuts_speech_and_waits_for_worker_return():
+    pytest.importorskip('aiortc')
+    asyncio.run(gateway_departure())
+
+
+async def gateway_departure():
+    from aiohttp.test_utils import TestServer, TestClient
+    from app.mic_gateway import Session, create_gateway
+    class Peer:
+        connectionState='connected'
+        async def close(self):
+            self.connectionState='closed'
+    gateway_app=create_gateway()
+    client=TestClient(TestServer(gateway_app))
+    await client.start_server()
+    session=Session(1, Peer(), last_audio=time.monotonic(), desired='LIVE',
+        engine=dict(phase='LIVE'), observed=time.monotonic())
+    gateway_app['sessions']['test-station']=session
+    queue=asyncio.Queue(maxsize=10)
+    session.subscribers.add(queue)
+    queue.put_nowait(b'stale speech')
+    async def post(action, **data):
+        return await client.post('/control/test-station', json=dict(action=action, **data))
+    try:
+        assert (await post('disconnect', owner=2, token=session.token)).status == 409
+        assert not session.leaving_at and session.healthy
+        assert (await post('disconnect', owner=1, token=session.token)).status == 200
+        started=session.leaving_at
+        assert session.pc.connectionState=='closed'
+        assert await asyncio.wait_for(queue.get(), 1)==bytes(3840)
+        assert session.healthy and session.desired=='END'
+        assert (await post('go', owner=1, token=session.token)).status == 409
+        assert (await post('disconnect', owner=1, token=session.token)).status == 200
+        assert session.leaving_at==started  # Repeated beacons cannot extend the deadline.
+        for phase in ('LIVE', 'RETURNING'):
+            response=await post('worker', token=session.token,
+                engine=dict(token=session.token, phase=phase, ready=True))
+            assert (await response.json())['desired']=='END'
+        response=await post('worker', token=session.token,
+            engine=dict(token=session.token, phase='READY', ready=True))
+        assert await response.json()=={}
+        assert session.closed and not gateway_app['sessions']
+        # A hung worker cannot retain a departing session indefinitely, even
+        # if an old tab continues heartbeating.
+        orphan=Session(1, Peer(), last_audio=time.monotonic(), desired='LIVE')
+        gateway_app['sessions']['test-station']=orphan
+        await orphan.leave()
+        orphan.leaving_at=time.monotonic()-16
+        assert not orphan.healthy
+        await asyncio.sleep(1.2)
+        assert orphan.closed and not gateway_app['sessions']
+    finally:
+        await client.close()
 
 
 def test_mic_commands_reject_injected_tokens_and_invalid_fades():
@@ -308,6 +410,10 @@ def test_live_mic_blocks_transport_but_failed_session_releases_it(app, monkeypat
         url=url_for('admin_live.action',slug='test-station',action='mode')
     response=client.post(url,data={'csrf':'mic-csrf','mode':'DJ_BOOTH'},headers={'Accept':'application/json'})
     assert response.status_code == 409
+    state.update(desired='END', phase='READY', leaving=True)
+    response=client.post(url,data={'csrf':'mic-csrf','mode':'DJ_BOOTH'},headers={'Accept':'application/json'})
+    assert response.status_code == 409
+    state.update(desired='LIVE', leaving=False)
     state['phase']='FAILED'
     response=client.post(url,data={'csrf':'mic-csrf','mode':'DJ_BOOTH'},headers={'Accept':'application/json'})
     assert response.status_code == 200

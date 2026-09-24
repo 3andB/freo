@@ -29,14 +29,30 @@ mixer channel routing is outside this first implementation.
   stays muted. Live speech during a takeover cart is discarded, not recorded.
 - Program monitoring stops when GO LIVE is pressed. Monitoring may be re-enabled
   with headphones; hardware direct monitoring is preferable for the speaker.
-- Changing tabs while live does not end the broadcast. Conflicting transport or
-  engine-mode mutations are rejected until END LIVE finishes. Carts and their
-  assignments remain available.
+- LIVE MIC must remain the selected booth view while this page owns a live mic.
+  Choosing AUTO or DJ BOOTH disconnects the microphone, waits for the worker's
+  return acknowledgement, then applies the requested mode. A failed return keeps
+  the mic view selected and exposes a retry; it does not claim AUTO is on air.
+  Carts remain available while live.
 - A station admits one microphone session. It is owned by an authenticated user
   and an unpredictable per-tab token; a second tab cannot replace it. Access uses
   the existing `can_control_playout` boundary (currently all active admins, not
   a newly introduced station-role model).
-- Closing/navigating away releases the session. A missing browser heartbeat
+- In-app navigation, browser Back and sign-out warn while the owning microphone
+  is live (including a pending GO LIVE). Cancel leaves it untouched. Confirming
+  stops capture and restores the interrupted feed before navigation/sign-out.
+  Reload, external navigation and closing the tab use the browser's native
+  warning; browser/platform limitations can suppress that warning.
+- Intentional departure sends the existing authenticated `disconnect` action.
+  The gateway immediately discards speech, closes WebRTC and supplies only silent
+  PCM while the existing worker completes END and observes the prior feed resume.
+  This handoff is bounded to 15 seconds and cannot be extended by repeated exit
+  requests. It preserves the mixer mode/song position; explicit AUTO/DJ choices
+  apply their chosen mode afterward. No new worker, endpoint or migration is used.
+  On audio loss, the receiver allows up to 750 ms of silence for a page-exit
+  beacon to arrive after WebRTC closure; it never replays buffered speech.
+- Abrupt loss without a delivered departure request retains the fail-safe:
+  a missing browser heartbeat
   expires it after 10 seconds. Missing RTP ends the PCM source after roughly two
   seconds; Liquidsoap also requires a worker-renewed six-second lease. Source or
   lease loss closes the microphone and returns the engine to AUTO without relying
@@ -97,16 +113,30 @@ controls have no dependency on a running gateway while the feature is disabled.
 
 ## Validation
 
+For the post-RC6 exit correction, deploy the browser assets and gateway together.
+End any current microphone session before restarting the web and microphone
+services. The existing automation worker and Liquidsoap commands are reused;
+no station re-render, database migration or playout restart is required.
+
 `venv/bin/pytest -q tests/test_live_mic.py tests/test_live_mic_browser.py` checks
 authentication, CSRF, token privacy, ownership, readiness, generated WebRTC audio,
 expiry, tab isolation and responsive layout. The receiver tests require the
 optional dependencies and permission to bind local test sockets.
+
+Exit regressions additionally cover AUTO/DJ switches, cancelled and confirmed
+navigation, sign-out, browser Back, refresh warnings, pagehide cleanup, failed
+return requests and late microphone permission responses. Browser tests use real
+MediaStream tracks with isolated signaling; engine tests independently exercise
+real WebRTC audio through Liquidsoap.
 
 `FREO_ENGINE_TEST=1 venv/bin/pytest -q tests/test_live_mic.py` additionally launches
 an isolated Liquidsoap process with a generated WebRTC tone. It measures the
 received tone in the rendered WAV to test no pre-GO leakage, live audio, overlay
 ducking, takeover muting, return, and loss-of-input fallback. It does not touch
 production streams, service units, the production database, or station configs.
+The intentional page-exit test measures that the microphone tone disappears and
+the interrupted DJ song resumes without forcing AUTO; the abrupt-disconnect test
+continues to require the existing AUTO fallback. Both run in candidate audio CI.
 
 Before activation on a fresh VM, validate systemd startup after reboot, actual
 ICE/TURN reachability from an external browser, two simultaneous stations,

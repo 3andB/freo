@@ -39,7 +39,8 @@ elif args.suite == 'browser-programming':
     files = [str(p) for p in sorted(Path('tests').glob('test_*browser.py')) if str(p) not in primary]
 else:
     files = ['tests/test_dj_return_audio.py', 'tests/test_booth_engine.py',
-             'tests/test_live_mic.py::test_real_microphone_fade_return_and_disconnect']
+             'tests/test_live_mic.py::test_real_microphone_fade_return_and_disconnect',
+             'tests/test_live_mic.py::test_real_microphone_page_exit_restores_interrupted_feed']
     os.environ.update(FREO_SYSTEM_TEST='1', FREO_ENGINE_TEST='1')
 (evidence/'files.json').write_text(json.dumps(files, indent=2) + '\n')
 # Liquidsoap's Unix sockets must fit sockaddr_un (108 bytes on Linux). GitHub's

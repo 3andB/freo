@@ -72,11 +72,16 @@
     return loaded;
   };
   const cueUI=window.FreoCue.create({root,scope,post,choose,notice});
-  root.querySelectorAll('form[method="post"]').forEach(form=>form.addEventListener('submit',event=>{
+  root.querySelectorAll('form[method="post"]').forEach(form=>form.addEventListener('submit',async event=>{
     event.preventDefault(); const data=Object.fromEntries(new FormData(form));
-    if (data.mode) { root.dataset.board=data.mode; window.dispatchEvent(new CustomEvent('freo-board-change')); if(root.dataset.micActive==='true') return; }
-    if('nonce' in data)data.nonce=nonce();
-    post(new URL(form.action).pathname.split('/').pop(),data);
+    if(data.mode&&root.dataset.modeChanging==='true')return;
+    if(data.mode)root.dataset.modeChanging='true';
+    try{
+      if (data.mode && scope.mic && !await scope.mic.leave()) return;
+      if('nonce' in data)data.nonce=nonce();
+      const changed=await post(new URL(form.action).pathname.split('/').pop(),data);
+      if(data.mode&&changed&&active()) {root.dataset.board=data.mode;window.dispatchEvent(new CustomEvent('freo-board-change'));}
+    }finally{if(data.mode)delete root.dataset.modeChanging;}
   }));
   root.querySelectorAll('[data-queue-track]').forEach(button=>button.addEventListener('click',()=>choose(button.closest('.song-card').dataset.id,'queue')));
   scope.listen(root,'click',event=>{

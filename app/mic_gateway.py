@@ -38,16 +38,20 @@ class Session:
     subscribers: set = field(default_factory=set)
     tasks: set = field(default_factory=set)
     closed: bool = False
+    leaving_at: float = 0
+    leave_observed: bool = False
 
     @property
     def healthy(self):
+        if self.leaving_at:
+            return not self.closed and time.monotonic() - self.leaving_at < 15
         return not self.closed and time.monotonic() - self.last_audio < 2 and self.pc.connectionState == 'connected'
 
     def status(self):
         fresh = time.monotonic() - self.observed < 5
         engine = self.engine if fresh else {}
         return dict(token=self.token, owner=self.owner, healthy=self.healthy,
-                    desired=self.desired, fade=self.fade, engine=engine,
+                    desired=self.desired, fade=self.fade, engine=engine, leaving=bool(self.leaving_at),
                     ready=self.healthy and engine.get('ready', False) and engine.get('token') == self.token,
                     phase=engine.get('phase', 'CONNECTING'))
 
@@ -61,6 +65,36 @@ class Session:
             queue.put_nowait(None)
         await self.pc.close()
         await asyncio.gather(*self.tasks, return_exceptions=True)
+
+    async def leave(self):
+        """Cut speech immediately, retaining silent PCM only for the worker's return.
+
+        A page can disappear before END completes. Keeping this bounded source
+        alive lets the existing mixer restore its paused feed instead of treating
+        an intentional departure as RTP failure and forcing AUTO.
+        """
+        if self.leaving_at:
+            return
+        self.leaving_at = time.monotonic()
+        self.desired = 'END'
+        self.fade = .3
+        for task in self.tasks:
+            task.cancel()
+        await asyncio.gather(*self.tasks, return_exceptions=True)
+        self.tasks.clear()
+        for queue in self.subscribers:
+            while not queue.empty():
+                queue.get_nowait()
+
+        async def silence():
+            while self.healthy:
+                for queue in self.subscribers:
+                    if queue.full():
+                        queue.get_nowait()
+                    queue.put_nowait(bytes(3840))  # 20 ms, stereo s16, 48 kHz.
+                await asyncio.sleep(.02)
+        self.tasks.add(asyncio.create_task(silence()))
+        await self.pc.close()
 
 
 async def receive(session, track):
@@ -108,6 +142,15 @@ def create_gateway():
                 if session.desired == 'END' and session.engine.get('phase') == 'READY' and previous_phase == 'RETURNING':
                     session.desired = 'READY'
                 session.observed = time.monotonic()
+                if session.leaving_at:
+                    # First deliver END to the single worker; a later observation
+                    # confirms any in-flight TAKE has also finished returning.
+                    if session.leave_observed and session.engine.get('phase') in ('READY', 'OFF AIR', 'FAILED'):
+                        sessions.pop(slug)
+                        await session.close()
+                        return web.json_response({})
+                    session.leave_observed = True
+                    session.desired = 'END'
             return web.json_response(session.status() if session else {})
         if action == 'offer':
             if session:
@@ -141,6 +184,8 @@ def create_gateway():
             raise web.HTTPConflict(text='This microphone session is no longer yours. Reconnect the input.')
         session.heartbeat = time.monotonic()
         if action in ('go', 'end'):
+            if session.leaving_at:
+                raise web.HTTPConflict(text='Microphone is disconnecting. Reconnect before going live.')
             try:
                 fade = float(data.get('fade', 3))
             except (ValueError, TypeError):
@@ -153,8 +198,11 @@ def create_gateway():
             session.fade = fade
             session.desired = 'LIVE' if action == 'go' else 'END'
         elif action == 'disconnect':
-            sessions.pop(slug)
-            await session.close()
+            if session.desired == 'LIVE' or session.engine.get('phase') in ('FADING', 'LIVE', 'RETURNING') or session.leaving_at:
+                await session.leave()
+            else:
+                sessions.pop(slug)
+                await session.close()
         elif action != 'heartbeat':
             raise web.HTTPBadRequest(text='Unknown microphone action')
         return web.json_response(session.status())
@@ -171,10 +219,27 @@ def create_gateway():
         try:
             await response.prepare(request)
             await response.write(WAV_HEADER)
-            while session.healthy:
-                data = await asyncio.wait_for(queue.get(), timeout=2)
+            loss_at = 0
+            while not session.closed:
+                if not session.healthy:
+                    # On pagehide, UDP/WebRTC closure can beat the authenticated
+                    # HTTP departure beacon. Hold only silence briefly so that
+                    # beacon can request a normal return before source failure.
+                    loss_at = loss_at or time.monotonic()
+                    if time.monotonic() - loss_at > .75:
+                        break
+                    await asyncio.wait_for(response.write(bytes(3840)), timeout=2)
+                    await asyncio.sleep(.02)
+                    continue
+                loss_at = 0
+                try:
+                    data = await asyncio.wait_for(queue.get(), timeout=.25)
+                except TimeoutError:
+                    continue
                 if data is None:
                     break
+                if session.leaving_at:
+                    data = bytes(len(data))
                 await asyncio.wait_for(response.write(data), timeout=2)
         except (TimeoutError, ConnectionError):
             pass
@@ -187,7 +252,9 @@ def create_gateway():
             while True:
                 await asyncio.sleep(1)
                 for slug, session in list(sessions.items()):
-                    if time.monotonic() - session.heartbeat > 10:
+                    expired = (time.monotonic() - session.leaving_at > 15 if session.leaving_at
+                               else time.monotonic() - session.heartbeat > 10)
+                    if expired:
                         sessions.pop(slug)
                         await session.close()
         task = asyncio.create_task(reap())
