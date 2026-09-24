@@ -17,3 +17,13 @@
 /* Keep focused and scrolled controls above the sticky save bar. */
 #station-settings-form :is(input,select,textarea,button,a){scroll-margin-bottom:120px}
 @media(max-width:760px){#station-settings-form :is(input,select,textarea,button,a){scroll-margin-bottom:180px}}
+
+/* Software and license uses its own inset without changing other card layouts. */
+.admin-main .software-settings{max-width:1000px;padding:clamp(20px,3vw,32px);box-sizing:border-box;overflow-wrap:anywhere}
+.software-settings>h1{margin:0;font-size:clamp(26px,3vw,36px);line-height:1.2}
+.software-section,.software-about{margin-top:28px;padding-top:24px;border-top:1px solid var(--theme-border)}
+.software-section h2,.software-upgrade h3{margin-top:0}.software-settings p{max-width:75ch;line-height:1.7}
+.software-settings form{display:grid;gap:16px;max-width:520px;margin-top:20px}
+.software-settings form>label,.software-settings form>button{margin:0}.software-settings form>button{justify-self:start;max-width:100%}
+.software-upgrade{margin-block:20px;padding:20px;border:1px solid var(--theme-border);border-radius:12px;background:var(--theme-raised)}
+.software-upgrade>:last-child{margin-bottom:0}.software-about>summary{width:fit-content;cursor:pointer;font-weight:650;line-height:1.6}

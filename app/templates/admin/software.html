@@ -1,19 +1,23 @@
 {% extends 'admin/base.html' %}
 {% block title %}Software and license · Freo{% endblock %}
 {% block admin_content %}
-<section class="admin-card"><h1>Software and license</h1>
-<h2>{{ 'Unlimited' if license.edition == 'unlimited' else 'Community' }}</h2>
+<section class="admin-card software-settings"><h1>Software and license</h1>
+<section class="software-section" aria-labelledby="software-license-title">
+<h2 id="software-license-title">{{ 'Unlimited' if license.edition == 'unlimited' else 'Community' }}</h2>
 {% if license.edition == 'unlimited' %}<p>Licensed to {{ license.owner }}. Unlimited stations across all installations you own. Includes all future updates and works offline.</p>
 {% else %}<p>Free for up to three stations total across all installations owned by one person or company, including commercial use. The combined allowance is honor-based; registration is optional.</p>
 <p>More than three stations: <strong>US$99 one time</strong> for unlimited stations, all your installations and all future updates.</p>
 <p><a href="mailto:info@3andB.com?subject=Freo%20unlimited%20license">Contact info@3andB.com</a>. We will email a Stripe invoice and send your license after payment.</p>{% endif %}
-{% if license.error %}<p role="alert">{{ license.error }}</p>{% endif %}
+{% if license.error %}<p class="admin-notice error" role="alert">{{ license.error }}</p>{% endif %}
 <form method="post" action="{{ url_for('distribution.activate_license') }}" enctype="multipart/form-data">
 <input type="hidden" name="csrf" value="{{ csrf_token() }}"><label>License file<input type="file" name="license" accept="application/json,.json" required></label><button type="submit">Activate license</button></form>
-<h2>Software upgrades</h2><p>Upgrades pause broadcasting while Freo backs up and verifies recovery, migrates saved data and restarts services. Keep a copy of your backup key in a safe place.</p>
-{% for upgrade in upgrades %}<article><h3>Freo {{ upgrade.version }}</h3><p>Status: {{ upgrade.state }}. {{ upgrade.message }}</p>
+</section>
+<section class="software-section" aria-labelledby="software-upgrades-title">
+<h2 id="software-upgrades-title">Software upgrades</h2><p>Upgrades pause broadcasting while Freo backs up and verifies recovery, migrates saved data and restarts services. Keep a copy of your backup key in a safe place.</p>
+{% for upgrade in upgrades %}<article class="software-upgrade"><h3>Freo {{ upgrade.version }}</h3><p>Status: {{ upgrade.state }}. {{ upgrade.message }}</p>
 {% if upgrade.state == 'prepared' %}<form method="post" action="{{ url_for('distribution.request_upgrade', identifier=upgrade.id) }}"><input type="hidden" name="csrf" value="{{ csrf_token() }}"><label><input type="checkbox" name="maintenance" value="yes" required> I approve the maintenance interruption and have retained my recovery key.</label><button type="submit">Back up and upgrade</button></form>{% endif %}</article>
 {% else %}<p>No upgrade is prepared. Your server operator can prepare a verified release for installation here.</p>{% endfor %}
 <p>During maintenance this page may be unavailable. Reopen it after services return. An interrupted upgrade requires your server operator to inspect recovery status.</p>
-<details><summary>About Freo</summary><p>© 2026 3andB. Created by Lee Eyerman.</p><p>Source-available under the <a href="https://github.com/3andB/freo/blob/main/LICENSE">Freo Source-Available License</a>.</p></details>
+</section>
+<details class="software-about"><summary>About Freo</summary><p>© 2026 3andB. Created by Lee Eyerman.</p><p>Source-available under the <a href="https://github.com/3andB/freo/blob/main/LICENSE">Freo Source-Available License</a>.</p></details>
 </section>{% endblock %}
