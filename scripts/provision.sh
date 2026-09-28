@@ -293,6 +293,7 @@ fi
 bash "$source_dir/scripts/install-statistics.sh" "$source_dir"
 (cd "$install_dir" && bash "$source_dir/scripts/validate-install.sh")
 
-printf 'Open %s/admin/login and sign in with username admin and password IAmOnTheAir.\n' "$public_base"
+printf '\nFreo installation complete.\nOpen: %s/admin/login\n' "$public_base"
+printf 'Sign in with username admin and password IAmOnTheAir.\n'
 printf 'Complete first-time setup immediately: choose your own password before accessing administration.\n'
 printf 'The first administrator manages installation upgrades and licenses. Registration is optional.\n'

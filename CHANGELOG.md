@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.3.2-rc.1 — signed test candidate; fresh-VM acceptance pending
+
+- Validate the saved Freo public origin through local Nginx, preserving HTTP
+  Host, HTTPS SNI/certificate checks, cookies and same-origin redirects. Retain
+  CSRF, initial login, mandatory setup and existing-account safeguards.
+- Report local application validation separately from a best-effort public
+  reachability probe. External/hairpin failures do not reverse a local success.
+  Print a clean installation-complete message and the exact admin URL.
+- Add real Nginx default-vhost/Host/SNI regression tests and run the actual login
+  validator after PostgreSQL migrations and bootstrap in package acceptance.
+
+Includes all 0.3.1 work; dependency pins and schema are unchanged. The 0.3.1 tag
+and signed artifacts are preserved. See [test installation](docs/0.3.2-rc.1-installation.md).
+
 ## 0.3.1 — prepared for fresh-VM acceptance
 
 - Install pinned Psycopg 3 binary wheels automatically, while retaining Psycopg 2

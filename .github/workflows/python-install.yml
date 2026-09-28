@@ -23,7 +23,7 @@ jobs:
       - name: Prepare clean Python and PostgreSQL
         run: |
           sudo apt-get update
-          sudo apt-get install -y python3-venv postgresql postgresql-client curl
+          sudo apt-get install -y python3-venv nginx postgresql postgresql-client curl
           python3 -m venv "$RUNNER_TEMP/install-venv"
       - name: Install declared dependencies and load PostgreSQL drivers
         env:

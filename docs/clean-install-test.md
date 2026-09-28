@@ -1,5 +1,14 @@
 # Fresh Ubuntu 24.04 acceptance test
 
+For **0.3.2-rc.1**, use the [new test kit guide](0.3.2-rc.1-installation.md).
+Confirm separate LOCAL APPLICATION VALIDATION and EXTERNAL ACCESS VALIDATION
+results and the exact admin URL. Local Nginx/CSRF/login failures remain fatal;
+external/hairpin failures are reported independently. The package runner now
+requires Nginx and OpenSSL and tests real vhosts on temporary loopback ports,
+including hostname TLS/SNI with a trusted fixture certificate. Its PostgreSQL,
+Gunicorn and Nginx instances never use installed state or system services.
+The earlier acceptance records below remain historical.
+
 For **0.3.1**, use the [new kit instructions](0.3.1-installation.md) on a virgin
 Ubuntu 24.04 x86_64 VM. Save the kit SHA256, installed version, installer log and
 `scripts/validate-install.sh` output. Confirm `venv/bin/python -m pip check`,

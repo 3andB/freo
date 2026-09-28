@@ -26,7 +26,7 @@ jobs:
       - name: Prepare builder
         run: |
           sudo apt-get update
-          sudo apt-get install -y python3-venv gnupg postgresql postgresql-client curl
+          sudo apt-get install -y python3-venv nginx gnupg postgresql postgresql-client curl
           python3 -m venv venv
           venv/bin/pip install -r requirements.txt
       - name: Build complete release with hashed wheels

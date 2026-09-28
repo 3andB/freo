@@ -28,7 +28,7 @@ The live [diagnostic stream](https://freo.world/stream/freo-test) tests the Liqu
 
 The stack is Python 3.12, Flask, Gunicorn, PostgreSQL, Nginx, systemd, Liquidsoap, Icecast, and ffprobe on Ubuntu 24.04. Timed events can execute durable [event blocks and stopsets](docs/event-blocks.md): ordered Track/ImagingAsset snapshots that exclude normal music between items. Authenticated [traffic planning](docs/traffic.md) manages advertisers, campaigns, commercial creatives, stopset inventory, finalized daily logs, as-run reconciliation, and makegood relationships. Accounting and invoicing are not included. See [clocks](docs/clocks.md), [scheduling](docs/scheduling.md), [rotations](docs/rotations.md), [automation](docs/automation.md), [media library](docs/media-library.md), [stations](docs/stations.md), [radio engine](docs/radio-engine.md), [architecture](docs/architecture.md), [installation](docs/installation.md), and the [fresh-VM acceptance test](docs/clean-install-test.md).
 
-The [0.3.1 dependency-fix kit](docs/0.3.1-installation.md) is prepared for a new fresh-VM acceptance run.
+The [0.3.2-rc.1 test kit](docs/0.3.2-rc.1-installation.md) adds local Nginx/login validation and separate external-access reporting to the preserved 0.3.1 dependency fixes. Fresh-VM acceptance is pending.
 
 The installer deploys the fuller stack but has **not** been tested on a separate fresh Ubuntu VM. Public one-command installation is not yet claimed as supported. Local development needs a Python 3.12 venv, `requirements-dev.txt`, a private `.env`, and `flask --app wsgi:app db upgrade`; run `pytest` for tests. Root, a domain, and radio services are not required for unit tests.
 
