@@ -3,6 +3,7 @@ set -euo pipefail
 
 install_dir=${FREO_INSTALL_DIR:-/opt/freo}
 test -x "$install_dir/venv/bin/python"
+(cd "$install_dir" && "$install_dir/venv/bin/python" -m pip check && "$install_dir/venv/bin/python" -m freo_ops.dependencies)
 "$install_dir/venv/bin/python" -c 'from zoneinfo import ZoneInfo; ZoneInfo("UTC"); ZoneInfo("America/Denver"); import app.services.schedule, app.services.clocks' >/dev/null
 "$install_dir/venv/bin/python" -c 'import app.services.admin_media, app.ingest_worker' >/dev/null
 test -x /usr/bin/ffprobe

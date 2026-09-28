@@ -1,3 +1,6 @@
+> Current handoff: [0.3.1 dependency-fix installer](0.3.1-installation.md).
+> The preparation record below is historical.
+
 > Historical RC6 → RC9 preparation record. As of 2026-09-24, main and
 > freo.world run RC9 at `95234867b647e41ca36272e4d81d29d8bd1ba621`.
 > The owner reports the fresh RC9 VM running. Stable 0.3.0 preparation is

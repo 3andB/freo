@@ -1,0 +1,45 @@
+name: Clean Python installation
+
+on:
+  pull_request:
+  push:
+    branches: ['main', 'feature/**', 'fix/**']
+  workflow_dispatch:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  install:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        requirements: [requirements.txt, requirements-dev.txt, requirements-live-mic.txt]
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Prepare clean Python and PostgreSQL
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y python3-venv postgresql postgresql-client curl
+          python3 -m venv "$RUNNER_TEMP/install-venv"
+      - name: Install declared dependencies and load PostgreSQL drivers
+        env:
+          REQUIREMENTS: ${{ matrix.requirements }}
+        run: |
+          "$RUNNER_TEMP/install-venv/bin/python" -m pip install -r "$REQUIREMENTS"
+          "$RUNNER_TEMP/install-venv/bin/python" -m pip check
+          "$RUNNER_TEMP/install-venv/bin/python" -m freo_ops.dependencies
+          if [[ "$REQUIREMENTS" == requirements-live-mic.txt ]]; then
+            "$RUNNER_TEMP/install-venv/bin/python" -m freo_ops.dependencies --live-mic
+          fi
+      - name: Migrate empty PostgreSQL databases and start Gunicorn
+        run: sudo python3 scripts/test-install-postgres.py "$GITHUB_WORKSPACE" "$RUNNER_TEMP/install-venv" "$RUNNER_TEMP/install-evidence"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: always()
+        with:
+          name: python-install-${{ matrix.requirements }}
+          path: ${{ runner.temp }}/install-evidence/
+          retention-days: 14

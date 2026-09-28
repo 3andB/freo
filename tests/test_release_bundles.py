@@ -75,6 +75,37 @@ def test_disconnected_migrations_are_rejected(source):
         releases.migration_head(source)
 
 
+def test_public_build_validates_supplied_wheels_before_writing_archive(source, tmp_path, monkeypatch):
+    (source / 'LICENSE').write_text('Fixture license\n')
+    recovery.run(['git', '-C', str(source), 'add', 'LICENSE'])
+    recovery.run(['git', '-C', str(source), '-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.test',
+                  'commit', '--quiet', '-m', 'License'])
+    recovery.run(['git', '-C', str(source), 'tag', 'v0.2.0'])
+    monkeypatch.setattr(releases.platform, 'machine', lambda: 'x86_64')
+    monkeypatch.setattr(releases.platform, 'python_version_tuple', lambda: ('3', '12', '3'))
+    monkeypatch.setattr(releases.platform, 'freedesktop_os_release', lambda: {'ID': 'ubuntu', 'VERSION_ID': '24.04'})
+    wheelhouse = tmp_path / 'wheels'
+    wheelhouse.mkdir()
+    with zipfile.ZipFile(wheelhouse / 'fixture-1.0-py3-none-any.whl', 'w') as wheel:
+        wheel.writestr('fixture-1.0.dist-info/METADATA', 'Name: fixture\nVersion: 1.0\n')
+    original = releases.run
+    checks = []
+    def run(command, **kwargs):
+        if command[0] == 'bash':
+            assert command[1].endswith('/scripts/install-python.sh')
+            assert command[-1] == '--offline'
+            assert not Path(command[-2]).exists()
+            assert (Path(command[2]) / 'requirements.lock').is_file()
+            checks.append(command)
+            raise recovery.RecoveryError('Incomplete runtime dependencies')
+        return original(command, **kwargs)
+    monkeypatch.setattr(releases, 'run', run)
+    target = tmp_path / 'rejected.tar.gz'
+    with pytest.raises(recovery.RecoveryError, match='Incomplete runtime dependencies'):
+        releases.build(source, target, wheelhouse=wheelhouse)
+    assert len(checks) == 1 and not target.exists()
+
+
 def test_real_signature_verification_rejects_tampering_before_extraction(source, tmp_path):
     review = tmp_path / 'review.tar.gz'
     releases.build(source, review, development=True)

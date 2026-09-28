@@ -124,14 +124,7 @@ if [[ $source_dir != "$install_dir" ]]; then
   install -m 0644 "$source_dir/wsgi.py" "$install_dir/wsgi.py"
   install -m 0644 "$source_dir/requirements.txt" "$install_dir/requirements.txt"
 fi
-if [[ ! -x "$install_dir/venv/bin/python" ]]; then
-  python3 -m venv "$install_dir/venv"
-fi
-if [[ -f "$source_dir/requirements.lock" && -d "$source_dir/wheels" ]]; then
-  "$install_dir/venv/bin/pip" install --no-index --require-hashes --find-links "$source_dir/wheels" -r "$source_dir/requirements.lock"
-else
-  "$install_dir/venv/bin/pip" install -r "$install_dir/requirements.txt"
-fi
+bash "$source_dir/scripts/install-python.sh" "$source_dir" "$install_dir/venv"
 if [[ ! -f "$install_dir/.env" ]]; then
   if runuser -u postgres -- psql -tAc "SELECT 1 FROM pg_roles WHERE rolname='freo'" | grep -qx 1; then
     echo 'Existing PostgreSQL role freo found but no .env; refusing to reset its password.' >&2

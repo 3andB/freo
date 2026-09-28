@@ -11,8 +11,10 @@ permissions:
 jobs:
   tests:
     uses: ./.github/workflows/recovery.yml
+  dependency-tests:
+    uses: ./.github/workflows/python-install.yml
   package:
-    needs: tests
+    needs: [tests, dependency-tests]
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     environment: release
@@ -24,13 +26,19 @@ jobs:
       - name: Prepare builder
         run: |
           sudo apt-get update
-          sudo apt-get install -y python3-venv gnupg
+          sudo apt-get install -y python3-venv gnupg postgresql postgresql-client curl
           python3 -m venv venv
           venv/bin/pip install -r requirements.txt
       - name: Build complete release with hashed wheels
         run: |
           mkdir -p "$RUNNER_TEMP/freo-release"
           venv/bin/python scripts/build-release.py --output "$RUNNER_TEMP/freo-release/freo-${GITHUB_REF_NAME}.tar.gz"
+      - name: Test the actual archive offline before signing
+        run: |
+          mkdir "$RUNNER_TEMP/packaged-source"
+          tar -xzf "$RUNNER_TEMP/freo-release/freo-${GITHUB_REF_NAME}.tar.gz" -C "$RUNNER_TEMP/packaged-source"
+          bash "$RUNNER_TEMP/packaged-source/scripts/install-python.sh" "$RUNNER_TEMP/packaged-source" "$RUNNER_TEMP/packaged-venv" --offline
+          sudo python3 "$RUNNER_TEMP/packaged-source/scripts/test-install-postgres.py" "$RUNNER_TEMP/packaged-source" "$RUNNER_TEMP/packaged-venv" "$RUNNER_TEMP/package-install-evidence"
       - name: Sign candidate and generate common website/API index
         env:
           FREO_RELEASE_SIGNING_KEY: ${{ secrets.FREO_RELEASE_SIGNING_KEY }}
@@ -55,4 +63,10 @@ jobs:
           name: freo-signed-release-candidate
           path: ${{ runner.temp }}/freo-release/
           if-no-files-found: error
+          retention-days: 30
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: always()
+        with:
+          name: package-install-evidence
+          path: ${{ runner.temp }}/package-install-evidence/
           retention-days: 30

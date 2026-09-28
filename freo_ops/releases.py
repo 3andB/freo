@@ -135,6 +135,12 @@ def build(root, destination, *, development=False, wheelhouse=None):
             (payload / 'requirements.lock').write_text(lock_wheels(wheels))
         elif not development:
             raise RecoveryError('A public release must include locked dependency wheels')
+        if not development:
+            # Validate the exact payload using the installer's path and a truly
+            # empty venv, including user-supplied wheelhouses. The builder's own
+            # installed packages must never hide missing release dependencies.
+            run(['bash', str(payload / 'scripts/install-python.sh'), str(payload),
+                 str(work / 'validation-venv'), '--offline'])
         manifest = dict(format=1, version=version, commit=commit, development=development,
                         platform='ubuntu-24.04-x86_64', python='3.12',
                         schema_head=migration_head(root),

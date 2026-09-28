@@ -1,5 +1,28 @@
 # Fresh Ubuntu 24.04 acceptance test
 
+For **0.3.1**, use the [new kit instructions](0.3.1-installation.md) on a virgin
+Ubuntu 24.04 x86_64 VM. Save the kit SHA256, installed version, installer log and
+`scripts/validate-install.sh` output. Confirm `venv/bin/python -m pip check`,
+`venv/bin/python -m freo_ops.dependencies --live-mic`, migrations at
+`c83d4e5f9012`, `/health`, `/ready`, first login/password replacement, station
+playback and reboot persistence. Also complete HTTPS/microphone checks if used.
+Record the exact installed dependency versions with `venv/bin/python -m pip freeze`.
+The automated disposable database tests are package checks, not VM acceptance.
+
+Maintainers can reproduce those package checks without touching installed state:
+
+```bash
+bash /path/to/extracted-kit/scripts/install-python.sh /path/to/extracted-kit /tmp/freo-package-venv --offline
+sudo python3 /path/to/extracted-kit/scripts/test-install-postgres.py /path/to/extracted-kit /tmp/freo-package-venv /tmp/freo-package-evidence
+```
+
+Use new output/venv directories. The runner requires PostgreSQL tools, curl and
+the system `postgres` account. It creates and removes its own UTF-8 PostgreSQL
+cluster under `/tmp`, tests all three PostgreSQL URL forms, and records migration,
+bootstrap, HTTP readiness and Gunicorn restart results. It never sources `.env`.
+
+The following candidate/phase records are historical:
+
 For RC6, start with the [current readiness audit](rc6-release-readiness-2026-09-23.md)
 and its outstanding VM acceptance gates. RC6 is still in development. The rc.3,
 0.2.0, and phase-specific references below are historical checks, not an RC6

@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.3.1 — prepared for fresh-VM acceptance
+
+- Install pinned Psycopg 3 binary wheels automatically, while retaining Psycopg 2
+  for backup/recovery. Pin SQLAlchemy to 2.0.54 so online installs cannot silently
+  change the default PostgreSQL driver.
+- Share Python installation and smoke checks between fresh installs, staged
+  upgrades and the release builder. Fail incomplete kits without online fallback.
+- Validate generated and supplied wheelhouses in empty virtual environments;
+  require both drivers and the Flask migration command before database setup
+  or stopping existing services.
+- Gate release signing on offline package installation, real PostgreSQL
+  migrations, bootstrap, readiness and Gunicorn restart checks. Add Ubuntu 24.04
+  CI coverage for every requirements entry point.
+
+No application schema change; head remains `c83d4e5f9012`. Historical release
+artifacts are preserved. See [installation and repair](docs/0.3.1-installation.md).
+Fresh-VM provisioning, radio, HTTPS, reboot and public publication remain pending.
+
 ## 0.3.0 — staged for publication
 
 This production installer is prepared from tested RC9 source

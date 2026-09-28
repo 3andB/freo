@@ -301,10 +301,8 @@ def upgrade(artifact, signature, keyring, env_file, backup, passphrase, verifica
                 atomic_json(journal_path, journal)
                 return dict(status='preflight_passed', version=manifest['version'], schema_revision=revision,
                             note='Backup/restore, dependency installation and service checks still run during upgrade')
-            recovery.run(['python3', '-m', 'venv', str(release / 'venv')], umask=0o022)
-            recovery.run([str(release / 'venv/bin/pip'), 'install', '--no-index', '--require-hashes',
-                          '--find-links', str(release / 'wheels'), '-r', str(release / 'requirements.lock')], umask=0o022)
-            recovery.run([str(release / 'venv/bin/pip'), 'check'])
+            recovery.run(['bash', str(release / 'scripts/install-python.sh'),
+                          str(release), str(release / 'venv'), '--offline'], umask=0o022)
             sync_release(release)
             # Preserve the precise active unit list; stopped stations remain stopped.
             journal['active_units'] = active_units()

@@ -60,6 +60,8 @@ def host(tmp_path, monkeypatch):
 
     def run(command, **kwargs):
         calls.append(command)
+        if command[-1:] == ['--offline'] and info['failure'] == 'dependencies':
+            raise recovery.RecoveryError('Dependency smoke check failed')
         if command[:2] == ['systemctl', 'stop']:
             active.clear()
         if command[:2] == ['systemctl', 'start']:
@@ -106,6 +108,9 @@ def host(tmp_path, monkeypatch):
 def test_upgrade_orders_backup_restore_migration_preservation_and_activation(host):
     result = host.execute()
     assert result['status'] == 'complete'
+    dependencies = next(i for i, call in enumerate(host.calls) if isinstance(call, list) and call[-1:] == ['--offline'])
+    stopping = next(i for i, call in enumerate(host.calls) if isinstance(call, list) and call[:2] == ['systemctl', 'stop'])
+    assert dependencies < stopping
     migration = next(i for i, call in enumerate(host.calls) if isinstance(call, list) and call[-2:] == ['db', 'upgrade'])
     assert host.calls.index('backup') < host.calls.index('restore-verified') < migration < host.calls.index('preservation-verified')
     assert host.root.joinpath('current').is_symlink()
@@ -116,6 +121,16 @@ def test_upgrade_orders_backup_restore_migration_preservation_and_activation(hos
     journal = json.loads((host.state / 'journal.json').read_text())
     assert journal['phase'] == 'complete' and len(journal['previous_units']) == 2
     assert all('dropdb' not in str(call) and '--clean' not in str(call) for call in host.calls)
+
+
+def test_bad_dependencies_never_stop_services_or_migrate(host):
+    host.info['failure'] = 'dependencies'
+    with pytest.raises(recovery.RecoveryError, match='Dependency smoke check failed'):
+        host.execute()
+    assert host.active == ['freo.service', 'freo-automation.service']
+    assert 'backup' not in host.calls
+    assert not any(isinstance(call, list) and call[-2:] == ['db', 'upgrade'] for call in host.calls)
+    assert not (host.state / 'maintenance').exists()
 
 
 @pytest.mark.parametrize('failure', ['signature', 'backup', 'migration', 'preservation', 'start'])
