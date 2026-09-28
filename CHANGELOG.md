@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.3.2 — stable artifact staged for final fresh-VM acceptance
+
+Promote accepted 0.3.2-rc.1 commit
+`96e034fc2ac5bde289e81e06859d1a8f01ddae70` with version metadata, its test
+expectation and release/install documentation only. Application and installer
+logic, dependency pins and wheels, schema, services and package inventory are
+unchanged. The owner reports RC fresh-VM installation, setup, station creation,
+upload/playback, reboot, persistence and post-reboot validation passed.
+
+The exact signed 0.3.2 artifact still requires its own fresh Ubuntu 24.04 x86_64
+acceptance. It has not been publicly published. See the
+[stable installation guide](docs/stable-installation.md).
+
 ## 0.3.2-rc.1 — signed test candidate; fresh-VM acceptance pending
 
 - Validate the saved Freo public origin through local Nginx, preserving HTTP

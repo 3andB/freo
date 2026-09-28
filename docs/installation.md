@@ -6,8 +6,8 @@
 
 # Installation and deployment
 
-For the latest signed test kit, begin with [0.3.2-rc.1 installation](0.3.2-rc.1-installation.md).
-Fresh-VM acceptance of this kit is pending.
+For the staged 0.3.2 stable kit, begin with [stable installation](stable-installation.md).
+The RC passed owner fresh-VM acceptance; final acceptance of the exact stable kit is pending.
 Publication is separate from package preparation. Historical candidate instructions
 remain in [candidate installation](install-candidate.md).
 For existing installations, use [recovery and upgrades](recovery-and-upgrades.md) for existing

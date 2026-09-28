@@ -1,6 +1,8 @@
 # Fresh Ubuntu 24.04 acceptance test
 
-For **0.3.2-rc.1**, use the [new test kit guide](0.3.2-rc.1-installation.md).
+For **0.3.2**, use the [stable kit guide](stable-installation.md).
+The owner accepted 0.3.2-rc.1 on a fresh VM; repeat this test with the exact signed
+0.3.2 artifact before publication.
 Confirm separate LOCAL APPLICATION VALIDATION and EXTERNAL ACCESS VALIDATION
 results and the exact admin URL. Local Nginx/CSRF/login failures remain fatal;
 external/hairpin failures are reported independently. The package runner now

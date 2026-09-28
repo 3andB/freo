@@ -1,112 +1,115 @@
-> For the 0.3.1 dependency-fix kit and fresh-VM test, see
-> [0.3.1 installation](0.3.1-installation.md). The 0.3.0 record below is historical.
+# Freo 0.3.2 stable installation kit
 
-# Freo 0.3.0 installation
+This is the actual stable installation artifact, staged privately for final
+fresh-VM acceptance before publication. Its baseline is accepted 0.3.2-rc.1
+commit `96e034fc2ac5bde289e81e06859d1a8f01ddae70`. Only version metadata, its
+test expectation and release/install documentation change. Runtime behavior,
+installer, dependencies and archive structure are retained. Schema remains
+`c83d4e5f9012`. Earlier release artifacts remain unchanged.
 
-Status: **installer staged for publication**. A signed package, local tag or
-merge to main does not announce a public release. Publication requires a separate
-approved stable GitHub Release in `3andB/freo`. Never replace the RC9 artifact
-with this package: 0.3.0 has its own version, source commit, signature and hashes.
+The owner reports the RC passed fresh Ubuntu 24.04 x86_64 installation,
+first-time setup, station creation, music upload/playback, reboot, automatic
+service recovery, persistence and post-reboot validation with no failed units.
+This evidence applies to the RC; test these exact stable bytes again.
 
-## Requirements
+## Verify the kit
 
-Use a **fresh Ubuntu 24.04 x86_64 VM**, with SSH and inbound HTTP/HTTPS as
-needed. Allow space for music, an encrypted backup and a restore verification.
-The package bundles hash-locked Python wheels; Ubuntu/Xiph system packages
-require network access. No Freo Live account or payment is required.
-
-Existing installations must use the [verified updater](recovery-and-upgrades.md).
-Do not run the fresh installer over an existing installation.
-
-## Obtain and verify
-
-Until publication, obtain `freo-v0.3.0-install-kit.tar` and `KIT-SHA256SUMS`
-from the publisher via SCP/SFTP. Do not assume a public download exists.
+Obtain `freo-v0.3.2-install-kit.tar` and `KIT-SHA256SUMS` from the publisher.
+Use a new Ubuntu 24.04 x86_64 VM. After transferring both files:
 
 ```bash
 sha256sum --check KIT-SHA256SUMS
-tar -xf freo-v0.3.0-install-kit.tar
-cd freo-install-kit
+tar -xf freo-v0.3.2-install-kit.tar
+cd freo-test-kit
 sudo apt-get update
 sudo apt-get install -y ca-certificates gnupg
 sha256sum --check SHA256SUMS
-gpg --show-keys --with-fingerprint ./publisher.gpg
+gpg --show-keys --with-fingerprint publisher.gpg
 ```
 
-Confirm the primary signing fingerprint against this independently supplied value:
+The independently supplied primary publisher fingerprint must be:
 
 `B835B40E7E1A5838390256751AB72B63BEB716C3`
 
 ```bash
-gpgv --keyring "$PWD/publisher.gpg" \
-  freo-v0.3.0.tar.gz.asc freo-v0.3.0.tar.gz
-mkdir freo-v0.3.0
-tar -xzf freo-v0.3.0.tar.gz -C freo-v0.3.0
-cd freo-v0.3.0
+gpgv --keyring "$PWD/publisher.gpg" freo-v0.3.2.tar.gz.asc freo-v0.3.2.tar.gz
+mkdir freo-v0.3.2
+tar -xzf freo-v0.3.2.tar.gz -C freo-v0.3.2
+cd freo-v0.3.2
 ```
 
-Stop if any verification fails. The kit contains only the public verification
-key; never transfer private signing material to an installation.
+Stop if verification fails. Private signing material is never included.
 
 ## Install once
 
-Choose one mode. For HTTP, replace the example with your public IP or domain:
+For HTTP, substitute this new VM's public IP or hostname:
 
 ```bash
-sudo env FREO_DOMAIN=YOUR_PUBLIC_IP_OR_DOMAIN bash scripts/install.sh
+sudo env FREO_DOMAIN=YOUR_NEW_VM_IP_OR_HOSTNAME bash scripts/install.sh
 ```
 
-For HTTPS, first point your domain at the VM, then instead run:
+For HTTPS, first point your hostname to the new VM and allow inbound ports
+80 and 443, then instead run:
 
 ```bash
 sudo env FREO_DOMAIN=radio.example.com FREO_ENABLE_HTTPS=1 \
   FREO_CERTBOT_EMAIL=you@example.com bash scripts/install.sh
 ```
 
-Use real domain/email values. HTTPS is required for microphone capture from
-remote browsers. Do not rerun the installer to change modes or upgrade.
+Use real values. Do not run this fresh installer over an existing installation.
+HTTPS still requires successful certificate issuance and normal certificate
+verification. No certificate-check bypass is introduced.
 
-## First use
+## What success looks like
 
-Open the printed `/admin/login` URL. Sign in as **admin** with the initial
-password **IAmOnTheAir**. Mandatory setup requires your email and a new password
-of at least 16 characters. The initial password then stops working. The primary
-admin receives access to `/admin/software` automatically.
+For an HTTP installation configured with `FREO_DOMAIN=143.198.117.46`, the final
+output includes:
 
-Create a station in Admin, import music you can broadcast, configure programming
-and start playback. No demo stations or music are seeded.
+```text
+LOCAL APPLICATION VALIDATION — PASSED: Freo/Nginx/admin login; setup remains unclaimed.
+EXTERNAL ACCESS VALIDATION — PASSED from this VM (public URL/TLS where enabled). Confirm access from another device.
+Freo service and database checks passed.
 
-```bash
-cd /opt/freo
-sudo venv/bin/python -c 'from app.version import VERSION; print(VERSION)'
-sudo bash scripts/validate-install.sh
+Freo installation complete.
+Open: http://143.198.117.46/admin/login
+Sign in with username admin and password IAmOnTheAir.
 ```
 
-The installed version must be `0.3.0`, also shown in Admin → Installation and
-reported through the existing heartbeat. Latest stable may remain Unknown
-until Freo Live discovers a published stable GitHub Release. Preparing this
-package does not update that service's latest version.
+The printed address always uses your configured IP/hostname and HTTP/HTTPS mode.
+Sign in, then complete mandatory setup with your email and a new password.
+No demo station or media is seeded.
 
-Verify first login, Software access, music import, programming, external playback
-and restart persistence. For HTTPS, also verify `sudo certbot renew --dry-run`
-and microphone return to the previous feed. The kit's `validation.json` separates
-completed automated checks from operator/VM acceptance. A stable version number
-alone does not prove acceptance.
+Local validation connects to `127.0.0.1` while preserving the saved public origin
+for Host, session cookies, redirects, TLS SNI and certificate verification. It
+checks the actual Nginx vhost, CSRF and initial login through mandatory setup,
+without claiming setup or changing the password. Local validation failures still
+stop the installer and identify the failed stage.
 
-## Recovery and support
+External validation separately requests the public login page, without sending
+admin credentials. If public DNS, a firewall, TLS or hairpin routing prevents
+that VM from reaching its own public address, it reports **NOT CONFIRMED**.
+The successful local result remains valid and installation completes with the
+admin URL. Open it from another device to check actual external access. A probe
+from the VM cannot establish reachability from every external network.
 
-Retain installer output on failure. Do not delete state and rerun blindly. Use
-[recovery and upgrades](recovery-and-upgrades.md) for backups and signed upgrades.
-Upgrades from older candidates require a fresh admin sign-in because the logout
-fix revokes sessions at the server. Accounts and station data remain intact.
+## Acceptance on this VM
 
-Diagnostics:
+Save the kit checksum, installer exit status and final output. Confirm:
 
-```bash
-sudo systemctl --failed --no-pager
-sudo journalctl -u freo.service -u freo-central-api.service \
-  -u freo-provision.service -u freo-ingest.service \
-  --since '15 minutes ago' -n 120 --no-pager
-```
+1. Local validation passes and prints the correct admin URL. A different default
+   Nginx vhost may return 404 for a plain localhost request; Freo's configured
+   Host request must reach Freo.
+2. First login and password replacement work from another device. Software
+   access and the installed version show `0.3.2`.
+3. `sudo bash /opt/freo/scripts/validate-install.sh` passes local application and
+   service/database checks, with external access reported separately.
+4. Create a station, import permitted audio, program and play it externally.
+5. Reboot and confirm services, login, station state and playback recover.
+6. If using HTTPS, check browser certificate validity, `sudo certbot renew
+   --dry-run`, microphone use and return to the prior feed. The automated TLS
+   fixtures do not prove public certificate issuance or renewal on your VM.
 
-Never share `.env`, installation identity files, passwords or bearer tokens.
+`validation.json` records the exact source, artifact and automated checks. Full
+VM provisioning, external access and reboot acceptance remain owner test items.
+No release or latest pointer has been published. Publish only the accepted exact
+signed bytes; CI builds a separate artifact that needs its own validation.
