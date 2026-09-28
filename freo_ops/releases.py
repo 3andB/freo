@@ -139,8 +139,14 @@ def build(root, destination, *, development=False, wheelhouse=None):
             # Validate the exact payload using the installer's path and a truly
             # empty venv, including user-supplied wheelhouses. The builder's own
             # installed packages must never hide missing release dependencies.
+            inventory = {str(p.relative_to(payload)): digest(p)
+                         for p in payload.rglob('*') if p.is_file()}
             run(['bash', str(payload / 'scripts/install-python.sh'), str(payload),
-                 str(work / 'validation-venv'), '--offline'])
+                 str(work / 'validation-venv'), '--offline'],
+                env=dict(os.environ, PYTHONDONTWRITEBYTECODE='1'))
+            if inventory != {str(p.relative_to(payload)): digest(p)
+                             for p in payload.rglob('*') if p.is_file()}:
+                raise RecoveryError('Dependency validation modified release payload')
         manifest = dict(format=1, version=version, commit=commit, development=development,
                         platform='ubuntu-24.04-x86_64', python='3.12',
                         schema_head=migration_head(root),

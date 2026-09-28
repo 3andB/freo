@@ -75,7 +75,8 @@ def test_disconnected_migrations_are_rejected(source):
         releases.migration_head(source)
 
 
-def test_public_build_validates_supplied_wheels_before_writing_archive(source, tmp_path, monkeypatch):
+@pytest.mark.parametrize('failure', ['missing-driver', 'generated-bytecode'])
+def test_public_build_validates_supplied_wheels_before_writing_archive(source, tmp_path, monkeypatch, failure):
     (source / 'LICENSE').write_text('Fixture license\n')
     recovery.run(['git', '-C', str(source), 'add', 'LICENSE'])
     recovery.run(['git', '-C', str(source), '-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.test',
@@ -96,12 +97,18 @@ def test_public_build_validates_supplied_wheels_before_writing_archive(source, t
             assert command[-1] == '--offline'
             assert not Path(command[-2]).exists()
             assert (Path(command[2]) / 'requirements.lock').is_file()
+            assert kwargs['env']['PYTHONDONTWRITEBYTECODE'] == '1'
             checks.append(command)
-            raise recovery.RecoveryError('Incomplete runtime dependencies')
+            if failure == 'missing-driver':
+                raise recovery.RecoveryError('Incomplete runtime dependencies')
+            cache = Path(command[2]) / 'app/__pycache__'
+            cache.mkdir()
+            (cache / 'fixture.pyc').write_bytes(b'unexpected bytecode')
+            return b''
         return original(command, **kwargs)
     monkeypatch.setattr(releases, 'run', run)
     target = tmp_path / 'rejected.tar.gz'
-    with pytest.raises(recovery.RecoveryError, match='Incomplete runtime dependencies'):
+    with pytest.raises(recovery.RecoveryError, match='Incomplete runtime dependencies|modified release payload'):
         releases.build(source, target, wheelhouse=wheelhouse)
     assert len(checks) == 1 and not target.exists()
 
