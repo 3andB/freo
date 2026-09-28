@@ -22,9 +22,10 @@ def test_dependency_check_ignores_real_environment_and_registers_migrations(tmp_
     assert report['drivers'] == {'postgresql': 'psycopg2', 'postgresql+psycopg': 'psycopg',
                                  'postgresql+psycopg2': 'psycopg2'}
     assert report['migration_cli'] == 'passed'
+    assert report['packages']['packaging'] == '26.3'
 
 
-@pytest.mark.parametrize('missing', ['psycopg', 'psycopg_binary', 'psycopg2'])
+@pytest.mark.parametrize('missing', ['psycopg', 'psycopg_binary', 'psycopg2', 'packaging'])
 def test_dependency_check_rejects_missing_drivers(missing):
     probe = '''
 import importlib.abc, runpy, sys

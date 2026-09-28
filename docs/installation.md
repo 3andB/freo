@@ -6,7 +6,7 @@
 
 # Installation and deployment
 
-For the latest signed test kit, begin with [0.3.2-rc.1 installation](0.3.2-rc.1-installation.md).
+For the latest signed test kit, begin with [0.3.2-rc.2 installation](0.3.2-rc.2-installation.md).
 Fresh-VM acceptance of this kit is pending.
 Publication is separate from package preparation. Historical candidate instructions
 remain in [candidate installation](install-candidate.md).

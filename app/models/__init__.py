@@ -834,6 +834,7 @@ class TimedEvent(db.Model):
 class TimedEventOccurrence(db.Model):
     __tablename__ = 'timed_event_occurrences'
     __table_args__ = (
+        db.Index('ix_event_due', 'station_id', 'state', 'scheduled_for_utc'),
         db.UniqueConstraint('timed_event_id', 'scheduled_for_utc', name='uq_timed_occurrence_instant'),
         db.CheckConstraint("state IN ('PENDING','READY','QUEUED','STARTED','COMPLETED','MISSED','FAILED','CANCELLED')", name='ck_timed_occurrence_state'),
     )

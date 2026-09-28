@@ -128,10 +128,19 @@ an exact `v<app/version.py>` tag, and Ubuntu 24.04 x86_64/Python 3.12.
 The publisher signs the complete archive. Provision its public keyring through a
 trusted channel and verify its fingerprint independently. Do not trust a new
 key merely because it arrived beside a download. On a legacy installation that
-lacks `freo_ops`, first verify the candidate signature with `gpgv`, extract the
-trusted tools to a separate directory, and run them with the existing virtual
-environment's Python from that directory. Never copy candidate code over the
-active application to obtain an updater.
+lacks `freo_ops`, first verify the candidate signature with `gpgv` and extract the
+trusted tools to a separate directory. For upgrades from older releases, use the
+verified candidate's bundled dependencies in a separate tools venv; older venvs
+may lack the updater's `packaging` dependency. From the extracted candidate:
+
+```bash
+bash scripts/install-python.sh "$PWD" /PRIVATE/freo-upgrade-venv --offline
+/PRIVATE/freo-upgrade-venv/bin/python -m freo_ops --help
+```
+
+Use that Python for the upgrade commands below, from the verified candidate
+directory. Never copy candidate code over the active application to obtain an
+updater. No unpinned dependency installation is needed.
 
 Begin from a matching installed code/schema pair. A checkout already replaced
 in place with candidate code but still using the old schema is not a verified

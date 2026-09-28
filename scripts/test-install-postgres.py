@@ -28,7 +28,8 @@ def main():
     if os.geteuid() != 0:
         parser.error('Run as root: the installer admin bootstrap requires it')
     source, venv, output = (p.resolve() for p in (args.source, args.venv, args.output))
-    sys.path.insert(0, str(source))
+    # Acceptance fixtures live in this checkout, never in the customer archive.
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from tests.nginx_fixture import nginx_vhost
     output.mkdir(parents=True, exist_ok=False)
     pg_bin = Path(subprocess.check_output(['pg_config', '--bindir'], text=True).strip())

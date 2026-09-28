@@ -413,7 +413,16 @@ def test_event_bus_waits_for_dj_boundary_and_preserves_mode(app,tmp_path,monkeyp
                     cart_observed=True
                 if any(r[:2]==['END','3'] for r in records()):break
                 time.sleep(.1)
-            starts={int(r[0]):float(r[1]) for r in records() if r[0]!='END'}
+            observed = records()
+            assert all(r[0].isdigit() or r[0] in ('END', 'HANDOFF') for r in observed), observed
+            starts={int(r[0]):float(r[1]) for r in observed if r[0].isdigit()}
+            handoffs = [r for r in observed if r[0] == 'HANDOFF']
+            if deck != 'AUTO' and operation not in ('CLEAR', 'MODE'):
+                # Natural DJ completion must report the correct deck/decision,
+                # and preserve the event reservation through the handoff.
+                handoff = next(r for r in handoffs if r[2:4] == [deck, '1'])
+                assert float(handoff[1]) >= starts[1] + 5.5, handoff
+                assert 'event=123' in handoff, handoff
             assert 2 in starts,records()
             if operation not in ('CLEAR','MODE'):assert starts[2]-starts[1]>=5.5,records()
             elif operation=='MODE':assert starts[2]-starts[1]>=2.5,records()

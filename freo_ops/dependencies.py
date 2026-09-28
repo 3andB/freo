@@ -9,6 +9,10 @@ def check(*, live_mic=False):
     import psycopg
     import psycopg2
     from sqlalchemy import create_engine
+    from packaging.version import Version
+
+    if not Version('0.3.2-rc.2') < Version('0.3.2'):
+        raise RuntimeError('Upgrade version comparison failed')
 
     if psycopg.pq.__impl__ != 'binary':
         raise RuntimeError('Freo requires the psycopg[binary] distribution')
@@ -31,7 +35,7 @@ def check(*, live_mic=False):
         raise RuntimeError('Flask migration command failed to load') from result.exception
     with app.app_context():
         db.engine.dispose()
-    packages = ['SQLAlchemy', 'psycopg', 'psycopg-binary', 'psycopg2-binary']
+    packages = ['SQLAlchemy', 'psycopg', 'psycopg-binary', 'psycopg2-binary', 'packaging']
     if live_mic:
         import aiortc  # noqa: F401
         import aiohttp  # noqa: F401

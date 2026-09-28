@@ -2,7 +2,7 @@
 import os
 from uuid import UUID
 import pytest
-from sqlalchemy import text
+from sqlalchemy import inspect, text
 from app import create_app
 from app.extensions import db
 from app.models import Station
@@ -33,6 +33,9 @@ def test_station_uuid_migration_and_schema(monkeypatch):
     migrate('upgrade')
     migrate('check')
     with app.app_context():
+        index = next(i for i in inspect(db.engine).get_indexes('timed_event_occurrences') if i['name'] == 'ix_event_due')
+        assert index['column_names'] == ['station_id', 'state', 'scheduled_for_utc']
+        assert not index['unique']
         station = Station.query.one()
         identity = station.freo_station_id
         assert UUID(identity).version == 4
@@ -43,7 +46,8 @@ def test_station_uuid_migration_and_schema(monkeypatch):
     migrate('upgrade')
     with app.app_context():
         assert Station.query.one().freo_station_id == identity
-    migrate('downgrade', 'c07d9a21b634')
+    refused = runner.invoke(args=['db', 'downgrade', 'c07d9a21b634'])
+    assert refused.exit_code != 0 and 'matched recovery point' in refused.output
     migrate('upgrade')
     migrate('check')
 
@@ -66,9 +70,11 @@ def test_license_channel_limit_serializes_concurrent_enables(monkeypatch):
         db.session.add(CentralInstallation(id=1, manager_email='manager@example.org',
             installation_id=payload['installation_id'], registration_state='registered',
             license_cache={'entitlement': payload, 'received_at': time.time(), 'checked_at': time.time()}))
-        db.session.add_all([Station(name='One', slug='one', enabled=False), Station(name='Two', slug='two', enabled=False)])
+        # A stale remote one-station quota cannot restrict the local free tier.
+        db.session.add_all([Station(name='One', slug='one'), Station(name='Two', slug='two')])
+        db.session.add_all([Station(name='Three', slug='three', enabled=False), Station(name='Four', slug='four', enabled=False)])
         db.session.commit()
-        ids = [station.id for station in Station.query]
+        ids = [station.id for station in Station.query.filter_by(enabled=False)]
     barrier = Barrier(2)
     def enable(station_id):
         with application.app_context():
@@ -77,10 +83,11 @@ def test_license_channel_limit_serializes_concurrent_enables(monkeypatch):
             try:
                 set_enabled(station, True)
                 return True
-            except ValueError:
+            except ValueError as error:
                 db.session.rollback()
+                assert 'three stations' in str(error)
                 return False
     with ThreadPoolExecutor(max_workers=2) as pool:
         assert sorted(pool.map(enable, ids)) == [False, True]
     with application.app_context():
-        assert Station.query.filter_by(enabled=True).count() == 1
+        assert Station.query.filter_by(enabled=True).count() == 3

@@ -1,6 +1,6 @@
 # Fresh Ubuntu 24.04 acceptance test
 
-For **0.3.2-rc.1**, use the [new test kit guide](0.3.2-rc.1-installation.md).
+For **0.3.2-rc.2**, use the [new test kit guide](0.3.2-rc.2-installation.md).
 Confirm separate LOCAL APPLICATION VALIDATION and EXTERNAL ACCESS VALIDATION
 results and the exact admin URL. Local Nginx/CSRF/login failures remain fatal;
 external/hairpin failures are reported independently. The package runner now
@@ -22,7 +22,7 @@ Maintainers can reproduce those package checks without touching installed state:
 
 ```bash
 bash /path/to/extracted-kit/scripts/install-python.sh /path/to/extracted-kit /tmp/freo-package-venv --offline
-sudo python3 /path/to/extracted-kit/scripts/test-install-postgres.py /path/to/extracted-kit /tmp/freo-package-venv /tmp/freo-package-evidence
+sudo python3 /path/to/source-checkout/scripts/test-install-postgres.py /path/to/extracted-kit /tmp/freo-package-venv /tmp/freo-package-evidence
 ```
 
 Use new output/venv directories. The runner requires PostgreSQL tools, curl and
@@ -111,3 +111,5 @@ Create a disabled stopset, add approved imaging and track items, reorder, valida
 ## Phase 13 traffic checks
 
 Create a COMMERCIAL imaging asset, advertiser, active campaign, creative, weekday/daypart rule, and stopsets with commercial inventory. Generate a draft and verify deterministic distribution, capacity, separation, and unscheduled demand. Finalize explicitly, confirm EventBlock materialization, then verify AIRED only after Liquidsoap confirmation. Export CSV, exercise a missed placement and makegood, test CSRF/IDOR, and confirm both streams remain live.
+
+Acceptance tooling and fixtures run from the source checkout. They are excluded from the customer archive and installed application. The package smoke test accepts the extracted customer source and its separately installed venv.

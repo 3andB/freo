@@ -57,7 +57,13 @@ def test_cart_glow_global_lock_and_completion_in_both_modes(booth, delayed_statu
                 const holdStatus = String(url).endsWith('/live-status') &&
                     options?.credentials === 'same-origin' && commandComplete;
                 const response = await original.call(this, url, options);
-                if (String(url).endsWith('/fire-cart') && options?.method === 'POST') commandComplete = true;
+                if (String(url).endsWith('/fire-cart') && options?.method === 'POST') {
+                    // Arm after the command body has been read. Arming at
+                    // fetch completion races a background poll while JSON is
+                    // still loading, holding that poll instead of refresh(true).
+                    const read = response.json.bind(response);
+                    response.json = async () => {const body = await read(); commandComplete = true; return body;};
+                }
                 // A response already in flight may arrive after restoration.
                 else if (holdStatus && !restored) {
                     await new Promise(resolve => {

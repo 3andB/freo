@@ -270,6 +270,7 @@
   }, stop, audio, levels:monitorLevels};
 
   let navigating = false;
+  let pendingHistoryNavigation = null;
   const dirtyForms = new Set();
   // Browser fragment navigation also emits popstate. Track the rendered page,
   // since location has already changed by the time a history event arrives.
@@ -277,7 +278,12 @@
   const remember = () => history.replaceState({...history.state, freo: true, scroll: scrollY}, '', location.href);
   const isPage = url => url.origin === location.origin && !/\/(api|stream|static)\//.test(url.pathname) && !/\/(audition|artwork|export|download)(\/|$)/.test(url.pathname);
   async function navigate(url, options = {}) {
-    if (navigating) return;
+    if (navigating) {
+      // Back/Forward changes the URL even while page scripts are loading.
+      // Render the latest history destination as soon as this load finishes.
+      if (options.pop) pendingHistoryNavigation = url;
+      return;
+    }
     const guard=window.FreoPage.beforeNavigate || (!options.submitted && window.FreoPage.beforeLeave);
     if (guard) {
       if (!await guard()) {
@@ -295,6 +301,7 @@
       if (requestedHash) destination.hash = requestedHash;
       const next = new DOMParser().parseFromString(await response.text(), 'text/html');
       if (!next.querySelector('#main')) throw new Error('Page unavailable');
+      if (pendingHistoryNavigation) return;
       if (!options.pop) remember();
       window.FreoPage.dispose(); window.FreoPage = makeScope();
       document.querySelectorAll('audio,video').forEach(el => {if (el !== audio) {el.pause(); el.removeAttribute('src'); el.load();}});
@@ -320,7 +327,13 @@
     } catch (_) {
       const notice = document.createElement('p'); notice.className = 'admin-notice error'; notice.setAttribute('role', 'alert');
       notice.textContent = 'This page could not load. Check your connection and try again.'; document.querySelector('#main')?.prepend(notice);
-    } finally {navigating = false; document.documentElement.classList.remove('is-navigating');}
+    } finally {
+      navigating = false; document.documentElement.classList.remove('is-navigating');
+      if (pendingHistoryNavigation) {
+        const destination = pendingHistoryNavigation; pendingHistoryNavigation = null;
+        navigate(destination, {pop: true});
+      }
+    }
   }
   const prepareForms = () => document.querySelectorAll('form').forEach(form => {form.noValidate = true;});
   document.addEventListener('input', event => {const form=event.target.closest('form[method="post"]');if(form)dirtyForms.add(form);});
@@ -350,7 +363,7 @@
     else navigate(url.href, {submitted: true, request: {method: 'POST', body: data}});
   });
   window.addEventListener('popstate', () => {
-    if (location.pathname + location.search === renderedPage) return;
+    if (!navigating && location.pathname + location.search === renderedPage) return;
     navigate(location.href, {pop: true});
   });
   window.FreoWorkspace = {navigate};

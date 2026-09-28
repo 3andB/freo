@@ -56,6 +56,26 @@ def test_release_blocks_private_tracked_files_and_symlinks(source):
         releases.source_files(source)
 
 
+def test_customer_archive_excludes_development_files_without_removing_source(source, tmp_path):
+    excluded = ['tests/test_fixture.py', 'tests/data/audio.wav', '.github/workflows/ci.yml',
+                'requirements-dev.txt', 'pytest.ini', 'CONTRIBUTING.md',
+                'app/__pycache__/module.pyc', 'app/.pytest_cache/state',
+                'scripts/test-install-postgres.py', 'scripts/build-release.py',
+                'scripts/license-issuer.py', 'docs/audits/private-review.md', 'docs/rc5-acceptance.md']
+    retained = ['scripts/install.sh', 'scripts/install-python.sh', 'scripts/validate-install.sh',
+                'scripts/validate-admin-login.py', 'docs/installation.md', 'docs/recovery-and-upgrades.md',
+                'deploy/nginx/freo.conf.template', 'app/static/workspace.js', 'LICENSE']
+    for name in excluded + retained:
+        path = source / name; path.parent.mkdir(parents=True, exist_ok=True); path.write_text('fixture\n')
+    target = tmp_path / 'customer.tar.gz'
+    releases.build(source, target, development=True)
+    with tarfile.open(target) as archive:
+        names = set(archive.getnames())
+        assert not names.intersection(excluded)
+        assert set(retained) <= names
+    assert all((source / name).is_file() for name in excluded)
+
+
 def test_wheel_lock_hashes_all_dependencies_and_rejects_duplicate_versions(tmp_path):
     for version in ('1.0',):
         path = tmp_path / f'fixture-{version}-py3-none-any.whl'

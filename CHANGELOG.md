@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.3.2-rc.2 — candidate, acceptance pending
+
+- Preserve Back/Forward navigation received while page scripts are loading.
+- Match event-due model index metadata to the existing PostgreSQL migration.
+- Correct licensing, handoff-log, recovery and browser setup regressions without changing licensing or downgrade safeguards.
+- Isolate PostgreSQL test databases and honor standalone Chrome for system browser tests.
+- Ship runtime files and operator documentation; keep development files and acceptance fixtures in the source checkout.
+- Retain the accepted driver fixes, local-vhost validation and all existing pinned runtime dependencies; explicitly bundle the updater’s previously undeclared packaging dependency.
+
+
 ## 0.3.2-rc.1 — signed test candidate; fresh-VM acceptance pending
 
 - Validate the saved Freo public origin through local Nginx, preserving HTTP

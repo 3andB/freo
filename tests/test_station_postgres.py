@@ -60,7 +60,17 @@ def test_migration_preserves_existing_station_and_limit_serializes_empty_databas
         monkeypatch.setattr(runtime, 'require_root', lambda: None)
         monkeypatch.setattr(runtime, 'run_checked', Mock())
         monkeypatch.setattr('app.services.media._prepare_dirs', Mock())
-        app.config['FREO_MAX_STATIONS'] = 0
+        # Provisioning concurrency is independent of the free-tier test above.
+        # Use a real signed perpetual entitlement for allocations beyond three.
+        import base64
+        import uuid
+        from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+        from app.services.software_license import activate, signing_bytes
+        issuer = Ed25519PrivateKey.generate()
+        app.config['FREO_LICENSE_PUBLIC_KEYS'] = {'fixture': base64.b64encode(issuer.public_key().public_bytes_raw()).decode()}
+        payload = dict(license_id=str(uuid.uuid4()), owner='Concurrency fixture', issued_at='2000-01-01T00:00:00+00:00',
+                       product='Freo', edition='unlimited', updates='all-future', installations='all-owned', expires=None)
+        activate(dict(payload=payload, key_id='fixture', signature=base64.b64encode(issuer.sign(signing_bytes(payload))).decode()))
         pending = create_station('Slow setup', 'slow-setup', pending=True)
         def render_while_allocating(station):
             def allocate():

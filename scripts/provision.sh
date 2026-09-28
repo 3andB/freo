@@ -110,9 +110,20 @@ install -d -o freo -g freo -m 0750 /var/lib/freo/state
 install -d -o icecast2 -g icecast -m 0750 /var/log/icecast2
 # Only named release files are deployed; .env, media, .git and runtime files stay untouched.
 if [[ $source_dir != "$install_dir" ]]; then
-  for directory in app freo_ops migrations deploy scripts docs; do
-    cp -R "$source_dir/$directory" "$install_dir/"
-  done
+  python3 - "$source_dir" "$install_dir" <<'PYTHON'
+import pathlib, runpy, shutil, sys
+source, target = map(pathlib.Path, sys.argv[1:])
+inventory = runpy.run_path(str(source / 'freo_ops/inventory.py'))
+for directory in inventory['DIRECTORIES']:
+    for path in (source / directory).rglob('*'):
+        relative = path.relative_to(source)
+        if inventory['customer_path'](relative.as_posix()) and path.is_file():
+            if path.is_symlink():
+                raise SystemExit('Refusing symlink in installation source: ' + str(relative))
+            destination = target / relative
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(path, destination)
+PYTHON
   install -m 0644 "$source_dir/LICENSE" "$install_dir/LICENSE"
   if [[ -f "$source_dir/release.json" ]]; then
     install -m 0644 "$source_dir/release.json" "$install_dir/release.json"

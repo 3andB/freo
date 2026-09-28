@@ -38,7 +38,7 @@ jobs:
           mkdir "$RUNNER_TEMP/packaged-source"
           tar -xzf "$RUNNER_TEMP/freo-release/freo-${GITHUB_REF_NAME}.tar.gz" -C "$RUNNER_TEMP/packaged-source"
           bash "$RUNNER_TEMP/packaged-source/scripts/install-python.sh" "$RUNNER_TEMP/packaged-source" "$RUNNER_TEMP/packaged-venv" --offline
-          sudo python3 "$RUNNER_TEMP/packaged-source/scripts/test-install-postgres.py" "$RUNNER_TEMP/packaged-source" "$RUNNER_TEMP/packaged-venv" "$RUNNER_TEMP/package-install-evidence"
+          sudo python3 scripts/test-install-postgres.py "$RUNNER_TEMP/packaged-source" "$RUNNER_TEMP/packaged-venv" "$RUNNER_TEMP/package-install-evidence"
       - name: Sign candidate and generate common website/API index
         env:
           FREO_RELEASE_SIGNING_KEY: ${{ secrets.FREO_RELEASE_SIGNING_KEY }}

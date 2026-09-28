@@ -33,12 +33,12 @@ def navigate(driver, path, root_id):
 def system_browser(system_stack):
     stack = system_stack
     options = Options()
-    options.binary_location = '/usr/bin/chromium-browser'
+    options.binary_location = os.environ.get('FREO_TEST_CHROME', '/usr/bin/chromium-browser')
     for argument in ['--headless=new', '--no-sandbox', '--disable-dev-shm-usage',
                      '--window-size=1440,1100', f'--user-data-dir={stack.root}/chrome']:
         options.add_argument(argument)
     options.set_capability('goog:loggingPrefs', {'browser': 'ALL'})
-    driver = webdriver.Chrome(service=Service('/usr/bin/chromedriver'), options=options)
+    driver = webdriver.Chrome(service=Service(os.environ.get('FREO_TEST_CHROMEDRIVER', '/usr/bin/chromedriver')), options=options)
     driver.set_page_load_timeout(30)
     driver.execute_cdp_cmd('Performance.enable', {})
     stack.driver = driver
@@ -48,6 +48,10 @@ def system_browser(system_stack):
         driver.find_element(By.NAME, 'password').send_keys('test-password-long-enough')
         driver.find_element(By.CSS_SELECTOR, '.login-card button[type=submit]').click()
         WebDriverWait(driver, 15).until(lambda d: d.find_elements(By.CSS_SELECTOR, '.admin-sidebar'))
+        WebDriverWait(driver, 10).until(lambda d: d.find_element(By.ID, 'license-agreement').is_displayed())
+        driver.find_element(By.CSS_SELECTOR, '#license-accept-form input[name=agree]').click()
+        driver.find_element(By.CSS_SELECTOR, '#license-accept-form button[type=submit]').click()
+        WebDriverWait(driver, 10).until(lambda d: not d.find_element(By.ID, 'license-agreement').is_displayed())
         yield stack, driver
     finally:
         try:

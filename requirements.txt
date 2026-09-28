@@ -11,3 +11,5 @@ python-dotenv==1.2.3
 dnspython==2.8.0
 maxminddb==3.2.0
 cryptography==50.0.1
+# The operator upgrader compares release versions without importing application code.
+packaging==26.3

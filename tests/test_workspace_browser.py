@@ -1,5 +1,6 @@
 """Persistent audio and modern station workflows in a real browser."""
 from datetime import datetime, timezone
+import pytest
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait, Select
 from selenium.common.exceptions import StaleElementReferenceException
@@ -24,6 +25,39 @@ def test_monitor_survives_navigation_and_preview_requires_reactivation(booth):
     WebDriverWait(driver,8).until(lambda d:d.execute_script('return FreoMonitor.audio.paused'))
     driver.execute_script("document.querySelectorAll('audio').forEach(audio=>audio.pause())")
     assert driver.find_element(By.CSS_SELECTOR,'[data-monitor-station="test-station"] button').get_attribute('aria-pressed')=='false'
+
+
+@pytest.mark.parametrize('forward_while_loading', [False, True])
+def test_back_during_page_script_loading_restores_booth_and_forward(booth, forward_while_loading):
+    app, driver, base, tmp_path = booth
+    driver.execute_script('''
+        const append = Element.prototype.append;
+        Element.prototype.append = function(...nodes) {
+            if (nodes.some(node => node instanceof HTMLScriptElement && node.src)) {
+                Element.prototype.append = append;
+                window.releasePageScript = () => append.apply(this, nodes);
+            } else append.apply(this, nodes);
+        };
+        window.historyPops = 0;
+        window.addEventListener('popstate', () => window.historyPops++);
+    ''')
+    driver.find_element(By.CSS_SELECTOR, '.admin-nav a[href$="/categories"]').click()
+    wait = WebDriverWait(driver, 10)
+    wait.until(lambda d: d.execute_script('return typeof releasePageScript === "function"'))
+    assert driver.execute_script('return document.documentElement.classList.contains("is-navigating")')
+    driver.back()
+    wait.until(lambda d: d.execute_script('return historyPops === 1'))
+    assert driver.current_url == base + '/admin/stations/test-station/live'
+    if forward_while_loading:
+        driver.forward()
+        wait.until(lambda d: d.execute_script('return historyPops === 2'))
+    driver.execute_script('releasePageScript()')
+    if forward_while_loading:
+        wait.until(lambda d: '/categories' in d.current_url and d.find_elements(By.CSS_SELECTOR, '[data-category-row]') and not d.execute_script('return document.documentElement.classList.contains("is-navigating")'))
+        driver.back()
+    wait.until(lambda d: d.find_elements(By.ID, 'dj-booth') and not d.execute_script('return document.documentElement.classList.contains("is-navigating")'))
+    driver.forward()
+    wait.until(lambda d: '/categories' in d.current_url and d.find_elements(By.CSS_SELECTOR, '[data-category-row]'))
 
 
 def test_song_cart_assignment_description_and_modes_in_custom_dialog(booth):

@@ -15,9 +15,11 @@ from email.parser import BytesParser
 
 from .recovery import RecoveryError, digest, run
 
-DIRECTORIES = ('app', 'freo_ops', 'migrations', 'deploy', 'scripts', 'docs', 'tests', '.github')
-FILES = ('wsgi.py', 'requirements.txt', 'requirements-dev.txt', 'requirements-live-mic.txt', 'pytest.ini', '.env.example',
-         'README.md', 'CONTRIBUTING.md', 'SECURITY.md', 'CHANGELOG.md', 'LICENSE')
+from .inventory import DIRECTORIES, FILES, customer_path
+
+# Previously signed releases remain readable for recovery and verification.
+ARCHIVE_DIRECTORIES = (*DIRECTORIES, 'tests', '.github')
+ARCHIVE_FILES = (*FILES, 'requirements-dev.txt', 'pytest.ini', 'CONTRIBUTING.md')
 
 
 def version_at(root):
@@ -67,7 +69,7 @@ def source_files(root):
             raise RecoveryError('Release source must not contain symlinks')
         if (path.name.startswith('.env') and name != '.env.example') or path.name.endswith('.license.json') or path.suffix in ('.key', '.pem', '.dump', '.db', '.sqlite', '.gpg'):
             raise RecoveryError('Private runtime material must not enter release source')
-        if path.is_file() and '__pycache__' not in path.parts and not path.name.endswith(('.pyc', '.bak', '.previous', '.log')):
+        if path.is_file() and customer_path(name):
             result.append(path)
     return result
 
@@ -192,8 +194,8 @@ def _extract_trusted(archive_path, directory):
             path = PurePosixPath(member.name)
             if (not member.isfile() or path.is_absolute() or '..' in path.parts
                     or member.name in seen or not path.parts
-                    or (path.parts[0] not in (*DIRECTORIES, 'wheels')
-                        and member.name not in (*FILES, 'requirements.lock', 'release.json'))):
+                    or (path.parts[0] not in (*ARCHIVE_DIRECTORIES, 'wheels')
+                        and member.name not in (*ARCHIVE_FILES, 'requirements.lock', 'release.json'))):
                 raise RecoveryError('Invalid release archive entry')
             seen.add(member.name)
             target = directory / member.name
