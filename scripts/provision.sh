@@ -134,6 +134,7 @@ chown -R root:root "$install_dir/freo_ops"
 if [[ $source_dir != "$install_dir" ]]; then
   install -m 0644 "$source_dir/wsgi.py" "$install_dir/wsgi.py"
   install -m 0644 "$source_dir/requirements.txt" "$install_dir/requirements.txt"
+  install -m 0644 "$source_dir/requirements-live-mic.txt" "$install_dir/requirements-live-mic.txt"
 fi
 bash "$source_dir/scripts/install-python.sh" "$source_dir" "$install_dir/venv"
 if [[ ! -f "$install_dir/.env" ]]; then

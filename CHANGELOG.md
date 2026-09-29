@@ -10,7 +10,7 @@
 - Correct licensing, handoff-log, recovery and browser setup regressions without changing licensing or downgrade safeguards.
 - Isolate PostgreSQL test databases and honor standalone Chrome for system browser tests.
 - Wait for loaded event results and the replacement statistics page in browser regressions.
-- Ship runtime files and operator documentation; keep development files and acceptance fixtures in the source checkout.
+- Ship runtime files and operator documentation, retain both runtime requirements files in the installed application, and keep development files and acceptance fixtures in the source checkout.
 - Retain the accepted driver fixes, local-vhost validation and all existing pinned runtime dependencies; explicitly bundle the updater’s previously undeclared packaging dependency.
 
 
