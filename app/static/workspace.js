@@ -270,7 +270,7 @@
   }, stop, audio, levels:monitorLevels};
 
   let navigating = false;
-  let pendingHistoryNavigation = null;
+  let pendingNavigation = null;
   const dirtyForms = new Set();
   // Browser fragment navigation also emits popstate. Track the rendered page,
   // since location has already changed by the time a history event arrives.
@@ -279,9 +279,9 @@
   const isPage = url => url.origin === location.origin && !/\/(api|stream|static)\//.test(url.pathname) && !/\/(audition|artwork|export|download)(\/|$)/.test(url.pathname);
   async function navigate(url, options = {}) {
     if (navigating) {
-      // Back/Forward changes the URL even while page scripts are loading.
-      // Render the latest history destination as soon as this load finishes.
-      if (options.pop) pendingHistoryNavigation = url;
+      // Keep the latest history or link destination while a response or its
+      // scripts are loading. Submitted forms must never be replayed here.
+      if (options.pop || !options.request) pendingNavigation = {url, options};
       return;
     }
     const guard=window.FreoPage.beforeNavigate || (!options.submitted && window.FreoPage.beforeLeave);
@@ -291,7 +291,7 @@
         return;
       }
     } else if (dirtyForms.size && !options.submitted && !await FreoDialog.confirm({title: 'Leave unsaved changes?', message: 'Your edits on this page have not been saved. Leave this page and discard them?', confirmLabel: 'Leave page'})) return;
-    if(navigating)return;
+    if(navigating)return navigate(url, options);
     navigating = true; document.documentElement.classList.add('is-navigating');
     try {
       const response = await fetch(url, {credentials: 'same-origin', ...options.request});
@@ -301,7 +301,7 @@
       if (requestedHash) destination.hash = requestedHash;
       const next = new DOMParser().parseFromString(await response.text(), 'text/html');
       if (!next.querySelector('#main')) throw new Error('Page unavailable');
-      if (pendingHistoryNavigation) return;
+      if (pendingNavigation) return;
       if (!options.pop) remember();
       window.FreoPage.dispose(); window.FreoPage = makeScope();
       document.querySelectorAll('audio,video').forEach(el => {if (el !== audio) {el.pause(); el.removeAttribute('src'); el.load();}});
@@ -329,9 +329,9 @@
       notice.textContent = 'This page could not load. Check your connection and try again.'; document.querySelector('#main')?.prepend(notice);
     } finally {
       navigating = false; document.documentElement.classList.remove('is-navigating');
-      if (pendingHistoryNavigation) {
-        const destination = pendingHistoryNavigation; pendingHistoryNavigation = null;
-        navigate(destination, {pop: true});
+      if (pendingNavigation) {
+        const destination = pendingNavigation; pendingNavigation = null;
+        navigate(destination.url, destination.options);
       }
     }
   }

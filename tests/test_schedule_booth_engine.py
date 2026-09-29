@@ -12,6 +12,7 @@ from datetime import datetime, timezone
 import pytest
 
 from app.extensions import db
+from app import automation_worker as worker
 from app.models import AdminUser, BoothCue, Playlist, PlaylistItem, SelectionDecision, Station, Track
 from app.automation_worker import EventReader, tick
 from app.services.booth_cue import mutate
@@ -107,6 +108,17 @@ def test_worker_cue_event_restart_and_return_to_schedule(app, tmp_path, monkeypa
                     late_tolerance_seconds=2, interrupt_dj=interrupt_dj)
                 occurrence = event.occurrences[0]
                 cue = db.session.get(BoothCue, station.id)
+                # Exercise reservation at the due instant, not the speed of
+                # fixture setup and socket round trips within a two-second
+                # deadline. Subsequent ticks use real time, including replay
+                # after the reserved boundary's original deadline has passed.
+                process_dj_events = worker.process_dj_events
+                def at_due_instant(*args, **options):
+                    return process_dj_events(*args, **{**options, 'now': now})
+                with monkeypatch.context() as clock:
+                    clock.setattr(worker, 'process_dj_events', at_due_instant)
+                    tick(reader)
+                assert occurrence.boundary_reserved == interrupt_dj
                 replayed = False
                 deadline = time.monotonic()+45
                 while time.monotonic()<deadline:

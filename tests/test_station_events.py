@@ -211,6 +211,35 @@ def test_dj_permission_defaults_no_and_reserves_only_when_enabled(app,monkeypatc
         assert row.occurrences[0].runtime['dj'] and row.occurrences[0].state=='QUEUED'
 
 
+@pytest.mark.parametrize('seconds_late,reserved', [(0, True), (3, False)])
+def test_dj_event_reservation_obeys_two_second_deadline(app, monkeypatch, seconds_late, reserved):
+    from app import automation_worker as worker
+    from types import SimpleNamespace
+    calls = []
+    monkeypatch.setattr('app.services.media_storage.LocalMediaStorage.regular_file', lambda *a: '/safe')
+    monkeypatch.setattr('app.services.playout_queue.event_bus', lambda slug, operation='state', occurrence_id=None: calls.append(operation) or ('|WAITING' if operation == 'state' else 'OK'))
+    monkeypatch.setattr('app.services.playout_queue.mixer_state', lambda s: {'cart_id': None})
+    monkeypatch.setattr(worker, 'push_decision', lambda d: 90)
+    monkeypatch.setattr(worker, 'socket_identity', lambda s: 'engine')
+    with app.app_context():
+        station, track = station_audio()
+        now = datetime.now(timezone.utc).replace(microsecond=0)
+        row = events.save_event(station.slug, name='Deadline', recurrence_type='ONE_TIME',
+            content_type='TRACK', content_identifier=track.uuid,
+            local_date=now.date().isoformat(), local_time=now.strftime('%H:%M:%S'),
+            late_tolerance_seconds=2, interrupt_dj=True)
+        occurrence = row.occurrences[0]
+        assert events.aware(occurrence.deadline_at_utc) == now + timedelta(seconds=2)
+        assert worker.process_dj_events(station, SimpleNamespace(collect=lambda s: None),
+            now + timedelta(seconds=seconds_late)) == reserved
+        assert occurrence.boundary_reserved == reserved
+        assert occurrence.state == ('QUEUED' if reserved else 'MISSED')
+        assert ('arm' in calls) == reserved
+        if not reserved:
+            assert occurrence.selection_decision is None
+            assert occurrence.failure_reason == 'dj_control'
+
+
 def test_recovered_snapshot_does_not_submit_twice(app,monkeypatch):
     from app import automation_worker as worker
     from app.services.event_blocks import submit_snapshot

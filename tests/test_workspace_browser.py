@@ -60,6 +60,54 @@ def test_back_during_page_script_loading_restores_booth_and_forward(booth, forwa
     wait.until(lambda d: '/categories' in d.current_url and d.find_elements(By.CSS_SELECTOR, '[data-category-row]'))
 
 
+@pytest.mark.parametrize('held_stage', ['response', 'script'])
+def test_link_during_page_loading_reaches_latest_destination(booth, held_stage):
+    app, driver, base, tmp_path = booth
+    driver.execute_script('''
+        window.keptMonitor = FreoMonitor.audio;
+        if (arguments[0] === 'response') {
+            const fetch = window.fetch;
+            window.fetch = function(url, options) {
+                const response = fetch.call(this, url, options);
+                if (new URL(url, location.href).pathname.endsWith('/categories')) {
+                    window.fetch = fetch;
+                    return response.then(value => new Promise(resolve => {
+                        window.releasePageLoad = () => resolve(value);
+                    }));
+                }
+                return response;
+            };
+        } else {
+            const append = Element.prototype.append;
+            Element.prototype.append = function(...nodes) {
+                if (nodes.some(node => node instanceof HTMLScriptElement && node.src)) {
+                    Element.prototype.append = append;
+                    window.releasePageLoad = () => append.apply(this, nodes);
+                } else append.apply(this, nodes);
+            };
+        }
+    ''', held_stage)
+    driver.find_element(By.CSS_SELECTOR, '.admin-nav a[href$="/categories"]').click()
+    wait = WebDriverWait(driver, 10)
+    wait.until(lambda d: d.execute_script('return typeof releasePageLoad === "function"'))
+    assert driver.execute_script('return document.documentElement.classList.contains("is-navigating")')
+    driver.find_element(By.CSS_SELECTOR, '.admin-nav a[href$="/schedule-studio/control"]').click()
+    driver.execute_script('releasePageLoad()')
+    def at_control(d):
+        return (d.current_url.endswith('/schedule-studio/control')
+                and d.find_elements(By.ID, 'control-status-heading')
+                and not d.execute_script('return document.documentElement.classList.contains("is-navigating")'))
+    wait.until(at_control)
+    assert driver.execute_script('return keptMonitor === FreoMonitor.audio')
+    driver.back()
+    if held_stage == 'response':
+        wait.until(lambda d: d.find_elements(By.ID, 'dj-booth') and not d.execute_script('return document.documentElement.classList.contains("is-navigating")'))
+    else:
+        wait.until(lambda d: d.current_url.endswith('/categories') and d.find_elements(By.CSS_SELECTOR, '[data-category-row]') and not d.execute_script('return document.documentElement.classList.contains("is-navigating")'))
+    driver.forward()
+    wait.until(at_control)
+
+
 def test_song_cart_assignment_description_and_modes_in_custom_dialog(booth):
     app,driver,base,tmp_path=booth
     driver.find_element(By.CSS_SELECTOR,'[data-role="HOT"] [data-assign]').click()

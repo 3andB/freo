@@ -2,7 +2,7 @@
 
 ## 0.3.2-rc.2 — candidate, acceptance pending
 
-- Preserve Back/Forward navigation received while page scripts are loading.
+- Preserve Back/Forward and link navigation received while page responses or scripts are loading.
 - Retain the prepared AUTO successor when the decoder moves it during a stopped-deck return.
 - Consume Cue playback completion before selecting the next entry when mixer and event-log observations straddle EOF.
 - Stop timer-triggered workers that start while upgrade maintenance guards are installed, before backup or migration.
@@ -10,6 +10,7 @@
 - Correct licensing, handoff-log, recovery and browser setup regressions without changing licensing or downgrade safeguards.
 - Isolate PostgreSQL test databases and honor standalone Chrome for system browser tests.
 - Wait for loaded event results and the replacement statistics page in browser regressions.
+- Control the initial event scheduling instant in the restart fixture and measure soak silence from continuously decoded audio; retain deadline and playback assertions.
 - Ship runtime files and operator documentation, retain both runtime requirements files in the installed application, and keep development files and acceptance fixtures in the source checkout.
 - Retain the accepted driver fixes, local-vhost validation and all existing pinned runtime dependencies; explicitly bundle the updater’s previously undeclared packaging dependency.
 
