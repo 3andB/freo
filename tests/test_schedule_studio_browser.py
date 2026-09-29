@@ -29,7 +29,9 @@ def test_station_control_navigation_and_mode_switches(booth):
     assert all(label not in links for label in ['Calendar', 'Blocks', 'Simple', 'Schedule'])
     assert not driver.find_elements(By.CSS_SELECTOR, '.admin-nav nav')
     driver.find_element(By.LINK_TEXT, 'Station Control').click()
-    wait_text(driver, '#control-status-heading', 'Calendar mode')
+    WebDriverWait(driver,8).until(lambda d:
+        not d.execute_script('return document.documentElement.classList.contains("is-navigating")')
+        and 'Calendar mode' in d.find_element(By.ID,'control-status-heading').text)
     for mode in ['SIMPLE', 'BLOCKS', 'CALENDAR']:
         driver.find_element(By.CSS_SELECTOR, f'[data-switch-mode="{mode}"]').click()
         wait_text(driver, 'dialog[open]', 'Will play now:')

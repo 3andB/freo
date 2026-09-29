@@ -135,10 +135,18 @@ def test_horizontal_drag_and_exact_duration(booth):
         p.calendar=vs.clean_document(s,[dict(id='move',start=3600,end=7200,source=ref,rule=dict(frequency='once',anchor='2026-09-21'))]);p.calendar_saved=True;db.session.commit()
     driver.get(base+'/admin/stations/test-station/schedule-studio/calendar?date=2026-09-21&view=week')
     WebDriverWait(driver,10).until(lambda d:d.find_elements(By.CSS_SELECTOR,'[data-id="move"]'))
-    el=driver.find_element(By.CSS_SELECTOR,'[data-id="move"]')
-    driver.execute_script("arguments[0].scrollIntoView({block:'center'})",el)
-    width=driver.execute_script("return document.querySelector('.time-column').getBoundingClientRect().width")
-    ActionChains(driver).move_to_element(el).click_and_hold().move_by_offset(round(width),0).pause(.15).release().perform()
+    # Event loading may replace timeline nodes before pointerdown. Use the live
+    # viewport geometry; the editor defers redraws once the actual drag begins.
+    geometry=driver.execute_script("""
+        const el=document.querySelector('[data-id="move"]');
+        el.scrollIntoView({block:'center'});
+        const box=el.getBoundingClientRect();
+        return {x:Math.round(box.left+box.width/2),y:Math.round(box.top+box.height/2),
+                width:document.querySelector('.time-column').getBoundingClientRect().width};
+    """)
+    actions=ActionChains(driver)
+    actions.w3c_actions.pointer_action.move_to_location(geometry['x'],geometry['y'])
+    actions.click_and_hold().move_by_offset(round(geometry['width']),0).pause(.15).release().perform()
     saved_calendar(app,driver,lambda rows:rows[0]['rule']['anchor']=='2026-09-22')
     driver.get(base+'/admin/stations/test-station/schedule-studio/shows')
     WebDriverWait(driver,10).until(lambda d:d.find_elements(By.ID,'duration-minutes'))
