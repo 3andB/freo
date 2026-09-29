@@ -157,3 +157,41 @@ def test_stopped_deck_prepares_during_grace_without_restarting_it(prepared, monk
     assert return_to_auto_if_stopped(station,reader,stopped,now=12)
     assert modes==['DJ_BOOTH','DJ_BOOTH']
     assert station.automation.operator_mode=='AUTO'
+
+
+@pytest.mark.parametrize('movement', ['before', 'between', 'after'])
+def test_prepared_successor_survives_decoder_queue_movement(prepared, monkeypatch, movement):
+    from app import automation_worker as worker
+    station, track, user, snapshot = prepared
+    successor = SelectionDecision(station_id=station.id, track_id=track.id,
+        status='queued', socket_identity='engine', liquidsoap_request_id=22,
+        programming_signature='current')
+    db.session.add(successor)
+    db.session.commit()
+    engine = {'current': snapshot.current_decision_id, 'future': [], 'refilled': False, 'reads': 0}
+
+    def advance():
+        engine.update(current=successor.id, future=[])
+
+    def refill(*args):
+        engine.update(future=[22], refilled=True)
+        if movement == 'before':
+            advance()
+
+    def observe(field):
+        value = engine[field]
+        if engine['refilled']:
+            engine['reads'] += 1
+            if engine['reads'] == (1 if movement == 'between' else 2):
+                advance()
+        return value
+
+    monkeypatch.setattr('app.services.programming_refresh.refresh', lambda *args, **kwargs: None)
+    monkeypatch.setattr('app.services.playout_queue.mixer_state',
+        lambda slug: dict(mode='DJ_BOOTH', auto_id=observe('current')))
+    monkeypatch.setattr(worker, 'queued_ids', lambda slug: set())
+    monkeypatch.setattr(worker, 'active_ids', lambda slug: set())
+    monkeypatch.setattr(worker, 'refill_station', refill)
+    monkeypatch.setattr(worker, 'queued_order', lambda slug: observe('future'))
+    monkeypatch.setattr(worker, 'request_decision_id', lambda slug, request: successor.id if request == 22 else None)
+    assert worker.prepare_auto_successor(station, worker.EventReader(), snapshot.mixer, 'current') == successor.id

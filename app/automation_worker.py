@@ -884,12 +884,14 @@ def prepare_auto_successor(station, reader, mixer, current_signature=None):
             _command(slug, 'freo_mixer.return_cancel')
             return
         refill_station(slug, reader, 1)
+        # Observe the queue before current: the decoder can move the replacement
+        # between these reads, and either observation must retain its identity.
+        future = queued_order(slug)
         target = mixer_state(slug).get('auto_id')
         held = db.session.get(SelectionDecision, target) if target else None
         if held and held.status=='started':
             target = None
         if target is None:
-            future = queued_order(slug)
             target = request_decision_id(slug, future[0]) if future else None
     return target
 
