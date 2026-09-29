@@ -2,6 +2,7 @@
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.action_chains import ActionChains
 from selenium.webdriver.support.ui import WebDriverWait, Select
+from selenium.webdriver.support import expected_conditions as EC
 from app.extensions import db
 from app.models import Station, Track, Playlist, PlaylistItem, ScheduleComposition, ScheduleTransition
 from tests.test_live_browser import booth, app_fixture, wait_text
@@ -171,9 +172,14 @@ def test_blocks_default_playlist_and_full_day_calendar_song(booth):
         assert ChannelSchedule.query.one().default_playlist.name == 'Always available'
     driver.get(base+'/admin/stations/test-station/schedule-studio/blocks')
     driver.find_element(By.ID,'composition-name').send_keys('Weekday format')
-    driver.find_element(By.XPATH,"//nav[@id='source-tabs']/button[text()='Playlists']").click()
+    # Blocks starts on Playlists. Await the refresh caused by reselecting that
+    # tab so matching text from its initial result cannot satisfy readiness.
     wait_text(driver,'#source-results','Always available')
-    driver.find_element(By.CSS_SELECTOR,'.source-actions button').click()
+    previous = driver.find_element(By.CSS_SELECTOR,'#source-results [aria-label="Add Always available"]')
+    driver.find_element(By.XPATH,"//nav[@id='source-tabs']/button[text()='Playlists']").click()
+    WebDriverWait(driver,8).until(EC.staleness_of(previous))
+    wait_text(driver,'#source-results','Always available')
+    driver.find_element(By.CSS_SELECTOR,'#source-results [aria-label="Add Always available"]').click()
     WebDriverWait(driver,5).until(lambda d:d.find_element(By.ID,'section-inspector').is_displayed())
     driver.find_element(By.CSS_SELECTOR,'#section-form button[type=submit]').click()
     WebDriverWait(driver,5).until(lambda d:not d.find_element(By.ID,'section-inspector').is_displayed())
