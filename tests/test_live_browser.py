@@ -67,6 +67,7 @@ def booth(app_fixture, monkeypatch, tmp_path, request):
     try:
         base=f'http://127.0.0.1:{server.server_port}'
         driver.get(base+'/admin/login')
+        WebDriverWait(driver,10).until(lambda d:d.find_element(By.NAME,'email').is_displayed())
         driver.find_element(By.NAME,'email').send_keys('admin@example.test')
         driver.find_element(By.NAME,'password').send_keys('test-password-long-enough')
         driver.find_element(By.CSS_SELECTOR,'.login-card button[type=submit]').click()
