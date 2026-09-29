@@ -127,6 +127,46 @@ def test_auto_unavailable_list_disarms_without_looping(app, monkeypatch):
         assert not cue.auto_enabled and 'no playable' in cue.message
 
 
+@pytest.mark.parametrize('bound_entry', [False, True], ids=['manual-end', 'cue-end'])
+@pytest.mark.parametrize('end_visible', [True, False], ids=['logged-end', 'pending-end'])
+def test_auto_consumes_end_written_between_worker_read_and_empty_mixer(app, tmp_path, monkeypatch, bound_entry, end_visible):
+    from app.automation_worker import EventReader
+    with app.app_context():
+        station, track, cue = setup_cue()
+        first, second = cue.entries
+        cue.auto_enabled = cue.start_pending = True
+        ended = SelectionDecision(station_id=station.id, track_id=track.id, playback_bus='A',
+            status='started', started_at=datetime.now(timezone.utc), socket_identity='engine')
+        db.session.add(ended); db.session.flush()
+        bind(station, ended, first['id'] if bound_entry else None)
+        db.session.commit()
+        directory = tmp_path/station.slug; directory.mkdir()
+        monkeypatch.setattr('app.automation_worker.EVENT_ROOT', tmp_path)
+        monkeypatch.setattr('app.automation_worker.socket_identity', lambda *a: 'engine')
+        monkeypatch.setattr('app.services.playout_queue.socket_identity', lambda *a: 'engine')
+        monkeypatch.setattr('app.services.media_storage.LocalMediaStorage.regular_file', lambda *a: '/safe')
+        commands = []
+        monkeypatch.setattr('app.automation_worker.process_deck_command',
+            lambda station, command, identity: commands.append(command.target_decision_id))
+        reader = EventReader()
+        reader.collect(station.slug)
+        if not end_visible:
+            assert advance(station, dict(mode='DJ_BOOTH'), reader)
+            assert commands == [], 'Empty metadata alone is not a playback completion'
+        # EOF is logged after the worker's read, before its empty-deck snapshot.
+        # An armed idle cue can still have start_pending from that earlier view.
+        (directory/'events.log').write_text(f'END {ended.id} {datetime.now(timezone.utc).timestamp()}\n')
+        assert advance(station, dict(mode='DJ_BOOTH'), reader)
+        assert len(commands) == 1
+        next_binding = db.session.get(CuePlayback, commands[0])
+        assert next_binding.entry_id == (second if bound_entry else first)['id']
+        assert db.session.get(CuePlayback, ended.id).completed_at is not None
+        assert cue.entries == ([second, first] if bound_entry else [first, second])
+        assert not cue.start_pending
+        reader.collect(station.slug)
+        assert not cue.start_pending, 'Late EOF must not re-arm the already started successor'
+
+
 def test_cue_routes_require_csrf_and_retain_working_list(app):
     client = admin_client(app)
     page = client.get('/admin/stations/test-station/live')

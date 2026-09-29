@@ -68,7 +68,8 @@ def test_all_recurrences_save_reload_and_search_within(booth):
         with app.app_context():
             row=TimedEvent.query.filter_by(name='Saved '+kind).one()
             assert row.recurrence_type==kind and not row.interrupt_dj
-    previous=driver.find_element(By.CSS_SELECTOR,'#event-audio-results article')
+    # Saving mounts the editor before its asynchronous audio list arrives.
+    previous=wait.until(EC.presence_of_element_located((By.CSS_SELECTOR,'#event-audio-results article')))
     query=driver.find_element(By.ID,'event-audio-search');query.send_keys('STATION')
     wait.until(EC.staleness_of(previous))
     wait.until(lambda d:'STATION' in d.find_element(By.ID,'event-audio-results').text)

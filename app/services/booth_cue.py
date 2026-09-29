@@ -250,6 +250,9 @@ def advance(station, mixer, reader):
     cue = db.session.get(BoothCue, station.id)
     if not cue or not cue.auto_enabled:
         return False
+    # EOF can arrive between the worker's log read and this mixer snapshot.
+    # Apply its rotation before selecting for an already-empty deck.
+    reader.collect(station.slug)
     cue = locked(station)
     if station.automation.operator_mode != 'DJ_BOOTH' or mixer.get('mode') != 'DJ_BOOTH':
         disarm(station)
@@ -277,6 +280,17 @@ def advance(station, mixer, reader):
         disarm(station, 'AUTO_CUE paused · no playable songs. Check the Cue or load another set.')
         db.session.commit()
         return False
+    # Empty mixer metadata can precede its EOF callback. Do not replace a
+    # submitted play on this deck until that engine's completion is consumed.
+    unfinished = CuePlayback.query.join(SelectionDecision).filter(
+        CuePlayback.station_id == station.id, CuePlayback.generation == cue.generation,
+        CuePlayback.completed_at.is_(None), CuePlayback.interrupted.is_(False),
+        SelectionDecision.playback_bus == deck,
+        SelectionDecision.socket_identity == socket_identity(station.slug),
+        SelectionDecision.status.in_(('submitting', 'queued', 'started'))).first()
+    if unfinished:
+        db.session.commit()
+        return True
     decision = SelectionDecision(station_id=station.id, track_id=target_entry['track_id'],
         playback_bus=deck, selection_method='cue_auto', reason='deck_load', status='selected', idempotency_key=str(uuid.uuid4()))
     db.session.add(decision)

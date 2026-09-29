@@ -4,10 +4,12 @@
 
 - Preserve Back/Forward navigation received while page scripts are loading.
 - Retain the prepared AUTO successor when the decoder moves it during a stopped-deck return.
+- Consume Cue playback completion before selecting the next entry when mixer and event-log observations straddle EOF.
 - Stop timer-triggered workers that start while upgrade maintenance guards are installed, before backup or migration.
 - Match event-due model index metadata to the existing PostgreSQL migration.
 - Correct licensing, handoff-log, recovery and browser setup regressions without changing licensing or downgrade safeguards.
 - Isolate PostgreSQL test databases and honor standalone Chrome for system browser tests.
+- Wait for loaded event results and the replacement statistics page in browser regressions.
 - Ship runtime files and operator documentation; keep development files and acceptance fixtures in the source checkout.
 - Retain the accepted driver fixes, local-vhost validation and all existing pinned runtime dependencies; explicitly bundle the updater’s previously undeclared packaging dependency.
 

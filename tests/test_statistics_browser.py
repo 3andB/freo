@@ -2,6 +2,7 @@
 import time
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait, Select
+from selenium.webdriver.support import expected_conditions as EC
 from app.extensions import db
 from app.services.statistics import collect
 from tests.test_live_browser import booth, app_fixture, wait_text
@@ -39,7 +40,10 @@ def test_statistics_dashboard_and_world_map(booth):
     driver.save_screenshot('/tmp/freo-statistics-mobile.png')
     assert driver.execute_script('return document.documentElement.scrollWidth <= window.innerWidth + 1')
     driver.set_window_size(1600,1200)
+    previous=driver.find_element(By.ID,'statistics')
     Select(driver.find_element(By.ID,'stats-scope')).select_by_value('/admin/stations/test-station/stats')
+    # The previous scope also says Updated until workspace navigation completes.
+    WebDriverWait(driver,15).until(EC.staleness_of(previous))
     wait_text(driver,'#stats-freshness','Updated')
     assert 'Test Station' in driver.find_element(By.CSS_SELECTOR,'.stats-heading').text
     errors=[r for r in driver.get_log('browser') if r['level']=='SEVERE' and 'favicon.ico' not in r['message']]
