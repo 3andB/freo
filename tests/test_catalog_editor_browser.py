@@ -1,5 +1,6 @@
 """Real browser and worker exercise import, listening, artwork, and editing."""
 import subprocess
+import os
 from pathlib import Path
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
@@ -20,10 +21,12 @@ def test_import_and_edit_catalog(booth, request):
     subprocess.run(['ffmpeg','-v','error','-f','lavfi','-i','color=c=blue:s=900x700','-frames:v','1',str(image)],check=True)
     import tempfile,shutil
     browser_tmp=Path('/tmp/snap-private-tmp/snap.chromium/tmp')
-    share=Path(tempfile.mkdtemp(prefix='freo-catalog-',dir=browser_tmp if browser_tmp.exists() else tmp_path))
+    browser_binary = Path(os.environ.get('FREO_TEST_CHROME', '/usr/bin/chromium-browser'))
+    snap_browser = browser_tmp.exists() and (str(browser_binary).startswith('/snap/') or browser_binary == Path('/usr/bin/chromium-browser'))
+    share=Path(tempfile.mkdtemp(prefix='freo-catalog-',dir=browser_tmp if snap_browser else tmp_path))
     request.addfinalizer(lambda:shutil.rmtree(share))
     shutil.copy(audio,share/audio.name);shutil.copy(image,share/image.name)
-    browser_dir=Path('/tmp')/share.name if browser_tmp.exists() else share
+    browser_dir=Path('/tmp')/share.name if snap_browser else share
     open_import(driver, base)
     driver.find_element(By.ID,'media-file').send_keys(str(browser_dir/audio.name))
     wait_text(driver,'.import-card','Uploaded')
