@@ -4,6 +4,7 @@
 
 - Preserve Back/Forward navigation received while page scripts are loading.
 - Retain the prepared AUTO successor when the decoder moves it during a stopped-deck return.
+- Stop timer-triggered workers that start while upgrade maintenance guards are installed, before backup or migration.
 - Match event-due model index metadata to the existing PostgreSQL migration.
 - Correct licensing, handoff-log, recovery and browser setup regressions without changing licensing or downgrade safeguards.
 - Isolate PostgreSQL test databases and honor standalone Chrome for system browser tests.

@@ -311,6 +311,10 @@ def upgrade(artifact, signature, keyring, env_file, backup, passphrase, verifica
             maintenance_guards(state)
             set_maintenance(state, True)
             stopped = True
+            # A timer can start a service while guards are being installed.
+            # Once guarded, capture those late starts before stopping writers.
+            journal['active_units'] = list(dict.fromkeys(journal['active_units'] + active_units()))
+            atomic_json(journal_path, journal)
             if journal['active_units']:
                 recovery.run(['systemctl', 'stop', *journal['active_units']])
             if active_units():

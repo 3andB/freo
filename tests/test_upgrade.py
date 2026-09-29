@@ -243,3 +243,49 @@ def test_upgrade_waits_for_station_audio_and_preserves_failure_recovery(host, mo
         journal = json.loads((host.state / 'journal.json').read_text())
         assert journal['phase'] == 'recovery_required' and journal['failure_phase'] == 'starting'
         assert host.active == [] and (host.state / 'maintenance').exists()
+
+
+def test_timer_started_during_guard_installation_is_stopped_before_backup(host, monkeypatch):
+    guards = updater.maintenance_guards
+    run = recovery.run
+    late_unit = 'freo-provision.service'
+
+    def install_guards(state):
+        guards(state)
+        # A timer fires after the first inventory while daemon-reload installs
+        # conditions. It is already running when the maintenance marker appears.
+        host.active.append(late_unit)
+
+    def stop_named_units(command, **kwargs):
+        if command[:2] == ['systemctl', 'stop']:
+            host.calls.append(command)
+            host.active[:] = [unit for unit in host.active if unit not in command[2:]]
+            return b''
+        return run(command, **kwargs)
+
+    monkeypatch.setattr(updater, 'maintenance_guards', install_guards)
+    monkeypatch.setattr(recovery, 'run', stop_named_units)
+    assert host.execute()['status'] == 'complete'
+    assert 'backup' in host.calls and 'restore-verified' in host.calls
+    assert any(isinstance(call, list) and call[:2] == ['systemctl', 'stop']
+               and late_unit in call[2:] for call in host.calls)
+    assert late_unit in host.active
+
+
+
+def test_upgrade_still_refuses_backup_when_a_guarded_unit_remains_active(host, monkeypatch):
+    run = recovery.run
+
+    def refuse_stop(command, **kwargs):
+        if command[:2] == ['systemctl', 'stop']:
+            host.calls.append(command)
+            return b''
+        return run(command, **kwargs)
+
+    monkeypatch.setattr(recovery, 'run', refuse_stop)
+    with pytest.raises(recovery.RecoveryError, match='Freo units remain active'):
+        host.execute()
+    assert 'backup' not in host.calls and 'restore-verified' not in host.calls
+    assert not any(isinstance(call, list) and call[-2:] == ['db', 'upgrade'] for call in host.calls)
+    assert json.loads((host.state / 'journal.json').read_text())['phase'] == 'failed_before_migration'
+    assert host.active == ['freo.service', 'freo-automation.service']
