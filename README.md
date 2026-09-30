@@ -1,10 +1,13 @@
 # Freo
 
-[Recovery and upgrades](docs/recovery-and-upgrades.md): the 0.2.0 candidate adds
-database-backed installation preferences, encrypted backup/restore verification,
-signed release bundles and a maintenance-window updater. The fresh installer
-refuses existing installations. Public support still requires the independent
-VM acceptance test and release prerequisites described in the guide.
+**Freo 0.3.2 is available. Fresh installation and reboot recovery are tested
+and passed on Ubuntu 24.04 x86_64.**
+
+[Install Freo](docs/stable-installation.md) · [Download the signed installation kit](https://github.com/3andB/freo/releases/download/v0.3.2/freo-v0.3.2-install-kit.tar) · [Release notes](docs/release-0.3.2.md) · [Acceptance results](docs/0.3.2-acceptance.md)
+
+[Recovery and upgrades](docs/recovery-and-upgrades.md): existing installations
+use the signed updater with a verified backup/recovery point. The fresh installer
+refuses existing installations.
 
 [Radio Station Operations](docs/operations-navigation.md): **Admin → Overview** covers all stations, system health, freo.live connection, and aggregate statistics. Use the sidebar station selector and **Switch** to open an individual station’s controls. Website, player settings, feedback, installation, and audit tools are available in the operations context.
 
@@ -28,15 +31,23 @@ The live [diagnostic stream](https://freo.world/stream/freo-test) tests the Liqu
 
 The stack is Python 3.12, Flask, Gunicorn, PostgreSQL, Nginx, systemd, Liquidsoap, Icecast, and ffprobe on Ubuntu 24.04. Timed events can execute durable [event blocks and stopsets](docs/event-blocks.md): ordered Track/ImagingAsset snapshots that exclude normal music between items. Authenticated [traffic planning](docs/traffic.md) manages advertisers, campaigns, commercial creatives, stopset inventory, finalized daily logs, as-run reconciliation, and makegood relationships. Accounting and invoicing are not included. See [clocks](docs/clocks.md), [scheduling](docs/scheduling.md), [rotations](docs/rotations.md), [automation](docs/automation.md), [media library](docs/media-library.md), [stations](docs/stations.md), [radio engine](docs/radio-engine.md), [architecture](docs/architecture.md), [installation](docs/installation.md), and the [fresh-VM acceptance test](docs/clean-install-test.md).
 
-The [0.3.2 installation kit](docs/installation.md) promotes the accepted 0.3.2-rc.2 source, including automatic PostgreSQL driver installation and separate local application/external access validation. The stable kit is staged privately pending acceptance of its exact signed bytes; it is not yet published.
+The [0.3.2 installation kit](docs/stable-installation.md) includes automatic
+PostgreSQL driver installation and separate local application/external access
+validation. The exact published signed kit passed independent fresh Ubuntu 24.04
+x86_64 HTTP/public-IP installation, music processing and playlist playback,
+full-VM reboot and automatic broadcast recovery. Installed validators exited 0
+before and after reboot, with no failed systemd units. It was not rebuilt after
+acceptance. See the [acceptance record](docs/0.3.2-acceptance.md) for test scope.
 
-The RC2 installer passed independent fresh Ubuntu 24.04 x86_64 HTTP/public-IP installation and full-VM reboot/recovery testing. The exact 0.3.2 stable kit still requires its own acceptance before publication. Local development needs a Python 3.12 venv, `requirements-dev.txt`, a private `.env`, and `flask --app wsgi:app db upgrade`; run `pytest` for tests. Root, a domain, and radio services are not required for unit tests.
+Local development needs a Python 3.12 venv, `requirements-dev.txt`, a private
+`.env`, and `flask --app wsgi:app db upgrade`; run `pytest` for tests. Root, a
+domain, and radio services are not required for unit tests.
 
 Freo is source-available under the [Freo Source-Available License](LICENSE). Up to three stations total per owner are free, including commercial use. US$99 one time covers unlimited stations across all installations owned by the purchaser and all future updates. Contact [info@3andB.com](mailto:info@3andB.com) for a Stripe invoice.
 
 Created by Lee Eyerman. Copyright © 2026 3andB.
 
-[Installer candidate and VM acceptance](docs/install-candidate.md) · [freo.live team handoff](docs/freo-live-distribution-handoff.md)
+[Installation](docs/stable-installation.md) · [VM acceptance](docs/0.3.2-acceptance.md) · [freo.live team handoff](docs/freo-live-distribution-handoff.md)
 
 [Station Control and DJ Booth system tests](docs/station-system-testing.md) provide accelerated scheduling simulations, connected browser/worker/audio checks, and unattended endurance runs with isolated streams and retained evidence.
 

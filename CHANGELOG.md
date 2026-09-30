@@ -1,11 +1,17 @@
 # Changelog
 
-## 0.3.2 — stable candidate; exact-kit acceptance pending
+## 0.3.2 — released 30 September 2026
 
-- Promote accepted 0.3.2-rc.2 to stable version metadata and installation documentation.
-- Retain the accepted application, installer, schema, customer archive inventory and all 42 pinned dependency wheels.
-- RC2 passed fresh Ubuntu 24.04 x86_64 HTTP/public-IP installation and full-VM reboot/recovery; its automated suite completed with 1,273 passes and three optional skips.
-- The separately signed 0.3.2 kit requires its own fresh-VM acceptance before publication.
+- Publish the exact signed stable kit after fresh Ubuntu 24.04 x86_64 acceptance;
+  no rebuild or runtime change after the owner's test.
+- Confirm automatic dependency installation, PostgreSQL migrations, Nginx/login,
+  music upload/processing/deletion, playlist and Simple scheduling, live playback,
+  persistence and automatic broadcasting after a full VM reboot.
+- Installer and before/after-reboot validators exited 0, with no failed units.
+- Retain the accepted RC2 application, installer, schema, customer archive
+  inventory and all 42 pinned dependency wheels.
+- Regression evidence: 1,273 passed, three optional skips, no unresolved failures.
+  See [release notes](docs/release-0.3.2.md) and [acceptance scope](docs/0.3.2-acceptance.md).
 
 ## 0.3.2-rc.2 — fresh-install and reboot/recovery acceptance passed
 
@@ -110,7 +116,7 @@ checks and any outstanding acceptance items.
   for evidence, limitations, and remaining VM acceptance gates.
 
 RC5 remains an immutable historical candidate. RC6 packaging and verification
-are described in [the test installation guide](rc6-installation.md). A signed
+are described in [the test installation guide](docs/rc6-installation.md). A signed
 test package is not VM acceptance or approval for a stable public release. The current schema remains
 `f39c8210b7de`; these RC6 changes introduce no additional migration.
 

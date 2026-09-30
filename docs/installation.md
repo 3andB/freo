@@ -6,22 +6,22 @@
 
 # Installation and deployment
 
-For **0.3.2**, begin with `INSTALL.md` in the separately supplied
-`freo-v0.3.2-install-kit.tar`. Verify `KIT-SHA256SUMS`, the internal `SHA256SUMS`,
-and the publisher signature on `freo-v0.3.2.tar.gz` before extraction or installation.
-The stable kit promotes accepted RC2 and remains private until its exact signed
-bytes pass fresh-VM acceptance. RC2 fresh installation and full-VM reboot/recovery
-passed on Ubuntu 24.04 x86_64 using HTTP/public IP.
-Publication is separate from package preparation. The [RC2 test-kit guide](0.3.2-rc.2-installation.md)
-and [earlier candidate instructions](install-candidate.md) remain historical.
-For existing installations, use [recovery and upgrades](recovery-and-upgrades.md) for existing
-installations. The installer now refuses existing state before making changes;
-the historical rerun-based upgrade instructions below are superseded by the
-dedicated verified updater.
+For **0.3.2**, follow the [public signed-kit installation guide](stable-installation.md).
+Fresh Ubuntu 24.04 x86_64 installation and full-VM reboot recovery passed using
+HTTP/public IP on the exact published kit. Both installed validators exited 0;
+there were no failed systemd units. Music uploads, deletion, playlist programming
+and automatic broadcasting after reboot were confirmed. See the
+[acceptance record](0.3.2-acceptance.md) for automated and manual test scope.
+
+Verify the outer checksum, internal checksums and publisher signature before
+installation. The archive's preparation-time notices are retained to preserve
+its accepted bytes; the public guide and acceptance record supersede them.
+Existing installations use [recovery and upgrades](recovery-and-upgrades.md),
+not the fresh installer. Earlier RC guides remain historical.
 
 ## Production target
 
-Ubuntu 24.04 LTS x86_64 only. Prefer the verified signed archive; source developers may clone the canonical 3andB/freo repository and run `sudo ./scripts/install.sh` from its root. The installer copies named release files to `/opt/freo`, creates a `freo` system account, installs Python and radio packages, provisions a local PostgreSQL role/database on a fresh install, installs version-controlled units and an HTTP Nginx site, and validates the result. The installer requires internet access for apt and pip. Do not rely on this path as verified for others until `clean-install-test.md` has been executed on a separate VM.
+Ubuntu 24.04 LTS x86_64 only. Prefer the verified signed archive; source developers may clone the canonical 3andB/freo repository and run `sudo ./scripts/install.sh` from its root. The installer copies named release files to `/opt/freo`, creates a `freo` system account, installs Python and radio packages, provisions a local PostgreSQL role/database on a fresh install, installs version-controlled units and an HTTP Nginx site, and validates the result. The customer kit installs its hash-locked Python wheels offline; Ubuntu/Xiph system packages require network access. The signed 0.3.2 kit passed separate fresh-VM acceptance; source checkouts do not include the bundled wheelhouse.
 
 For an IP-only install, set `FREO_DOMAIN` to the VM's public IP when running the installer. For an HTTP domain install, set `FREO_DOMAIN=radio.example.com` when running the installer, after DNS points at the server. For HTTPS, also set `FREO_ENABLE_HTTPS=1` and `FREO_CERTBOT_EMAIL=operator@example.com`; Certbot will obtain a certificate and update the Nginx site. DNS, inbound 80/443, and a reachable public IP are prerequisites for that step. Certbot is optional. The checked-in Nginx template is HTTP only; it contains no certificate path. An existing Nginx site is retained rather than overwritten.
 
@@ -49,7 +49,7 @@ installation invokes this automatically before starting the web application.
 
 The installer installs Ubuntu's `liquidsoap` and Xiph's official Ubuntu 24.04 `icecast2` 2.5 packages, records installed versions, creates the non-login `freo-playout` account, renders restricted radio configs, installs native Icecast/playout units, and adds an exact test-mount Nginx snippet. Xiph's repository uses a dedicated signing key, with package preferences limited to Icecast 2.5 and its libigloo dependency. Existing Icecast installations are explicitly upgraded to 2.5 because the trusted-proxy configuration requires it; this can interrupt streams. See [Icecast upgrade and rollback](icecast-upgrade.md). It does not reset existing radio credentials on rerun. Runtime config changes are backed up before replacement. An existing customized Nginx site is retained; its operator must include `/etc/nginx/snippets/freo-stream.conf` in the appropriate public server block. The existing Freo production site uses that include in its Certbot HTTPS server. The generated default HTTP site includes it automatically.
 
-For radio validation, run `sudo ./scripts/validate-install.sh`. Confirm the direct Icecast backend listens on `127.0.0.1:8001`, not a public address. Check the public URL with a media player or bounded byte read, and consult [radio-engine.md](radio-engine.md). The fuller clean-server installation remains unverified until the separate VM acceptance test is executed.
+For radio validation, run `sudo ./scripts/validate-install.sh`. Confirm the direct Icecast backend listens on `127.0.0.1:8001`, not a public address. Check the public URL with a media player or bounded byte read, and consult [radio-engine.md](radio-engine.md). The 0.3.2 clean-server installation and reboot acceptance passed; retain the same checks for each new installation.
 
 ## Phase 3 station runtime
 
@@ -64,7 +64,7 @@ Provisioning installs Ubuntu `ffmpeg` (including `/usr/bin/ffprobe`) and creates
 Provisioning creates the non-login `freo-automation` account, grants it only the `freo` environment-read and `freo-playout` socket/media-read groups, deploys `freo-automation.service`, and applies additive category/rotation/history migrations. The web `freo` user is not in the playout group. No demo categories, rotation, or automated mode are created on a normal install. After defining and activating a rotation through the root-run CLI, enable automation explicitly. Check `sudo ./scripts/validate-install.sh`, `/health/automation`, and the [automation guide](automation.md). Existing station configs must be rerendered to switch to `request.queue`; this is a station-only maintenance event and should be validated before restarting its instance.
 # Phase 6 database and programming
 
-Provisioning applies additive clock/schedule migrations with `flask db upgrade`. Python 3.12's `zoneinfo` and Ubuntu's `tzdata` package supply IANA zones; no new Python package or system service is required. A fresh installation has no demo clocks or schedule. Set each station timezone, create clocks, and assign weekly times through the root-run CLI after creating categories and rotations. Existing stations migrate to explicit `UTC` until an operator changes them. Public clean-VM support remains unverified.
+Provisioning applies additive clock/schedule migrations with `flask db upgrade`. Python 3.12's `zoneinfo` and Ubuntu's `tzdata` package supply IANA zones; no new Python package or system service is required. A fresh installation has no demo clocks or schedule. Set each station timezone, create clocks, and assign weekly times through the root-run CLI after creating categories and rotations. Existing stations migrate to explicit `UTC` until an operator changes them. The 0.3.2 signed kit passed the fresh-VM checks recorded above.
 
 ## Read-only web overview
 

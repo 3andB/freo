@@ -1,9 +1,10 @@
 # Fresh Ubuntu 24.04 acceptance test
 
-For **0.3.2**, use `INSTALL.md` supplied in `freo-v0.3.2-install-kit.tar` and
-the [installation guide](installation.md). Test the exact signed stable kit on a
-new Ubuntu 24.04 x86_64 VM before publication. RC2 fresh-install and full-VM
-reboot/recovery acceptance passed; that evidence does not replace stable-artifact acceptance.
+For **0.3.2**, fresh Ubuntu 24.04 x86_64 HTTP/public-IP installation and
+full-VM reboot/recovery acceptance passed on the exact signed stable kit.
+See the [completed acceptance record](0.3.2-acceptance.md) and
+[public installation guide](stable-installation.md). The following checklist
+remains useful for additional environments and future releases.
 Confirm separate LOCAL APPLICATION VALIDATION and EXTERNAL ACCESS VALIDATION
 results and the exact admin URL. Local Nginx/CSRF/login failures remain fatal;
 external/hairpin failures are reported independently. The package runner now

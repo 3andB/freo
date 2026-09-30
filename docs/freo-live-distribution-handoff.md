@@ -1,7 +1,9 @@
 # freo.live team: distribution handoff
 
-Status: candidate prepared for separate-VM acceptance, not approved for public
-release. The software repository is **https://github.com/3andB/freo**. The
+Status: Freo 0.3.2 passed fresh-VM installation and reboot/recovery acceptance;
+the owner authorized publication of its exact signed bytes on 30 September 2026.
+Use [the current installation guide](stable-installation.md),
+[release notes](release-0.3.2.md), and [acceptance record](0.3.2-acceptance.md). The software repository is **https://github.com/3andB/freo**. The
 freo.live website/API is separately managed; this repository does not deploy it.
 
 ## Pages and copy to implement
@@ -32,8 +34,8 @@ never a mutable branch ZIP. Include the telemetry disclosure from the installati
 guide. Separate fresh installation from upgrades; never instruct an existing
 user to rerun the installer or replace their database.
 
-Use [install-candidate.md](install-candidate.md) as the current operator guide.
-Fresh rc.5 installs automatically create `admin` / `IAmOnTheAir` for first-use
+Use [stable-installation.md](stable-installation.md) as the current operator guide.
+Fresh installs automatically create `admin` / `IAmOnTheAir` for first-use
 setup. Require a new password before administration; remove the old first-admin
 CLI instruction from website copy. The initial account is never recreated by upgrades.
 After VM acceptance and owner approval, adapt candidate wording to the approved
@@ -137,4 +139,5 @@ Verify desktop/mobile pages, working contact email, exact three-station/$99 copy
 canonical repository links, subtle creator credit, tested install instructions,
 matching website/API version and digest, signature downloads and recovery links.
 Provide the actual published URLs and verification results back to the owner.
-Do not publish the candidate or contact customers until instructed by the owner.
+The owner has authorized 0.3.2 publication. Future releases still require their
+own acceptance and authorization.

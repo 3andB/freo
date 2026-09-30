@@ -1,112 +1,134 @@
-> For the 0.3.1 dependency-fix kit and fresh-VM test, see
-> [0.3.1 installation](0.3.1-installation.md). The 0.3.0 record below is historical.
+# Install Freo 0.3.2
 
-# Freo 0.3.0 installation
+**Fresh installation and reboot recovery: tested and passed on Ubuntu 24.04
+x86_64.** The published installation kit is the exact signed kit accepted on a
+fresh VM, without rebuilding. Freo installed its own dependencies, processed
+music uploads, played a playlist through Simple scheduling, and automatically
+returned to broadcasting after reboot. Installer and before/after-reboot
+validators exited 0; no systemd units failed.
 
-Status: **installer staged for publication**. A signed package, local tag or
-merge to main does not announce a public release. Publication requires a separate
-approved stable GitHub Release in `3andB/freo`. Never replace the RC9 artifact
-with this package: 0.3.0 has its own version, source commit, signature and hashes.
+Use a fresh Ubuntu 24.04 x86_64 server with SSH access and inbound HTTP port 80
+(or ports 80/443 for HTTPS). Allow disk space for music and protected backups.
+Python dependencies are bundled and hash-locked. Network access is required for
+Ubuntu/Xiph system packages. No manual Python/PostgreSQL setup is needed.
 
-## Requirements
+Existing installations: use the [upgrade and recovery guide](https://github.com/3andB/freo/releases/download/v0.3.2/recovery-and-upgrades.md).
+Do not run the fresh installer over an existing or partially installed station.
 
-Use a **fresh Ubuntu 24.04 x86_64 VM**, with SSH and inbound HTTP/HTTPS as
-needed. Allow space for music, an encrypted backup and a restore verification.
-The package bundles hash-locked Python wheels; Ubuntu/Xiph system packages
-require network access. No Freo Live account or payment is required.
+## Download and verify
 
-Existing installations must use the [verified updater](recovery-and-upgrades.md).
-Do not run the fresh installer over an existing installation.
-
-## Obtain and verify
-
-Until publication, obtain `freo-v0.3.0-install-kit.tar` and `KIT-SHA256SUMS`
-from the publisher via SCP/SFTP. Do not assume a public download exists.
+Run these commands on the new server. Use `sudo` as shown, or omit it when
+already root. Install download/verification tools first if needed:
 
 ```bash
-sha256sum --check KIT-SHA256SUMS
-tar -xf freo-v0.3.0-install-kit.tar
-cd freo-install-kit
 sudo apt-get update
-sudo apt-get install -y ca-certificates gnupg
-sha256sum --check SHA256SUMS
-gpg --show-keys --with-fingerprint ./publisher.gpg
+sudo apt-get install -y ca-certificates curl gnupg
+mkdir -p "$HOME/freo-install-0.3.2"
+cd "$HOME/freo-install-0.3.2"
+curl --fail --location --proto '=https' --proto-redir '=https' \
+  --output freo-v0.3.2-install-kit.tar \
+  https://github.com/3andB/freo/releases/download/v0.3.2/freo-v0.3.2-install-kit.tar
+printf '%s  %s\n' \
+  '2488f8784243fd5bfed4116ea4aff6c0ee6b15f619361379650b7405a269b91a' \
+  'freo-v0.3.2-install-kit.tar' | sha256sum --check
 ```
 
-Confirm the primary signing fingerprint against this independently supplied value:
-
-`B835B40E7E1A5838390256751AB72B63BEB716C3`
+Stop if any command or verification fails. After the outer checksum passes:
 
 ```bash
-gpgv --keyring "$PWD/publisher.gpg" \
-  freo-v0.3.0.tar.gz.asc freo-v0.3.0.tar.gz
-mkdir freo-v0.3.0
-tar -xzf freo-v0.3.0.tar.gz -C freo-v0.3.0
-cd freo-v0.3.0
+tar -xf freo-v0.3.2-install-kit.tar
+cd freo-test-kit
+sha256sum --check SHA256SUMS
+gpg --show-keys --with-fingerprint publisher.gpg
 ```
 
-Stop if any verification fails. The kit contains only the public verification
-key; never transfer private signing material to an installation.
+Confirm the publisher fingerprint against this independently published value:
+
+**B835 B40E 7E1A 5838 3902 5675 1AB7 2B63 BEB7 16C3**
+
+```bash
+gpgv --keyring "$PWD/publisher.gpg" freo-v0.3.2.tar.gz.asc freo-v0.3.2.tar.gz
+mkdir freo-v0.3.2
+tar -xzf freo-v0.3.2.tar.gz -C freo-v0.3.2
+cd freo-v0.3.2
+```
+
+Expect a good signature from `3andB Freo Releases <info@3andB.com>`.
+The directory name `freo-test-kit` and preparation-time notices inside the kit
+are retained to preserve its tested bytes. The public release notes and
+`ACCEPTANCE.md` record the subsequent completed acceptance and publication
+approval. GitHub's automatically generated source ZIP/tar downloads do not
+contain the bundled installation dependencies; use the named installation kit.
 
 ## Install once
 
-Choose one mode. For HTTP, replace the example with your public IP or domain:
+For HTTP, replace `YOUR_SERVER_PUBLIC_IP` with the server's public IPv4 address
+(or your configured hostname):
 
 ```bash
-sudo env FREO_DOMAIN=YOUR_PUBLIC_IP_OR_DOMAIN bash scripts/install.sh
+sudo env FREO_DOMAIN=YOUR_SERVER_PUBLIC_IP bash scripts/install.sh
 ```
 
-For HTTPS, first point your domain at the VM, then instead run:
+This explicitly selects the public URL and Nginx virtual host. Leaving it unset
+uses the first local address, which may be private on a server with multiple
+interfaces.
+
+For HTTPS, point a real hostname at the VM, allow ports 80/443, and run this
+**instead**, replacing the hostname and email:
 
 ```bash
 sudo env FREO_DOMAIN=radio.example.com FREO_ENABLE_HTTPS=1 \
   FREO_CERTBOT_EMAIL=you@example.com bash scripts/install.sh
 ```
 
-Use real domain/email values. HTTPS is required for microphone capture from
-remote browsers. Do not rerun the installer to change modes or upgrade.
+HTTPS requires public DNS and successful certificate issuance. Remote browser
+microphone access requires HTTPS. Automated TLS/Host/SNI/certificate checks
+passed; the final owner VM acceptance used HTTP/public IP. Verify public
+certificate issuance and `sudo certbot renew --dry-run` on your HTTPS server.
 
-## First use
+The installer configures PostgreSQL, migrations, Nginx, Gunicorn and radio
+services. It reports:
 
-Open the printed `/admin/login` URL. Sign in as **admin** with the initial
-password **IAmOnTheAir**. Mandatory setup requires your email and a new password
-of at least 16 characters. The initial password then stops working. The primary
-admin receives access to `/admin/software` automatically.
+- **LOCAL APPLICATION VALIDATION**: Freo, Nginx and the admin login path on the VM.
+- **EXTERNAL ACCESS VALIDATION**: public reachability from that VM, reported
+  separately so blocked hairpin routing cannot falsely fail a working local app.
 
-Create a station in Admin, import music you can broadcast, configure programming
-and start playback. No demo stations or music are seeded.
+A successful install prints the exact address to open, for example:
+`http://YOUR_SERVER_PUBLIC_IP/admin/login`. Check it from another device.
+If installation exits nonzero, preserve its output and investigate before rerunning.
+
+## First broadcast
+
+Sign in as **admin** with **IAmOnTheAir**. Immediately complete mandatory setup
+with your email and a new password, then accept the license agreement. Freo
+starts without demo stations or music. Create your station, upload audio you
+are permitted to broadcast, wait for processing, create a playlist and assign
+it in Simple scheduling. Turn broadcasting on and open the public player.
+The primary administrator manages upgrades and licenses. Registration is optional.
 
 ```bash
 cd /opt/freo
-sudo venv/bin/python -c 'from app.version import VERSION; print(VERSION)'
+venv/bin/python -c 'from app.version import VERSION; print(VERSION)'
 sudo bash scripts/validate-install.sh
+systemctl --failed --no-pager
 ```
 
-The installed version must be `0.3.0`, also shown in Admin → Installation and
-reported through the existing heartbeat. Latest stable may remain Unknown
-until Freo Live discovers a published stable GitHub Release. Preparing this
-package does not update that service's latest version.
+Expect version `0.3.2`, successful local/service/database checks and no failed
+units. Leave broadcast on, reboot when convenient, and confirm automatic
+playback recovery and retained station/media/settings. Run the validator again.
 
-Verify first login, Software access, music import, programming, external playback
-and restart persistence. For HTTPS, also verify `sudo certbot renew --dry-run`
-and microphone return to the previous feed. The kit's `validation.json` separates
-completed automated checks from operator/VM acceptance. A stable version number
-alone does not prove acceptance.
+## Reporting, licensing and recovery
 
-## Recovery and support
+Freo automatically reports installation identity, version, machine facts,
+station metadata and hourly aggregate listener/library totals to api.freo.live.
+It does not send listener identities/IPs or music metadata. Directory listing
+requires a separate opt-in. Registration is optional.
 
-Retain installer output on failure. Do not delete state and rerun blindly. Use
-[recovery and upgrades](recovery-and-upgrades.md) for backups and signed upgrades.
-Upgrades from older candidates require a fresh admin sign-in because the logout
-fix revokes sessions at the server. Accounts and station data remain intact.
+Freo is source-available. Up to three stations total per owner are free,
+including commercial use; US$99 once covers unlimited stations across that
+owner's installations and future updates. See the bundled LICENSE.
 
-Diagnostics:
-
-```bash
-sudo systemctl --failed --no-pager
-sudo journalctl -u freo.service -u freo-central-api.service \
-  -u freo-provision.service -u freo-ingest.service \
-  --since '15 minutes ago' -n 120 --no-pager
-```
-
-Never share `.env`, installation identity files, passwords or bearer tokens.
+Arrange protected off-server backups and verify a matched recovery point using
+the [recovery guide](https://github.com/3andB/freo/releases/download/v0.3.2/recovery-and-upgrades.md).
+Use the supported signed updater for existing installations. Never try to
+reverse the security migration as a recovery shortcut.
