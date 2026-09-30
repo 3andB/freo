@@ -94,6 +94,8 @@ def test_recurring_pointer_resize_move_cancel_and_visibility(booth):
     drag('[data-id="series"] .resize-grip.top',0,-42);scope()
     Select(driver.find_element(By.ID,'move-scope')).select_by_value('series')
     driver.find_element(By.ID,'apply-move-scope').click();WebDriverWait(driver,5).until(lambda d:not d.find_element(By.ID,'move-scope-dialog').is_displayed())
+    # Autosave redraws the timeline after the dialog closes; await it before the next drag.
+    WebDriverWait(driver,5).until(lambda d:d.find_element(By.ID,'save-state').text=='Saved')
     width=driver.execute_script("return document.querySelector('.time-column').getBoundingClientRect().width")
     drag('[data-id="series"]',round(width),0);scope()
     assert '2026-09-22' in driver.find_element(By.ID,'move-scope-summary').text
