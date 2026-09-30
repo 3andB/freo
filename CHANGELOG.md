@@ -1,6 +1,13 @@
 # Changelog
 
-## 0.3.2-rc.2 — candidate, acceptance pending
+## 0.3.2 — stable candidate; exact-kit acceptance pending
+
+- Promote accepted 0.3.2-rc.2 to stable version metadata and installation documentation.
+- Retain the accepted application, installer, schema, customer archive inventory and all 42 pinned dependency wheels.
+- RC2 passed fresh Ubuntu 24.04 x86_64 HTTP/public-IP installation and full-VM reboot/recovery; its automated suite completed with 1,273 passes and three optional skips.
+- The separately signed 0.3.2 kit requires its own fresh-VM acceptance before publication.
+
+## 0.3.2-rc.2 — fresh-install and reboot/recovery acceptance passed
 
 - Preserve Back/Forward and link navigation received while page responses or scripts are loading.
 - Retain the prepared AUTO successor when the decoder moves it during a stopped-deck return.

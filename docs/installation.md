@@ -6,10 +6,14 @@
 
 # Installation and deployment
 
-For the latest signed test kit, begin with [0.3.2-rc.2 installation](0.3.2-rc.2-installation.md).
-Fresh-VM acceptance of this kit is pending.
-Publication is separate from package preparation. Historical candidate instructions
-remain in [candidate installation](install-candidate.md).
+For **0.3.2**, begin with `INSTALL.md` in the separately supplied
+`freo-v0.3.2-install-kit.tar`. Verify `KIT-SHA256SUMS`, the internal `SHA256SUMS`,
+and the publisher signature on `freo-v0.3.2.tar.gz` before extraction or installation.
+The stable kit promotes accepted RC2 and remains private until its exact signed
+bytes pass fresh-VM acceptance. RC2 fresh installation and full-VM reboot/recovery
+passed on Ubuntu 24.04 x86_64 using HTTP/public IP.
+Publication is separate from package preparation. The [RC2 test-kit guide](0.3.2-rc.2-installation.md)
+and [earlier candidate instructions](install-candidate.md) remain historical.
 For existing installations, use [recovery and upgrades](recovery-and-upgrades.md) for existing
 installations. The installer now refuses existing state before making changes;
 the historical rerun-based upgrade instructions below are superseded by the
@@ -19,7 +23,7 @@ dedicated verified updater.
 
 Ubuntu 24.04 LTS x86_64 only. Prefer the verified signed archive; source developers may clone the canonical 3andB/freo repository and run `sudo ./scripts/install.sh` from its root. The installer copies named release files to `/opt/freo`, creates a `freo` system account, installs Python and radio packages, provisions a local PostgreSQL role/database on a fresh install, installs version-controlled units and an HTTP Nginx site, and validates the result. The installer requires internet access for apt and pip. Do not rely on this path as verified for others until `clean-install-test.md` has been executed on a separate VM.
 
-For an IP-only install, leave `FREO_DOMAIN` unset. For an HTTP domain install, set `FREO_DOMAIN=radio.example.com` when running the installer, after DNS points at the server. For HTTPS, also set `FREO_ENABLE_HTTPS=1` and `FREO_CERTBOT_EMAIL=operator@example.com`; Certbot will obtain a certificate and update the Nginx site. DNS, inbound 80/443, and a reachable public IP are prerequisites for that step. Certbot is optional. The checked-in Nginx template is HTTP only; it contains no certificate path. An existing Nginx site is retained rather than overwritten.
+For an IP-only install, set `FREO_DOMAIN` to the VM's public IP when running the installer. For an HTTP domain install, set `FREO_DOMAIN=radio.example.com` when running the installer, after DNS points at the server. For HTTPS, also set `FREO_ENABLE_HTTPS=1` and `FREO_CERTBOT_EMAIL=operator@example.com`; Certbot will obtain a certificate and update the Nginx site. DNS, inbound 80/443, and a reachable public IP are prerequisites for that step. Certbot is optional. The checked-in Nginx template is HTTP only; it contains no certificate path. An existing Nginx site is retained rather than overwritten.
 
 The installer is for fresh installations. It refuses an existing environment,
 release pointer or media directory before changing packages, files, services or
