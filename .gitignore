@@ -36,3 +36,7 @@ radio-runtime/
 
 /venv
 *.license.json
+
+# Runtime directories created by the signed production updater.
+/current
+/releases/
