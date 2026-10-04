@@ -108,3 +108,14 @@ html:has(#music-player:not([hidden])){scroll-padding-bottom:var(--music-preview-
 /* Bulk actions stay compact so the preview dock cannot obscure song targets. */
 .sound-workspace .selection-toolbar label{flex-direction:row;align-items:center;font-size:12px;font-weight:400;white-space:nowrap;margin:0}
 .sound-workspace .selection-toolbar select{width:auto;min-height:34px;font-size:12px;padding:6px 28px 6px 8px}
+
+/* Smart playlist controls must shrink with the existing mobile editor. */
+#playlist-form,#playlist-form details,#playlist-form .playlist-fields label{min-width:0}
+#playlist-form details{overflow-wrap:anywhere}
+#playlist-form input:not([type=checkbox]),#playlist-form select{width:100%;max-width:100%;min-width:0;box-sizing:border-box}
+#playlist-form .inline-actions{flex-wrap:wrap}
+#playlist-weights{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(180px,100%),1fr));gap:12px}
+#playlist-separation{padding:20px;display:grid;gap:16px}
+#playlist-separation label{display:grid;gap:6px}
+#playlist-form details .playlist-fields{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(180px,100%),1fr));gap:16px}
+#playlist-form label:has(>input[type=checkbox]){flex-direction:row;align-items:flex-start}

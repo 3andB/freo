@@ -129,7 +129,10 @@ def refill_station(slug, reader, target_depth=2):
         if decision is None:
             block = EventBlockExecution.query.join(EventBlockExecution.station).filter(
                 Station.slug == slug, EventBlockExecution.state.in_(('PENDING','QUEUED','STARTED'))).first()
-            if block is None:
+            pending_leader = SelectionDecision.query.join(SelectionDecision.station).filter(
+                Station.slug == slug, SelectionDecision.selection_method == 'playlist_leader',
+                SelectionDecision.status.in_(('selected','submitting','queued'))).first()
+            if block is None and pending_leader is None:
                 reader.starved_until[slug] = time.monotonic() + 30
             break
         try:
@@ -153,6 +156,50 @@ def refill_station(slug, reader, target_depth=2):
     return added
 
 
+def _reconcile_untracked_leaders(slug, identity, live, complete_inventory):
+    """Recover the select/push/commit crash window under the existing worker lease."""
+    rows = SelectionDecision.query.join(SelectionDecision.station).filter(
+        Station.slug == slug, SelectionDecision.selection_method == 'playlist_leader',
+        SelectionDecision.liquidsoap_request_id.is_(None),
+        db.or_(SelectionDecision.status.in_(('selected', 'submitting')),
+               db.and_(SelectionDecision.status == 'failed', SelectionDecision.reason == 'queue_failed'))).all()
+    missing_by_station = current_app.extensions.setdefault('playout_untracked_leaders', {})
+    previous = missing_by_station.get(slug, {})
+    missing = {}
+    changed = 0
+    if rows:
+        # Socket errors must propagate: an incomplete annotation lookup cannot
+        # prove that a push failed. Never fabricate a confirmed start here.
+        requests = {request_decision_id(slug, rid): rid for rid in live}
+        observed = time.monotonic()
+        for row in rows:
+            if row.id in requests:
+                row.liquidsoap_request_id = requests[row.id]
+                row.socket_identity = identity
+                row.status, row.reason = 'queued', ''
+                changed += 1
+            else:
+                # Hold uncertain queue failures too, allowing a short request's
+                # delayed START callback to arrive before retrying its leader.
+                if row.status == 'failed':
+                    row.status, row.reason = 'selected', 'leader_submission_uncertain'
+                    changed += 1
+                if complete_inventory:
+                    since = previous.get(row.id, observed)
+                    if observed - since >= 10:
+                        row.status, row.reason = 'failed', 'leader_request_not_submitted'
+                        changed += 1
+                    else:
+                        missing[row.id] = since
+    if missing:
+        missing_by_station[slug] = missing
+    else:
+        missing_by_station.pop(slug, None)
+    if changed:
+        db.session.commit()
+    return changed
+
+
 def reconcile_requests(slug):
     identity = socket_identity(slug)
     from app.services.event_blocks import reconcile_occurrences
@@ -168,6 +215,7 @@ def reconcile_requests(slug):
         live |= set(channel_queue(slug, 'A')) | set(channel_queue(slug, 'B')) | set(channel_queue(slug, 'CART'))
     except (OSError, RuntimeError, ValueError):
         complete_inventory = False
+    recovered_leaders = _reconcile_untracked_leaders(slug, identity, live, complete_inventory)
     # A confirmed start remains airplay history, but an engine restart cannot
     # leave its occurrence or sequence permanently marked Playing.
     interrupted = SelectionDecision.query.join(SelectionDecision.station).outerjoin(
@@ -239,7 +287,7 @@ def reconcile_requests(slug):
                 if occurrence and occurrence.state == 'QUEUED':
                     occurrence.state, occurrence.failure_reason = 'FAILED', row.reason
         db.session.commit()
-    return changed
+    return changed + recovered_leaders
 
 
 def process_block(station, reader, now=None):
@@ -1088,6 +1136,12 @@ def tick(reader, target_depth=2):
 def worker_delay(reader):
     """Use the same bounded boundary cadence in production and system tests."""
     if time.monotonic() < reader.calendar_poll_until:
+        return .25
+    pending_leader = db.session.query(SelectionDecision.id).join(Station).filter(
+        SelectionDecision.selection_method == 'playlist_leader',
+        SelectionDecision.status.in_(('selected', 'submitting', 'queued')),
+        Station.enabled.is_(True), Station.desired_state == 'running').first()
+    if pending_leader:
         return .25
     due = TimedEventOccurrence.query.filter(TimedEventOccurrence.state.in_(('PENDING','READY'))).order_by(TimedEventOccurrence.scheduled_for_utc).first()
     nearest = ((due.scheduled_for_utc.replace(tzinfo=due.scheduled_for_utc.tzinfo or timezone.utc)-datetime.now(timezone.utc)).total_seconds() if due else None)

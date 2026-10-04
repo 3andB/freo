@@ -298,7 +298,7 @@ def validate_content(event, storage=None, *, check_files=True):
     if event.playlist:
         from app.services.playlists import playable_tracks
         from app.services.availability import playable
-        tracks = playable_tracks(event.playlist,event.station_id,storage) if check_files else [i.track for i in event.playlist.items if playable(i.track,event.station_id)]
+        tracks = playable_tracks(event.playlist,event.station_id,storage if check_files else None)
         if not event.playlist.enabled or not tracks: raise ValueError('Playlist has no playable audio')
         return event.playlist
     if event.event_block:
@@ -370,8 +370,11 @@ def recurrence_summary(event):
 
 def estimated_duration(event):
     if event.playlist:
-        durations=[i.track.duration_ms for i in event.playlist.items if i.track.enabled and i.track.ingest_status=='accepted' and available(i.track,event.station_id) and not i.track.decommissioned_at]
-        return (sum(durations) if event.playlist_playback=='ALL' else max(durations,default=0))/1000
+        from app.services.playlists import playable_tracks, leader_track
+        durations=[t.duration_ms for t in playable_tracks(event.playlist,event.station_id)]
+        leader=leader_track(event.playlist)
+        leader_duration=(leader.duration_ms or 0) if leader else 0
+        return (leader_duration + (sum(durations) if event.playlist_playback=='ALL' else max(durations,default=0)))/1000
     target=event.track or event.imaging_asset or event.event_block
     return target.duration_ms/1000 if target else 0
 

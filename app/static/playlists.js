@@ -20,7 +20,43 @@
   }
   function canChange() { if (busy) return false; if (dirty) { message('Save or discard your playlist details first.'); return false; } return true; }
   function setDirty(value) { dirty = value; $('playlist-save-state').textContent = value ? 'Unsaved changes' : 'Saved'; $('playlist-discard').hidden = !value; }
-  function fillForm() { for (const key of ['name', 'description', 'mode']) form.elements[key].value = current[key]; setDirty(false); }
+  function fillForm() {
+    for (const key of ['name', 'description', 'mode']) form.elements[key].value = current[key];
+    const leader = form.elements.leader_track_id; leader.replaceChildren(new Option('None', ''));
+    for (const item of catalog.leaders) leader.append(new Option(item.name, item.id));
+    if (current.leader_track_id && !catalog.leaders.some(t => t.id === current.leader_track_id)) leader.append(new Option('Unavailable leader', current.leader_track_id));
+    leader.value = current.leader_track_id || '';
+    form.elements.smart_enabled.checked = current.smart_enabled;
+    form.elements.smart_enabled.disabled = ['STATION', 'COMMERCIALS'].includes(current.system_key);
+    const rules = current.smart_rules || {};
+    for (const key of ['artist','title','album','genre']) form.elements['rule_' + key].value = rules[key] || '';
+    for (const key of ['bpm','release_year','duration_ms']) for (const bound of ['min','max']) form.elements[`rule_${key}_${bound}`].value = rules[key]?.[bound] ?? '';
+    $('playlist-weights').replaceChildren();
+    for (const key of ['tags','categories']) {
+      const select = form.elements['rule_' + key]; select.replaceChildren();
+      const items = [...catalog[key]];
+      const known = new Set(items.map(item => item.id));
+      const savedIds = [...(rules[key] || []), ...Object.keys(current.selection_weights?.[key] || {}).map(Number)];
+      for (const id of savedIds) if (!known.has(id)) { items.push({id, name: 'Unavailable — remove this filter or weight'}); known.add(id); }
+      for (const item of items) {
+        select.append(new Option(item.name, item.id, false, (rules[key] || []).includes(item.id)));
+        const label = node('label', `${key === 'tags' ? 'Tag' : 'Category'}: ${item.name}`), input = node('input');
+        input.type = 'number'; input.min = '0.01'; input.max = '100'; input.step = 'any'; input.placeholder = 'No weight';
+        input.dataset.weightKind = key; input.dataset.weightId = item.id; input.value = current.selection_weights?.[key]?.[item.id] ?? '';
+        label.append(input); $('playlist-weights').append(label);
+      }
+    }
+    setDirty(false);
+  }
+  function selectionSettings() {
+    const rules = {}, weights = {};
+    for (const key of ['artist','title','album','genre']) { const value = form.elements['rule_' + key].value.trim(); if (value) rules[key] = value; }
+    for (const key of ['bpm','release_year','duration_ms']) for (const bound of ['min','max']) { const value = form.elements[`rule_${key}_${bound}`].value; if (value !== '') (rules[key] ||= {})[bound] = Number(value); }
+    for (const key of ['tags','categories']) { const ids = [...form.elements['rule_' + key].selectedOptions].map(o => Number(o.value)); if (ids.length) rules[key] = ids; }
+    for (const input of form.querySelectorAll('[data-weight-kind]')) if (input.value !== '') (weights[input.dataset.weightKind] ||= {})[input.dataset.weightId] = Number(input.value);
+    return {leader_track_id: form.elements.leader_track_id.value ? Number(form.elements.leader_track_id.value) : null,
+      smart_enabled: form.elements.smart_enabled.checked, smart_rules: rules, selection_weights: weights};
+  }
   function preview(song) {
     const b = node('button', '▶', 'preview-button'); b.type = 'button'; b.disabled = !song.audition;
     b.setAttribute('aria-label', `Play ${song.title}`);
@@ -36,19 +72,20 @@
     }
   }
   function renderSongs() {
+    $('playlist-add').disabled = current.smart_enabled;
     $('playlist-delete').disabled=['STATION','COMMERCIALS'].includes(current.system_key);
     const list = $('playlist-songs'); list.replaceChildren();
     const term = $('playlist-search').value.trim().toLowerCase();
     const songs = current.songs.filter(s => `${s.title} ${s.artist} ${s.album}`.toLowerCase().includes(term));
     $('playlist-count').textContent = `${current.count} songs · ${duration(current.duration_ms)}`;
-    $('playlist-mode-hint').textContent = current.mode === 'RANDOM' ? 'Shuffles without repeating a song until the cycle finishes.' : 'Plays from top to bottom, then repeats.';
-    if (!songs.length) list.append(node('p', current.count ? 'No matching songs.' : 'Your playlist is ready for music. Choose Add music to begin.', 'room-empty'));
+    $('playlist-mode-hint').textContent = current.smart_enabled ? 'Current library matches. Edit filters to change these songs.' : current.mode === 'RANDOM' ? 'Shuffles without repeating a song until the cycle finishes.' : 'Plays from top to bottom, then repeats.';
+    if (!songs.length) list.append(node('p', current.count ? 'No matching songs.' : current.smart_enabled ? 'No library songs match these filters. Edit the filters to change the selection.' : 'Your playlist is ready for music. Choose Add music to begin.', 'room-empty'));
     songs.forEach(song => {
       const row = node('article', undefined, 'playlist-song'); row.dataset.song = song.uuid;
       const check = node('input'); check.type = 'checkbox'; check.checked = selected.has(song.uuid); check.setAttribute('aria-label', `Select ${song.title}`);
       check.addEventListener('change', () => { check.checked ? selected.add(song.uuid) : selected.delete(song.uuid); $('playlist-remove').disabled = !selected.size; });
-      const handle = node('span', '⠿', 'playlist-grip'); handle.draggable = !term; handle.title = 'Drag to reorder';
-      handle.addEventListener('dragstart', e => { if (!canChange() || term) { e.preventDefault(); return; } dragged = song.uuid; e.dataTransfer.setData('text/plain', song.uuid); });
+      const handle = node('span', '⠿', 'playlist-grip'); handle.draggable = !term && !current.smart_enabled; handle.title = 'Drag to reorder';
+      handle.addEventListener('dragstart', e => { if (!canChange() || term || current.smart_enabled) { e.preventDefault(); return; } dragged = song.uuid; e.dataTransfer.setData('text/plain', song.uuid); });
       handle.addEventListener('dragend', () => { dragged = null; root.querySelectorAll('.drop-active').forEach(n => n.classList.remove('drop-active')); });
       row.addEventListener('dragover', e => { if (dragged && !term) { e.preventDefault(); row.classList.add('drop-active'); } });
       row.addEventListener('dragleave', () => row.classList.remove('drop-active'));
@@ -56,10 +93,12 @@
       const copy = node('div', undefined, 'playlist-song-copy'); copy.append(node('b', song.title), node('small', `${song.artist} · ${duration(song.duration_ms)}${song.playable ? '' : ' · Unavailable for broadcast'}`));
       const index = current.songs.findIndex(s => s.uuid === song.uuid);
       const up = button('↑', () => reorder(song.uuid, index - 1), `Move ${song.title} up`), down = button('↓', () => reorder(song.uuid, index + 1), `Move ${song.title} down`);
-      up.disabled = index === 0 || !!term; down.disabled = index === current.songs.length - 1 || !!term;
-      row.append(check, handle, node('span', String(index + 1)), preview(song), copy, up, down, button('Remove', () => remove([song.uuid]), `Remove ${song.title} from playlist`)); list.append(row);
+      up.disabled = current.smart_enabled || index === 0 || !!term; down.disabled = current.smart_enabled || index === current.songs.length - 1 || !!term;
+      check.disabled = current.smart_enabled;
+      const removeButton = button('Remove', () => remove([song.uuid]), `Remove ${song.title} from playlist`); removeButton.disabled = current.smart_enabled;
+      row.append(check, handle, node('span', String(index + 1)), preview(song), copy, up, down, removeButton); list.append(row);
     });
-    $('playlist-remove').disabled = !selected.size; window.FreoPreview?.sync();
+    $('playlist-remove').disabled = current.smart_enabled || !selected.size; window.FreoPreview?.sync();
   }
   async function open(id) {
     const sequence = ++detailSequence;
@@ -72,25 +111,27 @@
   }
   async function refresh(id = current?.id) {
     catalog = await get(root.dataset.catalog); renderList();
+    for (const key of ['artist_seconds', 'track_seconds']) $('playlist-separation').elements[key].value = catalog.separation[key];
     const target = catalog.playlists.find(p => p.id === Number(id)) || catalog.playlists[0];
     if (target) await open(target.id);
     else { current = null; $('playlist-editor').hidden = true; $('playlist-empty').hidden = false; $('playlist-empty').textContent = 'Create a playlist to start adding music.'; }
   }
   async function reorder(uuid, index) {
-    if (!canChange()) return;
+    if (!canChange() || current.smart_enabled) return;
     const ids = current.songs.map(s => s.uuid), from = ids.indexOf(uuid);
     if (from < 0 || index < 0 || index >= ids.length || index === from) return;
     ids.splice(index, 0, ids.splice(from, 1)[0]);
     if (await post('playlist-reorder', {id: current.id, revision: current.revision, songs: ids})) await refresh();
   }
-  async function remove(ids) { if (canChange() && await post('playlist-remove', {id: current.id, songs: ids})) await refresh(); }
+  async function remove(ids) { if (!current.smart_enabled && canChange() && await post('playlist-remove', {id: current.id, songs: ids})) await refresh(); }
   $('playlist-new').addEventListener('click', async () => {
     if (!canChange()) return;
     const result = await post('create-playlist', {name: 'New playlist', description: '', mode: 'STRAIGHT'});
     if (result) { await refresh(result.playlist_id); form.elements.name.focus(); form.elements.name.select(); }
   });
   form.addEventListener('input', () => setDirty(true));
-  form.addEventListener('submit', async e => { e.preventDefault(); if (!current) return; const payload = {id: current.id, revision: current.revision}; for (const key of ['name', 'description', 'mode']) payload[key] = form.elements[key].value; if (await post('edit-playlist', payload)) { setDirty(false); await refresh(); } });
+  form.addEventListener('submit', async e => { e.preventDefault(); if (!current) return; const payload = {id: current.id, revision: current.revision, ...selectionSettings()}; for (const key of ['name', 'description', 'mode']) payload[key] = form.elements[key].value; if (await post('edit-playlist', payload)) { setDirty(false); await refresh(); } });
+  $('playlist-separation').addEventListener('submit', async e => { e.preventDefault(); const payload = {}; for (const key of ['artist_seconds','track_seconds']) payload[key] = Number(e.target.elements[key].value); await post('separation', payload); });
   $('playlist-discard').addEventListener('click', () => { setDirty(false); open(current.id); });
   $('playlist-search').addEventListener('input', renderSongs);
   $('playlist-remove').addEventListener('click', () => remove([...selected]));

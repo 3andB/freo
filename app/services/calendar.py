@@ -6,6 +6,7 @@ import uuid
 from app.extensions import db
 from app.models import Clock, ClockSlot, MediaCategory, Rotation, ScheduleProgram, Station
 from app.services.programming import clean_text
+from app.services.playlists import playable_tracks
 from app.services.schedule import _wall_to_utc, parse_local_time, utc_instant, usable_clock
 
 
@@ -66,9 +67,8 @@ def create_program(station, *, name, weekdays, start, end, category_slug=None, c
     clock = None
     if playlist_id:
         from app.services.playlists import get_playlist
-        from app.services.availability import playable
         playlist = get_playlist(station.id, playlist_id)
-        if not any(playable(item.track, station.id) for item in playlist.items):
+        if not playable_tracks(playlist, station.id):
             raise ValueError('Add an enabled song to this playlist before scheduling it')
         clock = Clock(station_id=station.id, slug='program-' + uuid.uuid4().hex[:20], name=name, enabled=True,
                       description='Calendar playlist program')
@@ -77,8 +77,7 @@ def create_program(station, *, name, weekdays, start, end, category_slug=None, c
         clock = Clock.query.filter_by(station_id=station.id, slug=clock_slug).first()
         if not usable_clock(clock, station.id):
             raise ValueError('Choose an enabled show template with playable slots')
-        from app.services.availability import playable
-        if any(slot.enabled and slot.playlist and not any(playable(item.track, station.id) for item in slot.playlist.items) for slot in clock.slots):
+        if any(slot.enabled and slot.playlist and not playable_tracks(slot.playlist, station.id) for slot in clock.slots):
             raise ValueError('Add an enabled song to this playlist before scheduling it')
     else:
         category = MediaCategory.query.filter_by(station_id=station.id, slug=category_slug, enabled=True).first() if category_slug else None

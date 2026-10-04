@@ -45,6 +45,9 @@ def remove_references(song):
                 if isinstance(row, m.TrafficStopsetItem): row.item_type = 'FIXED_AUDIO'
         for slot in m.ClockSlot.query.filter_by(imaging_asset_id=legacy.id):
             db.session.delete(slot)
+    for playlist in m.Playlist.query.filter_by(leader_track_id=song.id):
+        playlist.leader_track = None
+        playlist.revision += 1
     for playlist in m.Playlist.query.join(m.PlaylistItem).filter(m.PlaylistItem.track_id == song.id):
         playlist.revision += 1
     # Delete children before parents, including check-constrained target rows.

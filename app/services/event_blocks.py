@@ -147,6 +147,10 @@ def prepare_next(execution, now=None):
     decision=SelectionDecision(station_id=execution.station_id,track_id=item.track_id,imaging_asset_id=item.imaging_asset_id,
         selection_method='event_block',status='selected',selected_at=now,admin_user_id=execution.admin_user_id,
         clock_slot_id=execution.clock_slot_id,reason=f'block:{execution.id}:item:{item.position}')
+    if execution.timed_event_occurrence:
+        selection = (execution.timed_event_occurrence.runtime or {}).get('playlist_selection', {}).get(str(item.position), {})
+        for key in ('candidate_count', 'relaxation'):
+            if key in selection: setattr(decision, key, selection[key])
     db.session.add(decision); db.session.flush(); item.selection_decision_id=decision.id; db.session.commit(); return item
 
 def confirm_item_started(decision, now):
@@ -161,7 +165,9 @@ def confirm_item_started(decision, now):
     if occurrence and occurrence.state!='STARTED': occurrence.state='STARTED'; occurrence.started_at=now; occurrence.failure_reason=None
     if occurrence and execution.playlist:
         cursors = (occurrence.runtime or {}).get('playlist_cursors', {})
-        cursor = cursors.get(str(item.position)) or (occurrence.runtime or {}).get('playlist_cursor')
+        cursor = cursors.get(str(item.position))
+        if not cursors:
+            cursor = (occurrence.runtime or {}).get('playlist_cursor')
         if cursor:
             occurrence.event.playlist_state = cursor
     from app.services.traffic import reconcile_placement
@@ -170,14 +176,25 @@ def confirm_item_started(decision, now):
 
 def create_playlist_execution(occurrence, storage=None):
     """Freeze a finite run; the cursor commits only when its item starts."""
-    from app.services.playlists import playable_tracks, advance
+    from app.services.playlists import playable_tracks, advance, leader_track
     event = occurrence.event
     existing = EventBlockExecution.query.filter_by(timed_event_occurrence_id=occurrence.id).first()
     if existing: return existing
     tracks = playable_tracks(event.playlist, event.station_id, storage or LocalMediaStorage())
     if not tracks: raise ValueError('Playlist has no playable audio')
+    from app.services.selection_policy import recent
+    from types import SimpleNamespace
+    now = datetime.now(timezone.utc)
+    history = recent(event.station, event.station.automation, now)
+    leader = leader_track(event.playlist, storage or LocalMediaStorage())
+    if leader:
+        history.append(SimpleNamespace(track=leader, track_id=leader.id, status='selected', selected_at=now))
+    options = dict(history=history, now=now, automation=event.station.automation)
+    selections = {}
     if event.playlist_playback == 'ONE':
-        track, cursor = advance(event.playlist, tracks, event.playlist_state)
+        result = {}
+        track, cursor = advance(event.playlist, tracks, event.playlist_state, result=result, **options)
+        selections['1'] = result
         tracks = [track]
         occurrence.runtime = {**(occurrence.runtime or {}), 'playlist_cursor':cursor}
     elif event.playlist.mode == 'RANDOM':
@@ -185,12 +202,29 @@ def create_playlist_execution(occurrence, storage=None):
         cursor = dict(event.playlist_state or {})
         cursors = {}
         for position in range(1, len(tracks) + 1):
+            result = {}
             track, cursor = advance(event.playlist, tracks, cursor,
-                exclude={item.id for item in shuffled})
+                exclude={item.id for item in shuffled}, result=result, **options)
+            selections[str(position)] = result
+            history.append(SimpleNamespace(track=track, track_id=track.id, status="selected", selected_at=now))
             shuffled.append(track)
             cursors[str(position)] = dict(cursor)
         tracks = shuffled
         occurrence.runtime = {**(occurrence.runtime or {}), 'playlist_cursors': cursors}
+    if event.playlist.leader_track_id and not leader:
+        db.session.add(SelectionDecision(station_id=event.station_id, status='failed', selected_at=now,
+            selection_method='playlist_leader', reason='playlist_leader_unavailable'))
+    if leader:
+        runtime = dict(occurrence.runtime or {})
+        cursors = runtime.pop('playlist_cursors', {})
+        if 'playlist_cursor' in runtime:
+            cursors = {'1': runtime.pop('playlist_cursor')}
+        runtime['playlist_cursors'] = {str(int(k)+1): v for k,v in cursors.items()}
+        occurrence.runtime = runtime
+        tracks = [leader] + tracks
+        selections = {str(int(k)+1): v for k,v in selections.items()}
+        selections['1'] = dict(candidate_count=1, relaxation='none')
+    occurrence.runtime = {**(occurrence.runtime or {}), 'playlist_selection': selections}
     execution = EventBlockExecution(station_id=event.station_id, playlist=event.playlist,
         playlist_revision=event.playlist.revision, source='TIMED_EVENT', timed_event_occurrence=occurrence)
     db.session.add(execution)
@@ -290,6 +324,10 @@ def submit_snapshot(execution, now):
         decision=item.selection_decision
         if not decision:
             decision=SelectionDecision(station_id=execution.station_id,track_id=item.track_id,imaging_asset_id=item.imaging_asset_id,selection_method='event_block',status='submitting',selected_at=now,reason=f'block:{execution.id}:item:{item.position}')
+            if execution.timed_event_occurrence:
+                selection = (execution.timed_event_occurrence.runtime or {}).get('playlist_selection', {}).get(str(item.position), {})
+                for key in ('candidate_count', 'relaxation'):
+                    if key in selection: setattr(decision, key, selection[key])
             db.session.add(decision);db.session.flush();item.selection_decision=decision
         decision.status='submitting';decisions.append(decision);items.append(item)
     if not decisions:

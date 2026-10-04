@@ -1,12 +1,13 @@
 """Station-scoped category rotations and explainable track selection."""
 from app.services.availability import playable
 from app.services.availability import tracks_for
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 
 from app.extensions import db
 from app.models import (AutomationState, ClockState, MediaCategory, Rotation, RotationCursor, RotationSlot,
                         SelectionDecision, Track)
 from app.services.media_storage import LocalMediaStorage
+from app.services.selection_policy import artist_key, choose as _choose, recent as _recent
 from app.services.stations import get_station, validate_slug
 
 
@@ -181,41 +182,6 @@ def set_automation(slug, enabled, track_seconds=None, artist_seconds=None):
     return state
 
 
-def artist_key(value):
-    return ' '.join((value or '').casefold().split())
-
-
-def _choose(tracks, history, now, track_seconds, artist_seconds):
-    """Deterministic least-recently-started choice, relaxing artist before track."""
-    last_track = {}
-    last_artist = {}
-    for item in history:
-        if getattr(item, 'track', None) is None:
-            continue
-        occurred = item.started_at if item.status == 'started' else item.selected_at
-        if occurred is None:
-            continue
-        if occurred.tzinfo is None:
-            occurred = occurred.replace(tzinfo=timezone.utc)
-        if item.status not in ('started', 'selected', 'queued'):
-            continue
-        last_track[item.track_id] = max(last_track.get(item.track_id, occurred), occurred)
-        key = artist_key(item.track.artist)
-        last_artist[key] = max(last_artist.get(key, occurred), occurred)
-    for relaxation, artist_window, track_window in (
-        ('none', artist_seconds, track_seconds),
-        ('artist', 0, track_seconds),
-        ('track', 0, 0),
-    ):
-        eligible = [track for track in tracks
-                    if (not track_window or track.id not in last_track or now - last_track[track.id] >= timedelta(seconds=track_window))
-                    and (not artist_window or artist_key(track.artist) not in last_artist or now - last_artist[artist_key(track.artist)] >= timedelta(seconds=artist_window))]
-        if eligible:
-            eligible.sort(key=lambda track: (last_track.get(track.id, datetime.min.replace(tzinfo=timezone.utc)), track.id))
-            return eligible[0], relaxation, len(eligible)
-    return None, 'none', 0
-
-
 def select_next(slug, storage=None, now=None, programming_signature=None, *, programming_override=None, commit=True):
     """Lock one station cursor, select one playable object, and commit its decision."""
     station = require_station(slug)
@@ -242,8 +208,9 @@ def select_next(slug, storage=None, now=None, programming_signature=None, *, pro
     if clock:
         slots = [slot for slot in clock.slots if slot.enabled]
         if slots and all(slot.slot_type == 'PLAYLIST' for slot in slots):
-            from app.services.playlists import playable_tracks
-            if not any(playable_tracks(slot.playlist, station.id, storage) for slot in slots):
+            from app.services.playlists import playable_tracks, leader_due
+            if not any(playable_tracks(slot.playlist, station.id, storage) or leader_due(slot.playlist, station.id, storage,
+                    programming.occurrence_key if programming.clock else f'default:{clock.id}') for slot in slots):
                 playlist_fallback = True
                 for slot in slots:
                     db.session.add(SelectionDecision(station_id=station.id, selected_at=now, status='failed',
@@ -275,8 +242,13 @@ def select_next(slug, storage=None, now=None, programming_signature=None, *, pro
                        'schedule_assignment_id': programming.assignment.id if programming.assignment else None,
                        'schedule_occurrence': occurrence}
             if clock_slot.slot_type == 'PLAYLIST':
-                from app.services.playlists import select_playlist
-                decision = select_playlist(station, clock_slot, storage, now, context)
+                from app.services.playlists import select_playlist, LeaderPending
+                try:
+                    decision = select_playlist(station, clock_slot, storage, now, context)
+                except LeaderPending:
+                    clock_state.next_slot_index = index
+                    db.session.commit() if commit else db.session.flush()
+                    return None
             elif clock_slot.slot_type == 'CATEGORY' and clock_slot.category and clock_slot.category.station_id == station.id:
                 decision = _select_category(station, clock_slot.category, state, storage, now, context)
             elif clock_slot.slot_type == 'ROTATION' and clock_slot.rotation and clock_slot.rotation.station_id == station.id:
@@ -294,6 +266,8 @@ def select_next(slug, storage=None, now=None, programming_signature=None, *, pro
                 db.session.add(SelectionDecision(station_id=station.id, selected_at=now, status='failed',
                                                  reason='invalid_clock_slot', **context))
             if decision:
+                if decision.selection_method == 'playlist_leader':
+                    clock_state.next_slot_index = index
                 decision.programming_signature=selected_signature
                 decision.cursor_checkpoint=selected_checkpoint
                 db.session.commit() if commit else db.session.flush()
@@ -311,12 +285,6 @@ def select_next(slug, storage=None, now=None, programming_signature=None, *, pro
         decision.cursor_checkpoint=selected_checkpoint
     db.session.commit() if commit else db.session.flush()
     return decision
-
-
-def _recent(station, state, now):
-    recent_since = now - timedelta(seconds=max(state.track_separation_seconds, state.artist_separation_seconds, 3600))
-    return SelectionDecision.query.filter(SelectionDecision.track.has(Track.audio_kind == 'MUSIC'), SelectionDecision.station_id == station.id,
-        SelectionDecision.selected_at >= recent_since).order_by(SelectionDecision.id.desc()).limit(500).all()
 
 
 def _select_imaging(station, asset, group, storage, now, context):
@@ -432,7 +400,7 @@ def preview(slug, count=10, storage=None, now=None, rotation_slug=None):
         raise ValueError('No enabled rotation slots')
     storage = storage or LocalMediaStorage()
     now = now or datetime.now(timezone.utc)
-    history = SelectionDecision.query.filter_by(station_id=station.id).order_by(SelectionDecision.id.desc()).limit(500).all()
+    history = _recent(station, state, now)
     output = []
     cursor = state.next_slot_index if state.active_rotation_id == rotation.id else 0
     for index in range(count):

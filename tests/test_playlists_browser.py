@@ -76,3 +76,59 @@ def test_playlist_reorder_and_music_drag(booth):
     with app.app_context():
         assert [item.track.uuid for item in db.session.get(Playlist,identifier).items]==[ids[0],ids[2],ids[1],ids[3]]
         assert len(Playlist.query.filter_by(name='Playlist 2').one().items)==1
+
+
+def test_smart_playlist_leader_weights_and_station_separation(booth):
+    from tests.test_playlists import setup_playlist
+    app,driver,base,tmp_path=booth
+    with app.app_context():
+        station,row,songs=setup_playlist();identifier=row.id;leader_id=songs[-1].id
+        category_id=songs[0].categories[0].id
+    driver.get(base+f'/admin/stations/test-station/playlists?playlist={identifier}')
+    wait_text(driver,'#playlist-count','4 songs')
+    Select(driver.find_element(By.CSS_SELECTOR,'[name=leader_track_id]')).select_by_value(str(leader_id))
+    driver.find_element(By.CSS_SELECTOR,'#playlist-form details summary').click()
+    driver.find_element(By.CSS_SELECTOR,'[name=smart_enabled]').click()
+    driver.find_element(By.CSS_SELECTOR,'[name=rule_title]').send_keys('Song 2')
+    Select(driver.find_element(By.CSS_SELECTOR,'[name=mode]')).select_by_value('RANDOM')
+    driver.find_element(By.CSS_SELECTOR,f'[data-weight-kind=categories][data-weight-id="{category_id}"]').send_keys('4')
+    driver.find_element(By.CSS_SELECTOR,'#playlist-form button[type=submit]').click()
+    wait_text(driver,'#playlist-count','1 songs')
+    assert driver.find_element(By.ID,'playlist-add').get_attribute('disabled')
+    for key,value in [('artist_seconds','600'),('track_seconds','900')]:
+        element=driver.find_element(By.CSS_SELECTOR,f'#playlist-separation [name={key}]')
+        element.clear();element.send_keys(value)
+    driver.find_element(By.CSS_SELECTOR,'#playlist-separation button').click()
+    wait_text(driver,'#playlist-message','Station separation saved')
+    with app.app_context():
+        row=db.session.get(Playlist,identifier)
+        assert row.smart_enabled and row.smart_rules=={'title':'Song 2'}
+        assert row.leader_track_id==leader_id and row.selection_weights=={'categories':{str(category_id):4}}
+        assert row.station.automation.artist_separation_seconds==600
+        assert row.station.automation.track_separation_seconds==900
+    driver.set_window_size(430,932)
+    driver.save_screenshot('/tmp/freo-v1-smart-playlist-mobile.png')
+    assert driver.execute_script('return document.documentElement.scrollWidth <= innerWidth')
+
+
+def test_deleted_smart_filter_requires_explicit_removal(booth):
+    from app.models import MusicTag
+    from tests.test_playlists import setup_playlist
+    app,driver,base,tmp_path=booth
+    with app.app_context():
+        station,row,songs=setup_playlist()
+        tag=MusicTag(station_id=station.id,name='Retired tag',slug='retired');db.session.add(tag);db.session.flush()
+        row.smart_enabled=True;row.smart_rules={'tags':[tag.id]};identifier=row.id;tag_id=tag.id
+        db.session.delete(tag);db.session.commit()
+    driver.get(base+f'/admin/stations/test-station/playlists?playlist={identifier}')
+    wait_text(driver,'#playlist-count','0 songs')
+    driver.find_element(By.CSS_SELECTOR,'#playlist-form details summary').click()
+    tags=Select(driver.find_element(By.CSS_SELECTOR,'[name=rule_tags]'))
+    assert [o.get_attribute('value') for o in tags.all_selected_options]==[str(tag_id)]
+    driver.find_element(By.CSS_SELECTOR,'#playlist-form [name=description]').send_keys('Unrelated edit')
+    driver.find_element(By.CSS_SELECTOR,'#playlist-form button[type=submit]').click()
+    wait_text(driver,'#playlist-message','unavailable for this station')
+    with app.app_context():assert db.session.get(Playlist,identifier).smart_rules=={'tags':[tag_id]}
+    tags.deselect_all()
+    driver.find_element(By.CSS_SELECTOR,'#playlist-form button[type=submit]').click()
+    wait_text(driver,'#playlist-count','4 songs')

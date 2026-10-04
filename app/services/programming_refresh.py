@@ -45,10 +45,16 @@ def signature(station,now=None):
             visual_scope = m.Track.artist_id.in_(visual_ref.get('artists', [identifier]))
         elif kind == 'album':
             visual_scope = m.Track.album_id == identifier
+    if m.Playlist.query.filter_by(station_id=station.id, smart_enabled=True, deleted_at=None).first():
+        visual_scope = db.true()
+    tags=m.song_tags
+    values.append([list(row) for row in db.session.execute(select(tags).join(m.Track,m.Track.id==tags.c.track_id).where(track_scope(station.id)).order_by(tags.c.track_id,tags.c.tag_id))])
     tracks=db.session.query(m.Track.id,m.Track.enabled,m.Track.decommissioned_at,m.Track.ingest_status,m.Track.storage_key,
         m.Track.artist,m.Track.title,m.Track.duration_ms,m.Track.loudness_lufs,m.Track.true_peak_db,
+        m.Track.genre,m.Track.bpm,m.Track.release_year,m.Track.album,
         m.Track.audio_kind,m.Track.artist_id,m.Track.album_id,m.Track.disc_number,m.Track.track_number).filter(track_scope(station.id),db.or_(
             visual_scope,
+            m.Track.id.in_(select(m.Playlist.leader_track_id).where(m.Playlist.station_id==station.id)),
             m.Track.id.in_(select(m.PlaylistItem.track_id).join(m.Playlist,m.Playlist.id==m.PlaylistItem.playlist_id).where(m.Playlist.station_id==station.id)),
             m.Track.categories.any(m.MediaCategory.station_id==station.id),
             m.Track.id.in_(select(m.EventBlockItem.track_id).join(m.EventBlock,m.EventBlock.id==m.EventBlockItem.event_block_id).where(m.EventBlock.station_id==station.id)),
@@ -76,18 +82,19 @@ def restore(station,saved):
     for key,prior in saved.get('visual',{}).items():
         row=db.session.get(m.ScheduleCursor,(station.id,key))
         if row:row.state=prior
-    if state.active_rotation_id==saved['rotation']:state.next_slot_index=saved['index']
+    if 'rotation' in saved and 'index' in saved and state.active_rotation_id==saved['rotation']:
+        state.next_slot_index=saved['index']
     clock=db.session.get(m.ClockState,station.id)
     prior=saved.get('clock')
-    if clock:
+    if clock and 'clock' in saved:
         if prior and clock.clock_id==prior['id'] and clock.occurrence_key==prior['occurrence']:
             clock.next_slot_index=prior['index']
         else:
             clock.next_slot_index=0
-    for row in m.PlaylistCursor.query.filter_by(station_id=station.id):
+    for row in (m.PlaylistCursor.query.filter_by(station_id=station.id) if 'playlists' in saved else []):
         prior=saved.get('playlists',{}).get(str(row.clock_slot_id))
         row.state=prior['state'] if prior and (row.occurrence_key==prior['occurrence'] or prior['state'].get('mode')=='RANDOM') else {}
-    for row in m.RotationCursor.query.filter_by(station_id=station.id):
+    for row in (m.RotationCursor.query.filter_by(station_id=station.id) if 'rotations' in saved else []):
         row.next_slot_index=saved.get('rotations',{}).get(str(row.rotation_id),0)
 
 

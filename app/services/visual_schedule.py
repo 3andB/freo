@@ -115,6 +115,9 @@ def search_sources(station, kind, query='', page=1):
         counts=dict(songs.with_entities(key,db.func.count(Track.id)).filter(key.in_(ids)).group_by(key).all())
     elif kind=='playlist':
         counts=dict(songs.join(PlaylistItem,PlaylistItem.track_id==Track.id).with_entities(PlaylistItem.playlist_id,db.func.count(Track.id)).filter(PlaylistItem.playlist_id.in_(ids)).group_by(PlaylistItem.playlist_id).all())
+        from app.services.playlists import playable_tracks
+        for row in rows[:40]:
+            if row.smart_enabled: counts[row.id]=len(playable_tracks(row,station.id))
     elif kind=='category':
         counts=dict(songs.join(track_categories,track_categories.c.track_id==Track.id).with_entities(track_categories.c.category_id,db.func.count(Track.id)).filter(track_categories.c.category_id.in_(ids)).group_by(track_categories.c.category_id).all())
     result = []
@@ -445,7 +448,8 @@ def source_tracks(station, ref, storage=None):
     elif kind=='playlist':
         playlist=Playlist.query.filter_by(id=identifier,station_id=station.id,deleted_at=None).first()
         if not playlist:return []
-        q=q.join(PlaylistItem,PlaylistItem.track_id==Track.id).filter(PlaylistItem.playlist_id==identifier).order_by(PlaylistItem.position)
+        from app.services.playlists import playable_tracks
+        return playable_tracks(playlist, station.id, storage)
     else:return []
     if kind!='playlist':q=q.order_by(Track.disc_number.asc().nullslast(),Track.track_number.asc().nullslast(),Track.id)
     tracks=q.all()
@@ -456,10 +460,31 @@ def source_tracks(station, ref, storage=None):
 
 
 def select_visual(station, resolved, storage, now):
-    ref=resolved['source'];tracks=source_tracks(station,ref,storage)
+    from app.services.playlists import select_leader, LeaderPending
+    ref=resolved['source']
+    if ref and ref['kind']=='playlist':
+        row=Playlist.query.filter_by(id=ref['id'],station_id=station.id,deleted_at=None).first()
+        if row:
+            try:
+                leader=select_leader(row,station,storage,now,resolved['key'],dict(schedule_occurrence=resolved['key'][:120]))
+            except LeaderPending:
+                return None
+            if leader:
+                leader.cursor_checkpoint={'visual':{}}
+                return leader
+    tracks=source_tracks(station,ref,storage)
     if not tracks:
         ref=fallback(station);tracks=source_tracks(station,ref,storage)
         resolved=dict(resolved,key=resolved['key']+':fallback',reason='Source unavailable')
+        if ref and ref['kind']=='playlist':
+            row=db.session.get(Playlist,ref['id'])
+            try:
+                leader=select_leader(row,station,storage,now,resolved['key'],dict(schedule_occurrence=resolved['key'][:120]))
+            except LeaderPending:
+                return None
+            if leader:
+                leader.cursor_checkpoint={'visual':{}}
+                return leader
     if not tracks:return None
     ordered=ref.get('order')=='straight' or ref['kind'] in ('song','album') and ref.get('order')!='shuffle'
     if ref['kind']=='playlist' and ref.get('order','default')=='default':ordered=db.session.get(Playlist,ref['id']).mode!='RANDOM'
@@ -478,10 +503,17 @@ def select_visual(station, resolved, storage, now):
     from types import SimpleNamespace
     from app.services.playlists import advance
     mode='STRAIGHT' if ordered else 'RANDOM'
-    chosen,cursor.state=advance(SimpleNamespace(mode=mode),tracks,dict(saved,mode=saved.get('mode',mode)))
+    from app.services.selection_policy import recent
+    row=db.session.get(Playlist,ref['id']) if ref['kind']=='playlist' else None
+    result={}
+    chosen,cursor.state=advance(SimpleNamespace(mode=mode,selection_weights=row.selection_weights if row else {}),tracks,
+        dict(saved,mode=saved.get('mode',mode)),history=recent(station,station.automation,now),
+        now=now,automation=station.automation,result=result)
+    if not getattr(station.automation, 'track_separation_seconds', 0) and not getattr(station.automation, 'artist_separation_seconds', 0):
+        result['relaxation']='intentional_loop'
     decision=SelectionDecision(station_id=station.id,track_id=chosen.id,status='selected',selected_at=now,
         selection_method='schedule_insert' if resolved.get('insert') else 'visual_schedule',schedule_occurrence=resolved['key'][:120],reason='default_playlist' if resolved.get('reason') else None,
-        candidate_count=len(tracks),relaxation='intentional_loop')
+        **result)
     decision.cursor_checkpoint={'visual':{key:saved}}
     db.session.add(decision)
     return decision

@@ -151,7 +151,17 @@ def mutate(slug,action):
             allocation_lock()
         db.session.query(Station.id).filter_by(id=station.id).with_for_update().first()
         undo=None
-        if action in ('create-playlist','edit-playlist','delete-playlist','playlist-source','playlist-remove','playlist-reorder'):
+        if action == 'separation':
+            if not can_manage_programming(current_admin(),station):abort(403)
+            from app.services.automation import state_for
+            state=state_for(station)
+            for key in ('track_seconds','artist_seconds'):
+                value=data.get(key)
+                if type(value) is not int or not 0 <= value <= 86400:
+                    raise ValueError('Separation must be between 0 and 86400 seconds')
+                setattr(state, key.replace('_seconds','_separation_seconds'), value)
+            message='Station separation saved'
+        elif action in ('create-playlist','edit-playlist','delete-playlist','playlist-source','playlist-remove','playlist-reorder'):
             if not can_manage_programming(current_admin(),station):abort(403)
             row=Playlist(station_id=station.id) if action=='create-playlist' else playlist_service.get_playlist(station.id,data.get('id'))
             if action in ('edit-playlist','playlist-reorder') and data.get('revision')!=row.revision:
@@ -162,12 +172,14 @@ def mutate(slug,action):
                 if not isinstance(description,str) or len(description)>500:raise ValueError('Description must be under 500 characters')
                 if mode not in ('STRAIGHT','RANDOM'):raise ValueError('Choose Straight or Random')
                 row.name=name.strip();row.description=description.strip();row.mode=mode
+                playlist_service.configure(row, data)
                 if action=='edit-playlist':row.revision+=1
                 db.session.add(row);db.session.flush();message='Playlist saved'
             elif action=='delete-playlist':
                 if data.get('confirm')!=row.id:raise ValueError('Confirm playlist deletion')
                 playlist_service.delete_playlist(row);message='Playlist deleted. Songs remain in Music.'
             elif action=='playlist-reorder':
+                if row.smart_enabled:raise ValueError('Smart playlist order follows its current matches')
                 ids=data.get('songs')
                 if not isinstance(ids,list) or any(not isinstance(x,str) for x in ids):raise ValueError('Supply the complete song order')
                 by_uuid={item.track.uuid:item.track_id for item in row.items}

@@ -1,6 +1,5 @@
 """Explicit playlist membership and durable, non-repeating playback cycles."""
 from datetime import datetime, timezone, timedelta
-import random
 import uuid
 from sqlalchemy.orm import selectinload
 from sqlalchemy import case, func
@@ -31,9 +30,16 @@ def summaries(station_id):
         Playlist.station_id == station_id, Playlist.deleted_at.is_(None)).group_by(Playlist.id).order_by(
         case(*[(Playlist.system_key == key, index) for index, key in enumerate(
             ('PLAYLIST_1', 'PLAYLIST_2', 'STATION', 'COMMERCIALS'))], else_=4), Playlist.id)
-    return [dict(id=row.id, name=row.name, description=row.description, mode=row.mode,
-        purpose=row.purpose, system_key=row.system_key, revision=row.revision, count=count,
-        duration_ms=duration) for row, count, duration in rows]
+    result = []
+    for row, count, duration in rows:
+        if row.smart_enabled:
+            from app.services.smart_playlists import members
+            tracks = members(row)
+            count, duration = len(tracks), sum(t.duration_ms or 0 for t in tracks)
+        result.append(dict(id=row.id, name=row.name, description=row.description, mode=row.mode,
+            purpose=row.purpose, system_key=row.system_key, revision=row.revision, count=count,
+            duration_ms=duration, smart_enabled=row.smart_enabled))
+    return result
 
 
 def get_playlist(station_id, identifier):
@@ -46,9 +52,13 @@ def get_playlist(station_id, identifier):
 
 
 def summary(row):
+    from app.services.smart_playlists import members
+    tracks = members(row) if row.smart_enabled else [i.track for i in row.items]
     return dict(id=row.id, name=row.name, description=row.description, mode=row.mode,
-                purpose=row.purpose, system_key=row.system_key, revision=row.revision, count=len(row.items),
-                duration_ms=sum(item.track.duration_ms or 0 for item in row.items))
+                purpose=row.purpose, system_key=row.system_key, revision=row.revision, count=len(tracks),
+                duration_ms=sum(track.duration_ms or 0 for track in tracks),
+                leader_track_id=row.leader_track_id, smart_enabled=row.smart_enabled,
+                smart_rules=row.smart_rules, selection_weights=row.selection_weights)
 
 
 def ordered_ids(row):
@@ -77,6 +87,8 @@ def replace_order(row, ids):
 
 
 def membership(row, songs, operation, user_id):
+    if row.smart_enabled:
+        raise ValueError('Edit the smart playlist filters to change its contents')
     if operation not in ('add', 'remove'):
         raise ValueError('Choose add or remove')
     if row.system_key in ('STATION','COMMERCIALS'):
@@ -161,45 +173,126 @@ def delete_playlist(row):
         slot.clock.enabled = False
 
 
-def playable_tracks(row, station_id, storage):
+def playable_tracks(row, station_id, storage=None):
     from app.services.automation import _exists
     if not row or row.station_id != station_id or not row.enabled:
         return []
-    return [item.track for item in sorted(row.items, key=lambda item: item.position)
-            if playable(item.track, station_id) and _exists(storage, item.track.station.slug, item.track.storage_key)]
+    from app.services.smart_playlists import members
+    return [track for track in members(row) if playable(track, station_id)
+            and (storage is None or _exists(storage, track.station.slug, track.storage_key))]
 
 
-def advance(row, tracks, saved, *, exclude=()):
-    """Pure cursor step shared by broadcast selection and read-only rehearsal."""
+def advance(row, tracks, saved, *, exclude=(), history=(), now=None, automation=None, result=None):
+    """Pure cursor step: preserve cycles while applying the shared music policy."""
+    from app.services.selection_policy import eligible
+    from app.services.smart_playlists import weighted_choice
     ids = [track.id for track in tracks]
-    eligible = set(ids)
     state = dict(saved or {})
     if state.get('mode') != row.mode:
         state = {}
+    eligible_ids = set(ids)
+    played = [i for i in state.get('played', []) if i in eligible_ids]
     if row.mode == 'RANDOM':
-        played = [i for i in state.get('played', []) if i in eligible]
         seen = set(played)
         remaining = [i for i in ids if i not in seen]
         if not remaining:
-            remaining = list(dict.fromkeys(ids))
-            played = []
-            # A fresh cycle must not start with the preceding cycle's last song.
+            remaining, played = list(ids), []
             last = state.get('last') or (state.get('played') or [None])[-1]
             if len(remaining) > 1:
-                remaining = [identifier for identifier in remaining if identifier != last]
-        remaining = [identifier for identifier in remaining if identifier not in exclude]
-        identifier = random.choice(remaining)
-        state = dict(mode=row.mode, played=played + [identifier], last=identifier)
+                remaining = [i for i in remaining if i != last]
     else:
         last = state.get('last')
         index = (ids.index(last) + 1) % len(ids) if last in ids else 0
-        identifier = ids[index]
-        state = dict(mode=row.mode, last=identifier)
-    return next(track for track in tracks if track.id == identifier), state
+        remaining = ids[index:] + ids[:index]
+    by_id = {t.id: t for t in tracks}
+    pool = [by_id[i] for i in remaining if i not in exclude]
+    relaxation = 'none'
+    if automation and now:
+        pool, relaxation, _ = eligible(pool, history, now, automation.track_separation_seconds, automation.artist_separation_seconds)
+    if not pool:
+        raise ValueError('Playlist has no remaining playable audio')
+    track = weighted_choice(pool, getattr(row, 'selection_weights', None)) if row.mode == 'RANDOM' else pool[0]
+    if result is not None:
+        result.update(relaxation=relaxation, candidate_count=len(pool))
+    state = dict(mode=row.mode, last=track.id)
+    if row.mode == 'RANDOM':
+        state['played'] = played + [track.id]
+    return track, state
+
+
+class LeaderPending(Exception):
+    """Wait for the existing leader request to start before queuing members."""
+
+
+def leader_track(row, storage=None):
+    from app.services.automation import _exists
+    if not row:
+        return None
+    track = row.leader_track
+    return track if (track and row.enabled and track.audio_kind in ('MUSIC', 'STATION')
+        and playable(track, row.station_id) and (storage is None or _exists(storage, track.station.slug, track.storage_key))) else None
+
+
+def leader_decisions(row, station_id, occurrence):
+    import hashlib
+    key = hashlib.sha256(f'{station_id}:{row.id}:{occurrence}'.encode()).hexdigest()
+    return key, SelectionDecision.query.filter_by(station_id=station_id, leader_key=key).all()
+
+
+def leader_due(row, station_id, storage, occurrence):
+    if not leader_track(row, storage):
+        return False
+    _, previous = leader_decisions(row, station_id, occurrence)
+    return not any(d.status == 'started' or d.reason == 'playlist_leader_unavailable' for d in previous)
+
+
+def select_leader(row, station, storage, now, occurrence, context=None):
+    """Decisions own pending/confirmed state; cursor rewinds cannot erase airplay."""
+    if not row or row.station_id != station.id or not row.enabled or not row.leader_track_id:
+        return None
+    key, previous = leader_decisions(row, station.id, occurrence)
+    if any(d.status == 'started' or d.reason == 'playlist_leader_unavailable' for d in previous):
+        return None
+    if any(d.status in ('selected', 'submitting', 'queued') for d in previous):
+        raise LeaderPending()
+    track = leader_track(row, storage)
+    if track is None:
+        if not any(d.reason == 'playlist_leader_unavailable' for d in previous):
+            db.session.add(SelectionDecision(station_id=station.id, leader_key=key, status='failed',
+                selected_at=now, selection_method='playlist_leader', reason='playlist_leader_unavailable', **(context or {})))
+        return None
+    decision = SelectionDecision(station_id=station.id, leader_key=key, track_id=track.id,
+        selected_at=now, status='selected', selection_method='playlist_leader',
+        candidate_count=1, relaxation='none', **(context or {}))
+    db.session.add(decision)
+    return decision
+
+
+def configure(row, data):
+    from app.services.smart_playlists import validate_rules, validate_weights
+    if 'leader_track_id' in data:
+        identifier = data['leader_track_id']
+        track = db.session.get(Track, identifier) if type(identifier) is int and 1 <= identifier <= 2147483647 else None
+        if identifier is not None and (not track or not playable(track, row.station_id) or track.audio_kind not in ('MUSIC', 'STATION')):
+            raise ValueError('Choose an available music track or STATION audio leader')
+        row.leader_track = track
+    if 'smart_enabled' in data:
+        if type(data['smart_enabled']) is not bool:
+            raise ValueError('Choose whether this playlist is dynamic')
+        if data['smart_enabled'] and row.system_key in ('STATION', 'COMMERCIALS'):
+            raise ValueError('System audio collections cannot be dynamic')
+        row.smart_enabled = data['smart_enabled']
+    if 'smart_rules' in data:
+        row.smart_rules = validate_rules(data['smart_rules'], row.station_id)
+    if 'selection_weights' in data:
+        row.selection_weights = validate_weights(data['selection_weights'], row.station_id)
 
 
 def select_playlist(station, slot, storage, now, context):
     row = slot.playlist
+    leader = select_leader(row, station, storage, now, context['schedule_occurrence'], context)
+    if leader:
+        return leader
     tracks = playable_tracks(row, station.id, storage)
     if not tracks:
         db.session.add(SelectionDecision(station_id=station.id, selected_at=now, status='failed',
@@ -213,6 +306,7 @@ def select_playlist(station, slot, storage, now, context):
         cursor.occurrence_key = context['schedule_occurrence']
         if row.mode != 'RANDOM':
             cursor.state = {}
+    result = dict(candidate_count=len(tracks), relaxation='none')
     if row.legacy_imaging_group_id:
         from datetime import timedelta
         history = SelectionDecision.query.filter_by(station_id=station.id,status='started').filter(SelectionDecision.track_id.in_([t.id for t in tracks])).order_by(SelectionDecision.started_at.desc()).all()
@@ -221,8 +315,10 @@ def select_playlist(station, slot, storage, now, context):
         eligible = [t for t in tracks if t.id not in last or now-last[t.id] >= timedelta(seconds=row.minimum_separation_seconds)] or tracks
         track = min(eligible,key=lambda t:(last.get(t.id,datetime.min.replace(tzinfo=timezone.utc)),t.id))
     else:
-        track, cursor.state = advance(row, tracks, cursor.state)
+        from app.services.selection_policy import recent
+        track, cursor.state = advance(row, tracks, cursor.state, history=recent(station, station.automation, now),
+            now=now, automation=station.automation, result=result)
     decision = SelectionDecision(station_id=station.id, selected_at=now, track_id=track.id,
-        status='selected', selection_method='playlist', candidate_count=len(tracks), relaxation='none', **context)
+        status='selected', selection_method='playlist', **result, **context)
     db.session.add(decision)
     return decision
