@@ -56,6 +56,19 @@ def sync_live_mic(station):
         if not session:
             return phase in ('FADING', 'LIVE', 'RETURNING')  # Engine lease expires independently.
         new_token = session['token']
+        from flask import has_app_context
+        if has_app_context() and session.get('owner') is not None:
+            from app.models import AdminUser
+            from app.extensions import db
+            from app.services.live_sessions import authorized_intent
+            if not authorized_intent(station, db.session.get(AdminUser, session['owner'])):
+                try:
+                    gateway(station.slug, 'disconnect', owner=session['owner'], token=session['token'])
+                except ValueError:
+                    pass
+                if token == new_token and phase in ('LIVE', 'FADING'):
+                    _command(station.slug, f'freo_mic.end {token} 3.000')
+                return phase in ('FADING', 'LIVE', 'RETURNING')
         if token != new_token:
             if phase in ('FADING', 'LIVE', 'RETURNING'):
                 return True  # Wait for old engine lease before admitting replacement.

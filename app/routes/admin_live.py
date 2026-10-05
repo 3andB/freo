@@ -83,6 +83,8 @@ def action(slug, action):
     if action not in ('cue-list','deck','mixer','fire-cart','play-b','hold', 'resume','mode','takeover','fade','cue','clear-cue','start-cue','repeat','assign-cart','queue-track', 'queue-block', 'abort-block', 'skip'):
         abort(404)
     try:
+        from app.services.live_sessions import require_owner
+        require_owner(station, current_admin())
         if action in ('mixer','play-b','takeover','fade','cue','clear-cue','start-cue','repeat','skip') and station.automation and station.automation.operator_mode == 'DJ_BOOTH':
             raise ValueError('The deck controls have changed. Refresh the page to use the deck buttons.')
         if action in ('deck','mode','mixer','play-b','takeover','fade','skip','start-cue'):
@@ -92,9 +94,14 @@ def action(slug, action):
                 if mic.get('leaving') or (mic.get('desired') == 'LIVE' and mic.get('phase') != 'FAILED') or mic.get('phase') in ('FADING','LIVE','RETURNING'):
                     raise ValueError('End the live microphone broadcast before changing the program source.')
         if action=='cue-list':
+            if request.form.get('operation') == 'auto' and request.form.get('enabled') == 'true':
+                from app.services.live_sessions import claim
+                claim(station, current_admin(), request.form.get('record_show') == 'yes')
             from app.services.booth_cue import mutate
             message = mutate(station, current_admin(), request.form.to_dict())
         elif action=='deck':
+            from app.services.live_sessions import claim
+            claim(station, current_admin(), request.form.get('record_show') == 'yes')
             request_deck(station,current_admin(),request.form.get('deck'),request.form.get('operation'),request.form.get('identifier'),request.form.get('expected_decision_id',''),request.form.get('nonce'),fade_seconds=request.form.get('fade_seconds',3),play_on_load=request.form.get('play_on_load','false')=='true',cue_entry_id=request.form.get('cue_entry_id') or None)
             message='Deck command requested. The deck display updates when the station applies it.'
         elif action=='mixer':
@@ -103,7 +110,7 @@ def action(slug, action):
             fire_cart(station,current_admin(),request.form.get('role'),int(request.form.get('position','0')),request.form.get('nonce'));message='Cart queued. All carts are locked until playback finishes.'
         elif action=='play-b':
             play_cue_on_b(station,current_admin(),request.form.get('nonce'));message='Deck B start requested. Move the fader toward B to bring it on air.'
-        elif action=='mode':set_mode(station,current_admin(),request.form.get('mode'));message='DJ booth mode changed.'
+        elif action=='mode':set_mode(station,current_admin(),request.form.get('mode'),record=request.form.get('record_show') == 'yes');message='DJ booth mode changed.'
         elif action=='takeover':
             expected=request.form.get('expected_decision_id','')
             if expected and not expected.isdecimal():raise ValueError('Invalid current selection')

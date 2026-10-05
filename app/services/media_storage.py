@@ -28,6 +28,15 @@ class LocalMediaStorage:
         validate_slug(slug)
         return self.root / slug
 
+    def recording_path(self, slug, key):
+        if not isinstance(key, str) or not re.fullmatch(r'[0-9a-f]{32}\.mp3', key):
+            raise ValueError('Invalid recording key')
+        return self._media_path(slug, key, 'recordings')
+
+    def recording_file(self, slug, key):
+        self.recording_path(slug, key)
+        return self._regular_file(slug, key, 'recordings')
+
     def approved_path(self, slug, key):
         return self._media_path(slug, key, 'originals')
 

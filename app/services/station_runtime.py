@@ -114,7 +114,9 @@ def render_liquidsoap(station, password, audio_settings=None):
     audio = validate_settings(audio_settings) if audio_settings is not None else active_settings(station.stream)
     slug = validate_slug(station.slug)
     frequency = 300 + zlib.crc32(slug.encode()) % 300
+    from app.services.media_storage import LocalMediaStorage
     values = {
+        '__RECORDING_DIR__': json.dumps(str(LocalMediaStorage().station_dir(slug) / 'recordings')),
         '__BITRATE__': str(audio['bitrate']),
         '__AUDIO_PROCESSING__': processing_liquidsoap(audio),
         '__MIC_START__': 'mic_input.start()' if mic_enabled else '()',

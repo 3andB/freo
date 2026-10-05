@@ -23,6 +23,9 @@ def control(slug, action):
     if action == 'config':
         return jsonify(iceServers=json.loads(os.environ.get('FREO_MIC_BROWSER_ICE_SERVERS', '[]')))
     try:
+        from app.services.live_sessions import require_owner, claim
+        if action not in ('status', 'config'):
+            require_owner(station, current_admin())
         data = dict(owner=current_admin().id, token=request.form.get('token', ''))
         if action == 'offer':
             sdp = request.form.get('sdp', '')
@@ -35,6 +38,9 @@ def control(slug, action):
                 raise ValueError('Wait for the pending broadcast command before going live.')
         if action in ('go', 'end'):
             data['fade'] = request.form.get('fade', '3')
+        if action == 'go':
+            claim(station, current_admin(), request.form.get('record_show') == 'yes')
+            db.session.commit()
         result = gateway(slug, action, timeout=20 if action == 'offer' else 2, **data)
         if action != 'offer':
             result.pop('token', None)

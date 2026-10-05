@@ -11,7 +11,7 @@ from app.extensions import db
 from app.models import (Station, StationPlayerSettings, StationPlayerAsset, PublicScheduleRevision,
                         SelectionDecision, ListenerVote, ListenerFeedbackEvent)
 from app.routes.web import station_or_404, admin_stations
-from app.services.admin_auth import admin_required, require_csrf, current_admin
+from app.services.admin_auth import admin_required, require_csrf, current_admin, can_access_station
 from app.services.stations import public_station_for
 from app.services import player as service
 from app.services.admin_media import audit
@@ -160,7 +160,7 @@ def asset(slug,kind):
     if kind not in service.ASSETS:abort(404)
     try:station=public_station_for(slug)
     except ValueError:station=None
-    if not station or (not station.enabled and not current_admin()):abort(404)
+    if not station or (not station.enabled and not can_access_station(current_admin(), station)):abort(404)
     row=StationPlayerAsset.query.filter_by(station_id=station.id,kind=kind).first_or_404()
     response=Response(row.image,mimetype='image/png')
     response.set_etag(row.version)

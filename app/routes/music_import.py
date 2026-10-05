@@ -38,9 +38,9 @@ def session_for(slug, identifier, lock=False):
     return session
 
 
-def item_state(item, slug, duplicates=None):
+def item_state(item, slug, duplicates=None, station=None):
     song = item.job.track if item.job and item.job.track and not item.job.track.deleted_at else None
-    song_data = state(song, include_waveform=False) if song else None
+    song_data = state(song, include_waveform=False, station=station) if song else None
     if duplicates is None:
         duplicates = duplicate_songs([item], item.session.station_id)
     duplicate = duplicates.get(item.checksum) if item.status != 'finalized' else None
@@ -75,7 +75,7 @@ def session_state(session, slug):
     duplicates = duplicate_songs(rows, session.station_id)
     return dict(id=session.id, url=url_for('.session_detail', slug=slug, identifier=session.id),
         library_url=url_for('admin_media.library', slug=slug, import_session=session.id),
-        items=[item_state(i, slug, duplicates) for i in rows], groups=session.groups, expires_days=DRAFT_DAYS)
+        items=[item_state(i, slug, duplicates, session.station) for i in rows], groups=session.groups, expires_days=DRAFT_DAYS)
 
 
 def choices(station_id, data):

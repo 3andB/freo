@@ -9,7 +9,7 @@ from flask import Blueprint, abort, flash, redirect, render_template, request, R
 from app.extensions import db
 from app.models import StationLogo
 from app.routes.web import admin_stations, station_or_404
-from app.services.admin_auth import admin_required, current_admin, require_csrf
+from app.services.admin_auth import admin_required, current_admin, require_csrf, can_access_station
 from app.services.programming import clean_text
 from app.services.stations import update_station, public_station_for
 from app.services.station_domains import preferred_url
@@ -228,7 +228,7 @@ def logo(slug):
     except ValueError:
         abort(404)
     # Admin previews also work for stations that are stopped or disabled.
-    if not station or (not station.enabled and not current_admin()) or not station.logo:
+    if not station or (not station.enabled and not can_access_station(current_admin(), station)) or not station.logo:
         abort(404)
     full = request.args.get('size') == 'original'
     response = Response(station.logo.image if full else station.logo.thumbnail,mimetype='image/png')

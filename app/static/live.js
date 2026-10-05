@@ -16,7 +16,7 @@
     const broadcast=state?.broadcast?.online;
     const listeners=state?.broadcast?.listeners;
     const messages=[broadcast===true?'Broadcast online · Station stream is available':broadcast===false?'Broadcast offline':'Broadcast status unavailable',
-      state?.mode==='AUTO'?`Auto · ${state.automation==='RUNNING'?'Following schedule':state.automation?.toLowerCase()||'Checking automation'}`:'DJ mode · '+(state?.mixer?.auto_standby?'Auto is on air; decks are ready':state?.current?'Live playback active':'No live deck'),
+      state?.show ? (state.show.source==='AUTO'?'Automation on air':state.show.source==='UNKNOWN'?'Program source unavailable':`${state.show.source==='RETURNING'?'Live feed returning':state.show.source==='MIC'?'Live microphone':'Live DJ booth'}${state.show.dj?' · '+state.show.dj:''}`) : state?.mode==='AUTO'?'Automation':'DJ booth',
       Number.isInteger(listeners)?`${listeners} listener${listeners===1?'':'s'} connected`:'Listener count unavailable'];
     const message=fault || (!state?'Checking station status…':messages[Math.floor(Date.now()/5000)%messages.length]);
     if(node.textContent!==message)node.textContent=message;
@@ -31,9 +31,10 @@
   let busy=false,commandRefresh=false;
   const post = async (action, data={}) => {
     if(busy||!active()) return false;
+    if(root.dataset.showLocked==='true'&&!(action==='end-show'&&root.dataset.admin==='true')){notice('This show is controlled by another DJ.',true);return false;}
     busy=true; root.setAttribute('aria-busy','true'); notice('Working…');
     try {
-      const body=new FormData(); body.set('csrf',root.dataset.csrf);
+      const body=new FormData(); body.set('csrf',root.dataset.csrf); body.set('record_show',(document.getElementById('record-show')?.checked&&!document.getElementById('record-show')?.disabled)?'yes':'no');
       Object.entries(data).forEach(([key,value])=>body.set(key,value ?? ''));
       const response=await scope.fetch(root.dataset.actionBase.replace('ACTION',action),{
         method:'POST',body,credentials:'same-origin',headers:{Accept:'application/json'}
@@ -77,7 +78,7 @@
     if(data.mode&&root.dataset.modeChanging==='true')return;
     if(data.mode)root.dataset.modeChanging='true';
     try{
-      if (data.mode && scope.mic && !await scope.mic.leave()) return;
+      if ((data.mode || new URL(form.action).pathname.endsWith('/end-show')) && scope.mic && !await scope.mic.leave()) return;
       if('nonce' in data)data.nonce=nonce();
       const changed=await post(new URL(form.action).pathname.split('/').pop(),data);
       if(data.mode&&changed&&active()) {root.dataset.board=data.mode;window.dispatchEvent(new CustomEvent('freo-board-change'));}
@@ -247,6 +248,21 @@
       ring.style.strokeDasharray=circumference;ring.style.strokeDashoffset=circumference*(1-fraction);
     }
   }
+  function paintShow(previous){
+    const show=state?.show;
+    if(!show)return;
+    const owned=show.owner_id===Number(root.dataset.userId), locked=!!show.session_id&&!owned;
+    root.dataset.showLocked=String(locked);
+    text('show-status', !show.fresh?'Program status unavailable':
+      `${show.source==='AUTO'?'Automation':show.source==='RETURNING'?'Returning to prior feed':'Live '+(show.source==='MIC'?'microphone':'DJ booth')}${show.dj?' · '+show.dj:''}${show.started_at?' · Started '+new Date(show.started_at).toLocaleString():''}${!show.session_id&&show.ended_at?' · Returned '+new Date(show.ended_at).toLocaleString():''}`);
+    const record=document.getElementById('record-show');
+    if(record){record.disabled=!!show.session_id;if(previous?.show?.session_id&&!show.session_id)record.checked=false;}
+    text('show-recording-status',show.recording?`Recording: ${show.recording.status}${show.recording.error?' · '+show.recording.error:''}`:'Recording is off');
+    const end=document.getElementById('end-show');
+    if(end)end.disabled=!show.session_id||(!owned&&root.dataset.admin!=='true');
+    root.querySelectorAll('.mode-button,[data-load-deck],[data-add-cue],[data-queue-track],[data-open-assign]').forEach(button=>button.disabled=locked);
+    if(locked)root.querySelectorAll('[data-operation],[data-load-deck],[data-add-cue],[data-queue-track],[data-fire-cart],[data-assign],[data-open-assign],#auto-skip').forEach(button=>button.disabled=true);
+  }
   let refreshVersion=0,lastFailedCommand=null;
   scope.cleanup(()=>{++refreshVersion;});
   async function refresh(afterCommand=false){
@@ -268,7 +284,7 @@
       root.dataset.mode=state.mode;
       const board=root.dataset.micActive==='true'&&['AUTO','DJ_BOOTH'].includes(root.dataset.board)?root.dataset.board:state.mode;
       root.className=`dj-booth booth-mode-${board.toLowerCase().replace('_','-')}`;
-      text('led-detail',state.mixer?.auto_standby?'AUTO ON AIR · DJ READY':state.mode.replace('_',' '));text('live-mode',state.mode);
+      text('led-detail',state.show?.fresh?(state.show.source==='AUTO'&&state.mixer?.auto_standby?'AUTO ON AIR · DJ READY':state.show.source):'LAST OBSERVED · '+(state.mixer?.auto_standby?'AUTO ON AIR · DJ READY':state.mode.replace('_',' ')));text('live-mode',state.mode);
       text('live-clock',state.clock||'None');
       text('auto-program','Following Auto schedule: '+(state.program||'No active program'));
       const aired=state.current;
@@ -332,11 +348,13 @@
       for(const [field,value] of [['category',cue?.category||'NO CATEGORY'],['bpm',cue?.bpm?`${Math.round(cue.bpm)} BPM`:'BPM —'],['year',cue?.year||'YEAR —'],['lufs',Number.isFinite(cue?.loudness_lufs)?`${cue.loudness_lufs.toFixed(1)} LUFS`:'LUFS —']])text('b-fact-'+field,value);
       for(const key of pendingLoads.keys())paintLoading(key);
       timing();
+      paintShow(previous);
       window.dispatchEvent(new CustomEvent('freo-booth-refreshed'));
     }catch(_){
       if(!active()||version!==refreshVersion)return;
       cueUI.disconnect();
       text('live-playout','Reconnecting — controls will recover automatically');
+      text('show-status','Program status unavailable · reconnecting');
       if(state)state={...state,playout_error:'Connection delayed'};autoControls();paintCarts();systemStatus();
       text('morph-kicker','CONNECTION DELAY · LAST OBSERVED');programTarget=0;
       root.querySelectorAll('.deck').forEach(panel=>panel.classList.remove('mix-live','is-fading','is-incoming'));

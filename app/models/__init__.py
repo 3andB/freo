@@ -26,6 +26,8 @@ class AdminBootstrap(db.Model):
 
 class AdminUser(db.Model):
     __tablename__ = 'admin_users'
+    __table_args__ = (db.CheckConstraint("role IN ('ADMIN','DJ')", name='ck_admin_user_role'),)
+    role = db.Column(db.String(8), nullable=False, default='ADMIN', server_default='ADMIN')
     id = db.Column(db.Integer, primary_key=True)
     email = db.Column(db.String(254), nullable=False, unique=True)
     password_hash = db.Column(db.String(255), nullable=False)
@@ -782,6 +784,7 @@ class LiveQueueSnapshot(db.Model):
     broadcast_observed_at = db.Column(db.DateTime(timezone=True))
     program_rms = db.Column(db.Float)
     mixer = db.Column(db.JSON)
+    show_observation = db.Column(db.JSON)
 
 
 class TimedEvent(db.Model):
@@ -1270,3 +1273,56 @@ class EventQueueCancellation(db.Model):
     station_id = db.Column(db.Integer, db.ForeignKey('stations.id', ondelete='CASCADE'), nullable=False, index=True)
     processed = db.Column(db.Boolean, nullable=False, default=False)
     decision = db.relationship('SelectionDecision')
+
+
+class DJStationAssignment(db.Model):
+    __tablename__ = 'dj_station_assignments'
+    admin_user_id = db.Column(db.Integer, db.ForeignKey('admin_users.id', ondelete='CASCADE'), primary_key=True)
+    station_id = db.Column(db.Integer, db.ForeignKey('stations.id', ondelete='CASCADE'), primary_key=True)
+
+
+class LiveSession(db.Model):
+    """Durable ownership and history; the existing engine remains authoritative."""
+    __tablename__ = 'live_sessions'
+    id = db.Column(db.String(32), primary_key=True, default=lambda: uuid4().hex)
+    station_id = db.Column(db.Integer, db.ForeignKey('stations.id', ondelete='RESTRICT'), nullable=False, index=True)
+    active_station_id = db.Column(db.Integer, db.ForeignKey('stations.id', ondelete='RESTRICT'), unique=True)
+    admin_user_id = db.Column(db.Integer, db.ForeignKey('admin_users.id', ondelete='SET NULL'))
+    dj_name = db.Column(db.String(254), nullable=False)
+    created_at = db.Column(db.DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+    started_at = db.Column(db.DateTime(timezone=True))
+    ended_at = db.Column(db.DateTime(timezone=True))
+    end_reason = db.Column(db.String(80))
+    end_requested = db.Column(db.Boolean, nullable=False, default=False, server_default=db.false())
+    record_requested = db.Column(db.Boolean, nullable=False, default=False, server_default=db.false())
+    engine_identity = db.Column(db.String(64))
+    operator = db.relationship('AdminUser')
+    recording = db.relationship('ShowRecording', uselist=False, back_populates='session')
+
+
+class ShowRecording(db.Model):
+    __tablename__ = 'show_recordings'
+    __table_args__ = (db.CheckConstraint("status IN ('pending','recording','finalizing','complete','partial','failed')", name='ck_show_recording_status'),)
+    id = db.Column(db.String(32), primary_key=True, default=lambda: uuid4().hex)
+    session_id = db.Column(db.String(32), db.ForeignKey('live_sessions.id', ondelete='RESTRICT'), nullable=False, unique=True)
+    station_id = db.Column(db.Integer, db.ForeignKey('stations.id', ondelete='RESTRICT'), nullable=False, index=True)
+    admin_user_id = db.Column(db.Integer, db.ForeignKey('admin_users.id', ondelete='SET NULL'))
+    storage_key = db.Column(db.String(50), nullable=False, unique=True)
+    status = db.Column(db.String(16), nullable=False, default='pending')
+    started_at = db.Column(db.DateTime(timezone=True))
+    ended_at = db.Column(db.DateTime(timezone=True))
+    duration_ms = db.Column(db.Integer)
+    file_size_bytes = db.Column(db.BigInteger)
+    error = db.Column(db.String(160))
+    name = db.Column(db.String(160), nullable=False, default='', server_default='')
+    revision = db.Column(db.Integer, nullable=False, default=0, server_default='0')
+    deletion_requested_at = db.Column(db.DateTime(timezone=True))
+    deletion_requested_by = db.Column(db.Integer, db.ForeignKey('admin_users.id', ondelete='SET NULL'))
+    deleted_at = db.Column(db.DateTime(timezone=True))
+    deletion_error = db.Column(db.String(160))
+
+    @property
+    def filename(self):
+        return self.name or f'show-{self.id}.mp3'
+
+    session = db.relationship('LiveSession', back_populates='recording')

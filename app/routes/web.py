@@ -40,6 +40,10 @@ def station_or_404(slug, require_enabled=True):
         station = None
     if station is None or station.lifecycle_state in ('pending_delete', 'delete_failed') or (require_enabled and not station.enabled):
         abort(404)
+    from app.services.admin_auth import can_access_station
+    user = current_admin()
+    if user and not can_access_station(user, station):
+        abort(403)
     return station
 
 
@@ -78,7 +82,12 @@ def dashboard(slug):
 
 
 def admin_stations():
-    return Station.query.filter_by(deleted_at=None).order_by(Station.name, Station.id).all()
+    query = Station.query.filter_by(deleted_at=None)
+    user = current_admin()
+    if user and user.role == 'DJ':
+        from app.models import DJStationAssignment
+        query = query.join(DJStationAssignment, DJStationAssignment.station_id == Station.id).filter(DJStationAssignment.admin_user_id == user.id)
+    return query.order_by(Station.name, Station.id).all()
 
 
 def selected_station(stations):
@@ -99,6 +108,10 @@ def selected_station(stations):
 @login_required
 def admin_home():
     stations = admin_stations()
+    if current_admin().role == 'DJ':
+        if stations:
+            return redirect(url_for('admin_live.page', slug=stations[0].slug))
+        return render_template('admin/dj_empty.html', stations=[], selected=None, page='live')
     from app.services.operations import snapshot
     from app.services.stations import deletion_impact
     from app.services.software_license import unlimited
@@ -118,6 +131,8 @@ def admin_station_list():
 @login_required
 def switch_station():
     station = station_or_404(request.args.get('station', ''), require_enabled=False)
+    if current_admin().role == 'DJ':
+        return redirect(url_for('admin_live.page', slug=station.slug))
     return redirect(url_for('schedule_studio.page', slug=station.slug, view='control'))
 
 
@@ -229,9 +244,10 @@ def login():
         return show_form('Your sign-in form expired. Please sign in again.', 400)
     if session.get('login_lock_until', 0) > time.time():
         return show_form('Try again later.', 429)
-    email = request.form.get('email', '').strip().lower()[:254]
+    identity = request.form.get('email', '').strip()[:254]
+    email = identity.lower()
     password = request.form.get('password', '')
-    user = AdminUser.query.filter(AdminUser.active.is_(True), db.or_(AdminUser.email == email, AdminUser.username == email)).first()
+    user = AdminUser.query.filter(AdminUser.active.is_(True), db.or_(AdminUser.email == email, AdminUser.username == identity, AdminUser.username == email)).first()
     # The dummy hash reduces timing differences for unknown accounts.
     valid = check_password_hash(user.password_hash if user else _DUMMY_HASH, password)
     if not user or not valid:

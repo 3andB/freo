@@ -1,5 +1,11 @@
 # LIVE MIC
 
+V1 Phase 3 adds station-assigned DJs, confirmed show status and an unchecked
+“Record this show” choice before GO LIVE or entering DJ mode. Booth and microphone
+use remain one show until automation resumes. See `V1_UPGRADE_NOTES.md` for the
+required migration, recording storage provisioning and station template rollout.
+These V1 changes have not been deployed by this development task.
+
 LIVE MIC is a third DJ Booth view, separate from the existing AUTO/DJ engine mode.
 Opening the tab has no broadcast side effect. CONNECT / TEST MIC captures a
 browser audio input (including an OS-recognized USB microphone or the stereo USB
@@ -36,8 +42,8 @@ mixer channel routing is outside this first implementation.
   Carts remain available while live.
 - A station admits one microphone session. It is owned by an authenticated user
   and an unpredictable per-tab token; a second tab cannot replace it. Access uses
-  the existing `can_control_playout` boundary (currently all active admins, not
-  a newly introduced station-role model).
+  the existing `can_control_playout` boundary: administrators and DJs explicitly
+  assigned to this station. In V1 Phase 3, an active show has one controlling DJ.
 - In-app navigation, browser Back and sign-out warn while the owning microphone
   is live (including a pending GO LIVE). Cancel leaves it untouched. Confirming
   stops capture and restores the interrupted feed before navigation/sign-out.
@@ -58,7 +64,8 @@ mixer channel routing is outside this first implementation.
   lease loss closes the microphone and returns the engine to AUTO without relying
   on the browser. Reconnection never automatically goes on air.
 - Restarting the gateway loses its ephemeral sessions and safely ends broadcasts.
-  No microphone recordings or microphone credentials are stored in the database.
+  Microphone credentials remain ephemeral. V1 Phase 3 optionally records the final
+  station program to MP3; the database stores session/recording metadata, not speech.
 
 ## Architecture
 
@@ -74,7 +81,8 @@ URL is bound to the exact microphone session token, so a replacement session
 cannot inherit an old open microphone gate.
 The gateway binds **127.0.0.1:8091** and must not be exposed through nginx or a
 public bind address. Its internal control API trusts local processes, just as the
-existing playout control sockets do. No database migration is required.
+existing playout control sockets do. The original mic transport requires no schema
+change; V1 Phase 3 permissions and show history require migration `f306a1b2c3d4`.
 
 ## Installation and activation
 

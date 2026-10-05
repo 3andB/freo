@@ -404,6 +404,9 @@ def process_manual(station, reader):
     pending = SelectionDecision.query.filter_by(station_id=station.id, status='selected').filter(
         SelectionDecision.admin_user_id.isnot(None),~SelectionDecision.id.in_(takeover_targets)).order_by(SelectionDecision.id).all()
     for row in pending:
+        from app.services.live_sessions import authorized_intent
+        if not authorized_intent(station, row.operator):
+            row.status='failed'; row.reason='permission_revoked'; db.session.commit(); continue
         if station.automation.operator_mode == 'DJ_BOOTH' and row.playback_bus != 'CART':
             row.status='failed';row.reason='dj_decks_only';db.session.commit();continue
         if row.playback_bus in ('B','CART'):
@@ -436,6 +439,9 @@ def process_manual(station, reader):
             logger.exception('Manual queue failed station=%s decision=%s', slug, row.id)
     commands = LiveControlCommand.query.filter_by(station_id=station.id, status='pending').order_by(LiveControlCommand.id).all()
     for command in commands:
+        from app.services.live_sessions import authorized_command
+        if not authorized_command(station, command):
+            command.status='failed'; command.error_code='permission_revoked'; db.session.commit(); continue
         current = command.expected_decision
         try:
             if command.action.startswith('DECK_'):
@@ -622,6 +628,8 @@ def observe_queue(station, error_code=None):
         snapshot.queued_decision_ids = [by_request[rid] for rid in ordered if rid in by_request]
         snapshot.unknown_count = len([rid for rid in set(ordered) | active if rid not in by_request])
     db.session.commit()
+    from app.services.live_sessions import sync as sync_show
+    sync_show(station)
 
 
 def _queue_event(occurrence, slug, now):
@@ -1015,9 +1023,17 @@ def continuity_depth(station, now=None):
 
 def tick(reader, target_depth=2):
     heartbeat()
+    from app.services.recording_manager import process_deletions
+    process_deletions()
     states = AutomationState.query.all()
     for state in states:
         slug = state.station.slug
+        from app.services.live_sessions import sync as sync_show
+        try:
+            sync_show(state.station)
+        except (OSError, RuntimeError, ValueError):
+            db.session.rollback()
+            logger.exception('Show observation failed station=%s', slug)
         if not state.station.enabled or state.station.desired_state != 'running':
             continue
         if time.monotonic() < reader.unavailable_until.get(slug, 0):

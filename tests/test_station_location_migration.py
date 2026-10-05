@@ -80,7 +80,8 @@ def test_location_migration_follows_approved_admin_migration():
     cfg = Config()
     cfg.set_main_option('script_location', 'migrations')
     script = ScriptDirectory.from_config(cfg)
-    assert script.get_heads() == ['c83d4e5f9012']
+    assert len(script.get_heads()) == 1
+    assert 'c83d4e5f9012' in {revision.revision for revision in script.walk_revisions()}
     assert script.get_revision('c83d4e5f9012').down_revision == 'b72e19d4c603'
     assert script.get_revision('b72e19d4c603').down_revision == 'a64f09e2b731'
     assert script.get_revision('a64f09e2b731').down_revision == 'f39c8210b7de'

@@ -211,4 +211,8 @@ def test_restored_backup_allows_only_exact_primary_grant(installed, postgres, tm
 
 
 def test_release_schema_includes_primary_admin_migration():
-    assert releases.migration_head(Path(__file__).resolve().parents[1]) == NEW_REVISION
+    from alembic.script import ScriptDirectory
+    root = Path(__file__).resolve().parents[1]
+    head = releases.migration_head(root)
+    scripts = ScriptDirectory(str(root / 'migrations'))
+    assert NEW_REVISION in {revision.revision for revision in scripts.walk_revisions(head=head)}

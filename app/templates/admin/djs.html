@@ -1,0 +1,16 @@
+{% extends 'admin/base.html' %}
+{% block admin_content %}
+<h1>DJ accounts and station access</h1><p>DJs can operate assigned booths and access their own recordings. Existing administrators retain full access until explicitly converted here.</p>
+{% for user in users if user.id != current_admin().id and not user.installation_admin %}
+<form method="post" class="console-panel"><h2>{{ user.username or user.email }} · {{ user.role }}</h2>
+<input type="hidden" name="csrf" value="{{ csrf_token() }}"><input type="hidden" name="user_id" value="{{ user.id }}">
+<label><input type="checkbox" name="active" value="yes" {% if user.active %}checked{% endif %}> Account enabled</label>
+{% for station in stations %}<label><input type="checkbox" name="station_id" value="{{ station.id }}" {% if (user.id,station.id) in assignments %}checked{% endif %}> {{ station.name }}</label>{% endfor %}
+<button type="submit">{{ 'Save DJ access' if user.role == 'DJ' else 'Convert to DJ with these assignments' }}</button></form>
+{% endfor %}
+<form method="post" class="console-panel"><h2>Create DJ</h2><input type="hidden" name="csrf" value="{{ csrf_token() }}"><input type="hidden" name="active" value="yes">
+<label>DJ name <input name="username" required maxlength="64" autocomplete="off"></label><label>Email <input name="email" type="email" required maxlength="254"></label>
+<label>Initial password <input type="password" name="password" minlength="16" required autocomplete="new-password"></label>
+{% for station in stations %}<label><input type="checkbox" name="station_id" value="{{ station.id }}"> {{ station.name }}</label>{% endfor %}
+<button>Create DJ</button></form>
+{% endblock %}

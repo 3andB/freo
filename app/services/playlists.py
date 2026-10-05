@@ -38,7 +38,8 @@ def summaries(station_id):
             count, duration = len(tracks), sum(t.playback_duration_ms or 0 for t in tracks)
         result.append(dict(id=row.id, name=row.name, description=row.description, mode=row.mode,
             purpose=row.purpose, system_key=row.system_key, revision=row.revision, count=count,
-            duration_ms=duration, smart_enabled=row.smart_enabled))
+            duration_ms=duration, smart_enabled=row.smart_enabled, leader_track_id=row.leader_track_id,
+            smart_rules=row.smart_rules, selection_weights=row.selection_weights))
     return result
 
 
