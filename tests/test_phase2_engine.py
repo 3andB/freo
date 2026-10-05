@@ -96,7 +96,8 @@ def test_zero_envelope_is_sample_identical_to_existing_decode(tmp_path):
     source=tmp_path/'source.wav'
     subprocess.run(['ffmpeg','-v','error','-f','lavfi','-i','sine=frequency=880:duration=1','-y',str(source)],check=True)
     template=Path('deploy/liquidsoap/station.liq.template').read_text()
-    helper=template[template.index('def track_fades(s)'):template.index('music_a = source.on_end')]
+    start=template.index('def track_fades(s)')
+    helper=template[start:template.index('\nend\n',start)+len('\nend\n')]
     script='settings.init.allow_root := true\n'+helper+f'''
 raw = request.once(request.create("{source}"))
 edited = track_fades(request.once(request.create("{source}")))
@@ -116,7 +117,8 @@ def test_fade_overrides_do_not_leak_into_next_unedited_track(tmp_path):
     source=tmp_path/'source.wav'
     subprocess.run(['ffmpeg','-v','error','-f','lavfi','-i','sine=frequency=880:duration=1','-y',str(source)],check=True)
     template=Path('deploy/liquidsoap/station.liq.template').read_text()
-    helper=template[template.index('def track_fades(s)'):template.index('music_a = source.on_end')]
+    start=template.index('def track_fades(s)')
+    helper=template[start:template.index('\nend\n',start)+len('\nend\n')]
     uri=f'annotate:liq_cue_in="0.000",liq_cue_out="1.000",freo_fade_in="0.200",freo_fade_out="0.200":{source}'
     script='settings.init.allow_root := true\n'+helper+f'''
 raw = request.queue(interactive=false, queue=[request.create("{source}"), request.create("{source}")])

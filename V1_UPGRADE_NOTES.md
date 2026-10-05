@@ -143,6 +143,12 @@ including shared-source deletion on PostgreSQL. The bitrate validation message n
 lists the supported 192 kbps choice; encoding behavior and the 128 kbps default
 are unchanged.
 
+Two standalone Liquidsoap fade regressions also needed their fixture extraction
+limited to the `track_fades` function: later relay declarations had been included
+in the isolated scripts without their runtime dependencies. Both real-engine
+checks passed after correcting the fixture. This changes no broadcast processing
+or installation requirement.
+
 Installed-service acceptance on the disposable Ubuntu 24.04 VM verified browser
 setup, two timer-provisioned stations, real ingest of generated audio, one shared
 underlying asset, and encoded 192 kbps MP3 output from both stations. The optional
