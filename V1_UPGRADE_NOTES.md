@@ -149,6 +149,14 @@ in the isolated scripts without their runtime dependencies. Both real-engine
 checks passed after correcting the fixture. This changes no broadcast processing
 or installation requirement.
 
+On Ubuntu 24.04, Chromium's Snap launcher has a private `/tmp`, while invoking
+the native Chromium binary directly does not. Browser upload fixtures distinguish
+those launch modes when preparing file-picker paths. The disposable VM tests use
+`FREO_TEST_CHROME=/snap/chromium/current/usr/lib/chromium-browser/chrome` and
+`FREO_TEST_CHROMEDRIVER=/snap/chromium/current/usr/lib/chromium-browser/chromedriver`.
+These are test harness settings, not application environment requirements.
+Both corrected file-picker/catalog workflows passed against native Chromium.
+
 Installed-service acceptance on the disposable Ubuntu 24.04 VM verified browser
 setup, two timer-provisioned stations, real ingest of generated audio, one shared
 underlying asset, and encoded 192 kbps MP3 output from both stations. The optional

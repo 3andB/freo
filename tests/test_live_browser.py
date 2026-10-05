@@ -201,7 +201,8 @@ def test_file_picker_and_drop_import_results(booth):
     # Snap Chromium has a private /tmp namespace.
     browser_tmp=Path('/tmp/snap-private-tmp/snap.chromium/tmp')
     browser_binary = Path(os.environ.get('FREO_TEST_CHROME', '/usr/bin/chromium-browser'))
-    snap_browser = browser_tmp.exists() and (str(browser_binary).startswith('/snap/') or browser_binary == Path('/usr/bin/chromium-browser'))
+    # Launching the native binary under /snap/ does not enter Snap's namespace.
+    snap_browser = browser_tmp.exists() and browser_binary in (Path('/snap/bin/chromium'), Path('/usr/bin/chromium-browser'))
     upload_dir=Path(tempfile.mkdtemp(prefix='freo-upload-',dir=browser_tmp if snap_browser else tmp_path))
     audio=upload_dir/'picked.mp3';audio.write_bytes(b'fixture upload')
     browser_audio=Path('/tmp')/upload_dir.name/audio.name if snap_browser else audio
