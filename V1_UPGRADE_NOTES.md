@@ -134,6 +134,27 @@ the actual current head. All eight focused checks then passed. These fixture
 repairs change no migration, schema, or upgrade compatibility contract; they do
 not implement or certify the deferred production 0.3.2 → 1.0 bridge.
 
+The full PostgreSQL regression group subsequently passed all 45 cases. The broad
+backend run passed 1,266 cases and exposed two more obsolete fixtures: shared
+source deletion must be requested from its owning station, and a `create_all`
+statistics fixture must round-trip its explicit statistics revision rather than
+reapply later, already-present schema additions. Focused corrected checks passed,
+including shared-source deletion on PostgreSQL. The bitrate validation message now
+lists the supported 192 kbps choice; encoding behavior and the 128 kbps default
+are unchanged.
+
+Installed-service acceptance on the disposable Ubuntu 24.04 VM verified browser
+setup, two timer-provisioned stations, real ingest of generated audio, one shared
+underlying asset, and encoded 192 kbps MP3 output from both stations. The optional
+microphone dependencies/service and adopted microphone setting were enabled
+before station rendering; the per-station recording helper and service reloads
+above were applied. Native Chromium/WebRTC reached the installed gateway, kept a
+ready microphone off program, broadcast generated microphone audio, and returned
+to automation after an unexpected peer disconnect without a three-second silent
+gap. A show recording completed. This used a secure loopback browser context;
+public HTTPS/DNS and an external physical microphone remain separate acceptance
+requirements. No external AI key was configured or provider call made.
+
 ## Phase 2 — Track editor (5 October 2026)
 
 Phase 2 extends the existing media editor, request/decision system, and Liquidsoap

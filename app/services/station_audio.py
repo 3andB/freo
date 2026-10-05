@@ -15,7 +15,7 @@ def validate_settings(value):
         raise ValueError('Invalid audio settings')
     bitrate = value.get('bitrate')
     if type(bitrate) is not int or bitrate not in BITRATES:
-        raise ValueError('Choose 64, 96 or 128 kbps')
+        raise ValueError('Choose 64, 96, 128 or 192 kbps')
     result = dict(DEFAULT_PROCESSING, **value)
     for key in ('agc', 'multiband', 'eq'):
         if type(result[key]) is not bool:
@@ -38,7 +38,7 @@ def from_form(form):
             **{key: form.get(key) == 'yes' for key in ('agc', 'multiband', 'eq')},
             **{key: float(form.get(key, '0')) for key in ('bass', 'mid', 'treble')}))
     except (ValueError, TypeError) as error:
-        raise ValueError('Choose 64, 96 or 128 kbps and EQ values between −6 and +6 dB') from error
+        raise ValueError('Choose 64, 96, 128 or 192 kbps and EQ values between −6 and +6 dB') from error
 
 
 def queue_settings(station, values, revision, user):

@@ -239,8 +239,11 @@ def test_migration_round_trip_preserves_legacy_data(app):
         db.session.add(StatsBucket(scope=1, resolution='hour', at=0, listener_seconds=1234))
         db.session.commit()
     runner = app.test_cli_runner()
+    # This create_all fixture already includes later, unrelated V1 tables.
+    # Round-trip only the session migration; the full chain has its own harness.
     for args in (['db', 'stamp', 'f406a1b2c3d4'], ['db', 'downgrade', 'f316a1b2c3d4'],
-                 ['db', 'upgrade', 'f406a1b2c3d4'], ['db', 'downgrade', 'f316a1b2c3d4'], ['db', 'upgrade']):
+                 ['db', 'upgrade', 'f406a1b2c3d4'], ['db', 'downgrade', 'f316a1b2c3d4'],
+                 ['db', 'upgrade', 'f406a1b2c3d4']):
         result = runner.invoke(args=args)
         assert result.exit_code == 0, result.output
     with app.app_context():

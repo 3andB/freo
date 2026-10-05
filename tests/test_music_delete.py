@@ -41,7 +41,10 @@ def exercise_references(application,tmp_path,monkeypatch):
         execution=m.EventBlockExecution(station_id=other.id,event_block_id=block.id,source='MANUAL',state='QUEUED',items=[m.EventBlockItemExecution(position=1,item_type='TRACK',track_id=song.id,event_block_item_id=block.items[0].id,selection_decision_id=decision.id,failure_policy='ABORT_BLOCK',state='QUEUED')])
         db.session.add_all([execution,m.LiveCartSlot(station_id=other.id,role='HOT',position=1,track_id=song.id,label='Song label'),m.BoothCue(station_id=other.id,entries=[{'id':'entry','track_id':song.id}],saved_order=[song.id]),m.SavedBoothCue(station_id=other.id,name='Set',tracks=[song.id,keep.id]),m.ChannelSchedule(station_id=other.id,calendar=[{'id':'a','source':{'kind':'song','id':song.id}}, {'id':'b','source':{'kind':'song','id':keep.id}}])])
         db.session.commit()
-        job=queue_delete(song,m.AdminUser.query.first(),other);job_id=job.id;db.session.commit()
+        with pytest.raises(ValueError, match='owning station'):
+            queue_delete(song,m.AdminUser.query.first(),other)
+        assert not song.deleted_at
+        job=queue_delete(song,m.AdminUser.query.first(),station);job_id=job.id;db.session.commit()
         assert song.deleted_at and not song.enabled
         assert m.TimedEvent.query.filter_by(track_id=identifier).count()==0
         assert m.EventBlockItem.query.filter_by(track_id=identifier).count()==0
