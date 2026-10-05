@@ -355,3 +355,97 @@ or merge was performed. The pre-existing untracked `V1_AUDIT.md` was left intact
   filesystem permission checks passed on disposable resources. The report lists
   additional results, resolved failures and the broad simulations that did not
   complete; these counts overlap and are not a whole-repository pass claim.
+
+## Phase 4 — listener analytics improvements
+
+- Extends the existing statistics collector, dashboard and CSV export with device
+  groups, recognizable browser/player families, observed session starts,
+  completions, average completed duration, duration bands and duration retention.
+  Existing realtime/history, peaks, listener-hours, maps, music, resource and
+  reliability reports remain available. No external tracking is introduced.
+- **Schema:** migration `f406a1b2c3d4_listener_sessions.py` follows
+  `f316a1b2c3d4`. It adds nullable JSON `stats_presence.listening` and the
+  `stats_session_buckets` table keyed by station scope and UTC hour, with an hour
+  index. The JSON contains fixed-category counters, durations and coverage;
+  temporary presence contains normalized categories and an epoch hash, never raw
+  agents or addresses. Downgrade drops only the new data/column and clears Phase 4
+  checkpoint fields, preserving the original statistics and catalog.
+- **Storage/retention:** anonymous session aggregates last five years. Existing
+  presence cleanup remains one day. Collection and cleanup run in the existing
+  `freo-stats` worker and transaction. No new daemon, package, configuration key,
+  filesystem path or permission grant is required.
+- **Measurement:** starts occur at first observation; completed durations use
+  consecutive observations at most 45 seconds apart. A valid list confirms
+  departure; gaps and epoch resets interrupt sessions and exclude them from
+  completed-duration statistics. Active sessions are separate. Current categories
+  use valid fresh stream lists; historical categories count observed starts.
+  Website visitors remain separate. Session-history boundaries expand to UTC
+  hours and are returned in JSON, displayed in the UI and included in CSV. Starts
+  use the first-observed hour; completions/full durations and interruptions use
+  the last-observed hour. Client-list coverage is distinct from audience coverage.
+- **Compatibility/access:** existing JSON fields and CSV sections remain; new
+  `sessions` and `devices` fields and CSV sections are additive. Administrator
+  access and DJ denial are preserved, with selected-station filtering also applied
+  to embedded channel metrics. Duration/device history starts with Phase 4;
+  geographic session-hours cannot reconstruct earlier duration distributions.
+- **Activation order for a future authorized V1 rollout:** back up the V1 database,
+  stop its statistics worker, apply the migration, then start matching updated
+  web/statistics workers. No playout restart is needed. This task did not run
+  migrations on an installation or restart deployed services.
+- **Deferred:** historical duration backfill, exact durations between polls and
+  returning-listener identification. User-agent classification is best effort;
+  unrecognized clients remain other/unknown. Full definitions are in
+  `docs/statistics.md`.
+- Work is confined to `/opt/freo-v1` on `develop/v1`, preserving prior uncommitted
+  Phase 3 work. Production application files in `/opt/freo`, main, tags and releases are
+  untouched; no deployment or merge was performed.
+
+Phase 4 focused validation (2026-10-05; 73 distinct cases across these suites):
+
+| Check | Result |
+| --- | --- |
+| Existing statistics accounting, maps, routes and export (`test_statistics.py`) | 15 passed |
+| Classification, sessions, gaps/restarts, privacy, scope, retention and SQLite migration (`test_statistics_sessions.py`) | 37 passed |
+| Existing DJ permissions and station ownership (`test_phase3_dj.py`) | 16 passed |
+| Real Chromium statistics/device/session views, CSV, maps, navigation and mobile layout (`test_statistics_browser.py`) | 3 passed |
+| Full PostgreSQL migration chain, downgrade/re-upgrade preservation and concurrent collector retries (`test_statistics_postgres.py`) | 2 passed |
+| JavaScript syntax and patch whitespace | Passed |
+
+Tests used `PYTHONDONTWRITEBYTECODE=1 FREO_ENV_FILE=/dev/null` and isolated SQLite
+fixtures. Browser checks used a temporary loopback server. PostgreSQL checks used
+a disposable cluster under `/tmp/freo-phase4-pg-*`, a private Unix socket on port
+55484, no TCP listener, and automatic shutdown. Initial sandbox restrictions on
+local sockets/directory ownership were resolved through approved isolated test
+execution. An added PostgreSQL fixture's JSON binding error was corrected before
+the final passing run. The remaining migration warnings are the existing
+Flask-SQLAlchemy `get_engine` deprecation. These are focused results, not a
+whole-repository test claim; no production database or service was used.
+
+### Phase 4 statistics accuracy and visual review
+
+- Fixed missing transfer intervals being drawn/exported as zero, stale peaks
+  outside the report window, and incident totals being limited to the latest
+  100 detail rows. CSV now also carries the existing summary metrics. Numeric
+  legacy JSON fields remain; nullable transfer values/coverage and complete
+  incident counts are additive.
+- Automatic refresh preserves sorting and heading focus and uses the last
+  applied filters. Charts retain readable labels on narrow screens; session
+  cards, duration/category share bars, mobile tables and day/night maps were
+  refined and checked in Chromium.
+- No additional migration beyond `f406a1b2c3d4`, configuration, service, storage
+  path or permission change is needed for these review fixes. Existing Phase 3
+  work was committed separately as the required prerequisite.
+- Focused reruns passed 58 statistics/session/reporting cases, six disposable
+  PostgreSQL migration/concurrency cases, 31 DJ/recording regression cases and
+  four Chromium cases. A further final visual check passed with 20 screenshots.
+  The actual 7,200-second private-stack recording run reconciled all 1,164 stored
+  listener samples and all six duration bands. Its final pytest assertion had a
+  harness-only report-cutoff error; the corrected full-data reconciliation,
+  targeted regression and fresh 90-second live confirmation passed. The original
+  failed run status is preserved in `docs/statistics-validation-v1.md` and its
+  linked evidence summary.
+- No deployed services were restarted: this checkout has no separate deployed
+  V1 service, and the existing host units point at production. Production
+  application files, main, tags and releases remain untouched. This is a linked
+  worktree, so authorized development commits use shared Git metadata under
+  `/opt/freo/.git`; that metadata is distinct from the production checkout.

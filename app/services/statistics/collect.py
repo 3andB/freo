@@ -1,11 +1,10 @@
 """Transactional samples, coverage-aware integrals and durable geographic reach."""
-import hashlib
 from datetime import datetime, timezone
 from sqlalchemy import text
 from app.extensions import db
 from app.models import (Station, StatsState, AudienceSample, StatsBucket, AudiencePresence,
                         GeoBucket, GeoReach, BroadcastIncident, LiveQueueSnapshot)
-from . import geo
+from . import geo, sessions
 
 
 def lock(scope):
@@ -154,12 +153,13 @@ def tick(observations, now):
             item['transfer_delta'] = None
         if clients is not None:
             for client in clients:
-                if not client.get('id'):
+                if client.get('id') is None:
                     continue
-                key = hashlib.sha256(f"{item.get('epoch')}:{station.id}:{client['id']}".encode()).hexdigest()
+                key = sessions.key(station.id, item, client)
                 saved = db.session.get(AudiencePresence, (station.id, 'stream', key))
                 location = saved.geo if saved and saved.geo.get('place') != 'unknown' else geo.lookup(client.get('ip', ''))
                 presence(station.id, 'stream', key, location, now)
+        sessions.observe(station.id, clients, item, old, now)
         incident(station.id, 'observation_gap', item.get('online') is None, now, 'Icecast observation unavailable')
         if item.get('online') is not None:
             incident(station.id, 'stream_offline', station.desired_state == 'running' and not item['online'], now, 'Expected stream mount is offline')
@@ -203,6 +203,7 @@ def tick(observations, now):
                     db.session.add(bucket)
                 else:
                     bucket.peak = max(bucket.peak, value['listeners'])
+    sessions.expire(now)
     if now // 3600 != previous.get('at', 0) // 3600:
         AudienceSample.query.filter(AudienceSample.at < now - 14 * 86400).delete()
         StatsBucket.query.filter_by(resolution='minute').filter(StatsBucket.at < now - 90 * 86400).delete()

@@ -12,7 +12,7 @@ from flask import Blueprint, abort, current_app, jsonify, render_template, reque
 from sqlalchemy.exc import SQLAlchemyError
 from app.extensions import db
 from app.models import Station, AudiencePresence
-from app.services.admin_auth import admin_required, current_admin
+from app.services.admin_auth import admin_required, current_admin, can_access_station
 from app.services.statistics import dashboard
 from app.services.statistics import geo, collect
 from app.services.stations import public_station_for
@@ -21,7 +21,8 @@ statistics = Blueprint('statistics', __name__)
 
 
 def can_view_statistics(user, station=None):
-    return bool(user and user.active)
+    return bool(user and user.active and user.role == 'ADMIN' and
+                (station is None or can_access_station(user, station)))
 
 
 def context(slug):
@@ -74,13 +75,64 @@ def export(slug=None):
     write('Resolution (seconds)', result['stats']['resolution_seconds'])
     write('Section', 'Timestamp / name', 'Average / count', 'Peak', 'Transfer bytes / dislikes')
     for point in result['stats']['timeline']:
-        write('Audience', point['at'], point['average'], point['peak'], round(point['bytes']))
+        write('Audience', point['at'], point['average'], point['peak'],
+              round(point['transfer_bytes']) if point['transfer_bytes'] is not None else '')
     for song in result['music']['songs']:
         write('Confirmed plays', song['title'] + ' — ' + song['artist'], song['plays'])
     for song in result['music']['liked']:
         write('Current preferences', song['title'] + ' — ' + song['artist'], song['up'], '', song['down'])
     for place in result['geography']['locations']:
         write('Approximate locations', ', '.join(filter(None, [place.get('city'), place.get('region'), place.get('country')])), place['count'])
+    listening = result['sessions']
+    write('Sessions reporting start (Unix UTC)', listening['start'], 'End (exclusive Unix UTC)', listening['end'])
+    write('Sessions resolution (seconds)', listening['resolution_seconds'])
+    write('Sessions tracking since (Unix UTC)', listening['since'])
+    write('Client-list coverage (%)', listening['coverage'])
+    write('Session definitions', 'Sampled stream connections; completed sessions exclude interruptions; durations assigned to last-observed hour')
+    for name in ('starts', 'completed', 'interrupted', 'active', 'average_seconds'):
+        write('Sessions', name, listening[name])
+    write('Section', 'Name', 'Session starts', 'Share of starts (%)', 'Current connections')
+    for section, rows in [('Devices', result['devices']['groups']), ('Browser/player', result['devices']['players'])]:
+        for row in rows:
+            write(section, row['name'], row['starts'], row['share'], row['current'])
+    write('Section', 'Duration band', 'Completed sessions', 'Share of completed (%)')
+    for row in listening['bands']:
+        write('Duration distribution', row['label'], row['count'], row['share'])
+    for row in listening['retention']:
+        write('Duration retention', 'At least ' + str(row['seconds']) + ' seconds', '', row['share'])
+    write('Section', 'Timestamp (Unix UTC)', 'Session starts', 'Completed sessions', 'Average duration (seconds)')
+    for point in listening['timeline']:
+        write('Session trend', point['at'], point['starts'], point['completed'], point['average_seconds'])
+    write('Section', 'Metric', 'Value', 'Unit')
+    for key, unit in [('average', 'concurrent connections'), ('peak', 'connections'),
+                      ('listener_hours', 'listener-hours'), ('uptime', '%'),
+                      ('coverage', '%'), ('bytes_sent', 'bytes'), ('transfer_coverage', '%')]:
+        write('Audience summary', key, result['stats']['total'][key], unit)
+    write('Audience summary', 'current', result['current'].get('listeners') if result['fresh'] else None, 'connections')
+    for period, values in result['transfer'].items():
+        write('Transfer summary', period, values['bytes'], 'bytes')
+        if 'coverage' in values:
+            write('Transfer coverage', period, values['coverage'], '%')
+    for key, value in (result['storage'] or {}).items():
+        if not isinstance(value, (dict, list)):
+            write('Storage snapshot', key, value)
+    for key, value in result['music']['feedback'].items():
+        write('Feedback summary', key, value)
+    write('Music summary', 'plays', result['music']['plays'])
+    write('Music summary', 'unique_songs', result['music']['unique_songs'])
+    write('Music summary', 'rotation_coverage', result['music']['rotation_coverage'], '%')
+    for name in ('events', 'commercials'):
+        for state, count in result['outcomes'][name].items():
+            write('Broadcast outcomes', name + ' / ' + state, count)
+    write('Reliability summary', 'failed_plays', result['failed_plays'])
+    write('Reliability summary', 'recorded_incidents', result['incident_count'])
+    write('Reliability summary', 'incident_rows_exported', len(result['incidents']))
+    write('Section', 'Station', 'Incident', 'Started (Unix UTC)', 'Ended (Unix UTC)')
+    for row in result['incidents']:
+        write('Incident', row['station'], row['detail'], row['started_at'], row['ended_at'])
+    write('Geography metadata', 'source', result['geography']['source'])
+    write('Geography metadata', 'mode', result['geography']['mode'])
+    write('Geography metadata', 'locations_truncated', result['geography']['truncated'])
     response = Response(output.getvalue(), mimetype='text/csv')
     response.headers['Content-Disposition'] = 'attachment; filename="freo-statistics.csv"'
     response.headers['Cache-Control'] = 'private, no-store'

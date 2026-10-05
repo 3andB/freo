@@ -1,0 +1,159 @@
+{
+  "workspace": "/opt/freo-v1",
+  "branch": "develop/v1",
+  "environment": "isolated temporary test stack",
+  "shared_git_metadata": "/opt/freo/.git; development commits only; production checkout unchanged",
+  "outcome": "Two hours completed; original final harness assertion failed; corrected saved-data reconciliation passed",
+  "wall_seconds": 7200.174847,
+  "final_evidence_written_utc": "2026-10-05T06:38:40.647534+00:00",
+  "original_soak_metrics": {
+    "status": "failed",
+    "requested_seconds": 7200,
+    "started_utc": "2026-10-05T04:38:40.472687+00:00",
+    "checks": 46200,
+    "cycles": 120,
+    "browser_checks": 120,
+    "csv_checks": 24,
+    "screenshots": [
+      "statistics-000-overview.png",
+      "statistics-010-resources.png",
+      "statistics-020-music.png",
+      "statistics-030-overview.png",
+      "statistics-040-resources.png",
+      "statistics-050-music.png",
+      "statistics-060-overview.png",
+      "statistics-070-resources.png",
+      "statistics-080-music.png",
+      "statistics-090-overview.png",
+      "statistics-100-resources.png",
+      "statistics-110-music.png"
+    ],
+    "faults": [
+      {
+        "kind": "collector_gap",
+        "at": 5400.4,
+        "seconds": 65
+      }
+    ],
+    "elapsed_seconds": 7140.66,
+    "samples": 385,
+    "listener_hours": 6.532222222222222,
+    "starts": 70,
+    "completed": 64,
+    "browser_resources": {
+      "JSEventListeners": 329,
+      "Nodes": 7966,
+      "JSHeapUsedSize": 6484664
+    }
+  },
+  "corrected_90_second_confirmation": {
+    "status": "passed",
+    "requested_seconds": 90,
+    "started_utc": "2026-10-05T06:40:19.243648+00:00",
+    "checks": 840,
+    "cycles": 2,
+    "browser_checks": 2,
+    "csv_checks": 1,
+    "screenshots": [
+      "statistics-000-overview.png"
+    ],
+    "faults": [],
+    "elapsed_seconds": 90.3,
+    "samples": 6,
+    "listener_hours": 0.02277777777777778,
+    "starts": 2,
+    "completed": 2,
+    "browser_resources": {
+      "JSEventListeners": 155,
+      "Nodes": 6839,
+      "JSHeapUsedSize": 6266096
+    }
+  },
+  "final_reconciliation": {
+    "samples": 388,
+    "snapshot_at": 1791182312,
+    "persisted_sample_checks": 1164,
+    "listener_hours": 6.543888888888889,
+    "starts": {
+      "1": 70
+    },
+    "completed": 66,
+    "interrupted": 4,
+    "completed_max_seconds": 4180,
+    "duration_bands": [
+      1,
+      60,
+      1,
+      2,
+      1,
+      1
+    ],
+    "status": "passed"
+  },
+  "source_reset_timestamps": [
+    1791175597
+  ],
+  "javascript_errors": 0,
+  "long_listener": {
+    "completed": true,
+    "elapsed": 4200.54,
+    "bytes": 33652736,
+    "connections": 1
+  },
+  "duration_connections": [
+    {
+      "requested_seconds": 35,
+      "elapsed": 35.01,
+      "bytes": 274432,
+      "connections": 1,
+      "completed": true,
+      "at": 1791176944
+    },
+    {
+      "requested_seconds": 600,
+      "elapsed": 600.25,
+      "bytes": 4796416,
+      "connections": 1,
+      "completed": true,
+      "at": 1791177509
+    },
+    {
+      "requested_seconds": 1200,
+      "elapsed": 1200.16,
+      "bytes": 9596928,
+      "connections": 1,
+      "completed": true,
+      "at": 1791178109
+    },
+    {
+      "requested_seconds": 2100,
+      "elapsed": 2100.36,
+      "bytes": 16797696,
+      "connections": 1,
+      "completed": true,
+      "at": 1791179009
+    }
+  ],
+  "focused_tests": {
+    "statistics_and_accuracy": 21,
+    "sessions": 37,
+    "postgres": 6,
+    "dj_and_recordings": 31,
+    "browser": 4,
+    "total_distinct": 99
+  },
+  "final_visual_rerun": "passed; 20 screenshots; duration sorting, refresh, desktop/mobile and day/night",
+  "artifact_sha256": {
+    "statistics-soak.json": "b23740012240dfe648cbad78fd7e8362da09258f3caf3a98a44ba5ed4e078b54",
+    "observations.jsonl": "e843522e94650ea6e402c0cccd3c2de08b43b7112a25537ff118d1b914418cb9",
+    "system.sqlite": "396ebff17457c55e1abcdb0490d6da2cbbcc19dd2558ea0e6a6614637496b376",
+    "latest-code-reconciliation.json": "b3e7186b36b3652b2bf6cad120c74a42276dded16fcce874247563d4a735c849",
+    "worker-errors.json": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+    "browser-console.jsonl": "886a84959ebc2d7c7124a703e60cbc4108577f270f0f3af26634ebf79011c86d",
+    "long-listener.jsonl": "064db28f7e62ada1d1fdfb755fbc85225766d2894845efb210463ec4e6753498",
+    "duration-listeners.jsonl": "df35d8352dede2bab52c595296018ab6cb4987eeed6fbd1cef46c37a4f02ac98",
+    "latest-code-overall.csv": "06aea0cd48870ada921d06092d076f264bd2bdbe62942b27bb1c189118ad26d9",
+    "latest-code-station.csv": "33b45794fe388c67fd1549c692052ffc7dad4211adf8147abd7338dd2cf8c81f",
+    "latest-code-offline-station.csv": "a4fa6074adf34e91763e754d8e01cdf2d3482ae2da1d95f9b83cfd681c2caa4d"
+  }
+}

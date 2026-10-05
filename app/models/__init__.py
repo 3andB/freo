@@ -1262,7 +1262,7 @@ class CentralHourlyMetric(db.Model):
 from .scheduling import (ChannelSchedule, ScheduleComposition, ScheduleCompositionRevision,
                          ScheduleTransition, ScheduleCursor)
 from .statistics import (StatsState, AudienceSample, StatsBucket, AudiencePresence,
-                         GeoBucket, GeoReach, StorageSnapshot, BroadcastIncident, FeedbackTransition)
+                         GeoBucket, GeoReach, StorageSnapshot, BroadcastIncident, FeedbackTransition, SessionBucket)
 from .imports import MusicImportSession, MusicImportItem
 from .cue import BoothCue, SavedBoothCue, CuePlayback, CueMutation
 

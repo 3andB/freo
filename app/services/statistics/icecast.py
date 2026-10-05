@@ -46,10 +46,15 @@ class Icecast:
                 epoch=epoch, source_epoch=node.findtext('instance_uuid') or node.findtext('stream_start_iso8601') or node.findtext('stream_start'), clients=None)
             try:
                 clients = self.read('/admin/listclients?mount=' + quote('/' + station.slug, safe=''))
+                source = next((s for s in clients.findall('source') if s.get('mount') == '/' + station.slug), None)
+                if clients.tag != 'icestats' or source is None:
+                    raise ValueError('Unexpected client list response')
                 row['clients'] = [dict(id=n.findtext('id') or n.findtext('ID') or n.get('id'),
                     ip=n.findtext('ip') or n.findtext('IP'),
                     agent=n.findtext('useragent') or n.findtext('UserAgent') or '')
-                    for n in clients.findall('.//listener')]
+                    for n in source.findall('listener')]
+                if any(client['id'] is None for client in row['clients']):
+                    row['clients'] = None
             except (OSError, ValueError, ET.ParseError):
                 pass
             output[station.id] = row
