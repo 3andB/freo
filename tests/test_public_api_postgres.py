@@ -65,4 +65,5 @@ def test_migration_chain_phase5_data_and_revocation(monkeypatch):
         assert m.ListenerRequest.query.one().reason == 'Preserved'
         assert m.SelectionDecision.query.one().reason == 'Preserved history'
         assert m.ApiCredential.query.count() == 0
-        assert db.session.execute(sa.text('select version_num from alembic_version')).scalar() == 'f606a1b2c3d4'
+        from app.routes.health import release_schema_head
+        assert db.session.execute(sa.text('select version_num from alembic_version')).scalar() == release_schema_head()

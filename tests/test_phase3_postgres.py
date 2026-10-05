@@ -53,7 +53,12 @@ def test_recording_manager_migration_preserves_existing_files_and_history(monkey
     app=create_app('testing');runner=app.test_cli_runner()
     result=runner.invoke(args=['db','upgrade','f306a1b2c3d4']);assert result.exit_code==0,result.output
     with app.app_context():
-        db.session.add(Station(id=1,name='Migration',slug='migration'));db.session.flush()
+        # Current Station includes Phase 5 fields absent from the Phase 3 schema.
+        db.session.execute(sa.text("""INSERT INTO stations
+            (id,name,slug,description,enabled,desired_state,timezone,target_lufs,
+             freo_station_id,created_at,updated_at)
+            VALUES (1,'Migration','migration','',true,'stopped','UTC',-16,
+                    '11111111-1111-4111-8111-111111111111',now(),now())"""))
         db.session.execute(sa.text("INSERT INTO live_sessions(id,station_id,dj_name,created_at) VALUES(:id,1,'Original DJ',now())"),{'id':'a'*32})
         db.session.execute(sa.text("INSERT INTO show_recordings(id,session_id,station_id,storage_key,status,duration_ms,file_size_bytes) VALUES(:id,:show,1,:key,'complete',5000,12345)"),{'id':'b'*32,'show':'a'*32,'key':'b'*32+'.mp3'})
         db.session.commit()

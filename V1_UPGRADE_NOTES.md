@@ -125,6 +125,15 @@ rerun confined to `/tmp`; the sandbox could not change fixture ownership. Shell
 syntax, changed Python/JavaScript syntax, all 81 Jinja templates and Git whitespace
 checks passed. These results do not claim full V1 integration or VM acceptance.
 
+Disposable VM integration follow-up: the complete chain applied to an empty
+private PostgreSQL database through `f906a1b2c3d4`; Alembic metadata comparison
+reported no drift, and settings import/bootstrap succeeded. Three historical
+migration regression fixtures needed correction: seed historical Track/Station
+columns without current ORM fields, and compare the API migration roundtrip with
+the actual current head. All eight focused checks then passed. These fixture
+repairs change no migration, schema, or upgrade compatibility contract; they do
+not implement or certify the deferred production 0.3.2 → 1.0 bridge.
+
 ## Phase 2 — Track editor (5 October 2026)
 
 Phase 2 extends the existing media editor, request/decision system, and Liquidsoap
