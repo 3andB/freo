@@ -63,7 +63,7 @@ installation actions on this development source build.
 - `freo-production.service` is now installed and enabled after migration for
   both ordinary voice-track conversion and optional AI production. Private
   staging `/var/lib/freo/uploads/production` is created as `freo:freo`, mode 2770.
-  The service remains `freo-ingest`, with the shared `freo` group and its existing
+  The service runs as user `freo-ingest`, with the shared `freo` group and its existing
   resource limits. Nginx does not expose this directory.
 - A fresh installation generates `FREO_PROVIDER_ENCRYPTION_KEY` independently
   of Flask's session secret and the database password, or preserves a valid key
@@ -112,9 +112,9 @@ Focused installation validation uses `/tmp` files and stubbed package, database
 and service operations: source copying, unit inclusion/order, private staging,
 key generation/preservation/redaction, optional microphone dependency selection,
 and refusal of existing state are exercised without running the host installer.
-Migration graph checks establish one complete head, not a clean PostgreSQL
-installation result. Real installation, PostgreSQL migration execution, service
-startup, reboot, browser and broadcast acceptance remain for the disposable VM.
+At preparation time, migration graph checks established one complete head, not a
+clean PostgreSQL installation result. The subsequent disposable-VM validation
+below records actual migration, service, browser and broadcast results separately.
 No production bridge, stable bootstrap change, release publication or deployment
 is authorized by these notes.
 
@@ -187,6 +187,93 @@ HTTP/HTTPS setup, requests/embedding, ads and production. The iframe regression
 uses eager navigation to inspect nonce rejection before the no-fill timeout.
 Microphone capture still requires HTTPS or localhost, and ad frames still require
 HTTPS and retain their sandbox and nonce checks.
+
+### Disposable VM endurance and regression evidence
+
+The integration runs use `209.38.64.12` (`Freo-v1-Test-1`), Ubuntu 24.04.5,
+Liquidsoap 2.2.4 and Icecast 2.5.0. The application remains `1.0.0-dev.1`.
+Generated media, private test databases, credentials and raw evidence are kept
+outside Git. Evidence is under root-only `/root/freo-v1-evidence` on that VM.
+The development host's production installation is not part of these tests.
+
+The broad browser run covered 155 cases: 151 passed initially, two file-picker
+fixtures were corrected and passed, and the optional 30-round navigation-retention
+case subsequently passed. The remaining skip is a screenshot-only diagnostic.
+The 152-case real-engine group initially had 146 passes, two obsolete fade
+fixtures corrected and passed, two intermittent observations described below,
+and two opt-in skips. Separate checks passed for two-station stream lifecycle
+and 180-second system endurance. External programme-shift fixtures requiring an
+additional media bundle were not supplied. Large-catalog benchmarks and the
+optional external mothership validator were not run.
+
+Three sequential one-hour real-time integration runs passed:
+
+| Run | Observed result |
+| --- | --- |
+| Scheduling | 1,066 confirmed starts, 355 mode changes across all six directed Simple/Blocks/Calendar transitions; maximum switch 2.856 seconds; no decoded silence lasting three seconds |
+| Track editor | 1,237 confirmed starts, 177 live edits, 11,511 samples; maximum transition 2.906 seconds; no measured clock lag; decoded cue/fade/gain checks passed |
+| Analytics | 3,600 seconds, 180 observations, 21,720 independent ledger assertions, 60 browser cycles and 12 CSV checks; all 32 sessions completed and reconciled; 2.723 listener-hours |
+
+The analytics run used real private Icecast connections and generated media, with
+fixture geography and desktop/mobile/tablet/player user agents. The longer-run
+90-minute collector-gap injection and additional long-duration sessions require
+the separate two-hour opt-in; those scenarios were not exercised by this one-hour
+run. The existing backend statistics regressions cover gap and duration rules.
+
+Two initial engine failures remain unconfirmed intermittent defects, not fixed
+issues: the calendar-16 boundary case measured a 0.4-second programme gap against
+a 0.25-second limit, and one short-show recording produced an empty file. Each
+passed three serial reruns; the recording also passed an earlier focused repeat
+and an approximately 20-second recording on the installed system. The original
+failure evidence is retained under `intermittent-engine`. Passing repeats do not
+establish a root cause or remove these findings from release acceptance.
+
+Installed HTTP checks also passed for all public API read endpoints, pagination,
+cross-station denial, private-field filtering, denied writes and invalid/revoked
+credentials (18 requests). An actual DJ login could reach its assigned booth but
+not administration, station settings, another station, privilege promotion or API
+credential creation. Assignment revocation immediately denied booth access.
+Temporary test credentials were revoked and temporary DJ accounts deactivated.
+Alembic's read-only `flask --app app:create_app db check` also passed against the
+installed PostgreSQL database: no new upgrade operations were detected.
+
+Installed recovery acceptance confirmed the saved STATION voice track in actual
+encoded output and the public listener request's single confirmed start after two
+preceding music starts. Restarting automation, web, ingest, production, statistics
+and microphone services preserved decoded programming. Restarting the station's
+Liquidsoap process restored the stream and programme in 14.13 seconds; this is
+recovery, not uninterrupted output during an engine restart. Removing the voice
+file for 90 seconds and replacing it with invalid bytes for another 90 seconds
+each allowed five valid automation starts. Two corrupt voice selections were
+observably rejected. The audio probes detected neither silence nor emergency tone
+lasting three seconds in those worker-restart/media-failure captures. Restoring
+the original file returned it to scheduling without duplicating the completed
+listener request. Generated fixtures and the original restored file remain on
+the disposable VM only.
+
+A full disposable-VM reboot also passed. A changed boot ID was verified; systemd
+reported running after approximately 108 seconds. PostgreSQL, Nginx, Icecast,
+web, automation, ingest, production, statistics, microphone and the required
+timers returned healthy with no failed units. Station one resumed its persisted
+ON state, station two remained stopped, and FFprobe plus decoded audio confirmed
+192,000-bit/s MP3 programming. Existing administrator login and the DJ booth's
+Live Monitor worked in Chromium after reboot. The listener request remained
+completed exactly once. `scripts/validate-install.sh` passed again after reboot.
+
+Overall disposition: **PASS WITH ISSUES for isolated V1 staging**. The two
+intermittent engine findings above remain open, and public HTTPS/DNS, external
+microphone connectivity and live provider/publisher accounts are not certified.
+No production deployment, main merge, tag, stable release/index change or
+0.3.2 → 1.0 upgrade bridge was performed. The development host's production
+`/opt/freo`, database, services and media were untouched.
+
+Acceptance limits remain explicit: the existing public API supports read scopes
+and rejects write scopes; no new write API is implied. Real external ElevenLabs
+calls were not made because no development key was configured; provider failures
+and production workflows use mocks in the regression suite. Public DNS/TLS,
+physical microphone and external-network ICE connectivity, and actual publisher
+account creative fill require separate operator acceptance. Loopback WebRTC,
+server-side credential boundaries and mocked ad-provider contracts were tested.
 
 ## Phase 2 — Track editor (5 October 2026)
 
