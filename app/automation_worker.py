@@ -151,10 +151,13 @@ def refill_station(slug, reader, target_depth=2):
                         slug, decision.rotation_id, decision.slot_id, decision.category_id,
                         decision.track_id, decision.imaging_asset_id, decision.selection_method,
                         decision.relaxation, decision.candidate_count)
-        except Exception:
+        except Exception as error:
+            from app.services.listener_requests import RequestIneligible
             decision.status = 'failed'
-            decision.reason = 'queue_failed'
+            decision.reason = 'listener_request_cancelled' if isinstance(error, RequestIneligible) else 'queue_failed'
             db.session.commit()
+            if isinstance(error, RequestIneligible):
+                continue
             logger.exception('Queue request failed for station=%s decision=%s', slug, decision.id)
             break
     return added
@@ -291,6 +294,8 @@ def reconcile_requests(slug):
                 if occurrence and occurrence.state == 'QUEUED':
                     occurrence.state, occurrence.failure_reason = 'FAILED', row.reason
         db.session.commit()
+    from app.services.listener_requests import reconcile_engine
+    reconcile_engine(station, identity, live, complete_inventory)
     return changed + recovered_leaders
 
 
@@ -547,6 +552,11 @@ def process_deck_command(station, command, identity, reader=None):
             not (cue and cue.auto_enabled) and not mixer.get('cart_id') and not mixer.get('auto_standby')):
         # Selection and decoding happen while the outgoing song still plays.
         stop_target = prepare_auto_successor(station, reader, mixer)
+    if operation in ('LOAD', 'REPEAT', 'PLAY'):
+        from app.services.listener_requests import validate_decision
+        request_target = command.target_decision if operation != 'PLAY' else db.session.get(SelectionDecision, current)
+        if request_target and request_target.listener_request_id:
+            validate_decision(request_target)
     if operation in ('LOAD', 'CLEAR', 'FADE'):
         interrupt(station, current)
     if operation == 'PLAY' or (operation == 'LOAD' and command.play_on_load):
@@ -1025,6 +1035,8 @@ def tick(reader, target_depth=2):
     heartbeat()
     from app.services.recording_manager import process_deletions
     process_deletions()
+    from app.services.listener_requests import housekeeping
+    housekeeping()
     states = AutomationState.query.all()
     for state in states:
         slug = state.station.slug
@@ -1035,10 +1047,17 @@ def tick(reader, target_depth=2):
             db.session.rollback()
             logger.exception('Show observation failed station=%s', slug)
         if not state.station.enabled or state.station.desired_state != 'running':
+            from app.services.relay import suspend as suspend_relay
+            suspend_relay(state.station_id, reader)
             continue
         if time.monotonic() < reader.unavailable_until.get(slug, 0):
             continue
         try:
+            from app.services.relay import reconcile as reconcile_relay, defer_events, reserve_events
+            relay = reconcile_relay(state.station, reader)
+            relay_selected = bool(relay and relay['selected'])
+            if relay is not None and not relay_selected and not reserve_events(state.station):
+                relay_selected = True
             from app.services.schedule_switch import process_transition
             if process_transition(state.station, reader):
                 observe_queue(state.station)
@@ -1064,7 +1083,7 @@ def tick(reader, target_depth=2):
                 db.session.commit()
             process_manual(state.station, reader)
             process_event_cancellations(state.station)
-            if not mic_active and state.operator_mode == 'AUTO' and process_dj_events(state.station,reader,allow_new=False):
+            if not relay_selected and not mic_active and state.operator_mode == 'AUTO' and process_dj_events(state.station,reader,allow_new=False):
                 state.worker_heartbeat_at=datetime.now(timezone.utc);db.session.commit();observe_queue(state.station);continue
             if mic_active:
                 state.worker_heartbeat_at = datetime.now(timezone.utc)
@@ -1077,7 +1096,7 @@ def tick(reader, target_depth=2):
                 from app.services.booth_cue import advance
                 observed_mixer = mixer_state(slug)
                 standby=observed_mixer.get('auto_standby',False)
-                if process_dj_events(state.station,reader):
+                if not relay_selected and process_dj_events(state.station,reader):
                     state.worker_heartbeat_at=datetime.now(timezone.utc);db.session.commit();observe_queue(state.station);continue
                 cue_active = advance(state.station, observed_mixer, reader)
                 if not cue_active and return_to_auto_if_stopped(state.station,reader,mixer_state(slug)):
@@ -1105,12 +1124,27 @@ def tick(reader, target_depth=2):
             current_signature=signature(state.station)
             if reader.programming_signatures.get(slug)!=current_signature:
                 reader.starved_until.pop(slug,None)
-            refresh(state.station,reader,current_signature)
+            prepared_relay_id = None
+            if relay_selected:
+                from app.services.playout_queue import mixer_state
+                prepared_relay_id = mixer_state(slug).get('auto_id')
+                prepared_row = db.session.get(SelectionDecision, prepared_relay_id) if prepared_relay_id else None
+                if prepared_row and prepared_row.status == 'started':
+                    if prepared_row.programming_signature and prepared_row.programming_signature != current_signature:
+                        from app.services.playout_queue import _command
+                        _command(slug, f'freo_relay.discard {prepared_row.id}')
+                    prepared_relay_id = None
+            refresh(state.station,reader,current_signature, prepared_auto_id=prepared_relay_id)
             reader.programming_signatures[slug]=current_signature
             # Hard timed events must not skip the outgoing DJ source mid-fade.
             returning=time.monotonic()<reader.auto_return_until.get(slug,0)
-            event_seconds = None if returning else process_timed_events(state.station, reader)
-            block_active = False if returning else process_block(state.station, reader)
+            if relay_selected:
+                defer_events(state.station)
+            event_seconds = None if returning or relay_selected else process_timed_events(state.station, reader)
+            relay_timed_block = relay_selected and EventBlockExecution.query.filter_by(station_id=state.station_id).filter(
+                EventBlockExecution.state.in_(('PENDING','QUEUED','STARTED')),
+                EventBlockExecution.timed_event_occurrence_id.isnot(None)).first() is not None
+            block_active = False if returning or relay_timed_block else process_block(state.station, reader)
             if block_active:
                 state.worker_heartbeat_at = datetime.now(timezone.utc)
                 state.observed_queue_depth = queue_depth(slug)

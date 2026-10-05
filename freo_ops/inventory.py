@@ -6,7 +6,7 @@ from pathlib import PurePosixPath
 
 DIRECTORIES = ('app', 'freo_ops', 'migrations', 'deploy', 'scripts', 'docs')
 FILES = ('wsgi.py', 'requirements.txt', 'requirements-live-mic.txt', '.env.example',
-         'README.md', 'SECURITY.md', 'CHANGELOG.md', 'LICENSE')
+         'README.md', 'SECURITY.md', 'CHANGELOG.md', 'LICENSE', 'V1_UPGRADE_NOTES.md')
 SCRIPTS = {
     'recording-storage.py', 'install.sh', 'provision.sh', 'install-python.sh', 'install-statistics.sh',
     'configure-icecast-repository.sh', 'media-web-access.sh', 'render-radio-config.py',
@@ -22,7 +22,7 @@ OPERATOR_DOCS = {
     'public-radio-directories.md', 'radio-engine.md', 'rotations.md', 'scheduling.md',
     'sound-room.md', 'station-location-reporting.md', 'station-settings-and-review.md',
     'station-website.md', 'stations.md', 'statistics.md', 'timed-events.md', 'traffic.md',
-    'ui.md', 'version-awareness-client.md',
+    'ui.md', 'version-awareness-client.md', 'public-api-v1.md',
 }
 
 

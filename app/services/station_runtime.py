@@ -146,7 +146,7 @@ def render(station):
     slug = validate_slug(station.slug)
     if not station.enabled or not station.stream or not station.stream.enabled:
         raise ValueError('Station and stream must be enabled to render')
-    if station.stream.format != 'mp3' or station.stream.bitrate not in (64, 96, 128):
+    if station.stream.format != 'mp3' or station.stream.bitrate not in (64, 96, 128, 192):
         raise ValueError('Choose a supported MP3 bitrate')
     from app.services.media import refresh_playlist
     refresh_playlist(slug)

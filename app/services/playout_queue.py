@@ -32,12 +32,13 @@ def _command(slug, command):
         uris = command.split(' ',1)[1].split('|')
         if not 1 <= len(uris) <= 500 or any(not (re.fullmatch(music_pattern,'freo_queue.insert '+uri) or re.fullmatch(imaging_pattern,'freo_queue.insert '+uri)) for uri in uris):
             raise ValueError('Invalid event sequence')
+    relay_command = command in ('freo_relay.state', 'freo_relay.reserve') or bool(re.fullmatch(r'freo_relay\.(?:discard [1-9][0-9]*|hold (?:true|false)|apply [1-9][0-9]* (?:-|http://127\.0\.0\.1:[0-9]{1,5}/[0-9a-f]{64}))', command))
     recording_command = re.fullmatch(r'freo_record\.(?:state|(?:arm|lease|stop) [0-9a-f]{32})', command)
     mic_command = re.fullmatch(r'freo_mic\.(?:state|(?:prepare|lease) [0-9a-f]{32}|(?:take|end) [0-9a-f]{32} (?:[0-9]\.[0-9]{3}|10\.000))', command)
     schedule_command = re.fullmatch(r'freo_schedule\.switch [0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12} [0-9]+', command)
     event_command = re.fullmatch(r'freo_event\.(?:arm|release|cancel) [1-9][0-9]*', command)
     return_command = re.fullmatch(r'freo_mixer\.(?:return_cancel|return_discard [1-9][0-9]*|return_stopped [1-9][0-9]*|return_arm [AB] [1-9][0-9]* [1-9][0-9]*)', command)
-    if not recording_command and not return_command and not batch and not event_command and not schedule_command and not mic_command and command not in ('freo_show.state', 'freo_schedule.status', 'freo_queue.queue', 'request.on_air', 'freo_queue.skip', 'freo_queue.flush_and_skip', 'freo_program.rms', 'freo_program.current', 'freo_deck.requests', 'freo_event.state') and not re.fullmatch(r'(?:freo_music\.remove [1-9][0-9]*|freo_(?:queue|event)\.remove [0-9]+(?: [0-9]+){0,19}|freo_deck\.(?:take|fade)_[ab](?: (?:[0-9]\.[0-9]{3}|10\.000))?|freo_deck\.(?:pause|clear|future)_[ab]|request.metadata [0-9]+|freo_(?:a|b|cart|event)\.queue|freo_mixer\.(?:state|fade_a|fade_next [1-9][0-9]*|clear_future|mode (?:AUTO|DJ_BOOTH)|crossfader (?:0\.[0-9]{3}|1\.000)|(?:a_play|b_play) (?:true|false)|cart_mode (?:OVER|TAKEOVER)|duck (?:0\.[0-9]{3}|1\.000)))', command) and not (re.fullmatch(music_pattern, command) or re.fullmatch(imaging_pattern, command)):
+    if not relay_command and not recording_command and not return_command and not batch and not event_command and not schedule_command and not mic_command and command not in ('freo_show.state', 'freo_schedule.status', 'freo_queue.queue', 'request.on_air', 'freo_queue.skip', 'freo_queue.flush_and_skip', 'freo_program.rms', 'freo_program.current', 'freo_deck.requests', 'freo_event.state') and not re.fullmatch(r'(?:freo_music\.remove [1-9][0-9]*|freo_(?:queue|event)\.remove [0-9]+(?: [0-9]+){0,19}|freo_deck\.(?:take|fade)_[ab](?: (?:[0-9]\.[0-9]{3}|10\.000))?|freo_deck\.(?:pause|clear|future)_[ab]|request.metadata [0-9]+|freo_(?:a|b|cart|event)\.queue|freo_mixer\.(?:state|fade_a|fade_next [1-9][0-9]*|clear_future|mode (?:AUTO|DJ_BOOTH)|crossfader (?:0\.[0-9]{3}|1\.000)|(?:a_play|b_play) (?:true|false)|cart_mode (?:OVER|TAKEOVER)|duck (?:0\.[0-9]{3}|1\.000)))', command) and not (re.fullmatch(music_pattern, command) or re.fullmatch(imaging_pattern, command)):
         raise ValueError('Liquidsoap command is not allowlisted')
     matches=[re.fullmatch(music_pattern,'freo_queue.insert '+uri) for uri in uris] if batch else [re.fullmatch(music_pattern,command)]
     for music in matches:
@@ -140,6 +141,9 @@ def push_decision(decision, storage=None, *, prepare_only=False):
     if not Station.query.filter_by(id=decision.station_id, enabled=True, deleted_at=None).filter(
             ~Station.lifecycle_state.in_(('pending_delete', 'delete_failed'))).first():
         raise ValueError('Station is unavailable')
+    if decision.listener_request_id:
+        from app.services.listener_requests import validate_decision
+        validate_decision(decision)
     track = decision.track
     if track and not tracks_for(decision.station_id).filter_by(id=track.id, enabled=True,
             ingest_status='accepted', decommissioned_at=None).first():

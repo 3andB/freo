@@ -113,7 +113,13 @@ def ingest(slug, source, title=None, artist=None, album=None, storage=None, *,
             target.flush()
             os.fsync(target.fileno())
         digest = checksum.hexdigest()
+        production = None
+        if (import_metadata or {}).get('production_id'):
+            from app.services.production_worker import ingest_draft
+            production = ingest_draft(import_metadata['production_id'], station.id)
         existing = Track.query.filter_by(station_id=station.id, checksum_sha256=digest).first()
+        if existing and production and production.track_id != existing.id:
+            raise MediaValidationError('This audio already belongs to another catalog asset')
         if existing:
             return existing, True
         details = probe(temp)
@@ -148,6 +154,8 @@ def ingest(slug, source, title=None, artist=None, album=None, storage=None, *,
         )
         db.session.add(track)
         db.session.flush()
+        if production:
+            production.track_id = track.id
         from app.services.music_catalog import organize_song
         organize_song(track, tags)
         if import_metadata is not None:

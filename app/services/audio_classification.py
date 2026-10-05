@@ -4,7 +4,7 @@ from app.extensions import db
 from app.models import Playlist, Track
 
 KINDS = ('MUSIC', 'STATION', 'COMMERCIALS')
-SUBTYPES = ('', 'station_id', 'promo', 'announcement', 'jingle', 'sweeper', 'liner', 'cart', 'generic')
+SUBTYPES = ('voice_track', 'show_intro', 'show_outro', '', 'station_id', 'promo', 'announcement', 'jingle', 'sweeper', 'liner', 'cart', 'generic')
 
 
 def migrated_audio(station_id, identifier):

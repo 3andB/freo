@@ -42,7 +42,9 @@ def page(slug):
         tracks = tracks.filter(or_(Track.title.ilike(pattern, escape='\\'), Track.artist.ilike(pattern, escape='\\'), Track.album.ilike(pattern, escape='\\')))
     slots=LiveCartSlot.query.filter_by(station_id=station.id).all()
     from app.services.live_mic import enabled as mic_enabled
-    return render_template('admin/live.html', stations=admin_stations(), selected=station,
+    from app.models import ListenerRequest
+    pending_requests = ListenerRequest.query.filter_by(station_id=station.id).filter(ListenerRequest.status.in_(('pending','eligible','queued'))).order_by(ListenerRequest.created_at).limit(5).all()
+    return render_template('admin/live.html', pending_requests=pending_requests, stations=admin_stations(), selected=station,
         page='live', mic_enabled=mic_enabled(), live=status(station), tracks=tracks.order_by(Track.title).limit(30).all(),
         blocks=EventBlock.query.filter_by(station_id=station.id,enabled=True).order_by(EventBlock.name).all(),
         categories=MediaCategory.query.filter_by(station_id=station.id,enabled=True).order_by(MediaCategory.name).all(),

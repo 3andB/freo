@@ -506,16 +506,23 @@ def select_visual(station, resolved, storage, now):
     from app.services.selection_policy import recent
     row=db.session.get(Playlist,ref['id']) if ref['kind']=='playlist' else None
     result={}
-    chosen,cursor.state=advance(SimpleNamespace(mode=mode,selection_weights=row.selection_weights if row else {}),tracks,
-        dict(saved,mode=saved.get('mode',mode)),history=recent(station,station.automation,now),
-        now=now,automation=station.automation,result=result)
-    if not getattr(station.automation, 'track_separation_seconds', 0) and not getattr(station.automation, 'artist_separation_seconds', 0):
+    from app.services.listener_requests import choose, bind
+    requested = choose(station, tracks, storage, now, fixed=bool(resolved.get('insert') or ref['kind'] == 'song'))
+    if requested:
+        chosen = requested.track
+        result = dict(relaxation='none', candidate_count=len(tracks))
+    else:
+        chosen,cursor.state=advance(SimpleNamespace(mode=mode,selection_weights=row.selection_weights if row else {}),tracks,
+            dict(saved,mode=saved.get('mode',mode)),history=recent(station,station.automation,now),
+            now=now,automation=station.automation,result=result)
+    if not requested and not getattr(station.automation, 'track_separation_seconds', 0) and not getattr(station.automation, 'artist_separation_seconds', 0):
         result['relaxation']='intentional_loop'
     decision=SelectionDecision(station_id=station.id,track_id=chosen.id,status='selected',selected_at=now,
         selection_method='schedule_insert' if resolved.get('insert') else 'visual_schedule',schedule_occurrence=resolved['key'][:120],reason='default_playlist' if resolved.get('reason') else None,
         **result)
     decision.cursor_checkpoint={'visual':{key:saved}}
     db.session.add(decision)
+    bind(requested, decision, now)
     return decision
 
 

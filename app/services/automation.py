@@ -185,6 +185,8 @@ def set_automation(slug, enabled, track_seconds=None, artist_seconds=None):
 def select_next(slug, storage=None, now=None, programming_signature=None, *, programming_override=None, commit=True):
     """Lock one station cursor, select one playable object, and commit its decision."""
     station = require_station(slug)
+    from app.services.listener_requests import lock
+    lock(station)
     state = AutomationState.query.filter_by(station_id=station.id).with_for_update().first()
     if state is None or not state.enabled:
         raise ValueError('Automation is not enabled')
@@ -323,11 +325,17 @@ def _select_category(station, category, state, storage, now, context, rotation=N
     if not tracks:
         db.session.add(SelectionDecision(status='failed', reason=reason, **base))
         return None
-    track, relaxation, count = _choose(tracks, _recent(station, state, now), now,
-                                       state.track_separation_seconds, state.artist_separation_seconds)
+    from app.services.listener_requests import choose, bind
+    requested = choose(station, tracks, storage, now)
+    if requested:
+        track, relaxation, count = requested.track, 'none', len(tracks)
+    else:
+        track, relaxation, count = _choose(tracks, _recent(station, state, now), now,
+                                           state.track_separation_seconds, state.artist_separation_seconds)
     decision = SelectionDecision(track_id=track.id, status='selected', candidate_count=count,
                                  relaxation=relaxation, **base)
     db.session.add(decision)
+    bind(requested, decision, now)
     return decision
 
 
@@ -367,8 +375,16 @@ def playback_started(decision_id, slug, now=None):
     decision = SelectionDecision.query.filter_by(id=decision_id).first()
     if decision is None or decision.station.slug != slug or decision.status not in ('selected', 'submitting', 'queued', 'failed'):
         return False
+    if decision.listener_request_id:
+        from app.services.listener_requests import lock
+        lock(decision.station)
+        db.session.refresh(decision)
+        if decision.status == 'started':
+            return False
     decision.status = 'started'
     decision.started_at = now or datetime.now(timezone.utc)
+    from app.services.listener_requests import confirmed
+    confirmed(decision, decision.started_at)
     if decision.track_id and decision.station.automation and decision.station.automation.cued_track_id == decision.track_id:
         decision.station.automation.cued_track_id = None
     from app.services.event_blocks import confirm_item_started

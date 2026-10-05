@@ -5,10 +5,11 @@ install_dir=${FREO_INSTALL_DIR:-/opt/freo}
 test -x "$install_dir/venv/bin/python"
 (cd "$install_dir" && "$install_dir/venv/bin/python" -m pip check && "$install_dir/venv/bin/python" -m freo_ops.dependencies)
 "$install_dir/venv/bin/python" -c 'from zoneinfo import ZoneInfo; ZoneInfo("UTC"); ZoneInfo("America/Denver"); import app.services.schedule, app.services.clocks' >/dev/null
-"$install_dir/venv/bin/python" -c 'import app.services.admin_media, app.ingest_worker' >/dev/null
+"$install_dir/venv/bin/python" -c 'import app.services.admin_media, app.ingest_worker, app.production_worker' >/dev/null
 test -x /usr/bin/ffprobe
 test -d /var/lib/freo/media
 test -d /var/lib/freo/uploads
+test "$(stat -c %a:%U:%G /var/lib/freo/uploads/production)" = 2770:freo:freo
 test -d /var/lib/freo/playlists
 if [[ $(stat -c %a /var/lib/freo/media) != 751 || $(stat -c %a /var/lib/freo/playlists) != 750 ]]; then
   echo 'Media or playlist root permissions are too broad.' >&2
@@ -18,6 +19,9 @@ test -f "$install_dir/.env"
 test -f /etc/systemd/system/freo-playout@.service
 test -f /etc/systemd/system/freo-automation.service
 test -f /etc/systemd/system/freo-ingest.service
+test -f /etc/systemd/system/freo-production.service
+test -f /etc/systemd/system/freo-mic.service
+test -f "$install_dir/scripts/recording-storage.py"
 test -f /etc/systemd/system/freo-public-schedules.service
 systemctl is-active --quiet freo-public-schedules.timer
 id freo-automation >/dev/null
@@ -34,7 +38,12 @@ if id -nG freo-ingest | tr ' ' '\n' | grep -qx freo-playout; then
 fi
 test -x "$install_dir/scripts/validate-station-instance.py"
 test "$(stat -c %a "$install_dir/.env")" = 640
-systemctl is-active --quiet postgresql nginx freo.service icecast2.service freo-automation.service freo-ingest.service
+systemctl is-active --quiet postgresql nginx freo.service icecast2.service freo-automation.service freo-ingest.service freo-production.service
+# Read the persisted choice; re-running validation need not export installer flags.
+if grep -qx 'FREO_LIVE_MIC=1' "$install_dir/.env"; then
+  (cd "$install_dir" && "$install_dir/venv/bin/python" -m freo_ops.dependencies --live-mic)
+  systemctl is-active --quiet freo-mic.service
+fi
 nginx -t >/dev/null
 pg_isready -q
 current=$(cd "$install_dir" && runuser -u freo -- env FREO_ENV_FILE="$install_dir/.env" "$install_dir/venv/bin/flask" --app wsgi:app db current)

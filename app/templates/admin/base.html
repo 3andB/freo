@@ -24,7 +24,7 @@
   </div>
 </header>
 {% endblock %}
-{% block scripts %}<script defer src="{{ url_for('static',filename='license_agreement.js',v='20260921') }}"></script><script defer src="{{ url_for('static',filename='music_availability.js',v='music-workflow-20260919') }}"></script>{% if selected and page in ['live','media','sound-room'] %}<script defer src="{{ url_for('static',filename='song_flags.js') }}"></script>{% endif %}<script defer src="{{ url_for('static', filename='admin.js',v='v1-phase3') }}"></script><script defer src="{{ url_for('static',filename='schedule_status.js') }}"></script>{% if page in ['media','sound-room','tags','playlists'] %}<script defer src="{{ url_for('static',filename='music_preview.js',v='v1-phase2') }}"></script><script defer src="{{ url_for('static',filename='music_toggles.js',v='playlists-v1') }}"></script>{% endif %}{% endblock %}
+{% block scripts %}<script defer src="{{ url_for('static',filename='license_agreement.js',v='20260921') }}"></script><script defer src="{{ url_for('static',filename='music_availability.js',v='phase9-owner') }}"></script>{% if selected and page in ['live','media','sound-room'] %}<script defer src="{{ url_for('static',filename='song_flags.js') }}"></script>{% endif %}<script defer src="{{ url_for('static', filename='admin.js',v='v1-phase3') }}"></script><script defer src="{{ url_for('static',filename='schedule_status.js') }}"></script>{% if page in ['media','sound-room','tags','playlists'] %}<script defer src="{{ url_for('static',filename='music_preview.js',v='v1-phase2') }}"></script><script defer src="{{ url_for('static',filename='music_toggles.js',v='playlists-v1') }}"></script>{% endif %}{% endblock %}
 {% block content %}
 <div class="admin-layout">
   <aside class="admin-sidebar" aria-label="Admin navigation">
@@ -41,6 +41,7 @@
         </select>
         <button type="submit" {% if not switchable %}disabled{% endif %}>Switch</button>
       </form>
+      {% if selected %}<a href="{{ url_for('production.page',slug=selected.slug) }}">Voice tracking / Station audio</a>{% endif %}
       {% if current_admin().role == 'DJ' %}
       {% if selected %}<a href="{{ url_for('admin_live.page',slug=selected.slug) }}">DJ Booth</a><a href="{{ url_for('dj.recordings',slug=selected.slug) }}">My recordings</a>{% endif %}
       {% elif selected %}
@@ -67,7 +68,9 @@
       <a href="{{ url_for('player_experience.operations_inbox') }}" {% if page == 'operations-feedback' %}aria-current="page"{% endif %}>Listener Feedback</a>
       <a href="{{ url_for('central_api.settings') }}" {% if page == 'installation' %}aria-current="page"{% endif %}>Installation / freo.live</a>
       {% if current_admin() and current_admin().installation_admin %}<a href="{{ url_for('distribution.page') }}" {% if page == 'software' %}aria-current="page"{% endif %}>Software and license</a>{% endif %}
+      {% if current_admin().installation_admin %}<a href="{{ url_for('production.settings') }}">AI provider settings</a>{% endif %}
       <a href="{{ url_for('dj.accounts') }}">DJ accounts and access</a>
+      <a href="{{ url_for('api_credentials.page') }}" {% if page == 'api-credentials' %}aria-current="page"{% endif %}>API credentials</a>
       <a href="{{ url_for('admin_media.audit_view') }}" {% if page == 'audit' %}aria-current="page"{% endif %}>Admin Audit</a>
       {% endif %}
     </nav>

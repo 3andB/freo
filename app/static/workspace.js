@@ -292,14 +292,19 @@
       }
     } else if (dirtyForms.size && !options.submitted && !await FreoDialog.confirm({title: 'Leave unsaved changes?', message: 'Your edits on this page have not been saved. Leave this page and discard them?', confirmLabel: 'Leave page'})) return;
     if(navigating)return navigate(url, options);
+    // Public player ad vendors must not persist into authenticated interfaces,
+    // and public CSP must be delivered by a full document response.
+    if (!options.request && (document.body.classList.contains('player-page') || new URL(url, location.href).pathname.startsWith('/player/'))) {location.assign(url); return;}
     navigating = true; document.documentElement.classList.add('is-navigating');
     try {
       const response = await fetch(url, {credentials: 'same-origin', ...options.request});
       if (!response.headers.get('content-type')?.includes('text/html')) {location.assign(url); return;}
       const destination = new URL(response.url);
+      if (destination.pathname.startsWith('/player/')) {location.assign(destination); return;}
       const requestedHash = new URL(url, location.href).hash;
       if (requestedHash) destination.hash = requestedHash;
       const next = new DOMParser().parseFromString(await response.text(), 'text/html');
+      if (next.body.classList.contains('player-page')) {location.assign(destination); return;}
       if (!next.querySelector('#main')) throw new Error('Page unavailable');
       if (pendingNavigation) return;
       if (!options.pop) remember();

@@ -48,7 +48,7 @@ def test_settings_validation_assets_aliases_and_atomic_conflicts(app):
     data=config_form(message='Welcome <script>bad()</script>',message_enabled='yes',social_enabled='yes',
         social_Instagram='https://instagram.com/station',visible_Instagram='yes',
         ad_top_enabled='yes',ad_top_alt='Sponsor',ad_top_url='https://example.test',
-        cover=(BytesIO(png()),'cover.png'),ad_top=(BytesIO(png()),'ad.png'))
+        cover=(BytesIO(png()),'cover.png'),ad_top=(BytesIO(png(728,90)),'ad.png'))
     result=admin.post(ADMIN,data=data)
     assert result.status_code==302
     page=app.test_client().get('/player/test-station').text

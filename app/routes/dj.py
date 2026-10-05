@@ -49,8 +49,9 @@ def accounts():
             user.active = request.form.get('active') == 'yes'
             if not user.active:
                 AdminLoginSession.query.filter_by(admin_user_id=user.id).delete()
-            DJStationAssignment.query.filter_by(admin_user_id=user.id).delete()
-            for station_id in station_ids:
+            existing = {a.station_id for a in DJStationAssignment.query.filter_by(admin_user_id=user.id)}
+            DJStationAssignment.query.filter_by(admin_user_id=user.id).filter(DJStationAssignment.station_id.notin_(station_ids)).delete(synchronize_session=False)
+            for station_id in station_ids - existing:
                 db.session.add(DJStationAssignment(admin_user_id=user.id, station_id=station_id))
             audit('dj_permissions_changed', user_id=current_admin().id, target_type='admin_user', target_id=str(user.id),
                   summary='DJ assignments updated: ' + ','.join(map(str, sorted(station_ids))))

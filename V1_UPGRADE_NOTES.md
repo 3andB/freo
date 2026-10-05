@@ -1,5 +1,130 @@
 # Freo V1 upgrade notes
 
+## V1 development source installation — 5 October 2026
+
+The development identifier is `1.0.0-dev.1`. This is an unpublished test build,
+not a stable 1.0 release, signed kit, or supported 0.3.2 upgrade. The complete
+Phase 1–9 source, tests and migrations belong to `develop/v1`; install an exact
+reviewed commit from that branch. The public bootstrap at `freo.live/install`
+continues to accept only signed stable releases and must not be used for V1.
+
+### Fresh disposable server
+
+Use a blank Ubuntu 24.04 x86_64 VM with root/sudo access and outbound package
+access. Install directly from the application repository `3andB/freo`, not the
+separate `lee-3andB/freo-live` mothership. No intermediate 0.3.2 installation is
+needed. Run only on the disposable test VM (currently `209.38.64.12`):
+
+```bash
+git clone --branch develop/v1 --single-branch git@github.com:3andB/freo.git freo-v1-source
+cd freo-v1-source
+git status --short
+git rev-parse HEAD
+sudo env FREO_DOMAIN=209.38.64.12 bash scripts/install.sh
+```
+
+Confirm that HEAD matches the approved test commit before installing. The VM's
+GitHub identity must have read access to `3andB/freo`; access to the mothership
+repository alone does not establish that. If Git is absent on the blank VM,
+install it first with `sudo apt-get update` and `sudo apt-get install -y git`.
+The existing installer installs the application dependencies; no manual database,
+Python virtualenv, Nginx or Icecast setup is needed. It installs under `/opt/freo`
+on the disposable VM only, with local PostgreSQL and new secrets. This path must
+never be confused with `/opt/freo` on the production host. Existing or partial
+installation state is refused; preserve failure logs instead of erasing state
+and rerunning blindly. `FLASK_ENV=production` in the installed environment means
+the hardened Flask configuration, not a stable release or production server.
+
+For external browser microphone testing, first point `v1.freo.world` at the
+test VM, allow HTTP/HTTPS certificate validation, and use this installation
+command **instead** of the HTTP command above:
+
+```bash
+sudo env FREO_DOMAIN=v1.freo.world FREO_ENABLE_HTTPS=1 \
+  FREO_CERTBOT_EMAIL=YOUR_CERTIFICATE_EMAIL FREO_LIVE_MIC=1 bash scripts/install.sh
+```
+
+After installation, complete mandatory administrator setup and run
+`sudo bash /opt/freo/scripts/validate-install.sh`. Do not use stable-update
+installation actions on this development source build.
+
+### Services, storage and secrets
+
+- The installer applies the whole migration chain to the new database, through
+  `f906a1b2c3d4`, including `f316a1b2c3d4` recording management. Phase 1 scheduling
+  migration `f106a1b2c3d4` and its compatibility defaults are described in
+  `phase1.md`; existing playlists retain their opt-in scheduling behavior.
+- Existing web, PostgreSQL, Nginx, Icecast, automation, ingest, central reporting,
+  station provisioning, public schedules, statistics/inventory/GeoIP and updater
+  units retain their lifecycle. Managed playout instances start through station
+  controls; the diagnostic tone remains opt-in with `FREO_ENABLE_DIAGNOSTIC=1`.
+  Relay transport runs inside automation on loopback port 8092; requests, public
+  API and platform polish require no separate worker.
+- `freo-production.service` is now installed and enabled after migration for
+  both ordinary voice-track conversion and optional AI production. Private
+  staging `/var/lib/freo/uploads/production` is created as `freo:freo`, mode 2770.
+  The service remains `freo-ingest`, with the shared `freo` group and its existing
+  resource limits. Nginx does not expose this directory.
+- A fresh installation generates `FREO_PROVIDER_ENCRYPTION_KEY` independently
+  of Flask's session secret and the database password, or preserves a valid key
+  supplied privately in the installer environment. Invalid supplied keys are
+  rejected before provisioning. The key is stored only in root:freo mode-0640
+  `/opt/freo/.env`, not printed. Keep a protected backup separately from database
+  backups. The fresh-install refusal prevents accidental key rotation on reruns.
+  No ElevenLabs or other provider API credential is generated or required for
+  installation/manual voice tracks; enter development credentials through the
+  installation administrator's provider settings only when needed.
+- `freo-mic.service` is installed but remains disabled unless `FREO_LIVE_MIC=1`
+  is explicitly supplied. For source installs that flag installs the existing
+  optional Python requirements, imports the initial microphone preference and
+  enables the gateway. HTTPS, usable ICE/UDP connectivity and any required TURN
+  configuration remain operator responsibilities; port 8091 stays private.
+  Later activation must also update the saved installation preference through
+  installation settings, then follow `docs/live-mic.md` for station re-rendering
+  and restart. Changing `.env` alone does not replace adopted database settings.
+- Show recording still requires the existing narrow per-station storage/ACL
+  setup. After creating each test station, before its first recorded show, run
+  the following on the disposable VM, replacing `STATION_SLUG`:
+
+  ```bash
+  sudo /opt/freo/venv/bin/python /opt/freo/scripts/recording-storage.py /var/lib/freo/media STATION_SLUG
+  sudo systemctl daemon-reload
+  sudo systemctl restart freo-automation.service
+  ```
+
+  Start the station afterward, or restart that station's playout instance if
+  already running so its new override takes effect. The helper gives playout
+  write access, web read-only access and automation deletion access solely to
+  that station's recordings. It does not grant broad media write permissions.
+- V1 upgrade notes and the public API operator guide are included in the source
+  install/customer-file inventory. Tests and the audit remain source-only.
+
+### Registration and validation boundaries
+
+No enrollment token or paid license is needed. The existing reporter automatically
+creates a new private installation identity and enrolls with `api.freo.live` when
+the installer starts it. This will create a separate mothership record; it does
+not remotely provision the server. Use a new disposable owner profile/code for
+optional account linking, keep public-directory publication off, and never copy
+production `.env`, identity files, provider credentials, database or media.
+
+Focused installation validation uses `/tmp` files and stubbed package, database
+and service operations: source copying, unit inclusion/order, private staging,
+key generation/preservation/redaction, optional microphone dependency selection,
+and refusal of existing state are exercised without running the host installer.
+Migration graph checks establish one complete head, not a clean PostgreSQL
+installation result. Real installation, PostgreSQL migration execution, service
+startup, reboot, browser and broadcast acceptance remain for the disposable VM.
+No production bridge, stable bootstrap change, release publication or deployment
+is authorized by these notes.
+
+Preparation validation: 119 focused checks passed (111 installer/dependency/
+version/production/runtime checks, one real service-account recording ACL check,
+and seven inventory/release-guard checks). The ACL proof required a privileged
+rerun confined to `/tmp`; the sandbox could not change fixture ownership. Shell
+syntax, changed Python/JavaScript syntax, all 81 Jinja templates and Git whitespace
+checks passed. These results do not claim full V1 integration or VM acceptance.
+
 ## Phase 2 — Track editor (5 October 2026)
 
 Phase 2 extends the existing media editor, request/decision system, and Liquidsoap
@@ -449,3 +574,713 @@ whole-repository test claim; no production database or service was used.
   application files, main, tags and releases remain untouched. This is a linked
   worktree, so authorized development commits use shared Git metadata under
   `/opt/freo/.git`; that metadata is distinct from the production checkout.
+
+## Phase 5 — listener requests (5 October 2026)
+
+Listener requests extend existing category/rotation, playlist and visual schedule
+selection, including flexible music sections within shows and blocks. They create
+normal `SelectionDecision` records and use existing queue, deck, programming-refresh
+and confirmed START paths. No new scheduler, playout engine, daemon, dependency or
+Liquidsoap template change is introduced.
+
+### Schema and activation
+
+Additive migration `f506a1b2c3d4_listener_requests.py` follows `f406a1b2c3d4`:
+
+- `stations.request_settings`: JSON, initially `{}` (disabled defaults).
+- `listener_requests`: station/track references, anonymous listener key and retry
+  nonce, submission/expiry/played timestamps, status, reason and selection evidence.
+  Station/status/time and nonce constraints support queue lookup and idempotency.
+- `selection_decisions.listener_request_id`: nullable request binding; multiple
+  historical attempts remain explainable through existing decisions. Only one
+  outstanding attempt is admitted under the station lock.
+- `request_rate_buckets`: short-lived station/network/action/minute counters.
+
+Existing stations, playlists, decisions, history and media remain intact. Downgrade
+removes only Phase 5 metadata and bindings; it cannot undo completed airplay.
+For a future authorized V1 rollout, stop the V1 web/automation processes, back up the
+V1 database, apply the migration, then start matching web/worker code. No engine
+configuration regeneration is needed. End live shows and clear outstanding request
+loads before rolling back. No installation migration, service restart or deployment
+was performed during this development task.
+
+### Settings and selection semantics
+
+Station Settings adds enabled, delay in songs, extra track/artist separation in
+songs, current-programming restriction, listener cooldown, per-listener maximum and
+station maximum. Defaults are disabled, 3/10/3 songs, restriction on, 5 minutes,
+2 per listener and 100 per station. Song values accept 0–1,000; cooldown 0–1,440
+minutes; listener maximum 1–100; station maximum 1–10,000. The existing settings
+fingerprint protects concurrent edits. Expiry is fixed at 24 hours.
+
+Only confirmed program music starts **after submission** count toward the delay.
+The already playing song, imaging, commercials, off-air loads and unconfirmed queue
+entries do not count. Existing lookahead can make playback later than the minimum.
+Current/recent tracks and artists are accepted and held. Request separation never
+uses the normal selector's exhaustion relaxation; existing time-based automation
+separation also applies. Artist comparison reuses Phase 1 normalization.
+
+The oldest eligible request wins a flexible music selection, preserving the current
+clock/rotation slot context and existing cursor checkpoints. Playlist/shuffle cursor
+state is held so normal order resumes afterward. Restrictions use the actual source
+or rotation category for that opportunity and current smart-playlist membership.
+With restrictions off, other available station music can use a flexible music slot.
+Leaders, explicit scheduled songs, finite event blocks, commercials and timed events
+are preserved; an incidental fixed-item play does not fulfill a listener request.
+Empty sources retain the existing scheduling/fallback behavior.
+
+States are pending, eligible, queued, played, rejected and expired. Eligibility can
+return to pending. Requests bind atomically to decisions, and only confirmed START
+marks them played. Uncertain submissions wait for complete engine inventory and the
+confirmation window before retry; recovery retains decision identity. Late START
+is retained as actual airplay, even after expiry/rejection, and other future attempts
+are withdrawn. Separate listeners' requests remain separate: one bound start fulfills
+one request. A listener's duplicate outstanding request for the same track is reused.
+
+Disabling pauses unselected requests until expiry and withdraws future request
+selections through the worker. Rejection/expiry likewise cancels future selections;
+currently playing audio finishes. Programming/settings changes use existing automatic
+lookahead refresh; stopped DJ decks are cleared only by the worker. Eligibility and
+ownership are checked again before loading/taking a request. Normal automation
+continues when no request qualifies. Expiry/privacy housekeeping runs at most every
+30 seconds in the existing worker, including stopped stations.
+
+### Public access, DJs and privacy
+
+- `/requests/<public-slug>` is a standalone, responsive request page that also works
+  in an iframe. Station Settings supplies a link and embed code. Only this page gains
+  permissive framing; administration keeps its existing framing policy.
+- `GET /api/stations/<public-slug>/requests?q=...&offset=...` returns paginated
+  UUID/title/artist records and a signed anonymous station token. Public discovery
+  includes playable owned/shared station music, irrespective of current programming;
+  unavailable/nonmusic/private metadata and media file URLs are excluded.
+- `POST` to that API accepts JSON `track` and UUID `nonce`, with `X-Request-Token`.
+  Requests use no admin cookies and check Origin/fetch context. There is no public
+  request-history enumeration, login, listener name, comment field or fingerprint.
+- A random station-scoped browser token lasts at most 48 hours. Local storage preserves
+  it where available; the widget works with third-party cookies blocked. Limits are
+  best effort for anonymous listeners: clearing storage can reset browser identity.
+  Network throttling separately limits submissions to 30/minute and catalog/bootstrap
+  to 120/minute per station/network, returning `429` and `Retry-After`.
+- Rate counters contain a daily keyed address hash, never a raw address or user agent;
+  counters expire after 24 hours. Terminal requests lose their anonymous listener key
+  and nonce once the submission cooldown window has passed (minimum one minute).
+  Sanitized lifecycle history remains. No analytics fingerprint or external service
+  is added. Existing proxy/client-address trust configuration remains unchanged.
+- Administrators and assigned DJs can open `/admin/stations/<slug>/requests` and see
+  a short pending list in the booth. The inbox filters status and shows waiting
+  reasons. Only administrators can reject/remove requests or change settings.
+- The show owner can load an eligible request on a stopped A/B deck. This submits an
+  existing durable `DECK_LOAD` command with play-on-load disabled; deck controls
+  determine when it airs. Assigned DJs cannot change another station or another
+  owner's show, and worker ownership checks remain in force.
+
+### Validation and deferred work
+
+Validation uses disposable databases, private sockets/loopback servers, temporary
+browser profiles and generated audio. Initial template syntax and test-inventory
+fixture errors were corrected. Sandbox restrictions on PostgreSQL ownership and
+browser/engine sockets were resolved through approved isolated test execution.
+Completed checks (run counts overlap; this is not a whole-repository pass claim):
+
+| Check | Result |
+| --- | --- |
+| Request timing, strict separation, selection paths, fixed programming, recovery, API privacy/limits, permissions, DJ intent and SQLite migration | 27 passed |
+| Automation, Phase 1 scheduling, programming refresh, playlists, DJ permissions and live-assist regression run (includes 23 earlier request cases) | 127 passed; 2 opt-in engine cases skipped |
+| Station Settings and schedule regression cases in the follow-up run | 32 passed |
+| Full PostgreSQL migration chain, downgrade/re-upgrade preservation, concurrent capacity and selection claims | 2 passed |
+| Chromium cross-site iframe with third-party cookies blocked, settings save, mobile layout and DJ load intent | 2 passed |
+| Private Liquidsoap request START/recovery and existing short/long playlist leaders with generated audio | 3 passed |
+| Final automatic-tail cancellation and programming-refresh rerun | 13 passed |
+| Python parsing, JavaScript syntax and patch whitespace | Passed |
+
+The final request-only rerun includes the corrected mode-switch fixture (its first
+run omitted a required existing field). A repeat PostgreSQL/engine run was terminated
+by the test environment; fresh PostgreSQL and real-engine reruns passed. PostgreSQL retains the
+existing Flask-SQLAlchemy `get_engine` deprecation warning; the playlist regression
+retains its existing fixture-session warning. Browser screenshots and private engine
+artifacts are under `/tmp/freo-phase5-*`; these are disposable test evidence.
+
+Deferred: production rollout, long-running production-catalog/WAN acceptance,
+listener accounts, CAPTCHA, configurable expiry and request deduplication across
+listeners. These are not required for the anonymous V1 workflow.
+
+Work remains in `/opt/freo-v1` on `develop/v1`. `/opt/freo` production application,
+production databases/services, `main`, production tags and releases were untouched.
+No deploy, merge or release operation was performed. The pre-existing untracked
+`V1_AUDIT.md` was left intact.
+
+## Phase 6 — Public API
+
+The existing Flask application now serves a versioned, read-only API under
+`/api/v1`. It reuses station permissions, confirmed player observations, scheduling
+resolution, cached listener statistics, and library sharing rules. Existing UI,
+unversioned public APIs, ingest, scheduling, automation and listener requests retain
+their behavior. No separate API application, runtime dependency or service is added.
+
+### Schema and credential management
+
+Migration `f606a1b2c3d4_public_api.py` follows Phase 5's `f506a1b2c3d4` and adds:
+
+- `api_credentials`: public identifier, name, SHA-256 token digest, read scope,
+  issuing administrator, creation time and revocation time.
+- `api_credential_stations`: explicit credential/station grants; newly created
+  stations are never implicitly authorized.
+- `api_rate_buckets`: shared, atomic request counters, indexed for expiry cleanup.
+
+Apply the normal migration workflow before running this version. Downgrading Phase 6
+removes these three tables and all API credentials; it preserves Phase 5 requests,
+station settings and airplay history. Re-upgrading requires issuing new credentials.
+
+Active ADMIN users manage credentials at `/admin/api-credentials`, linked from Radio
+Station Ops. DJs have no credential-management permission. Creation and revocation
+use existing browser authentication, setup checks, CSRF and audit events. The page
+shows the token only in the successful creation response, with no-store caching.
+Only the digest is persisted: tokens do not enter sessions, flash messages or audit
+records. Credential metadata and revocation remain available to administrators.
+
+Tokens combine a public random identifier and a 256-bit random secret. V1 accepts
+them exclusively as `Authorization: Bearer …`, checks their digest in constant time,
+and rechecks issuer authority and revocation on each request. Deleting/deactivating
+the issuer, changing its role to DJ or requiring setup disables its credentials.
+Credentials have read scope only, with no automatic expiration. Rotation and scope
+changes use replacement followed by revocation.
+
+### Endpoints and security boundaries
+
+The seven GET routes are:
+
+- `/api/v1/stations`
+- `/api/v1/stations/<slug>`
+- `/api/v1/stations/<slug>/now-playing`
+- `/api/v1/stations/<slug>/schedule`
+- `/api/v1/stations/<slug>/listeners`
+- `/api/v1/stations/<slug>/library/tracks`
+- `/api/v1/stations/<slug>/library/tracks/<uuid>`
+
+Use canonical station slugs, not public aliases. Every station route requires an
+explicit grant, including nested track lookups. Station lists contain only granted
+stations; deleted/deleting stations are excluded. Music shared through Freo's existing
+track/artist/album availability rules remains intentionally accessible to consuming
+stations. Unavailable and private foreign tracks return 404.
+
+Responses select fields explicitly and exclude file paths, storage keys, passwords,
+infrastructure configuration, raw listener identity, and administrative internals.
+Now-playing uses fresh confirmed observations. Listener counts use cached measurements
+and return null for unknown/stale current audience. Schedule reads resolve active
+programming without publishing, enqueuing or changing worker state.
+
+V1 uses JSON data/error envelopes, bounded pagination/search, UTC timestamps,
+consistent 400/401/403/404/405/429/500/503 responses, Bearer challenges on 401, and
+no-store response headers. The API supports no data writes and no browser cookie
+authentication. Existing endpoints retain their original response/error behavior.
+
+Limits are 120 requests per credential per UTC minute and 300 per client network
+address per minute, enforced atomically in the existing database across workers.
+429 includes Retry-After. Proxy handling reuses `DMCA_TRUSTED_PROXY_IPS` and trusts
+X-Real-IP only from configured peers. Rate records use a daily keyed address hash,
+never a raw address, and request-time cleanup removes buckets older than 24 hours.
+No new environment setting, background task or external rate-limit service is needed.
+
+See [Public API v1](docs/public-api-v1.md) for endpoint fields, request examples,
+pagination, schedule horizons, listener coverage and credential lifecycle details.
+
+### Validation and deferred work
+
+Validation uses temporary SQLite databases, a disposable PostgreSQL cluster, and a
+private Chromium profile/loopback server. No production database or service is used.
+
+| Check | Result |
+| --- | --- |
+| API credentials, authentication, station/library scope, safe fields, pagination, errors, limits, schedule modes/DST and SQLite migration | 52 passed |
+| Existing web UI and player behavior | 23 passed |
+| Existing analytics accuracy, library availability and Phase 5 listener requests | 47 passed |
+| Existing visual scheduling | 21 passed |
+| Disposable PostgreSQL full migration chain, Phase 5 preservation, downgrade/re-upgrade, revocation and concurrent counters | 3 passed |
+| Chromium credential creation, one-time display, revocation and mobile layout | 1 passed |
+| Final JSON OPTIONS/HEAD and UTC now-playing checks (overlap the API suite) | 3 passed |
+| Phase 6 Python syntax and patch whitespace | Passed |
+
+These are focused checks, not a whole-repository pass claim. Initial new-test fixture
+errors were corrected. The environment terminated the first combined regression run;
+the completed split runs above passed. Sandbox PostgreSQL ownership and browser socket
+restrictions were resolved through approved isolated test execution. PostgreSQL tests
+retain the existing Flask-SQLAlchemy `get_engine` deprecation warning. Temporary test
+artifacts are under `/tmp/freo-phase6-*`; screenshots exclude the one-time token.
+
+Deferred: public write operations, webhooks, OAuth, developer portals, SDKs, GraphQL,
+automatic token expiry, and elaborate API management. No integration requiring a
+safe public write operation was identified for V1.
+
+Work remains in `/opt/freo-v1` on `develop/v1`, preserving the pre-existing Phase 5
+changes and `V1_AUDIT.md`. `/opt/freo` production application, databases and services,
+`main`, production tags and releases were untouched. No deployment or merge occurred.
+
+## Phase 7 — Managed upstream relay streams
+
+Relay is configured per station in **Station settings → Upstream relay**. Only
+existing station administrators can change it; operator/DJ and public API credentials
+cannot. Saves use CSRF protection, revision checks, and an audit entry without the
+upstream URL. Enabling relay creates/enables the existing automation worker state so
+local fallback can be prepared; current DJ control is preserved. Disabling relay
+leaves local automation available.
+
+### Migration and configuration
+
+Migration `f706a1b2c3d4` follows Phase 6 (`f606a1b2c3d4`) and adds `station_relays`:
+station-owned enable/URL/revision settings and safe runtime observations. No existing
+station is opted in. Downgrading removes relay settings only; earlier phase data is
+preserved. Apply migrations before running updated application/worker code.
+
+New optional environment values, documented in `.env.example`:
+
+- `FREO_RELAY_PRIVATE_NETWORKS`: comma-separated operator-approved private CIDRs;
+  empty by default. Loopback requires an explicit allowance. Link-local, multicast,
+  unspecified and cloud metadata link-local addresses remain forbidden.
+- `FREO_RELAY_TRANSPORT_PORT`: default `8092`, bound only to `127.0.0.1` by the
+  existing automation worker when the first relay is enabled. Do not expose this
+  port through Nginx. No separate relay daemon, unit, or package is required.
+
+Liquidsoap 2.2.4's HTTP decoder does not expose the redirect enforcement needed for
+network scoping. A small transport guard in the existing worker therefore validates
+and pins the resolved destination on every connection, verifies HTTPS certificates
+against the original hostname, rejects redirects and playlists, and forwards audio
+and ICY metadata bytes without decoding. Per-station random capabilities restrict
+local access and are revoked on configuration changes. Only this local capability,
+never the upstream URL, crosses the engine control socket. The decoder additionally
+restricts protocols and audio formats. Web requests never proxy a live audio stream.
+
+Stations using relay need the updated managed Liquidsoap template rendered through
+the existing station runtime workflow and their playout process restarted once at
+upgrade time. The automation worker must run the updated code. **No rendering into
+installed runtime directories, service restart, deployment, or production migration
+was performed as part of this development work.** Older engines show an actionable
+pending/error observation while their existing automation continues. Subsequent
+relay enable/disable/URL changes apply through the station socket without restarting
+station output. Worker or engine restarts cause configuration reconciliation.
+
+### Playback, fallback and status
+
+Liquidsoap owns decoding, playback, source selection, mixing, reconnects, and the
+existing station output. Relay replaces the Auto bus. DJ decks, microphone and carts
+retain their existing priority, gains, and recording lifecycle. Off-air relay audio
+is consumed so returning from live control does not replay buffered speech.
+
+Local scheduled/default programming stays prepared and pauses while relay is fully
+audible. Schedule changes refresh standby selections, and explicit fallback schedule
+changes do not fade a healthy relay. Standby audio receives no fabricated START or
+play history. Timed events wait during relay playback and expire under existing
+windows; already queued/playing timed events hold off recovery until finished.
+
+Connection attempts use a five-second retry delay and ten-second network timeout.
+Loss of available relay audio immediately exposes the prepared local source;
+continuous upstream silence is detected after three seconds. Recovery requires ten
+seconds of continuous usable audio and uses a one-second handover. This delay does
+not delay fallback. If neither local programming nor relay is usable, Freo retains
+its existing final safety tone. Keep playable scheduled/default programming configured
+for meaningful fallback; relay does not create replacement content.
+
+Station settings and the existing live UI show enabled, connection/readiness, current
+source, pending configuration, last failure/reconnect and observation freshness.
+Unknown/stale status never claims a healthy connection. Artist/title are bounded and
+rendered as text. Existing player/public now-playing displays upstream metadata only
+while relay is the observed source, with null local track identities and no voting.
+Metadata without an artist remains a title; no elaborate parsing or transformation
+is introduced. Upstream paths/query strings are absent from status and audit records.
+
+### Validation and deferred work
+
+Validation uses temporary SQLite databases, a new private PostgreSQL cluster, private
+Liquidsoap file outputs, local HTTP fixtures, and a disposable Chromium profile.
+Detailed final results follow below. Initial fixture/validation issues were corrected;
+network/browser/engine checks required approved execution outside the socket sandbox.
+
+Deferred: upstream username/password authentication, redirect/playlist/HLS inputs,
+metadata transformation, downstream distribution, CDN functionality, relay networks,
+geographic routing, and additional transcoding infrastructure. Direct MP3, AAC, Ogg,
+FLAC and WAV inputs use the installed Liquidsoap decoder; MP3/ICY is exercised by the
+real-engine integration tests.
+
+All work is confined to `/opt/freo-v1` on `develop/v1` and temporary test artifacts.
+Pre-existing Phase 5/6 changes and `V1_AUDIT.md` are preserved. `/opt/freo` production
+application, databases, services, `main`, production tags and releases were untouched.
+No deployment or merge was performed.
+
+Final validation results (focused suites overlap; these are not a full-repository
+pass claim):
+
+| Check | Result |
+| --- | --- |
+| Relay permissions, URL/network policy, status freshness, safe metadata, event expiry, worker reconciliation/lifecycle and SQLite migration | 26 passed |
+| Relay + existing automation, listener requests and public API | 111 passed |
+| Relay + programming refresh, live assist, player, recording manager and timed events | 94 passed |
+| Relay + station settings | 42 passed |
+| Earlier station settings/web compatibility check | 27 passed |
+| Final relay/timed-event follow-up | 34 passed |
+| Loopback transport guard, DNS pinning, original Host preservation, redirect/playlist rejection and Chromium settings workflow | 4 passed |
+| Final mobile layout placement and escaped metadata browser check | 1 passed |
+| Disposable PostgreSQL full migration chain, Phase 6 data preservation, downgrade/re-upgrade and concurrent edits | 3 passed |
+| Real relay disconnect/stall recovery, standby schedule change, DJ return, existing schedule transitions and booth/cart regression | 15 passed |
+| Final shared-clock WebRTC mic/cart/recording compatibility and relay disconnect/stall checks | 3 passed |
+| Liquidsoap render/type check, Python/JavaScript syntax and patch whitespace | Passed |
+
+The optional microphone engine check exposed incompatible forced input clocks. The
+relay now joins the existing mixer clock, and the real microphone/recording test and
+both relay failure scenarios passed after that correction. Tests also caught an
+invalid-port validation edge case and asynchronous frame-boundary assertions; these
+were corrected before the final runs. PostgreSQL retained the existing migration
+extension deprecation warnings. No known failed check remains in the focused suites.
+Test artifacts are under `/tmp/freo-phase7-*`; the private PostgreSQL cluster was
+stopped after testing. HTTP transport and browser fixtures never used production
+upstreams, and Liquidsoap tests wrote private audio files instead of Icecast mounts.
+
+## Phase 8 — Voice Tracking and AI Station Imaging
+
+### What changed
+
+The station navigation and media library now open Voice Tracking / Station Audio.
+DJs with an explicit station grant can record in the browser or upload a short voice
+track, preview/retake it, save it, and place their own accepted audio into specifically
+granted playlists. Existing scheduling determines when those playlists air. Playlist
+placement uses revisions; replacing a take preserves the old track until the new take
+has completed ingest. DJs cannot edit general schedules, other users' tracks, playlist
+leaders, provider credentials, or administration. Administrator operations retain the
+existing role boundaries. DJ account reassignment clears production grants through the
+assignment foreign key, requiring an administrator to grant them again.
+
+Recorded/uploaded voice tracks are limited to five minutes. Browser WebM/Opus, Ogg,
+MP4/AAC and normal supported source formats are decoded by bounded FFmpeg operations;
+recordings without container duration are measured through a bounded decode. Microphone
+capture requires HTTPS or localhost; upload remains available without microphone support.
+
+Create Station Audio supports station IDs, sweepers, liners, show intros/outros, promos,
+and generic short imaging. Users may enter a spoken script or request an editable draft
+from the station's configured Claude, OpenAI/ChatGPT API, or Grok API provider. Users
+review the script before requesting ElevenLabs audio; script generation never schedules
+or generates speech autonomously.
+
+ElevenLabs integration includes searchable account voices, voice/model selection,
+authenticated voice previews, stability/similarity/style/speed controls where supported,
+prompt-only Voice Design previews, and administrator saving of designed voices to the
+shared account. Music generation uses force_instrumental with a 3–60-second duration.
+Sound effects support a prompt and 0.5–30-second duration. Optional capabilities depend
+on API-key permissions and account access; connection testing does not claim that every
+paid capability is available. There are no cloning or reference-audio endpoints.
+
+The simple mix contains a voice plus an optional bed and effect, with levels, start
+offsets, and fades. Defaults are voice 0 dB, bed -18 dB, effect -12 dB, one-second fades
+on bed/effect, and zero start offsets. Output is a peak-limited 44.1 kHz, 192 kbps MP3.
+Finished AI imaging is limited to 60 seconds; requested speech duration is approximate,
+and overlong audio is rejected rather than silently truncated. Saving submits the exact
+rendered preview to MediaIngestJob, classifies it as STATION before enabling it, and
+waits for normal analysis. Analysis failures leave a disabled normal catalog track for
+administrator recovery. Playlists, leaders, scheduling and automation all consume the
+normal Track identity. No AI playback path or separate playable library was added.
+
+### Migration and configuration
+
+Migration `f806a1b2c3d4` follows Phase 7 `f706a1b2c3d4`. It adds provider_credentials,
+station_production, production_grants, production_drafts and production_attempts.
+Existing stations and DJs have AI/production permissions disabled by default. Existing
+media and Phase 5–7 configuration are retained. New STATION labels are voice_track,
+show_intro and show_outro; existing track editing recognizes them.
+
+Provider keys are shared installation accounts, configured only by an installation
+administrator at `/admin/providers`. Station administrators choose the script provider,
+default ElevenLabs voice/model, station enablement, and per-DJ grants. Each script
+provider needs a model ID available to that API account. No provider/model is silently
+substituted. Configure separate provider API credentials; consumer app subscriptions
+are not used by this integration.
+
+`FREO_PROVIDER_ENCRYPTION_KEY` is a Fernet key in protected bootstrap configuration,
+separate from Flask's SECRET_KEY. Generate it once with cryptography's
+`Fernet.generate_key()`, and back it up separately from the database. Missing or invalid
+encryption configuration disables credential use without disabling radio operation.
+The browser accepts a newly entered key but never receives any stored key. Provider
+records contain encrypted values only; generation records, status responses and logs
+exclude secrets. To rotate the bootstrap key, remove all saved provider keys, replace
+the bootstrap encryption key while the production worker is stopped, restart the
+application/worker, and re-enter the provider keys. Do not discard the old encryption
+key while any encrypted credential still depends on it. API-key replacement/removal
+increments a credential revision so queued work cannot silently switch accounts.
+
+An optional `freo-production.service` template is included. It runs as freo-ingest,
+separately from ingest, automation and playback, with a single-worker lock, CPU/memory
+limits, and write access only to upload storage. The checked-in template uses the normal
+installed `/opt/freo` layout, like existing unit templates; it has NOT been installed,
+started, or pointed at this V1 checkout. On a future authorized installation, apply the
+migration, prepare storage, install the unit and start it alongside existing ingest.
+The worker is also needed for recorded/uploaded voice-track conversion when no provider
+key is configured. Provider API calls are never needed for manual recording.
+
+The default private staging directory is `/var/lib/freo/uploads/production`, overridable
+with `FREO_PRODUCTION_ROOT` (include custom paths in systemd ReadWritePaths). Provision it
+with owner freo, group freo, mode 2770: the web user freo and freo-ingest's supplementary
+freo group both need access. The shared group is necessary for web previews of worker
+outputs. Generated/uploaded files use 0640 and opaque filenames. Do not expose this
+directory through Nginx. Existing `/var/lib/freo/uploads` and media storage permissions
+continue to govern ordinary ingest. No new Python dependency is required.
+
+### Failure handling, records and recovery
+
+Each paid action is explicit. Draft commands are idempotent, only one operation runs
+per draft, and provider requests have time/size bounds. Errors report invalid keys,
+quota/rate limits, restricted capabilities, missing models/voices or invalid settings
+without forwarding provider response bodies. Paid requests are not automatically
+retried after timeouts or worker interruption; check provider usage before explicitly
+retrying. Failed regeneration retains the last successful audio and preview. Permission
+and credential revision checks run before and after generation, and permissions are
+checked again before ingest publication. A revoked user cannot publish playable audio.
+
+Generation history retains station, creator, type, script/prompt, provider, voice/model,
+settings, timestamps, status/errors, numeric token usage and returned request/billing
+identifiers, plus ingest and resulting Track links. Usage is visible to administrators;
+monetary prices are not guessed from credits or tokens. Deleting audio retains production
+history but removes its playable-media association through normal catalog deletion.
+
+Abandoned drafts expire after seven inactive days. Unreferenced temporary audio is
+removed after seven days; active jobs and retained preview components are protected.
+Saved assets remain subject to normal Freo media deletion. DJs cannot delete assets
+referenced outside their playlist grants, queued/current audio, or assets with stale
+playback observations; administrators use the existing media cleanup workflow.
+
+Downgrading removes production configuration/history and encrypted provider records;
+normal ingested STATION tracks remain. Save required metadata before downgrading, stop
+the production worker first, and clear private draft audio separately if retiring the
+feature. The downgrade does not contact providers or delete account voices.
+
+### Validation and limitations
+
+Automated validation mocks all external providers; no paid provider call or live API
+key was used. Tests cover encryption/redaction, station/DJ/ownership boundaries,
+permissions and credential revocation, connection failures, idempotency, worker recovery,
+real FFmpeg conversion/mixing, ordinary ingest/analysis/STATION classification, playlist
+placement/replacement/deletion, and duplicate-audio ownership protection. Browser tests
+exercise actual MediaRecorder output and the prompt → voice → optional bed/effect →
+preview → save flow, including mobile layout. Disposable PostgreSQL tests cover the
+complete migration chain, Phase 7 data preservation, downgrade/re-upgrade, concurrent
+playlist edits, concurrent submission, and assignment-grant cascade deletion.
+
+Live provider-account capability and sound-quality verification remain operator checks
+with the intended accounts. Advanced mixing, voice cloning, direct DJ calendar editing,
+autonomous generation, AI DJs, podcast/full music production, and a separate AI media
+library remain outside this phase. The shared account's designed voices are saved by
+administrators only; external voice deletion remains in ElevenLabs.
+
+All changes are in `/opt/freo-v1` on `develop/v1`; prior uncommitted work was preserved.
+Production `/opt/freo`, production databases/services, main, tags, and releases were not
+modified. No deployment or merge was performed. Test databases, browsers and media use
+private `/tmp/freo-phase8-*` locations. Initial sandbox-only socket/ACL restrictions were
+resolved by running the isolated checks with approved host capabilities.
+
+Phase 8 final validation results (focused suites overlap; not a full-repository pass):
+
+| Check | Result |
+| --- | --- |
+| Production/provider permissions, encryption, generation contracts, recovery, FFmpeg, ingest and placement | 19 passed |
+| Production plus playlists, automation, programming refresh, station flags and DJ regression | 85 passed |
+| Production plus catalog editor and station flags follow-up | 38 passed |
+| Production plus visual schedule and programming harmonization | 49 passed |
+| Existing media ingest/storage/ACL regression | 7 passed |
+| Disposable PostgreSQL migration chain and concurrent commands | 3 passed |
+| Chromium recording and AI assembly flows, including mobile layout | 2 passed |
+| Python/JavaScript/shell syntax and patch whitespace | Passed |
+
+Saved production previews resolve the normal catalog file. Catalog deletion blocks all
+production previews for that asset and retires retained draft components on cleanup.
+Administrators can inspect retained generation history after disabling station AI;
+disabling AI still prevents new paid generation. Existing SQLAlchemy fixture and
+migration-extension deprecation warnings remain; no provider credentials were used.
+
+## Phase 9 — Platform polish & monetization
+
+### Upgrade and output configuration
+
+Apply Alembic revision `f906a1b2c3d4` after the existing Phase 8 revision. It adds
+optional JSON discovery links to tracks/artists, dimension metadata to player
+assets, and station-assignment-owned DJ profiles with optional image bytes. It
+extends the stream bitrate constraint to 64/96/128/192 kbps and sets the database
+and application defaults for **new** stations to **128 kbps**. Existing active and
+pending station settings are preserved. This follows the Phase 9 clarification:
+192 kbps is an explicit station-administrator choice, not an automatic upgrade.
+
+Select 192 kbps in Station Settings → Stream quality. The existing queued audio
+settings workflow renders the Liquidsoap `%mp3(bitrate=__BITRATE__)` output and
+applies it with its existing restart/rollback handling. The normal broadcast
+encoder supports 192; recording output was already 192 and remains unchanged.
+The 64 kbps diagnostic test-stream template remains a diagnostic fixture.
+192 kbps uses approximately 86.4 MB per listener-hour before overhead. No runtime
+configuration is regenerated and no service is restarted by the schema migration.
+
+Downgrade requires all active **and pending** 192 kbps settings to be cleared or
+successfully applied at a lower rate first. The migration refuses downgrade
+otherwise. Downgrading discards discovery/profile fields and dimension metadata;
+export needed presentation data first. Existing media files are not relocated.
+Player JSON configuration is additive and omitted values use compatible defaults.
+No new worker or environment variable is required.
+
+### Universal music and permissions
+
+The existing `Track.available_to_all`, artist/album inheritance, and immutable
+owner storage paths remain the source of truth. Import review supports individual
+and selected/bulk universal-music choices and import-workspace defaults. A shared
+song is a single Track/media asset; consumers use it in their own playlists,
+categories/rotations, smart playlists, and scheduling. New stations inherit the
+same availability. No audio is copied per consuming station. STATION and
+COMMERCIALS audio remain station-specific, including when an artist/album is
+shared; changing a song to non-music clears direct sharing.
+
+Source metadata, artwork, audio edits, processing, broadcast enablement, sharing,
+and deletion must be performed through the owning station. Consuming stations
+retain their own playlist, category, tag, feedback, and programming controls.
+Existing ADMIN accounts retain their existing station access; this phase does not
+introduce a new administrator assignment model. DJs retain their existing closed
+endpoint/assignment permissions and cannot edit these presentation settings.
+Existing queue-aware unsharing and retained owner-media protections still apply.
+
+### Advertising and asset storage
+
+Station Settings and Player Settings edit the same two optional placements:
+Top Banner and Bottom Banner. They have independent enable switches, schedules,
+source selections, and desktop/mobile creatives. New image advertisements require
+a valid destination URL; label/alt text is optional, with an accessible generic
+label when omitted. Links open in a new tab with opener isolation.
+
+Upload JPEG, PNG, or WebP, up to 10 MB; files are decoded and stored as PNG in the
+existing `station_player_assets` table. Exact accepted input dimensions are:
+
+| Placement | Desktop | Mobile |
+| --- | --- | --- |
+| Top | 728 × 90, 970 × 90 | 320 × 50 |
+| Bottom | 728 × 90, 970 × 90, 300 × 250 | 320 × 50, 300 × 250 |
+
+Settings display recommended and accepted dimensions beside each upload. Incorrect
+sizes return the actual dimensions and accepted choices. Existing PNG creatives
+without dimension metadata remain readable at their natural aspect ratio; new
+uploads must meet the standard sizes. Desktop/mobile selection uses the existing
+650 px breakpoint. Images may shrink proportionally, never stretch or upscale.
+If a device-specific image is absent, the other may appear only if its natural
+width fits. Otherwise the placement collapses. Network creatives are shown only
+at configured sizes that fit the available width.
+
+Disabled or incomplete placements emit no placement markup. Valid image placements
+remain hidden until decoding succeeds; failures remove their visible contents.
+Network placements remain collapsed until a fill is confirmed. Missing, blocked,
+unfilled, timed-out, or invalid ads reserve no space. Top and bottom are independent.
+There are no placeholders, default ads, sales processing, or ad-server components.
+
+Google integration uses **Google Ad Manager**, configured with an ad-unit path
+such as `/1234567/station/top` and accepted desktop/mobile sizes. It uses Google
+Publisher Tag's `collapseDiv: BEFORE_FETCH` behavior and verifies the returned
+creative dimensions. See Google's [empty-slot documentation](https://developers.google.com/publisher-tag/samples/collapse-empty-ad-slots).
+This is not an AdSense account integration. Publisher account approval, inventory,
+consent configuration and any required ads.txt hosting remain operator setup;
+Freo does not create accounts or contact paid advertising APIs during validation.
+
+Other networks can provide an HTTPS iframe adapter. Arbitrary pasted HTML/scripts
+are not accepted. The frame has an opaque sandbox origin, no parent DOM access,
+no top-navigation permission, and no referrer. The browser's `credentialless`
+attribute is requested where supported; adapters must work without relying on
+third-party cookies. The sandbox allows scripts and user-opened destinations.
+The iframe receives these URL query parameters:
+
+- `freo_placement`: `ad_top` or `ad_bottom`
+- `freo_nonce`: unique per iframe load
+- `freo_width`, `freo_height`: the selected creative dimensions
+
+After it has valid creative content, the adapter calls:
+
+```javascript
+parent.postMessage({
+  type: 'freo-ad-status', placement: params.get('freo_placement'),
+  nonce: params.get('freo_nonce'), status: 'filled',
+  width: Number(params.get('freo_width')), height: Number(params.get('freo_height'))
+}, '*');
+```
+
+Here `params` is `new URLSearchParams(location.search)`. Send the same identity with
+`status: 'empty'` to collapse. Freo checks the exact sending WindowProxy, opaque
+`null` origin, nonce, placement, and configured dimensions. Iframe load alone is
+not a fill signal. No response within ten seconds collapses/removes the frame;
+late responses cannot restore it. Networks without this contract need an adapter.
+
+Third-party code loads only on the public player. Admin settings and draft
+previews never request network ads. Public-player CSP permits the fixed Google
+script hosts and HTTPS ad frames/connections; authenticated administration keeps
+its original policy. Entering/leaving public player documents uses full navigation
+so third-party scripts and the public CSP do not persist into administration.
+
+### Discovery, DJs, merchandise, and visuals
+
+Track and artist detail pages support optional Spotify, Apple Music, purchase,
+website, album/music, social-profile, and merchandise links. Labels are bounded
+plain text; URLs require HTTP(S) without credentials. Track and artist links are
+combined and deduplicated in public current/recent music. No discovery scraping
+or relay-artist account guessing occurs. The existing player JSON API adds
+`discovery_links` arrays without changing existing fields.
+
+Station Settings → Public DJ profiles edits an assigned DJ's short bio, image,
+and optional links for that station only. Images use the existing decoder and
+are saved at up to 512 px without cropping. Profiles are stored in
+`dj_station_profiles`, with a composite foreign key to the DJ/station assignment.
+Unchanged assignments preserve profiles; revoked assignments cascade-delete them.
+Inactive or unassigned DJs are omitted from public data and image delivery.
+Live profiles require a fresh, confirmed DJ/MIC observation and live-session
+ownership. Custom public schedule listings can select an assigned DJ; public
+responses resolve current profile eligibility instead of publishing private
+account data. The APIs add optional `dj_profile` objects; email and internal
+account IDs are not included in those objects.
+
+The optional station merchandise URL appears on the player and public station
+card. Freo links to the store; it does not handle checkout.
+
+Five Canvas 2D visuals are available: fractal, spectrum, waveform, particles, and
+ambient/geometric. Ambient is the default. Station settings choose the initial
+mode; a listener choice is stored per station in localStorage. Rendering caps
+pixel density at 2 and animation at approximately 30 fps, pauses with playback
+or hidden pages, and uses static frames for reduced-motion preferences. Where
+supported, audio analysis reads `captureStream()` into an analyzer without
+connecting it to the audio destination. Other browsers retain native audio and
+use ambient/state-driven modes; spectrum and waveform remain neutral with an
+accessible unavailable-analysis message. Canvas or analysis failure never replaces
+or reroutes the existing audio element. Reconnects reattach observation to the
+replacement element.
+
+### Validation
+
+Phase 9 tests use disposable SQLite/PostgreSQL databases, temporary media and
+headless browsers. The PostgreSQL harness is `bash scripts/test-polish-postgres.sh`;
+it creates a private `/tmp` cluster with no TCP listener or installation credentials.
+No deployment, merge, production database migration, production service restart,
+tag, or release operation is part of this phase. Production `/opt/freo` is untouched.
+
+Phase 9 final validation results (focused suites overlap; not a full-repository run):
+
+| Check | Result |
+| --- | --- |
+| Import sessions plus Phase 9 configuration, discovery, DJ and ownership boundaries | 39 passed |
+| Phase 9, catalog editor, station settings, scheduling and station regressions | 83 passed |
+| Final catalog, shared availability, homepage, Phase 9 and playlist regression | 61 passed |
+| Stream settings/Liquidsoap plus station/custom-domain boundaries | 51 passed |
+| Public player/browser checks, including image resizing, reduced motion, Canvas failure, iframe timeout, mocked Google fill/no-fill and admin navigation | 7 distinct checks passed across focused runs |
+| Existing browser import, artwork, audition and catalog-edit workflow | 1 passed |
+| Disposable PostgreSQL full migration chain, active-bitrate preservation, profile cascade and downgrade/re-upgrade | 1 passed |
+| Changed Python/JavaScript syntax, shell syntax and patch whitespace | Passed |
+
+Real Liquidsoap output was inspected with FFprobe at 64, 96, 128 and 192 kbps.
+No external ad account or paid provider call was used; the Google browser contract
+was mocked and network requests were blocked. Live publisher-account acceptance,
+consent/account configuration, and each third-party adapter's actual creative fill
+remain operator verification. Arbitrary ad scripts, automatic artist discovery,
+merchandise checkout, an ad server, and a graphics engine remain out of scope.
+
+Initial sandbox-only browser socket and media ownership/ACL restrictions were
+resolved by running the isolated checks with approved host capabilities. Existing
+migration-extension and SQLAlchemy warnings remain. Test corrections included new
+standard-size creatives, explicit legacy 64 kbps fixtures, and waiting atomically
+for replaced responsive images. A mobile screenshot is retained at
+`/tmp/freo-phase9-player-mobile.png` for local review.
+
+All work remained in `/opt/freo-v1` on `develop/v1`, preserving prior uncommitted
+work. `/opt/freo` production files, databases, and services were not modified.
+Main, production tags and releases were untouched. No deployment or merge occurred.

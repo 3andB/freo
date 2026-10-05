@@ -1,0 +1,38 @@
+{% extends 'admin/base.html' %}
+{% block head %}{{ super() }}<link rel="stylesheet" href="{{ url_for('static',filename='production.css') }}">{% endblock %}
+{% block admin_content %}
+<div id="production" data-base="{{ url_for('production.page',slug=selected.slug) }}" data-csrf="{{ csrf }}" data-admin="{{ 'yes' if current_admin().role == 'ADMIN' else 'no' }}">
+<header class="page-header"><h1>Voice tracking &amp; station audio</h1><p>Record a link or create station imaging, then save it to STATION audio.</p>{% if current_admin().role == 'ADMIN' %}<a href="{{ url_for('production.station_settings',slug=selected.slug) }}">Production settings and DJ permissions</a>{% endif %}</header>
+<p id="production-message" role="status" aria-live="polite"></p>
+<div class="production-grid">
+<section class="admin-card"><h2>New audio</h2><form id="production-create">
+<label>Title<input name="title" required maxlength="200"></label><label>Source<select name="mode">{% if voice_allowed %}<option value="voice">Record or upload a voice track</option>{% endif %}{% if ai_allowed %}<option value="ai">Create AI station audio</option>{% endif %}</select></label>
+<label>Station audio type<select name="subtype">{% for type in types %}<option value="{{ type }}">{{ type|replace('_',' ')|title }}</option>{% endfor %}</select></label>
+<button {% if not voice_allowed and not ai_allowed %}disabled{% endif %}>Create</button></form>
+{% if not ai_allowed %}<p>AI generation is not enabled for your account and station. Recording does not require an AI provider.</p>{% endif %}
+<h2>My production</h2><div id="production-list"></div></section>
+<section class="admin-card" id="production-editor" hidden>
+<h2 id="production-title"></h2><p id="production-state"></p><a id="production-track" hidden>Open track editor</a>
+<div id="production-working">
+<div data-mode="voice"><h3>Record or upload</h3><p>Up to five minutes. Microphone recording requires HTTPS or localhost.</p><button type="button" id="record-start">Record</button> <button type="button" id="record-stop" disabled>Stop</button><audio id="record-preview" controls hidden></audio><button type="button" id="record-upload" disabled>Use recording</button>
+<form id="production-upload"><label>Audio file<input name="audio" type="file" accept="audio/*" required></label><button>Upload voice track</button></form></div>
+<div data-mode="ai">
+<h3>1. Script</h3><form data-action="script"><label>Production prompt<textarea name="prompt" maxlength="5000" placeholder="An energetic rock station ID for KXYZ, Pocatello’s Rock Station" required></textarea></label><label>Target seconds<input name="seconds" type="number" min="1" max="60" value="10"></label><button>Write script</button></form><p>Script writing uses your station’s configured provider. Review the words before generating speech.</p>
+<h3>2. Voice</h3><label>Find voices<input id="voice-search" type="search" maxlength="120"></label><button type="button" id="voice-find">Browse voices</button> <button type="button" id="voice-more" hidden>More voices</button><button type="button" id="voice-preview">Preview selected voice</button><audio id="provider-preview" controls hidden></audio>
+<form data-action="voice"><label>Spoken script<textarea name="script" maxlength="5000" required></textarea></label><label>Voice<select name="voice_id" id="voice-select" required></select></label><label>Model<select name="model_id" id="model-select" required></select></label>
+<div class="production-controls"><label>Stability<input name="stability" type="number" min="0" max="1" step=".05" value=".5"></label><label data-control="similarity">Similarity<input name="similarity" type="number" min="0" max="1" step=".05" value=".75"></label><label data-control="style">Style<input name="style" type="number" min="0" max="1" step=".05" value="0"></label><label>Speed<input name="speed" type="number" min=".7" max="1.2" step=".05" value="1"></label></div><button>Generate voice</button></form>
+<details><summary>Design a voice</summary><form data-action="design"><label>Describe the voice<textarea name="description" minlength="20" maxlength="1000" required></textarea></label><button>Generate voice previews</button></form><div id="design-previews"></div>{% if current_admin().role == 'ADMIN' %}<form data-action="save_voice"><label>Preview<select name="generated_voice_id" id="design-select" required></select></label><label>Voice name<input name="name" maxlength="100" required></label><label>Description<input name="description" maxlength="500"></label><button>Save voice to shared ElevenLabs account</button></form>{% else %}<p>An administrator can save a designed voice to the shared account.</p>{% endif %}</details>
+<h3>3. Optional music and effects</h3><p>Availability depends on your ElevenLabs account and API key. Each Generate or Regenerate action may use provider credits.</p>
+<form data-action="bed"><label>Instrumental music prompt<textarea name="prompt" maxlength="4100" required placeholder="High-energy modern rock imaging bed, punchy drums and a dramatic rise"></textarea></label><label>Seconds<input name="seconds" type="number" min="3" max="60" value="10"></label><button>Generate / regenerate music bed</button></form>
+<form data-action="fx"><label>Sound effect prompt<textarea name="prompt" maxlength="4100" required placeholder="A short dramatic rising whoosh and impact"></textarea></label><label>Seconds<input name="seconds" type="number" min=".5" max="30" step=".5" value="3"></label><button>Generate / regenerate effect</button></form>
+</div>
+<h3>Mix &amp; preview</h3><div id="component-previews"></div>
+<form data-action="render"><div class="production-controls">{% for name,level in [('voice',0),('bed',-18),('fx',-12)] %}<label>{{ name|title }} level (dB)<input name="{{ name }}_level" type="number" min="-60" max="6" value="{{ level }}"></label><label>{{ name|title }} start (seconds)<input name="{{ name }}_offset" type="number" min="0" max="60" step=".1" value="0"></label>{% endfor %}<label>Bed/effect fade (seconds)<input name="fade" type="number" min="0" max="10" step=".1" value="1"></label></div><label><input type="checkbox" name="use_bed" checked> Include music bed</label><label><input type="checkbox" name="use_fx" checked> Include effect</label><button>Render preview</button></form>
+<form data-action="save"><p>Listen to the finished preview before saving. It will enter the normal media ingest pipeline.</p><button>Save preview to STATION audio</button></form>
+</div>
+<div id="saved-preview" hidden></div>
+<div id="production-placement" hidden><h3>Assign / schedule through a playlist</h3><p>The existing schedule plays this playlist. Position follows the playlist’s configured order mode.</p><form id="production-place"><label>Granted playlist<select name="playlist_id" id="placement-playlist"></select></label><label>Action<select name="operation"><option value="insert">Insert / move this track</option><option value="replace">Replace one of my production tracks</option><option value="remove">Remove this track</option></select></label><label>Position (1 = first)<input name="position" type="number" min="1" value="1"></label><label>Track to replace<select name="replace_id" id="placement-replace"></select></label><button>Apply placement</button></form></div>
+<button type="button" id="production-delete">Delete this production</button><h3>Generation history</h3><div id="production-history"></div>
+</section></div></div>
+{% endblock %}
+{% block scripts %}{{ super() }}<script defer src="{{ url_for('static',filename='production.js') }}"></script>{% endblock %}

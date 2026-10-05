@@ -133,6 +133,7 @@ class Station(db.Model):
     broadcast_status = db.Column(db.String(16), nullable=False, default='ready', server_default='ready')
     broadcast_error = db.Column(db.String(240), nullable=False, default='', server_default='')
     timezone = db.Column(db.String(64), nullable=False, default='UTC')
+    request_settings = db.Column(db.JSON, nullable=False, default=dict, server_default='{}')
     target_lufs = db.Column(db.Float, nullable=False, default=-16.0)
     public_slug = db.Column(db.String(64), unique=True)
     created_at = db.Column(db.DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
@@ -187,13 +188,13 @@ class StreamMount(db.Model):
     __tablename__ = 'stream_mounts'
     __table_args__ = (
         db.CheckConstraint("format = 'mp3'", name='ck_stream_mounts_format'),
-        db.CheckConstraint('bitrate IN (64,96,128)', name='ck_stream_mounts_bitrate'),
+        db.CheckConstraint('bitrate IN (64,96,128,192)', name='ck_stream_mounts_bitrate'),
         db.CheckConstraint("audio_status IN ('ready','pending','applying','failed')", name='ck_stream_mounts_audio_status'),
     )
     id = db.Column(db.Integer, primary_key=True)
     station_id = db.Column(db.Integer, db.ForeignKey('stations.id', ondelete='CASCADE'), nullable=False, unique=True)
     format = db.Column(db.String(12), nullable=False, default='mp3')
-    bitrate = db.Column(db.Integer, nullable=False, default=64)
+    bitrate = db.Column(db.Integer, nullable=False, default=128, server_default='128')
     audio_processing = db.Column(db.JSON, nullable=False, default=dict, server_default='{}')
     pending_audio = db.Column(db.JSON)
     audio_status = db.Column(db.String(12), nullable=False, default='ready', server_default='ready')
@@ -222,6 +223,7 @@ class MusicArtwork(db.Model):
 class Artist(db.Model):
     __tablename__ = 'artists'
     __table_args__ = (db.UniqueConstraint('station_id', 'normalized_name', name='uq_artist_station_name'),)
+    discovery_links = db.Column(db.JSON, nullable=False, default=list, server_default='[]')
     available_to_all = db.Column(db.Boolean, nullable=False, default=False, server_default=db.false())
     id = db.Column(db.Integer, primary_key=True)
     station_id = db.Column(db.Integer, db.ForeignKey('stations.id', ondelete='CASCADE'), nullable=False, index=True)
@@ -286,6 +288,7 @@ class Track(db.Model):
     audio_subtype = db.Column(db.String(24), nullable=False, default='', server_default='')
     cart_code = db.Column(db.String(40))
     legacy_imaging_id = db.Column(db.Integer, unique=True)
+    discovery_links = db.Column(db.JSON, nullable=False, default=list, server_default='[]')
     available_to_all = db.Column(db.Boolean, nullable=False, default=False, server_default=db.false())
     id = db.Column(db.Integer, primary_key=True)
     station_id = db.Column(db.Integer, db.ForeignKey('stations.id', ondelete='RESTRICT'), nullable=False, index=True)
@@ -684,6 +687,7 @@ class SelectionDecision(db.Model):
     )
     id = db.Column(db.Integer, primary_key=True)
     station_id = db.Column(db.Integer, db.ForeignKey('stations.id', ondelete='CASCADE'), nullable=False, index=True)
+    listener_request_id = db.Column(db.Integer, db.ForeignKey('listener_requests.id', ondelete='SET NULL'), index=True)
     rotation_id = db.Column(db.Integer, db.ForeignKey('rotations.id', ondelete='SET NULL'))
     slot_id = db.Column(db.Integer, db.ForeignKey('rotation_slots.id', ondelete='SET NULL'))
     category_id = db.Column(db.Integer, db.ForeignKey('media_categories.id', ondelete='SET NULL'))
@@ -1111,6 +1115,8 @@ class StationPlayerAsset(db.Model):
     kind = db.Column(db.String(24), nullable=False)
     image = db.deferred(db.Column(db.LargeBinary, nullable=False))
     version = db.Column(db.String(64), nullable=False)
+    width = db.Column(db.Integer)
+    height = db.Column(db.Integer)
     __table_args__ = (db.UniqueConstraint('station_id', 'kind', name='uq_player_asset'),)
 
 
@@ -1326,3 +1332,43 @@ class ShowRecording(db.Model):
         return self.name or f'show-{self.id}.mp3'
 
     session = db.relationship('LiveSession', back_populates='recording')
+
+
+class ListenerRequest(db.Model):
+    __tablename__ = 'listener_requests'
+    __table_args__ = (
+        db.CheckConstraint("status IN ('pending','eligible','queued','played','rejected','expired')", name='ck_listener_request_status'),
+        db.UniqueConstraint('station_id', 'listener_key', 'nonce', name='uq_listener_request_nonce'),
+        db.Index('ix_listener_requests_station_status_created', 'station_id', 'status', 'created_at'),
+    )
+    id = db.Column(db.Integer, primary_key=True)
+    station_id = db.Column(db.Integer, db.ForeignKey('stations.id', ondelete='CASCADE'), nullable=False)
+    track_id = db.Column(db.Integer, db.ForeignKey('tracks.id', ondelete='SET NULL'))
+    listener_key = db.Column(db.String(64))
+    nonce = db.Column(db.String(36))
+    created_at = db.Column(db.DateTime(timezone=True), nullable=False)
+    expires_at = db.Column(db.DateTime(timezone=True), nullable=False)
+    played_at = db.Column(db.DateTime(timezone=True))
+    status = db.Column(db.String(12), nullable=False, default='pending')
+    reason = db.Column(db.String(160), nullable=False, default='')
+    evidence = db.Column(db.JSON)
+    station = db.relationship('Station')
+    track = db.relationship('Track')
+
+
+class RequestRateBucket(db.Model):
+    __tablename__ = 'request_rate_buckets'
+    station_id = db.Column(db.Integer, db.ForeignKey('stations.id', ondelete='CASCADE'), primary_key=True)
+    key = db.Column(db.String(64), primary_key=True)
+    kind = db.Column(db.String(12), primary_key=True)
+    minute = db.Column(db.BigInteger, primary_key=True)
+    count = db.Column(db.Integer, nullable=False, default=0)
+
+
+from .public_api import ApiCredential, ApiCredentialStation, ApiRateBucket  # noqa: E402,F401
+
+from .relay import StationRelay  # noqa: E402,F401
+
+from .production import ProviderCredential, StationProduction, ProductionGrant, ProductionDraft, ProductionAttempt
+
+from .polish import DJStationProfile

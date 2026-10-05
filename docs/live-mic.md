@@ -86,6 +86,11 @@ change; V1 Phase 3 permissions and show history require migration `f306a1b2c3d4`
 
 ## Installation and activation
 
+Fresh source installations can pass `FREO_LIVE_MIC=1` to `scripts/install.sh`.
+The installer installs the optional dependencies, saves/imports the preference,
+and enables the gateway. HTTPS and the ICE/network requirements below still
+apply; no TURN credentials are generated. The default remains disabled.
+
 The tab is available in the UI; microphone transmission is disabled until the
 service and station configs are installed. This avoids claiming readiness on
 servers without the receiver. Perform activation in a maintenance window because

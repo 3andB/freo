@@ -9,6 +9,8 @@ class BaseConfig:
     FREO_DOMAIN_TARGET_IPS = ""
     FREO_MEDIA_ROOT = ""
     LOG_LEVEL = "INFO"
+    FREO_RELAY_PRIVATE_NETWORKS = ""
+    FREO_RELAY_TRANSPORT_PORT = 8092
     FREO_MAX_STATIONS = 3
     FREO_API_URL = 'https://api.freo.live'
     FREO_API_STATE_DIR = '/var/lib/freo/central-api'

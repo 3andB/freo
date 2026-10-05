@@ -25,7 +25,7 @@
   let audioAttempt=0, connectingSince=0;
   let audioEvents=new AbortController();
   let currentTitle=root.querySelector('h1').textContent, currentArtist='Live radio';
-  let motionReduced=storage.get('freo-motion') === 'reduced' || root.dataset.motion!=='yes';
+  let motionReduced=matchMedia('(prefers-reduced-motion: reduce)').matches || storage.get('freo-motion') === 'reduced' || root.dataset.motion!=='yes';
   function motion() {root.classList.toggle('low-motion',motionReduced);$('motion-button').setAttribute('aria-pressed',String(motionReduced));}
   motion();
   $('motion-button').addEventListener('click',()=>{motionReduced=!motionReduced;storage.set('freo-motion',motionReduced?'reduced':'full');motion();});
@@ -151,9 +151,25 @@
     dialog.querySelectorAll('[data-vote]').forEach(node=>node.addEventListener('click',()=>submitVote(Number(node.dataset.vote))));
     $('feedback-form').addEventListener('submit',event=>{event.preventDefault();if(feedback)submitVote(feedback.vote.value,$('feedback-comment')?.value);});
   }
+  function discovery(host, links) {
+    host.replaceChildren();
+    for(const link of links || []) {
+      try {const url=new URL(link.url);if(!['http:','https:'].includes(url.protocol))continue;}catch{continue;}
+      const anchor=el('a',link.label);anchor.href=link.url;anchor.target='_blank';anchor.rel='noopener noreferrer';host.append(anchor);
+    }
+    host.hidden=!host.childElementCount;
+  }
+  function profile(host, data) {
+    host.replaceChildren();host.hidden=!data;if(!data)return;
+    host.append(el('h3',data.name));
+    if(data.image){const img=el('img');img.src=data.image;img.alt=data.name;img.width=80;img.addEventListener('error',()=>img.remove(),{once:true});host.append(img);}
+    if(data.bio)host.append(el('p',data.bio));
+    if(data.links?.length){const links=el('nav',undefined,'discovery-links');discovery(links,data.links);host.append(links);}
+  }
   function renderCurrent(rows,fresh){
     const key=JSON.stringify([rows,fresh]);if(key===currentKey)return;currentKey=key;
     const song=rows[0];
+    discovery($('track-discovery'), fresh ? song?.discovery_links : []);
     $('copyright-identification').hidden=!(fresh && song?.freo_track_id);
     $('freo-track-id').textContent=song?.freo_track_id?`FREO TRACK · ${song.freo_track_id}`:'';
     $('copyright-report').href=(fresh && song?.report_url)||$('copyright-report').dataset.fallbackUrl;
@@ -177,12 +193,12 @@
     const key=JSON.stringify(rows);if(key===recentKey)return;recentKey=key;
     const list=$('recent-history');list.replaceChildren();
     if(!rows.length){list.append(el('li','The first play is still ahead.'));return;}
-    for(const song of rows){const item=el('li'),copy=el('div',undefined,'recent-copy');copy.append(el('strong',song.title),el('span',song.artist));const when=el('time',time(song.started_at));when.dateTime=song.started_at;item.append(copy,when);if(canVote&&song.votable)item.append(button('Vote',()=>openFeedback(song),'recent-vote'));list.append(item);}
+    for(const song of rows){const item=el('li'),copy=el('div',undefined,'recent-copy');copy.append(el('strong',song.title),el('span',song.artist));if(song.discovery_links?.length){const links=el('nav',undefined,'discovery-links');discovery(links,song.discovery_links);copy.append(links);}const when=el('time',time(song.started_at));when.dateTime=song.started_at;item.append(copy,when);if(canVote&&song.votable)item.append(button('Vote',()=>openFeedback(song),'recent-vote'));list.append(item);}
   }
   async function refresh(){
     if(busyRefresh)return;busyRefresh=true;
-    try{const data=await get(`${base}/player`);renderCurrent(data.current,data.fresh);renderRecent(data.recent);$('station-clock').textContent=data.program;$('next-program').textContent=data.next_program?`Scheduled next · ${data.next_program.title} · ${new Intl.DateTimeFormat([],{timeZone:zone,month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}).format(new Date(data.next_program.start))}`:'';$('station-time').textContent=new Intl.DateTimeFormat([],{timeZone:zone,weekday:'long',hour:'2-digit',minute:'2-digit'}).format(new Date())+' · '+zone;const online=data.stream_online;$('stream-status').textContent=online===true?'Broadcast live':online===false?'Signal offline':'Signal unconfirmed';$('stream-status').classList.toggle('online',online===true);}
-    catch{renderCurrent([],false);$('stream-status').textContent='Signal unconfirmed';$('stream-status').classList.remove('online');}
+    try{const data=await get(`${base}/player`);renderCurrent(data.current,data.fresh);renderRecent(data.recent);profile($('live-dj-profile'),data.dj_profile);$('station-clock').textContent=data.program;$('next-program').textContent=data.next_program?`Scheduled next · ${data.next_program.title} · ${new Intl.DateTimeFormat([],{timeZone:zone,month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}).format(new Date(data.next_program.start))}`:'';$('station-time').textContent=new Intl.DateTimeFormat([],{timeZone:zone,weekday:'long',hour:'2-digit',minute:'2-digit'}).format(new Date())+' · '+zone;const online=data.stream_online;$('stream-status').textContent=online===true?'Broadcast live':online===false?'Signal offline':'Signal unconfirmed';$('stream-status').classList.toggle('online',online===true);}
+    catch{renderCurrent([],false);profile($('live-dj-profile'),null);$('stream-status').textContent='Signal unconfirmed';$('stream-status').classList.remove('online');}
     finally{busyRefresh=false;}
   }
   refresh();scope.interval(()=>{if(!document.hidden)refresh();},5000);
@@ -192,7 +208,7 @@
   const dateInput=$('schedule-date');
   const length=()=>view==='day'?1:view==='week'?7:new Date(Number(dateInput.value.slice(0,4)),Number(dateInput.value.slice(5,7)),0).getDate();
   function today(){return dateKey(new Date());}
-  function programNode(entry,day){const node=el('article',undefined,'schedule-program');node.classList.toggle('is-current',new Date(entry.start)<=new Date()&&new Date(entry.end)>new Date());node.append(el('time',`${dateKey(entry.start)<day?'00:00':time(entry.start)} – ${dateKey(entry.end)>day?'24:00':time(entry.end)}`),el('strong',entry.title));if(entry.description)node.append(el('p',entry.description));return node;}
+  function programNode(entry,day){const node=el('article',undefined,'schedule-program');node.classList.toggle('is-current',new Date(entry.start)<=new Date()&&new Date(entry.end)>new Date());node.append(el('time',`${dateKey(entry.start)<day?'00:00':time(entry.start)} – ${dateKey(entry.end)>day?'24:00':time(entry.end)}`),el('strong',entry.title));if(entry.description)node.append(el('p',entry.description));if(entry.dj_profile){const host=el('div',undefined,'dj-profile');profile(host,entry.dj_profile);node.append(host);}return node;}
   async function loadSchedule(){
     if(!dateInput?.value)return;const generation=++scheduleGeneration;
     if(view==='month')dateInput.value=dateInput.value.slice(0,8)+'01';

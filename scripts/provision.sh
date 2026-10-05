@@ -38,6 +38,14 @@ if [[ ${FREO_ENABLE_HTTPS:-0} != 0 && ${FREO_ENABLE_HTTPS:-0} != 1 ]]; then
   echo 'FREO_ENABLE_HTTPS must be 0 or 1.' >&2
   exit 1
 fi
+if [[ ${FREO_LIVE_MIC:-0} != 0 && ${FREO_LIVE_MIC:-0} != 1 ]]; then
+  echo 'FREO_LIVE_MIC must be 0 or 1.' >&2
+  exit 1
+fi
+if [[ -n ${FREO_PROVIDER_ENCRYPTION_KEY:-} && ! $FREO_PROVIDER_ENCRYPTION_KEY =~ ^[A-Za-z0-9_-]{43}=$ ]]; then
+  echo 'Invalid FREO_PROVIDER_ENCRYPTION_KEY; expected a Fernet key.' >&2
+  exit 1
+fi
 public_scheme=http
 if [[ ${FREO_ENABLE_HTTPS:-0} == 1 ]]; then
   if [[ -z $domain || -z ${FREO_CERTBOT_EMAIL:-} ]]; then
@@ -94,6 +102,8 @@ install -d -o freo-playout -g freo-playout -m 0750 /var/lib/freo/playout
 install -d -o root -g freo-playout -m 0750 /var/lib/freo/media /var/lib/freo/playlists
 chmod 0751 /var/lib/freo/media
 install -d -o freo -g freo-ingest -m 2770 /var/lib/freo/uploads
+# Web previews and the production worker share only this private staging area.
+install -d -o freo -g freo -m 2770 /var/lib/freo/uploads/production
 for station_dir in /var/lib/freo/media/*; do
   [[ -d $station_dir && ! -L $station_dir ]] || continue
   if [[ -L $station_dir/originals || -L $station_dir/staging || -L $station_dir/imaging ]]; then
@@ -125,6 +135,7 @@ for directory in inventory['DIRECTORIES']:
             shutil.copy2(path, destination)
 PYTHON
   install -m 0644 "$source_dir/LICENSE" "$install_dir/LICENSE"
+  install -m 0644 "$source_dir/V1_UPGRADE_NOTES.md" "$install_dir/V1_UPGRADE_NOTES.md"
   if [[ -f "$source_dir/release.json" ]]; then
     install -m 0644 "$source_dir/release.json" "$install_dir/release.json"
   fi
@@ -137,6 +148,21 @@ if [[ $source_dir != "$install_dir" ]]; then
   install -m 0644 "$source_dir/requirements-live-mic.txt" "$install_dir/requirements-live-mic.txt"
 fi
 bash "$source_dir/scripts/install-python.sh" "$source_dir" "$install_dir/venv"
+# Keep provider encryption independent of Flask sessions and database passwords.
+# Validate supplied keys without displaying them; fresh installs generate one.
+provider_key=$("$install_dir/venv/bin/python" - <<'PYTHON'
+import os
+from cryptography.fernet import Fernet
+key = os.environ.get('FREO_PROVIDER_ENCRYPTION_KEY') or Fernet.generate_key().decode('ascii')
+try:
+    Fernet(key.encode('ascii'))
+    if len(key) != 44 or not key.endswith('=') or not all(c.isalnum() or c in '-_=' for c in key):
+        raise ValueError()
+except (ValueError, TypeError, UnicodeError):
+    raise SystemExit('Invalid FREO_PROVIDER_ENCRYPTION_KEY; expected a Fernet key.') from None
+print(key)
+PYTHON
+)
 if [[ ! -f "$install_dir/.env" ]]; then
   if runuser -u postgres -- psql -tAc "SELECT 1 FROM pg_roles WHERE rolname='freo'" | grep -qx 1; then
     echo 'Existing PostgreSQL role freo found but no .env; refusing to reset its password.' >&2
@@ -164,9 +190,12 @@ FREO_DOMAIN=$domain
 LOG_LEVEL=INFO
 FREO_MEDIA_ROOT=/var/lib/freo/media
 FREO_MAX_STATIONS=${FREO_MAX_STATIONS:-3}
+FREO_LIVE_MIC=${FREO_LIVE_MIC:-0}
+FREO_PROVIDER_ENCRYPTION_KEY=$provider_key
 ENV
   unset db_password app_secret
 fi
+unset provider_key FREO_PROVIDER_ENCRYPTION_KEY
 umask 022
 chown root:freo "$install_dir/.env"
 chmod 0640 "$install_dir/.env"
@@ -206,7 +235,7 @@ install -m 0644 "$unit_src" "$unit_dst"
 systemctl daemon-reload
 systemctl enable --now freo.service
 systemctl restart freo.service
-for service in icecast2 freo-playout freo-playout@ freo-automation freo-ingest freo-provision freo-public-schedules freo-central-api freo-updater; do
+for service in icecast2 freo-playout freo-playout@ freo-automation freo-ingest freo-production freo-mic freo-provision freo-public-schedules freo-central-api freo-updater; do
   unit_src="$source_dir/deploy/systemd/$service.service"
   unit_dst="/etc/systemd/system/$service.service"
   if [[ -f $unit_dst ]] && ! cmp -s "$unit_src" "$unit_dst"; then
@@ -221,6 +250,10 @@ if [[ ${FREO_ENABLE_DIAGNOSTIC:-0} == 1 ]]; then
 fi
 systemctl enable --now freo-automation.service
 systemctl enable --now freo-ingest.service
+systemctl enable --now freo-production.service
+if [[ ${FREO_LIVE_MIC:-0} == 1 ]]; then
+  systemctl enable --now freo-mic.service
+fi
 install -d -o root -g root -m 0755 /etc/freo
 install -d -o root -g root -m 0755 /etc/freo/radio /etc/freo/radio/stations
 freo_release=$(git -C "$source_dir" rev-parse --short HEAD 2>/dev/null || printf '%s' "${FREO_VERSION:-development}")

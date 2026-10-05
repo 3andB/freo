@@ -19,7 +19,7 @@ def test_audio_settings_permissions_validation_and_queue(app, monkeypatch):
     assert client.post(BASE, data={}).status_code == 400
     before = client.get(BASE).json
     assert before['active']['bitrate'] == 64 and not before['active']['agc']
-    for bitrate, bass in [('192','0'), ('96','nan'), ('96','7'), ('96','inf')]:
+    for bitrate, bass in [('256','0'), ('96','nan'), ('96','7'), ('96','inf')]:
         client.post(BASE, data=dict(CSRF, bitrate=bitrate, bass=bass, revision=1))
         assert client.get(BASE).json == before
     client.post(BASE, data=dict(CSRF, bitrate=128, bass=2, agc='yes', eq='yes', multiband='yes', revision=1))
@@ -136,7 +136,7 @@ def test_notice_once_per_user_per_utc_day_across_stations(app):
 
 
 def test_real_processing_and_bitrates(tmp_path):
-    # One engine writes all three encoders. Inspect actual MPEG headers and PCM.
+    # One engine writes all supported encoders, including 192 kbps. Inspect actual MPEG headers and PCM.
     values=dict(bitrate=128, agc=True, multiband=True, eq=True, bass=2.0, mid=-1.0, treble=1.0)
     script = tmp_path / 'processing.liq'
     lines=['settings.init.allow_root := true', 'settings.log.level := 2',

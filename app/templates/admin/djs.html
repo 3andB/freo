@@ -6,7 +6,7 @@
 <input type="hidden" name="csrf" value="{{ csrf_token() }}"><input type="hidden" name="user_id" value="{{ user.id }}">
 <label><input type="checkbox" name="active" value="yes" {% if user.active %}checked{% endif %}> Account enabled</label>
 {% for station in stations %}<label><input type="checkbox" name="station_id" value="{{ station.id }}" {% if (user.id,station.id) in assignments %}checked{% endif %}> {{ station.name }}</label>{% endfor %}
-<button type="submit">{{ 'Save DJ access' if user.role == 'DJ' else 'Convert to DJ with these assignments' }}</button></form>
+{% for station in stations if (user.id,station.id) in assignments %}<p><a href="{{ url_for('platform_polish.profiles',slug=station.slug) }}">Public profile · {{ station.name }}</a></p>{% endfor %}<button type="submit">{{ 'Save DJ access' if user.role == 'DJ' else 'Convert to DJ with these assignments' }}</button></form>
 {% endfor %}
 <form method="post" class="console-panel"><h2>Create DJ</h2><input type="hidden" name="csrf" value="{{ csrf_token() }}"><input type="hidden" name="active" value="yes">
 <label>DJ name <input name="username" required maxlength="64" autocomplete="off"></label><label>Email <input name="email" type="email" required maxlength="254"></label>

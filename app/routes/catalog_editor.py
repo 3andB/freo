@@ -34,11 +34,11 @@ def cover_url(song):
     return None
 
 
-def availability_data(song):
-    inherited = bool((song.catalog_artist and song.catalog_artist.available_to_all) or
-                     (song.catalog_album and song.catalog_album.available_to_all))
-    return dict(direct=song.available_to_all, inherited=inherited,
-                owner=song.station.name, effective=song.available_to_all or inherited,
+def availability_data(song, station=None):
+    inherited = bool(song.audio_kind == 'MUSIC' and ((song.catalog_artist and song.catalog_artist.available_to_all) or
+                     (song.catalog_album and song.catalog_album.available_to_all)))
+    return dict(direct=song.available_to_all and song.audio_kind == 'MUSIC', inherited=inherited,
+                owner=song.station.name, editable=(song.station_id == station.id if station else song.station.slug == context_slug(song)) and song.audio_kind == 'MUSIC', effective=(song.audio_kind == 'MUSIC' and song.available_to_all) or inherited,
                 url=url_for('admin_media.sharing', slug=context_slug(song), kind='song', identifier=song.id))
 
 
@@ -46,10 +46,10 @@ def state(song, *, include_waveform=True, station=None):
     from app.services.track_audio import state as audio_state
     station = station or station_or_404(context_slug(song), require_enabled=False)
     eligible = song.enabled and not song.decommissioned_at and any(c.enabled for c in song.categories)
-    return dict(audio=audio_state(song, station), availability=availability_data(song), uuid=song.uuid, audio_kind=song.audio_kind, audio_subtype=song.audio_subtype, cart_code=song.cart_code, isrc=song.isrc, title=song.title, artist=song.artist, album=song.album, track_number=song.track_number, disc_number=song.disc_number, release_year=song.release_year, artist_id=song.artist_id, album_id=song.album_id, album_artist_id=song.catalog_album.artist_id if song.catalog_album else None, album_artist=song.album_artist,
+    return dict(discovery_links=song.discovery_links,source_editable=song.station_id==station.id,audio=audio_state(song, station), availability=availability_data(song, station), uuid=song.uuid, audio_kind=song.audio_kind, audio_subtype=song.audio_subtype, cart_code=song.cart_code, isrc=song.isrc, title=song.title, artist=song.artist, album=song.album, track_number=song.track_number, disc_number=song.disc_number, release_year=song.release_year, artist_id=song.artist_id, album_id=song.album_id, album_artist_id=song.catalog_album.artist_id if song.catalog_album else None, album_artist=song.album_artist,
                 enabled=song.enabled, analysis=song.analysis_status, error=song.analysis_error,
                 processing_requested=song.analysis_requested, **({'waveform':song.waveform} if include_waveform else {}), cover=cover_url(song),
-                tags=[t.id for t in song.tags], categories=[c.id for c in song.categories],
+                tags=[t.id for t in song.tags if t.station_id == station.id], categories=[c.id for c in song.categories if c.station_id == station.id],
                 playlists=[p.id for p in song.playlists if p.station_id == song.station_id and not p.deleted_at and p.system_key not in ('STATION', 'COMMERCIALS')],
                 broadcast=('Decommissioned' if song.decommissioned_at else
                            'Enabled for broadcast' if eligible else 'Enabled — choose an active category for rotation' if song.enabled else
@@ -62,8 +62,8 @@ def state(song, *, include_waveform=True, station=None):
 def catalog(slug):
     station = station_or_404(slug, require_enabled=False)
     from app.services.playlists import summaries
-    return jsonify(artists=[dict(id=a.id,name=a.name) for a in artists_for(station.id).order_by(Artist.name)],
-                   albums=[dict(id=a.id,name=a.title,artist_id=a.artist_id,cover_id=a.cover_id) for a in albums_for(station.id).order_by(Album.title)],
+    return jsonify(artists=[dict(id=a.id,name=a.name,available_to_all=a.available_to_all) for a in artists_for(station.id).order_by(Artist.name)],
+                   albums=[dict(id=a.id,name=a.title,artist_id=a.artist_id,cover_id=a.cover_id,available_to_all=a.available_to_all or a.artist.available_to_all) for a in albums_for(station.id).order_by(Album.title)],
                    playlists=[dict(id=p['id'],name=p['name']) for p in summaries(station.id) if p['system_key'] not in ('STATION','COMMERCIALS')],
                    tags=[dict(id=t.id,name=t.name) for t in MusicTag.query.filter_by(station_id=station.id).order_by(MusicTag.name)],
                    categories=[dict(id=c.id,name=c.name,enabled=c.enabled) for c in MediaCategory.query.filter_by(station_id=station.id).order_by(MediaCategory.name)])
@@ -93,6 +93,8 @@ def song(slug,identifier):
     station=station_or_404(slug,require_enabled=False)
     track=tracks_for(station.id).filter_by(uuid=identifier,deleted_at=None).first_or_404()
     if request.method=='POST':
+        if track.station_id != station.id:
+            return jsonify(message='Edit shared source details in the owning station.'), 403
         from app.services.admin_auth import require_csrf
         require_csrf()
         if track.decommissioned_at: return jsonify(message='This song is decommissioned'),409
@@ -122,6 +124,9 @@ def save_audio(slug, identifier):
     from app.services.track_audio import validate
     station = station_or_404(slug, require_enabled=False)
     track = tracks_for(station.id).filter_by(uuid=identifier, deleted_at=None).first_or_404()
+    if track.station_id != station.id:
+        from flask import abort
+        abort(403)
     if track.decommissioned_at:
         return jsonify(message='This song is decommissioned'), 409
     try:
@@ -165,10 +170,17 @@ def upload_artwork(slug):
             output=Path(directory)/'cover.jpg'
             subprocess.run(['ffmpeg','-nostdin','-v','error','-threads','1','-i',str(source),'-frames:v','1','-vf',"crop=min(iw\\,ih):min(iw\\,ih),scale=min(3000\\,iw):-1",'-q:v','2',str(output)],capture_output=True,timeout=20,check=True)
             art=MusicArtwork(id=str(uuid.uuid4()),station_id=station.id,image=output.read_bytes());db.session.add(art)
-        if request.form.get('album_id'): owned(Album,station.id,request.form['album_id']).cover_id=art.id
+        if request.form.get('album_id'):
+            album = owned(Album, station.id, request.form['album_id'])
+            from app.services.polish import require_owner
+            require_owner(album, station.id)
+            album.cover_id = art.id
         if request.form.get('song_id'):
             track=tracks_for(station.id).filter_by(uuid=request.form['song_id'],deleted_at=None,decommissioned_at=None).first()
             if not track: raise ValueError('Song unavailable')
+            from app.services.polish import require_owner
+            require_owner(track, station.id)
+            if track.catalog_album: require_owner(track.catalog_album, station.id)
             if track.catalog_album: track.catalog_album.cover_id=art.id
             else: track.cover_id=art.id
         audit('music_artwork_uploaded',user_id=current_admin().id,station_id=station.id,target_type='artwork',target_id=art.id,summary='Cover artwork saved')

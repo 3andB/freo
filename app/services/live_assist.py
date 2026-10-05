@@ -447,7 +447,11 @@ def status(station):
     mode_notice=AuditEvent.query.filter_by(station_id=station.id,action='live_auto_return').order_by(AuditEvent.id.desc()).first()
     from app.services.booth_cue import describe
     from app.services.live_sessions import describe as describe_show
-    return dict(show=describe_show(station), cue_list=describe(station, snapshot_mixer), mode_notice=dict(id=mode_notice.id,message=mode_notice.summary) if mode_notice else None,station=station.slug, automation='HELD' if state and state.hold and not (snapshot_mixer or {}).get('auto_standby') else 'RUNNING' if state and state.enabled else 'DISABLED',mode=state.operator_mode if state else 'AUTO',cue=cue,
+    from app.services.relay import describe as relay_status
+    relay = relay_status(station)
+    if relay['source'] == 'relay':
+        current = dict(kind='relay', title=relay['title'] or 'Upstream relay', artist=relay['artist'], decision_id=None)
+    return dict(relay=relay, show=describe_show(station), cue_list=describe(station, snapshot_mixer), mode_notice=dict(id=mode_notice.id,message=mode_notice.summary) if mode_notice else None,station=station.slug, automation='HELD' if state and state.hold and not (snapshot_mixer or {}).get('auto_standby') else 'RUNNING' if state and state.enabled else 'DISABLED',mode=state.operator_mode if state else 'AUTO',cue=cue,
         current=current, mixer=snapshot_mixer, deck_command=(dict(id=deck_command.id,status=deck_command.status,deck=deck_command.deck,operation=deck_command.action.removeprefix('DECK_'),error=deck_command.error_code) if deck_command else None), last_known_current=last_known, observation_fresh=reliable, observed_at=snapshot.observed_at.isoformat() if snapshot else None, queue=queue, unknown_queue_items=unknown,
         skip_command=dict(id=skip_command.id,status=skip_command.status,expected_decision_id=skip_command.expected_decision_id,error=skip_command.error_code) if skip_command else None,
         cart=dict(locked=not reliable or bool(cart_id or cart_pending),decision_id=cart_row.id if cart_row else None,role=cart_row.cart_role if cart_row else None,position=cart_row.cart_position if cart_row else None,state=('playing' if cart_id and cart_row and cart_row.started_at else 'queued') if cart_row else 'idle'),
@@ -482,7 +486,7 @@ def deck_item(station, mixer, deck):
     return row if row and row.station_id == station.id else None
 
 
-def request_deck(station, user, deck, action, identifier, expected, nonce, fade_seconds=3, play_on_load=False, cue_entry_id=None):
+def request_deck(station, user, deck, action, identifier, expected, nonce, fade_seconds=3, play_on_load=False, cue_entry_id=None, listener_request=None):
     if deck not in ('A','B') or action not in ('LOAD','PLAY','PAUSE','CLEAR','FADE','REPEAT'):
         raise ValueError('Choose a valid deck button')
     try:
@@ -523,6 +527,12 @@ def request_deck(station, user, deck, action, identifier, expected, nonce, fade_
             raise ValueError('The song audio is unavailable') from error
         target=SelectionDecision(station_id=station.id,track=track,playback_bus=deck,selection_method='manual_track',admin_user_id=user.id,idempotency_key=str(uuid.uuid4()),status='selected',reason='deck_'+action.lower())
         db.session.add(target);db.session.flush()
+        if listener_request is not None:
+            from app.services.listener_requests import bind as bind_request, validate_decision
+            if action != 'LOAD' or play_on_load or mixer.get(deck.lower()+'_playing'):
+                raise ValueError('Load a listener request on a stopped deck first')
+            bind_request(listener_request, target, datetime.now(timezone.utc))
+            validate_decision(target)
         from app.services.booth_cue import bind
         bind(station, target, cue_entry_id if action == 'LOAD' else None, current if action == 'REPEAT' else None)
     from app.services.booth_cue import disarm

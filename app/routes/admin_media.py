@@ -29,6 +29,8 @@ def owned_track(station, track_uuid):
     track = track_for_station(station, track_uuid)
     if track is None or track.deleted_at:
         abort(404)
+    if request.method != 'GET' and request.endpoint != 'admin_media.update_categories' and track.station_id != station.id:
+        abort(403)
     return track
 
 
@@ -218,6 +220,8 @@ def job_json(slug, job_id):
 def retry_delete(slug, job_id):
     station = station_or_404(slug, require_enabled=False)
     job = MediaIngestJob.query.filter_by(station_id=station.id, id=job_id, kind='delete').first_or_404()
+    if job.track and job.track.station_id != station.id:
+        abort(403)
     if job.status in ('error', 'rejected'):
         job.status = 'pending'
         job.error_code = None
@@ -247,7 +251,9 @@ def track_detail(slug, track_uuid):
     from app.services.airplay import play_counts
     count = play_counts(station.id, 'track', [track.id]).get(track.id, 0)
     from app.services.player import vote_stats, EMPTY_STATS
-    return render_template('admin/media_track.html', **page_context(station, track=track,
+    from app.models import ProductionDraft
+    production_record = ProductionDraft.query.filter_by(station_id=station.id, track_id=track.id).first()
+    return render_template('admin/media_track.html', **page_context(station, track=track, production_record=production_record,
                            votes=vote_stats(station.id,[track.id]).get(track.id,EMPTY_STATS),
                            categories=categories, starts=starts, play_count=count, **classification_context(station)))
 
@@ -457,6 +463,8 @@ def sharing(slug, kind, identifier):
         abort(404)
     row = queries[kind](station.id).filter_by(id=identifier).first_or_404()
     try:
+        from app.services.polish import require_owner
+        require_owner(row, station.id)
         set_sharing(row, request.form.get('available_to_all') == 'on', current_admin().id)
         db.session.commit()
         if request.accept_mimetypes.best == 'application/json':

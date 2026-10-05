@@ -84,7 +84,9 @@ def process_transition(station, reader):
         if response not in ('FADING','APPLIED'):raise RuntimeError('Engine did not acknowledge mode switch')
         if response=='APPLIED':
             reader.collect(station.slug)
-            if decision.status!='started':
+            from app.services.relay import describe as relay_status
+            prepared_for_relay = relay_status(station)['selected']
+            if decision.status!='started' and not prepared_for_relay:
                 return expire_transition(station,command) if expired else True
             schedule.mode=command.mode;schedule.simple=command.simple;schedule.live_simple=command.simple;schedule.activation=command.id
             schedule.activated=True;schedule.revision+=1

@@ -49,3 +49,10 @@ def choose(tracks, history, now, track_seconds, artist_seconds):
     pool, relaxation, last = eligible(tracks, history, now, track_seconds, artist_seconds)
     return (min(pool, key=lambda t: (last.get(t.id, datetime.min.replace(tzinfo=timezone.utc)), t.id)) if pool else None,
             relaxation, len(pool))
+
+
+def strict_eligible(tracks, history, now, track_seconds, artist_seconds, *, ignore_decision=None):
+    """Request policy shares normalization/history but never relaxes separation."""
+    history = [item for item in history if item.id != ignore_decision]
+    pool, relaxation, _ = eligible(tracks, history, now, track_seconds, artist_seconds)
+    return pool if relaxation == 'none' else []

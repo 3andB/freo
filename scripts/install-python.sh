@@ -28,7 +28,12 @@ if (( bundled )); then
   "$venv_dir/bin/python" -m pip install --no-index --find-links "$source_dir/wheels" --dry-run -r "$source_dir/requirements-live-mic.txt"
   checks=(--live-mic)
 else
-  "$venv_dir/bin/python" -m pip install -r "$source_dir/requirements.txt"
+  if [[ ${FREO_LIVE_MIC:-0} == 1 ]]; then
+    "$venv_dir/bin/python" -m pip install -r "$source_dir/requirements-live-mic.txt"
+    checks=(--live-mic)
+  else
+    "$venv_dir/bin/python" -m pip install -r "$source_dir/requirements.txt"
+  fi
 fi
 "$venv_dir/bin/python" -m pip check
 (cd "$source_dir" && "$venv_dir/bin/python" -B -m freo_ops.dependencies "${checks[@]}")

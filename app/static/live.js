@@ -330,6 +330,7 @@
       programTarget=state.playout_error?0:meterLevel(state.program_rms);
       text('program-meter-label',Number.isFinite(state.program_rms)&&!state.playout_error?'PROGRAM / LIVE':'PROGRAM / NO SIGNAL DATA');
       const onAir=state.current || (state.playout_error?state.last_known_current:null);
+      text('live-relay-status',state.relay?.enabled ? `Relay · ${state.relay.connected === null ? 'connection unknown' : state.relay.connected ? 'connected' : 'disconnected'} · ${state.relay.source}` : '');
       text('morph-text',onAir?.title||(state.playout_error?'Reconnecting to station':'Silence · no live deck')); document.getElementById('morph-text').title=onAir?.title||'';document.querySelector('#live-current h2').title=current?.title||'';document.getElementById('cue-title').title=cue?.title||'';text('morph-artist',onAir?.artist||'');
       document.querySelector('#live-current h2').textContent=current?.title||(state.playout_error?'Reconnecting to station':'NOTHING LOADED');
       document.querySelector('#live-current p').textContent=current?.artist||'';
@@ -372,7 +373,7 @@
     const current=state?.current;
     const pending=skipRequested===current?.decision_id||(command&&command.expected_decision_id===current?.decision_id&&['pending','sent'].includes(command.status));
     const skip=document.getElementById('auto-skip');
-    skip.disabled=!reliable||!current||state.mode!=='AUTO'||pending||state.cart?.locked;
+    skip.disabled=!reliable||!current?.decision_id||state.mode!=='AUTO'||pending||state.cart?.locked;
     skip.textContent=pending?(command?.status==='sent'?'FADING…':'FADE REQUESTED…'):'SKIP TO NEXT';
     const next=state?.queue?.[0];
     text('auto-next',!reliable?'NEXT: Connection unavailable':state.unknown_queue_items?'NEXT: Queue item unavailable':next?'NEXT: '+[next.artist,next.title].filter(Boolean).join(' — '):'NEXT: Queue is empty');

@@ -75,7 +75,7 @@
   function fill(item){
     const value=effective(item),c=item.choices;
     item.title.value=c.title??value.title??'';item.number.value=c.track_number??value.track_number??'';item.disc.value=c.disc_number??value.disc_number??'';item.year.value=c.release_year??value.release_year??'';
-    item.selectors.set(c);item.selectors.detected(sourceMetadata(item));item.chips.set(c);item.keepDisabled.checked=!!c.keep_disabled;item.sharing.checked=!!c.available_to_all;item.sharing.disabled=(c.audio_kind||item.remote?.song?.audio_kind||'MUSIC')!=='MUSIC';
+    item.selectors.set(c);item.selectors.detected(sourceMetadata(item));item.chips.set(c);item.keepDisabled.checked=!!c.keep_disabled;item.sharing.checked=!!c.available_to_all;item.sharing.disabled=(c.audio_kind||item.remote?.song?.audio_kind||'MUSIC')!=='MUSIC';const inherited=catalog.artists.find(a=>a.id===c.artist_id)?.available_to_all||catalog.albums.find(a=>a.id===c.album_id)?.available_to_all;item.sharing.parentElement.title=inherited?'Also universal through its artist or album; removing direct sharing does not remove inherited availability.':'Unchecked: station-specific unless the artist or album is universal.';let note=item.sharing.parentElement.querySelector('small');if(!note){note=el('small');item.sharing.parentElement.append(note);}note.textContent=inherited&&!item.sharing.disabled?' Shared through artist or album.':'';
   }
   function change(item){item.dirty=true;item.generation++;item.error='';clearTimeout(item.timer);item.timer=setTimeout(()=>{if(!batchBusy)save(item);},600);drawRow(item);summary();}
   async function save(item){
@@ -130,7 +130,7 @@
     const image=el('img',undefined,'import-cover');image.alt='Cover artwork';image.hidden=true;
     const art=button('Choose artwork',async()=>{try{const cover=await FreoCatalog.chooseCover(config);if(cover){item.choices.cover_id=cover.id;item.coverUrl=cover.url;change(item);}}catch(e){message(e.message);}});
     const coverNote=el('p','Artwork assigned to an existing album also updates its other songs.','footnote');
-    const sharing=el('input');sharing.type='checkbox';sharing.onchange=()=>{item.choices.available_to_all=sharing.checked;change(item);};const shareWrap=el('label',undefined,'import-enable');shareWrap.append(sharing,document.createTextNode(' Available to all stations'));
+    const sharing=el('input');sharing.type='checkbox';sharing.onchange=()=>{item.choices.available_to_all=sharing.checked;change(item);};const shareWrap=el('label',undefined,'import-enable');shareWrap.append(sharing,document.createTextNode(' Universal music · available to all stations (one audio file)'));
     const advanced=el('details',undefined,'import-more'),extraFields=el('div',undefined,'import-extra-fields');advanced.open=true;advanced.append(el('summary','Track details, artwork & rotation'));for(const node of [number,disc,year])extraFields.append(node.parentElement);advanced.append(el('p',`Source: ${item.path||item.name}`,'footnote'),extraFields,classifications,shareWrap,rotation,enableWrap,image,art,coverNote);const saveButton=button('Saved',()=>save(item));editor.append(fields,advanced,saveButton);card.append(editor);
     const statusNode=el('p',undefined,'import-row-status');statusNode.setAttribute('role','status');const retry=button('Retry',async()=>{
       try{if(item.dirty&&item.remote)await flush([item]);if(!item.remote){item.error='';if(item.file){uploadQueue.push(item);pump();}else $('media-file').click();}
@@ -262,7 +262,7 @@
       if('album_id' in patch&&values.album_id){item.choices.album_artist_id=values.album_artist_id;shared.album_artist_id=values.album_artist_id;}
       for(const key of touched){const current=new Set(item.choices[key]||[]),chosen=classifications[key],op=$('classification-operation').value;
         item.choices[key]=op==='replace'?chosen:op==='remove'?[...current].filter(id=>!chosen.includes(id)):[...new Set([...current,...chosen])];shared[key]=op==='replace'?chosen:op==='remove'?(shared[key]||[]).filter(id=>!chosen.includes(id)):[...new Set([...(shared[key]||[]),...chosen])];}
-      if($('batch-sharing').value){item.choices.available_to_all=$('batch-sharing').value==='all';shared.available_to_all=item.choices.available_to_all;}
+      if($('batch-sharing').value && (item.choices.audio_kind||item.remote?.song?.audio_kind||'MUSIC')==='MUSIC'){item.choices.available_to_all=$('batch-sharing').value==='all';shared.available_to_all=item.choices.available_to_all;}
       if(batchCover){item.choices.cover_id=batchCover.id;item.coverUrl=batchCover.url;shared.cover_id=batchCover.id;}
       if(numbering)item.choices.track_number=index+1;
       fill(item);change(item);

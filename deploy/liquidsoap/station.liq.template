@@ -560,6 +560,85 @@ def track_fades(s)
   end
   amplify(override=null(), level, s)
 end
+# Relay remains part of the Auto bus. The worker gives this input a local,
+# guarded transport capability; upstream URLs and credentials never reach logs.
+relay_enabled = ref(false)
+relay_revision = ref(0)
+relay_connected = ref(false)
+relay_noise = ref(false)
+relay_selected = ref(false)
+relay_since = ref(0.0)
+relay_take = ref(0.0)
+relay_failure = ref(0.0)
+relay_reconnect = ref(0.0)
+relay_hold = ref(false)
+relay_metadata = ref([])
+def relay_failed()
+  if relay_enabled() then relay_failure := time() end
+  relay_connected := false; relay_since := 0.0
+  relay_metadata := []
+end
+def relay_labels(metadata)
+  def label(key)
+    value = list.assoc(default="", key, metadata)
+    string.sub(value, start=0, length=min(512, string.length(value)))
+  end
+  [("title", label("title")), ("artist", label("artist"))]
+end
+relay_input = input.http(id="freo_relay_input", start=false, clock_safe=false,
+  max_buffer=2.0, poll_delay=5.0, timeout=10.0,
+  string_args=[("protocol_whitelist", "http,tcp"), ("format_whitelist", "mp3,aac,ogg,flac,wav")],
+  metadata_filter=relay_labels,
+  on_connect=fun (_) -> begin relay_connected := true; relay_reconnect := time() end,
+  on_disconnect=relay_failed, on_error=fun (_) -> relay_failed(), "")
+# Minimize source logging. Upstream addresses never enter this decoder.
+relay_input.log.level.set(0)
+relay_input.on_metadata(fun (m) -> relay_metadata := m)
+relay_audio = blank.detect(max_blank=3.0, min_noise=0.2, threshold=-55.0, start_blank=true,
+  track_sensitive=false, on_noise={relay_noise := true}, {relay_noise := false}, relay_input)
+# Consume even off air so a reconnect/live override never replays old speech.
+output.dummy(id="freo_relay_drain", fallible=true, relay_audio)
+def relay_available() = relay_enabled() and relay_input.is_ready() and relay_noise() end
+def relay_gain()
+  if relay_selected() and relay_available() then min(1.0,max(0.0,time()-relay_take())) else 0.0 end
+end
+server.register(namespace="freo_relay", "apply", fun (value) -> begin
+  fields = string.split(separator=" ", value)
+  revision = int_of_string(default=0,list.nth(default="0",fields,0))
+  url = list.nth(default="-",fields,1)
+  if revision < relay_revision() then "ERROR stale relay configuration"
+  elsif not (url == "-" or string.match(pattern="^http://127\\.0\\.0\\.1:[0-9]+/[0-9a-f]{64}$",url)) then "ERROR invalid relay transport"
+  else
+    relay_enabled := false; relay_selected := false; relay_since := 0.0
+    relay_input.stop(); relay_connected := false; relay_noise := false; relay_metadata := []
+    relay_revision := revision
+    if url != "-" then
+      relay_input.set_url(url); relay_enabled := true; relay_input.start()
+    end
+    "OK"
+  end
+end)
+server.register(namespace="freo_relay", "discard", fun (target) -> begin
+  current = queue.current()
+  if relay_gain() < 1.0 then "BUSY"
+  elsif null.defined(current) and decision(request.metadata(null.get(current))) == target then
+    schedule_interrupted := [target]; queue.skip(); "OK"
+  else "OK" end
+end)
+server.register(namespace="freo_relay", "reserve", fun (_) -> begin
+  if relay_selected() then "BUSY" else relay_hold := true; "OK" end
+end)
+server.register(namespace="freo_relay", "hold", fun (value) -> begin relay_hold := value == "true"; "OK" end)
+thread.run(every=0.05, {
+  if not relay_available() then
+    if relay_selected() then relay_failure := time() end
+    relay_selected := false; relay_since := 0.0
+  elsif relay_since() == 0.0 then relay_since := time()
+  elsif not relay_selected() and time()-relay_since() >= 10.0 and not relay_hold() and event_token() == "" then
+    relay_take := time(); relay_selected := true
+  end
+})
+
 music_a = source.on_end(delay=0.0, track_fades(deck_a), fun (remaining, metadata) -> dj_finished("A", remaining, metadata))
 music_b = source.on_end(delay=0.0, track_fades(deck_b), fun (remaining, metadata) -> dj_finished("B", remaining, metadata))
 music_a = amplify(override="freo_gain", 1.0, music_a)
@@ -570,8 +649,10 @@ music_a = amplify({fade_gain() * a_mix() * main_gain() * mic_program_gain()}, mu
 music_b = amplify({b_fade_gain() * b_mix() * main_gain() * mic_program_gain()}, music_b)
 music_auto = source.on_end(delay=0.0, track_fades(queue), fun (remaining, metadata) -> begin cue_finished(remaining, metadata); event_boundary("AUTO") end)
 music_auto = amplify(override="freo_gain", 1.0, music_auto)
-music_auto = mksafe(switch(track_sensitive=false, [({auto_play() and main_active()}, music_auto)]))
-music_auto = amplify({auto_mix()*main_gain()*schedule_fade_gain()*mic_program_gain()}, music_auto)
+music_auto = mksafe(switch(track_sensitive=false, [({auto_play() and main_active() and relay_gain() < 1.0}, music_auto)]))
+music_auto = amplify({auto_mix()*main_gain()*schedule_fade_gain()*mic_program_gain()*(1.0-relay_gain())}, music_auto)
+relay_output = mksafe(switch(track_sensitive=false, [({auto_play() and main_active() and relay_gain() > 0.0}, relay_audio)]))
+relay_output = amplify({relay_gain()*auto_mix()*main_gain()*mic_program_gain()}, relay_output)
 mic_audio = amplify({if cart_takeover() and cart.is_ready() then 0.0 else mic_gain()*main_gain() end}, mksafe(mic_input))
 event_audio.on_track(confirm)
 event_output = source.on_end(delay=0.0, track_fades(event_audio), fun (remaining, metadata) -> begin
@@ -585,7 +666,7 @@ event_output = amplify(override="freo_gain", 1.0, event_output)
 event_output = mksafe(switch(track_sensitive=false, [({event_playing() and not mic_active() and not (cart_takeover() and cart.is_ready())}, event_output)]))
 event_output = amplify({main_gain()}, event_output)
 cart_output = amplify(override="freo_gain", 1.0, track_fades(cart))
-radio = add(normalize=false, [music_auto, music_a, music_b, mksafe(cart_output), mic_audio, event_output])
+radio = add(normalize=false, [music_auto, music_a, music_b, mksafe(cart_output), mic_audio, event_output, relay_output])
 # Confirmed channel mode changes fade the complete outgoing program, including
 # a cart or DJ source, then atomically replace the queue with prepared audio.
 schedule_switch_token = ref("")
@@ -604,6 +685,14 @@ server.register(namespace="freo_schedule", "switch", fun (value) -> begin
     current = queue.current()
     already_current = null.defined(current) and string(request.id(null.get(current))) == rid
     if list.length(prepared) != 1 and not already_current then "ERROR target is not prepared"
+    elsif relay_selected() and relay_gain() >= 1.0 and auto_play() and main_active() then
+      # Editing fallback programming must not fade or restart an audible relay.
+      schedule_switch_token := token
+      schedule_interrupted := if null.defined(current) then [decision(request.metadata(null.get(current)))] else [] end
+      queue.set_queue(if already_current then [] else prepared end)
+      if not already_current then queue.skip() end
+      schedule_switch_phase := "APPLIED"
+      "APPLIED"
     else
       schedule_switch_token := token
       schedule_switch_phase := "FADING"
@@ -693,6 +782,7 @@ server.register(namespace="freo_program", "current", fun (_) ->
   if event_playing() and not mic_active() and not (cart_takeover() and cart.is_ready()) and current_event() != "" then current_event()
   elsif current_cart() != "" then current_cart()
   elsif mic_phase() == "LIVE" then ""
+  elsif auto_play() and relay_gain() >= 0.5 and auto_mix() >= max(a_mix(), b_mix()) then ""
   elsif auto_play() and auto_mix() >= max(a_mix(), b_mix()) and current_auto() != "" then current_auto()
   elsif mode() == "DJ_BOOTH" and a_play() and a_to() > b_to() and current_a() != "" then current_a()
   elsif b_play() and current_b() != "" then current_b()
@@ -709,7 +799,7 @@ auto_confirmed = ref("")
 a_confirmed = ref("")
 b_confirmed = ref("")
 thread.run(every=0.1, {
-  if queue.is_ready() and auto_play() and auto_mix() > 0.0 and main_active() and current_auto() != auto_confirmed() then
+  if queue.is_ready() and relay_gain() < 1.0 and auto_play() and auto_mix() > 0.0 and main_active() and current_auto() != auto_confirmed() then
     confirm([("freo_decision", current_auto())]); auto_confirmed := current_auto()
   end
   if deck_a.is_ready() and a_play() and a_mix() > 0.0 and main_active() and main_gain() > 0.0  and a_decision() != a_confirmed() then
@@ -722,6 +812,20 @@ thread.run(every=0.1, {
   end
 })
 radio = server.rms(id="freo_program", radio)
+def relay_source()
+  if broadcasting_tone() then "tone"
+  elsif cart.is_ready() then "cart"
+  elsif mic_active() then "microphone"
+  elsif event_playing() then "event"
+  elsif mode() == "DJ_BOOTH" and not dj_waiting() then "dj"
+  elsif relay_selected() and relay_gain() >= 0.5 then "relay"
+  else "automation" end
+end
+server.register(namespace="freo_relay", "state", fun (_) -> json.stringify({
+  connected=relay_connected(), ready=relay_available(), selected=relay_selected(), source=relay_source(),
+  title=list.assoc(default="", "title", relay_metadata()), artist=list.assoc(default="", "artist", relay_metadata()),
+  failure=relay_failure(), reconnect=relay_reconnect()
+}))
 # Phase 3: observations of existing mixer/mic state, never another source selector.
 def show_source()
   if mic_phase() == "RETURNING" then "RETURNING"

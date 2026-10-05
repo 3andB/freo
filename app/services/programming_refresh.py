@@ -16,7 +16,7 @@ def signature(station,now=None):
     from app.services.schedule import resolve
     programming=resolve(station,now)
     state=station.automation
-    values=[station.timezone,station.target_lufs,programming.occurrence_key,
+    values=[station.timezone,station.target_lufs,station.request_settings,programming.occurrence_key,
             state.active_rotation_id,state.default_clock_id,state.track_separation_seconds,state.artist_separation_seconds]
     schedule=db.session.get(m.ChannelSchedule,station.id)
     if schedule:
@@ -128,7 +128,9 @@ def refresh(station,reader,current_signature, *, prepared_auto_id=None):
     db.session.commit()
     if prepared:
         from app.services.playout_queue import _command
-        _command(station.slug, f'freo_mixer.return_discard {prepared.id}')
+        from app.services.relay import describe as relay_status
+        namespace = 'freo_relay.discard' if relay_status(station)['selected'] else 'freo_mixer.return_discard'
+        _command(station.slug, f'{namespace} {prepared.id}')
     ids=[row.liquidsoap_request_id for row in candidates if row.socket_identity==identity and row.liquidsoap_request_id in future]
     if ids:remove_future(station.slug,ids)
     reader.collect(station.slug)

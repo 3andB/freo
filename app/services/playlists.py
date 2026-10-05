@@ -308,7 +308,11 @@ def select_playlist(station, slot, storage, now, context):
         if row.mode != 'RANDOM':
             cursor.state = {}
     result = dict(candidate_count=len(tracks), relaxation='none')
-    if row.legacy_imaging_group_id:
+    from app.services.listener_requests import choose, bind
+    requested = choose(station, tracks, storage, now, fixed=bool(row.legacy_imaging_group_id))
+    if requested:
+        track = requested.track
+    elif row.legacy_imaging_group_id:
         from datetime import timedelta
         history = SelectionDecision.query.filter_by(station_id=station.id,status='started').filter(SelectionDecision.track_id.in_([t.id for t in tracks])).order_by(SelectionDecision.started_at.desc()).all()
         last = {}
@@ -322,4 +326,5 @@ def select_playlist(station, slot, storage, now, context):
     decision = SelectionDecision(station_id=station.id, selected_at=now, track_id=track.id,
         status='selected', selection_method='playlist', **result, **context)
     db.session.add(decision)
+    bind(requested, decision, now)
     return decision

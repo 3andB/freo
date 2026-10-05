@@ -22,6 +22,10 @@ DEFAULTS = dict(message='', message_enabled=False, message_start='', message_end
     ad_bottom_enabled=False, ad_bottom_url='', ad_bottom_alt='', ad_bottom_start='', ad_bottom_end='')
 
 
+from app.services.polish import AD_DEFAULTS
+DEFAULTS.update(AD_DEFAULTS)
+
+
 def clean_text(value, limit, required=False, multiline=False):
     if not isinstance(value,str):
         raise ValueError('Enter text for this field')
@@ -94,12 +98,12 @@ def validate_config(form):
     for prefix in ('ad_top','ad_bottom'):
         result[prefix+'_url'] = safe_url(form.get(prefix+'_url',''))
         result[prefix+'_alt'] = clean_text(form.get(prefix+'_alt',''),200)
-        if result[prefix+'_enabled'] and not result[prefix+'_alt']:
-            raise ValueError('Add an accessible description for each enabled advertisement')
     for platform in PLATFORMS:
         url = safe_url(form.get('social_'+platform,''))
         if url:
             result['socials'].append(dict(platform=platform,url=url,visible=form.get('visible_'+platform)=='yes'))
+    from app.services.polish import validate_config as polish_config
+    result.update(polish_config(form))
     return result
 
 
@@ -108,10 +112,12 @@ def public_context(station, config=None):
     config['message_version']=hashlib.sha256((config['message']+config['message_start']+config['message_end']).encode()).hexdigest()[:16]
     config['message_visible'] = active(config,'message') and bool(config['message'])
     assets = {row.kind:row.version for row in StationPlayerAsset.query.filter_by(station_id=station.id).all()}
+    from app.services.polish import ad_context
+    ads = ad_context(station, config)
     for prefix in ('ad_top','ad_bottom'):
-        config[prefix+'_visible'] = active(config,prefix) and prefix in assets
+        config[prefix+'_visible'] = prefix in ads
     config['socials'] = [x for x in config['socials'] if x.get('visible')] if config['social_enabled'] else []
-    return dict(player_config=config, player_assets=assets,
+    return dict(player_config=config, player_assets=assets, player_ads=ads,
                 player_revision=station.player_settings.revision if station.player_settings else 0)
 
 
@@ -142,7 +148,7 @@ def automatic_entries(station, start_day, days=31):
     return output
 
 
-def custom_entry(form):
+def custom_entry(form, station=None):
     from app.services.calendar import minute
     title=clean_text(form.get('title',''),120,True)
     description=clean_text(form.get('description',''),500,multiline=True)
@@ -157,7 +163,13 @@ def custom_entry(form):
     else:
         weekday=int(weekday)
         if weekday not in range(7):raise ValueError('Choose a weekday or date')
-    return dict(title=title,description=description,start_minute=begin,end_minute=finish,
+    dj_id = form.get('dj_id', '')
+    if dj_id:
+        from app.models import DJStationAssignment
+        if not str(dj_id).isdecimal() or not station or not db.session.get(DJStationAssignment, (int(dj_id), station.id)):
+            raise ValueError('Choose a DJ assigned to this station')
+        dj_id = int(dj_id)
+    return dict(dj_id=dj_id or None,title=title,description=description,start_minute=begin,end_minute=finish,
                 on_date=on_date,weekday=weekday,hidden=form.get('hidden')=='yes')
 
 
@@ -178,7 +190,7 @@ def build_schedule(station, config, start_day=None, days=31):
             begin,finish=max(begin,start),min(finish,end)
             if begin>=finish:continue
             custom.append(dict(start=begin.isoformat(),end=finish.isoformat(),title=item['title'],
-                               description=item['description'],source='custom',hidden=item.get('hidden',False),dated=bool(item['on_date'])))
+                               description=item['description'],dj_id=item.get('dj_id'),source='custom',hidden=item.get('hidden',False),dated=bool(item['on_date'])))
     if config['schedule_mode']=='automatic':custom=[]
     # Dated entries override weekly entries; ambiguous overlaps at equal priority fail.
     custom.sort(key=lambda row:(row['dated'],row['start']))
@@ -257,7 +269,8 @@ def now_playing(station):
     def item(row):
         from flask import url_for
         art=row.track and (row.track.cover_id or (row.track.catalog_album and row.track.catalog_album.cover_id))
-        return dict(freo_track_id=row.track.freo_track_id if row.track else None,
+        from app.services.polish import track_links
+        return dict(discovery_links=track_links(row.track),freo_track_id=row.track.freo_track_id if row.track else None,
             report_url=url_for('dmca.report', supplied_track_id=row.track.freo_track_id, station_text=station.name) if row.track else None,
             artwork=url_for('player_experience.artwork',slug=station.slug,decision_id=row.id) if art else None, decision_id=row.id,track=row.track.uuid if row.track else None,
             title=row.track.title if row.track else row.imaging_asset.name if row.imaging_asset else 'Station audio',
@@ -271,7 +284,18 @@ def now_playing(station):
     resolution=resolve(station,now)
     publication=PublicScheduleRevision.query.filter_by(station_id=station.id).order_by(PublicScheduleRevision.id.desc()).first() if settings(station)['schedule_enabled'] else None
     next_program=next((entry for entry in publication.entries if timestamp(entry['start'])>now),None) if publication else None
-    return dict(next_program=next_program,current=[item(row) for row in current],recent=[item(row) for row in recent],fresh=reliable,
+    from app.services.relay import describe as relay_status
+    relay = relay_status(station)
+    playing = [item(row) for row in current]
+    if reliable and relay['source'] == 'relay':
+        playing = [dict(kind='relay', track=None, freo_track_id=None, decision_id=None,
+            title=relay['title'] or 'Upstream relay', artist=relay['artist'], started_at=None,
+            artwork=None, report_url=None, votable=False)]
+    from app.services.polish import live_profile, dj_profile
+    if next_program:
+        next_program = dict(next_program)
+        next_program['dj_profile'] = dj_profile(station, next_program.pop('dj_id', None))
+    return dict(dj_profile=live_profile(station, reliable),next_program=next_program,current=playing,recent=[item(row) for row in recent],fresh=reliable,
         stream_online=snapshot.broadcast_online if snapshot and fresh(snapshot.broadcast_observed_at) else None,
         mode=mode,observed_at=snapshot.observed_at.isoformat() if snapshot else None,
         timezone=station.timezone,local_date=now.astimezone(ZoneInfo(station.timezone)).date().isoformat(),

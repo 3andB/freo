@@ -107,6 +107,9 @@ def remove_references(song):
 
 
 def queue_delete(song, user, station=None):
+    if station is not None:
+        from app.services.polish import require_owner
+        require_owner(song, station.id)
     from app.services.stations import allocation_lock
     allocation_lock()  # Serializes with the final playout handoff.
     db.session.refresh(song)

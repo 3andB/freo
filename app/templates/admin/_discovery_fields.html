@@ -1,0 +1,9 @@
+{% macro fields(links) %}
+<div class="discovery-fields">
+<p>Optional public links. Use a complete http:// or https:// URL. Leave a URL empty to remove it.</p>
+{% set configured = links or [] %}
+{% for item in configured %}<div class="settings-columns"><label>Type<select name="link_kind">{% for key,label in discovery_kinds.items() %}<option value="{{ key }}" {% if key == item.kind %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label><label>Label (optional)<input name="link_label" maxlength="80" value="{{ item.label }}"></label><label>URL<input type="url" name="link_url" maxlength="1000" value="{{ item.url }}"></label></div>{% endfor %}
+{% for key,label in discovery_kinds.items() if key not in configured|map(attribute='kind')|list %}<div class="settings-columns"><input type="hidden" name="link_kind" value="{{ key }}"><label>{{ label }} URL<input type="url" name="link_url" maxlength="1000" placeholder="https://"></label><label>Label (optional)<input name="link_label" maxlength="80"></label></div>{% endfor %}
+<div class="settings-columns"><label>Additional link<select name="link_kind">{% for key,label in discovery_kinds.items() %}<option value="{{ key }}">{{ label }}</option>{% endfor %}</select></label><label>Label<input name="link_label" maxlength="80"></label><label>URL<input type="url" name="link_url" maxlength="1000"></label></div>
+</div>
+{% endmacro %}

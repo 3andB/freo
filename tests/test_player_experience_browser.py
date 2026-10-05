@@ -88,7 +88,7 @@ def test_ads_mobile_creatives_reduced_motion_and_draft_preview(booth):
     with app.app_context():
         row=StationPlayerSettings.query.one()
         row.config=dict(row.config,ad_top_enabled=True,ad_bottom_enabled=True,
-            ad_top_alt='Top sponsor',ad_bottom_alt='Bottom sponsor',ad_top_url='https://example.test/sponsor')
+            ad_top_alt='Top sponsor',ad_bottom_alt='Bottom sponsor',ad_top_url='https://example.test/sponsor',ad_bottom_url='https://example.test/bottom')
         for kind in ('cover','ad_top','ad_bottom','ad_top_mobile','ad_bottom_mobile'):
             raw=png(9,3) if kind.endswith('mobile') else png(20,4)
             db.session.add(StationPlayerAsset(station_id=row.station_id,kind=kind,image=raw,version=hashlib.sha256(raw).hexdigest()))

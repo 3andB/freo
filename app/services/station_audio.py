@@ -6,7 +6,7 @@ from app.models import Station, StreamMount
 from app.services.admin_media import audit
 from app.services.stations import allocation_lock
 
-BITRATES = (64, 96, 128)
+BITRATES = (64, 96, 128, 192)
 DEFAULT_PROCESSING = dict(agc=False, multiband=False, eq=False, bass=0.0, mid=0.0, treble=0.0)
 
 

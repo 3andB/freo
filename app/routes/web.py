@@ -4,7 +4,7 @@ import hmac
 import secrets
 import time
 
-from flask import Blueprint, flash, abort, redirect, render_template, request, session, url_for, jsonify, current_app
+from flask import Blueprint, flash, abort, redirect, render_template, request, session, url_for, jsonify, current_app, g
 from werkzeug.security import check_password_hash
 from werkzeug.security import generate_password_hash
 from sqlalchemy.exc import SQLAlchemyError
@@ -330,6 +330,14 @@ def page_security_headers(response):
             "default-src 'self'; img-src 'self' data:; style-src 'self'; "
             "script-src 'self'; media-src 'self' blob:; connect-src 'self'; "
             "base-uri 'self'; frame-ancestors 'none'")
+        if request.endpoint == 'web.player' or (request.endpoint in ('web.homepage', 'web.stations') and getattr(g, 'domain_station', None)):
+            response.headers['Content-Security-Policy'] = (
+                "default-src 'self'; img-src 'self' data: https:; style-src 'self' 'unsafe-inline'; "
+                "script-src 'self' https://securepubads.g.doubleclick.net https://pagead2.googlesyndication.com https://tpc.googlesyndication.com https://www.googletagservices.com; "
+                "frame-src https:; media-src 'self' blob:; connect-src 'self' https:; "
+                "base-uri 'self'; frame-ancestors 'none'; object-src 'none'")
+        if request.endpoint == 'listener_requests.page':
+            response.headers['Content-Security-Policy'] = response.headers['Content-Security-Policy'].replace("frame-ancestors 'none'", "frame-ancestors *")
         if request.endpoint == 'website.preview':
             response.headers['Content-Security-Policy'] = response.headers['Content-Security-Policy'].replace("frame-ancestors 'none'", "frame-ancestors 'self'")
         response.headers['X-Content-Type-Options'] = 'nosniff'

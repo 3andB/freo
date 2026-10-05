@@ -103,6 +103,9 @@ def programming_mutation_required(view):
 
 # Closed list: new administration endpoints cannot accidentally grant DJ powers.
 DJ_ENDPOINTS = {
+    'production.page', 'production.drafts', 'production.detail', 'production.action',
+    'production.preview', 'production.voices', 'production.models', 'production.voice_preview',
+    'listener_requests.inbox', 'listener_requests.load',
     'web.admin_home', 'web.admin_station_list', 'web.switch_station',
     'web.logout', 'web.first_setup', 'web.broadcast_snapshot',
     'web.admin_now',

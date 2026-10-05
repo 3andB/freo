@@ -201,7 +201,7 @@ def presentation(values=None, preview=False):
                url_for('station_settings.logo', slug=station.slug, v=station.logo.version) if station.logo else None)
         if values.get(f'channel_image_{station.id}'):
             art = image_url(values, f'channel_image_{station.id}', preview)
-        cards.append(dict(station=station, artwork=art, url=preferred_url(station),
+        cards.append(dict(station=station, merch_url=player_settings(station).get('merch_url', ''), artwork=art, url=preferred_url(station),
                           status='On air' if online else 'Off air' if online is False else 'Status unavailable',
                           online=online, state_url=url_for('player_experience.public_state', slug=station.public_slug or station.slug)))
     songs = artists = plays = 0
