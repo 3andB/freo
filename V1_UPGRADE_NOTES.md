@@ -157,6 +157,14 @@ those launch modes when preparing file-picker paths. The disposable VM tests use
 These are test harness settings, not application environment requirements.
 Both corrected file-picker/catalog workflows passed against native Chromium.
 
+Additional PostgreSQL regression fixtures now assert historical login-session,
+primary-administrator and station-location changes at their explicit revisions,
+then apply the current head before using current application models and handlers.
+This avoids mistaking later V1 columns for historical data-preservation failures.
+No migration or production upgrade implementation is changed.
+All 18 additional PostgreSQL cases passed after these fixture corrections; the
+30-round Chromium navigation-retention diagnostic also passed.
+
 Installed-service acceptance on the disposable Ubuntu 24.04 VM verified browser
 setup, two timer-provisioned stations, real ingest of generated audio, one shared
 underlying asset, and encoded 192 kbps MP3 output from both stations. The optional

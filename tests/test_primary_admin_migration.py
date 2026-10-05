@@ -68,8 +68,8 @@ def rows(source):
         con.close()
 
 
-def migrate(app):
-    result = app.test_cli_runner().invoke(args=['db', 'upgrade'])
+def migrate(app, revision='head'):
+    result = app.test_cli_runner().invoke(args=['db', 'upgrade', revision])
     assert result.exit_code == 0, result.output
 
 
@@ -85,9 +85,9 @@ def test_only_installer_primary_receives_grant_and_other_values_survive(installe
     for row in expected:
         if row['username'] == 'admin':
             row['installation_admin'] = True
-    migrate(app)
+    migrate(app, NEW_REVISION)
     assert rows(source) == expected
-    migrate(app)  # Alembic does not run the migration again.
+    migrate(app, NEW_REVISION)  # Alembic does not run the migration again.
     assert rows(source) == expected
     # The SQL itself is idempotent as well.
     module = importlib.import_module('migrations.versions.a64f09e2b731_primary_installation_admin')
@@ -97,6 +97,9 @@ def test_only_installer_primary_receives_grant_and_other_values_survive(installe
     assert rows(source) == expected
 
     if options.get('primary', True):
+        # Current login handlers require the later V1 columns. Keep their
+        # additions outside the historical account-preservation assertion.
+        migrate(app)
         client = app.test_client()
         client.get('/admin/login')
         with client.session_transaction() as session:
