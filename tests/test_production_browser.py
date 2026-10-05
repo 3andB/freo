@@ -14,6 +14,8 @@ BASE='/admin/stations/test-station/production'
 
 def test_record_in_browser_preview_and_save_to_station(booth,monkeypatch):
     app,driver,base,folder=booth
+    # IP-only HTTP installs lack randomUUID; retain real media APIs for recording.
+    driver.execute_cdp_cmd('Page.addScriptToEvaluateOnNewDocument', {'source': 'crypto.randomUUID = undefined;'})
     root=folder/'production';root.mkdir();app.config['FREO_PRODUCTION_ROOT']=str(root)
     monkeypatch.setattr('app.services.media.require_ingest_identity',lambda:None)
     monkeypatch.setattr(os,'chown',lambda *args:None)

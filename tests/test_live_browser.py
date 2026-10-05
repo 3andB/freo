@@ -55,6 +55,8 @@ def booth(app_fixture, monkeypatch, tmp_path, request):
     thread=threading.Thread(target=server.serve_forever,daemon=True);thread.start()
     profile=tempfile.mkdtemp(prefix='freo-browser-',dir='/tmp')
     options=Options();options.binary_location=os.environ.get('FREO_TEST_CHROME','/usr/bin/chromium-browser')
+    if 'eager_navigation' in request.fixturenames:
+        options.page_load_strategy = 'eager'
     if 'native_prompts' in request.fixturenames:
         # ChromeDriver otherwise auto-accepts beforeunload, even when the app
         # correctly requests a warning. Explicitly exercise the actual dialog.

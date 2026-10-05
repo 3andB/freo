@@ -155,6 +155,17 @@ gap. A show recording completed. This used a secure loopback browser context;
 public HTTPS/DNS and an external physical microphone remain separate acceptance
 requirements. No external AI key was configured or provider call made.
 
+HTTP browser integration found that listener requests, production actions and
+external player-ad adapters called `crypto.randomUUID()` directly, which is
+unavailable on an IP-only HTTP installation. They now share the existing secure
+`getRandomValues` UUID fallback in `app/static/uuid.js`. Ship that asset with the
+updated base/request templates and client scripts; the source installer already
+copies the complete application tree. Nine focused Chromium checks passed across
+HTTP/HTTPS setup, requests/embedding, ads and production. The iframe regression
+uses eager navigation to inspect nonce rejection before the no-fill timeout.
+Microphone capture still requires HTTPS or localhost, and ad frames still require
+HTTPS and retain their sandbox and nonce checks.
+
 ## Phase 2 — Track editor (5 October 2026)
 
 Phase 2 extends the existing media editor, request/decision system, and Liquidsoap

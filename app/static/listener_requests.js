@@ -19,7 +19,7 @@
       for (const track of data.tracks) {
         const li = document.createElement('li'), title = document.createElement('span'), button = document.createElement('button');
         title.textContent = track.title + ' — ' + track.artist; button.textContent = 'Request'; button.type = 'button';
-        const nonce = crypto.randomUUID();
+        const nonce = FreoUUID();
         button.addEventListener('click', async () => {
           button.disabled = true;
           try {

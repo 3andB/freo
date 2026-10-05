@@ -13,12 +13,18 @@ from tests.test_playlists import setup_playlist
 
 def test_public_embed_without_third_party_cookies_and_mobile(booth):
     app, driver, base, folder = booth
+    driver.execute_cdp_cmd('Page.addScriptToEvaluateOnNewDocument', {'source': 'crypto.randomUUID = undefined;'})
     with app.app_context():
         station = m.Station.query.filter_by(slug='test-station').one()
         station.request_settings = dict(r.DEFAULTS, enabled=True)
         db.session.commit()
     driver.execute_cdp_cmd('Network.setCookieControls', dict(enableThirdPartyCookieRestriction=True,
         disableThirdPartyCookieMetadata=True, disableThirdPartyCookieHeuristics=True))
+    # OOPIFs can have their own CDP target. Check HTTP-style API availability in
+    # the top-level widget too, before exercising its third-party embed.
+    driver.get(base + '/requests/test-station')
+    assert driver.execute_script('return typeof crypto.randomUUID') == 'undefined'
+    wait_text(driver, '#songs', 'Verified Test Track')
     def outer(environ, start_response):
         start_response('200 OK', [('Content-Type', 'text/html')])
         return [f'<html><body><iframe title="Request" src="{base}/requests/test-station" width="350" height="700"></iframe></body></html>'.encode()]

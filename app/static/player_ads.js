@@ -52,7 +52,7 @@
         image.onerror = () => {if (attempt === generation) clear();};
         image.src = variant.url;
       } else if (config.source === 'iframe') {
-        nonce = crypto.randomUUID();
+        nonce = FreoUUID();
         const url = new URL(config.iframe);
         url.searchParams.set('freo_placement', host.dataset.placement);
         url.searchParams.set('freo_nonce', nonce);
@@ -66,7 +66,7 @@
         timer = setTimeout(() => {if (attempt === generation) clear();}, 10000);
       } else if (config.source === 'google') {
         loadGoogle();
-        const target = document.createElement('div'); target.id = 'freo-ad-' + crypto.randomUUID();
+        const target = document.createElement('div'); target.id = 'freo-ad-' + FreoUUID();
         // GPT's own collapse-before-fetch mechanism keeps the layout empty.
         host.append(target);
         timer = setTimeout(() => {if (attempt === generation) clear();}, 10000);

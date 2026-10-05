@@ -35,4 +35,4 @@
 <button type="button" id="production-delete">Delete this production</button><h3>Generation history</h3><div id="production-history"></div>
 </section></div></div>
 {% endblock %}
-{% block scripts %}{{ super() }}<script defer src="{{ url_for('static',filename='production.js') }}"></script>{% endblock %}
+{% block scripts %}{{ super() }}<script defer src="{{ url_for('static',filename='production.js',v='v1-http') }}"></script>{% endblock %}

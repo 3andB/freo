@@ -7,6 +7,12 @@ from app.services import player
 from tests.test_live_browser import booth, app_fixture, wait_text
 from tests.test_station_settings_flags import png
 import hashlib
+import pytest
+
+
+@pytest.fixture
+def eager_navigation():
+    """Inspect pending ad frames before navigation waits for their timeout."""
 
 
 def seed_ads(app, source='image'):
@@ -55,16 +61,19 @@ def test_images_visual_modes_reduced_motion_and_audio_failure_isolation(booth):
     assert not driver.execute_script('return !!window.googletag')
 
 
-def test_iframe_fill_contract_rejects_spoofed_messages_and_times_out(booth):
+def test_iframe_fill_contract_rejects_spoofed_messages_and_times_out(booth, eager_navigation):
     app, driver, base, tmp = booth
+    driver.execute_cdp_cmd('Page.addScriptToEvaluateOnNewDocument', {'source': 'crypto.randomUUID = undefined;'})
     seed_ads(app, 'iframe')
     driver.execute_cdp_cmd('Network.enable', {})
     driver.execute_cdp_cmd('Network.setBlockedURLs', {'urls':['https://example.test/*']})
     driver.get(base+'/player/test-station')
-    wait_text(driver,'#recent-history','Verified Test Track')
+    WebDriverWait(driver, 5).until(lambda d: d.find_elements(By.CSS_SELECTOR, '.phase9-ad iframe'))
     assert not driver.find_element(By.CSS_SELECTOR,'.phase9-ad').is_displayed()
     driver.execute_script("window.postMessage({type:'freo-ad-status',status:'filled',placement:'ad_top',nonce:'fake',width:728,height:90},'*')")
     assert not driver.find_element(By.CSS_SELECTOR,'.phase9-ad').is_displayed()
+    assert driver.find_elements(By.CSS_SELECTOR, '.phase9-ad iframe')
+    wait_text(driver,'#recent-history','Verified Test Track')
     driver.find_element(By.ID,'play-button').click()
     WebDriverWait(driver, 8).until(lambda d: d.execute_script('return !document.getElementById("station-audio").paused'))
     WebDriverWait(driver, 15).until(lambda d: not d.find_elements(By.CSS_SELECTOR,'.phase9-ad iframe'))
@@ -74,6 +83,7 @@ def test_iframe_fill_contract_rejects_spoofed_messages_and_times_out(booth):
 
 def test_google_adapter_fill_empty_and_public_document_boundary(booth):
     app, driver, base, tmp = booth
+    driver.execute_cdp_cmd('Page.addScriptToEvaluateOnNewDocument', {'source': 'crypto.randomUUID = undefined;'})
     seed_ads(app, 'google')
     driver.execute_cdp_cmd('Network.enable', {})
     driver.execute_cdp_cmd('Network.setBlockedURLs', {'urls':['https://securepubads.g.doubleclick.net/*']})
