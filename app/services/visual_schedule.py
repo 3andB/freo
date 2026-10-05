@@ -65,7 +65,7 @@ def source(station, ref, *, allow_show=True, allow_block=False, allow_legacy=Fal
     elif kind == 'song':
         row = tracks_for(station.id).filter_by(id=identifier, enabled=True, ingest_status='accepted', decommissioned_at=None).first()
         if row:
-            return dict(kind=kind, id=row.id, name=f'{row.title} — {row.artist}', duration=max(1, (row.duration_ms or 180000)//1000))
+            return dict(kind=kind, id=row.id, name=f'{row.title} — {row.artist}', duration=max(1, (row.playback_duration_ms or 180000)//1000))
     elif kind == 'category':
         row = MediaCategory.query.filter_by(id=identifier, station_id=station.id, enabled=True).first()
     elif kind == 'playlist':
@@ -127,7 +127,7 @@ def search_sources(station, kind, query='', page=1):
             if kind=='imaging':item['audition']=f'/admin/stations/{station.slug}/schedule-studio/audio/{row.id}'
             result.append(item)
         else:
-            item = dict(kind='song',id=row.id,name=f'{row.title} — {row.artist}',duration=max(1,(row.duration_ms or 180000)//1000)) if kind=='song' else source(station,dict(kind=kind,id=row.id),allow_block=True)
+            item = dict(kind='song',id=row.id,name=f'{row.title} — {row.artist}',duration=max(1,(row.playback_duration_ms or 180000)//1000)) if kind=='song' else source(station,dict(kind=kind,id=row.id),allow_block=True)
             if kind == 'song':
                 item['identifier'] = row.uuid
                 item['audition']=f'/admin/stations/{station.slug}/media/{row.uuid}/audition'

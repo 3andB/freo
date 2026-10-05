@@ -1,4 +1,6 @@
 """Non-root, single-process refiller with per-station error isolation."""
+from app.services.track_audio import decision_duration_ms, prepare_snapshot
+
 import logging
 import os
 from pathlib import Path
@@ -136,6 +138,8 @@ def refill_station(slug, reader, target_depth=2):
                 reader.starved_until[slug] = time.monotonic() + 30
             break
         try:
+            prepare_snapshot(decision)
+            db.session.commit()
             request_id = push_decision(decision)
             decision.status = 'queued'
             decision.liquidsoap_request_id = request_id
@@ -234,7 +238,7 @@ def reconcile_requests(slug):
         # absence from an incomplete socket inventory.
         if not reason and complete_inventory and audio and decision.started_at and decision.liquidsoap_request_id not in live:
             began = decision.started_at.replace(tzinfo=decision.started_at.tzinfo or timezone.utc)
-            if now >= began + timedelta(milliseconds=audio.duration_ms,seconds=120):
+            if now >= began + timedelta(milliseconds=decision_duration_ms(decision),seconds=120):
                 reason = 'missing_end_confirmation'
         if not reason: continue
         item = decision.block_item_execution
@@ -341,7 +345,7 @@ def process_block(station, reader, now=None):
     if pending and not queued:
         item = prepare_next(execution, now)
         if item:
-            decision = item.selection_decision; decision.status = 'submitting'; db.session.commit()
+            decision = item.selection_decision; prepare_snapshot(decision); decision.status = 'submitting'; db.session.commit()
             try:
                 request_id = push_decision(decision)
                 decision.status = 'queued'; decision.liquidsoap_request_id = request_id; decision.socket_identity = socket_identity(station.slug)
@@ -359,7 +363,7 @@ def process_block(station, reader, now=None):
     # Timed executions require END evidence. A missing END eventually fails
     # visibly; elapsed duration alone cannot prove a paused song completed.
     if started and not pending and not queued and all(i.state in ('COMPLETED','SKIPPED','FAILED') or i is started for i in execution.items):
-        duration_ms = (started.track or started.imaging_asset).duration_ms
+        duration_ms = decision_duration_ms(started.selection_decision)
         began = started.started_at.replace(tzinfo=started.started_at.tzinfo or timezone.utc)
         active = active_ids(station.slug)
         if now >= began + timedelta(milliseconds=max(0, duration_ms-500),seconds=120 if execution.timed_event_occurrence else 0) and started.selection_decision.liquidsoap_request_id not in active:
@@ -415,6 +419,7 @@ def process_manual(station, reader):
                 continue
         if queue_depth(slug) >= 20:
             break
+        prepare_snapshot(row)
         row.status = 'submitting'
         db.session.commit()
         try:
@@ -459,6 +464,7 @@ def process_manual(station, reader):
                 else:
                     # Persist the in-flight target before the destructive skip.
                     # A failed submit is terminal so a retry cannot skip a second item.
+                    prepare_snapshot(target)
                     target.status='submitting'
                     db.session.commit()
                     if not idle_start:
@@ -547,6 +553,7 @@ def process_deck_command(station, command, identity, reader=None):
             raise ValueError('Prepared song is no longer available')
         # Persist intent before submitting. An uncertain socket result is terminal;
         # a browser retry cannot apply the same destructive operation twice.
+        prepare_snapshot(target)
         target.status='submitting';db.session.commit()
         # Hold the same lock as Cue edits through the socket operation. A New,
         # Load, removal or disable committed before this point cancels the take.
@@ -624,6 +631,7 @@ def _queue_event(occurrence, slug, now):
         occurrence.queued_at = occurrence.queued_at or now
         db.session.commit()
         return
+    prepare_snapshot(decision)
     decision.status = 'submitting'
     db.session.commit()
     request_id = push_decision(decision)
@@ -822,7 +830,7 @@ def process_timed_events(station, reader, now=None):
         elif queue_depth(station.slug) == 0 or (event.timing_mode == 'SOFT' and automatic_future_only(station)):
             # SOFT and NON_INTERRUPTING never cut current content. SOFT may use
             # its early window; NON_INTERRUPTING waits until target time.
-            duration_ms = current.track.duration_ms if current and current.track else current.imaging_asset.duration_ms if current and current.imaging_asset else 0
+            duration_ms = decision_duration_ms(current) if current and (current.track or current.imaging_asset) else 0
             started = current.started_at.replace(tzinfo=current.started_at.tzinfo or timezone.utc) if current and current.started_at else now
             expected_end = started + timedelta(milliseconds=duration_ms)
             # Reserve the next boundary even for songs longer than the late allowance.
@@ -871,7 +879,7 @@ def prepare_dj_return(station, reader, mixer, cue_active=False):
     if eligible and channel_queue(slug, decks[0].upper()):
         eligible = False  # REPEAT already owns this deck's next boundary.
         row = None
-    remaining = (row.track.duration_ms/1000-mixer.get(decks[0]+'_elapsed',0)) if row and row.track else None
+    remaining = (decision_duration_ms(row)/1000-mixer.get(decks[0]+'_elapsed',0)) if row and row.track else None
     now = datetime.now(timezone.utc)
     # Duration metadata can end a few frames before the rendered EOF. Keep
     # renewing while this same deck is audible; only the engine owns its end.
@@ -1001,7 +1009,7 @@ def continuity_depth(station, now=None):
     if asset is None:
         return 0
     now = now or datetime.now(timezone.utc)
-    end = row.started_at.replace(tzinfo=row.started_at.tzinfo or timezone.utc)+timedelta(milliseconds=asset.duration_ms)
+    end = row.started_at.replace(tzinfo=row.started_at.tzinfo or timezone.utc)+timedelta(milliseconds=decision_duration_ms(row))
     return int(end <= now+timedelta(seconds=5))
 
 

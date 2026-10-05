@@ -278,7 +278,7 @@ def edit_track(slug, track_uuid):
             number=int(value)
             if not minimum<=number<=maximum:raise MediaValidationError(f'Invalid {name.replace("_"," ")}')
             return number
-        track.cue_in_ms=bounded_int('cue_in_ms',0,track.duration_ms);track.cue_out_ms=bounded_int('cue_out_ms',0,track.duration_ms);track.segue_ms=bounded_int('segue_ms',0,60000)
+        track.segue_ms=bounded_int('segue_ms',0,60000)
         track.scheduling_restrictions={'notes':normalize(request.form.get('restriction_notes'),500,'')}
         from app.services.music_catalog import tag_for
         if 'tags' in request.form:

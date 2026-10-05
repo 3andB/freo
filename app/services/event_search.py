@@ -21,16 +21,16 @@ def search(station, query='', kind='ALL', page=1, playlist_id=None):
         total=playlists.count()
         if offset < total:
             page_rows = playlists.offset(offset).limit(size+1).all()
-            counts = {row[0]:row[1:] for row in tracks_for(station.id).filter_by(enabled=True,ingest_status='accepted',decommissioned_at=None).join(PlaylistItem).filter(PlaylistItem.playlist_id.in_([p.id for p in page_rows])).with_entities(PlaylistItem.playlist_id,func.count(Track.id),func.sum(Track.duration_ms),func.max(Track.duration_ms)).group_by(PlaylistItem.playlist_id)}
+            counts = {row[0]:row[1:] for row in tracks_for(station.id).filter_by(enabled=True,ingest_status='accepted',decommissioned_at=None).join(PlaylistItem).filter(PlaylistItem.playlist_id.in_([p.id for p in page_rows])).with_entities(PlaylistItem.playlist_id,func.count(Track.id),func.sum(Track.playback_duration_ms),func.max(Track.playback_duration_ms)).group_by(PlaylistItem.playlist_id)}
             for row in page_rows:
                 count, duration, longest = counts.get(row.id,(0,0,0))
                 from app.services.playlists import playable_tracks, leader_track
                 if row.smart_enabled:
                     matches=playable_tracks(row,station.id)
-                    count=len(matches);duration=sum(t.duration_ms for t in matches);longest=max((t.duration_ms for t in matches),default=0)
+                    count=len(matches);duration=sum(t.playback_duration_ms for t in matches);longest=max((t.playback_duration_ms for t in matches),default=0)
                 leader=leader_track(row)
                 if leader:
-                    duration+=leader.duration_ms;longest+=leader.duration_ms
+                    duration+=leader.playback_duration_ms;longest+=leader.playback_duration_ms
                 result.append(dict(kind='PLAYLIST',identifier=str(row.id),name=row.name,purpose=row.purpose,system=bool(row.system_key),count=count,duration=duration//1000,one_duration=longest//1000,playable=bool(count),unavailable_reason='' if count else 'No enabled audio'))
         offset=max(0,offset-total)
     if kind == 'EVENT_BLOCK':
@@ -53,5 +53,5 @@ def search(station, query='', kind='ALL', page=1, playlist_id=None):
                 rows=rows.join(PlaylistItem).filter(PlaylistItem.playlist_id==owned.id)
         rows=rows.filter(or_(Track.title.ilike(pattern,escape='\\'),Track.artist.ilike(pattern,escape='\\'),Track.album.ilike(pattern,escape='\\'),Track.original_filename.ilike(pattern,escape='\\'),Track.cart_code.ilike(pattern,escape='\\'),Track.audio_subtype.ilike(pattern,escape='\\'),Track.tags.any(db.and_(MusicTag.station_id==station.id,MusicTag.name.ilike(pattern,escape='\\')))))
         for row in rows.order_by(case((Track.title==query,0),(Track.cart_code==query,0),else_=1),Track.title,Track.id).offset(offset).limit(size+1-len(result)):
-            result.append(dict(kind='TRACK',identifier=row.uuid,name=row.title,artist=row.artist,album=row.album,purpose=row.audio_kind,subtype=row.audio_subtype,cart_code=row.cart_code,duration=row.duration_ms//1000,playable=playable(row,station.id),unavailable_reason='' if playable(row,station.id) else 'Disabled for broadcast',audition=f'/admin/stations/{station.slug}/media/{row.uuid}/audition'))
+            result.append(dict(kind='TRACK',identifier=row.uuid,name=row.title,artist=row.artist,album=row.album,purpose=row.audio_kind,subtype=row.audio_subtype,cart_code=row.cart_code,duration=row.playback_duration_ms//1000,playable=playable(row,station.id),unavailable_reason='' if playable(row,station.id) else 'Disabled for broadcast',audition=f'/admin/stations/{station.slug}/media/{row.uuid}/audition'))
     return dict(items=result[:size],more=len(result)>size,page=page)

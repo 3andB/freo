@@ -76,7 +76,7 @@ def describe(station, mixer=None):
         allowed = bool(track and playable(track, station.id))
         result['entries'].append(dict(id=entry['id'], uuid=track.uuid if allowed else None,
             title=track.title if track else 'Unavailable song', artist=track.artist if track else '',
-            duration_ms=track.duration_ms if track else 0, available=allowed,
+            duration_ms=track.playback_duration_ms if track else 0, available=allowed,
             decks=deck_entries.get(entry['id'], [])))
     return result
 

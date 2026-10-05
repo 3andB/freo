@@ -2,6 +2,7 @@ from datetime import datetime, timezone
 from uuid import uuid4
 
 from sqlalchemy import event, select, text, inspect
+from sqlalchemy.ext.hybrid import hybrid_property
 from app.services import copyright as copyright_ids
 from app.extensions import db
 
@@ -306,6 +307,27 @@ class Track(db.Model):
     true_peak_db = db.Column(db.Float)
     cue_in_ms = db.Column(db.Integer)
     cue_out_ms = db.Column(db.Integer)
+    audio_edit_enabled = db.Column(db.Boolean, nullable=False, default=False, server_default=db.false())
+    audio_edit_revision = db.Column(db.Integer, nullable=False, default=0, server_default='0')
+    fade_in_ms = db.Column(db.Integer, nullable=False, default=0, server_default='0')
+    fade_out_ms = db.Column(db.Integer, nullable=False, default=0, server_default='0')
+    gain_trim_db = db.Column(db.Float)
+
+    @hybrid_property
+    def playback_duration_ms(self):
+        from app.services.track_audio import duration_ms
+        return duration_ms(self)
+
+    @playback_duration_ms.expression
+    def playback_duration_ms(cls):
+        start = db.func.coalesce(cls.cue_in_ms, 0)
+        end = db.func.coalesce(cls.cue_out_ms, cls.duration_ms)
+        valid = db.and_(cls.audio_edit_enabled.is_(True), start >= 0, end <= cls.duration_ms,
+                        end > start, cls.fade_in_ms >= 0, cls.fade_out_ms >= 0,
+                        cls.fade_in_ms + cls.fade_out_ms <= end - start,
+                        db.func.coalesce(cls.gain_trim_db, 0).between(-12, 12))
+        return db.case((valid, end - start), else_=cls.duration_ms)
+
     segue_ms = db.Column(db.Integer)
     waveform = db.Column(db.JSON, nullable=False, default=list, server_default='[]')
     preview_key = db.Column(db.String(50))
@@ -510,7 +532,7 @@ class EventBlock(db.Model):
     items = db.relationship('EventBlockItem', back_populates='block', order_by='EventBlockItem.position', cascade='all, delete-orphan')
     @property
     def duration_ms(self):
-        return sum((i.track or i.imaging_asset).duration_ms for i in self.items if i.enabled and (i.track or i.imaging_asset))
+        return sum(i.track.playback_duration_ms if i.track else i.imaging_asset.duration_ms for i in self.items if i.enabled and (i.track or i.imaging_asset))
 
 
 class EventBlockItem(db.Model):
@@ -673,6 +695,7 @@ class SelectionDecision(db.Model):
     cart_position = db.Column(db.Integer)
     programming_signature = db.Column(db.String(64))
     cursor_checkpoint = db.Column(db.JSON)
+    audio_snapshot = db.Column(db.JSON)
     cart_mode = db.Column(db.String(8), nullable=False, default='OVER')
     duck_percent = db.Column(db.Integer, nullable=False, default=50)
     admin_user_id = db.Column(db.Integer, db.ForeignKey('admin_users.id', ondelete='SET NULL'))
@@ -917,6 +940,7 @@ class EventBlockItemExecution(db.Model):
         db.CheckConstraint("(item_type='TRACK' AND track_id IS NOT NULL AND imaging_asset_id IS NULL) OR (item_type='IMAGING_ASSET' AND imaging_asset_id IS NOT NULL AND track_id IS NULL)", name='ck_block_item_execution_target'))
     id = db.Column(db.Integer, primary_key=True)
     block_execution_id = db.Column(db.Integer, db.ForeignKey('event_block_executions.id', ondelete='CASCADE'), nullable=False, index=True)
+    audio_snapshot = db.Column(db.JSON)
     event_block_item_id = db.Column(db.Integer, db.ForeignKey('event_block_items.id', ondelete='SET NULL'))
     position = db.Column(db.Integer, nullable=False); item_type = db.Column(db.String(20), nullable=False)
     track_id = db.Column(db.Integer, db.ForeignKey('tracks.id', ondelete='RESTRICT')); imaging_asset_id = db.Column(db.Integer, db.ForeignKey('imaging_assets.id', ondelete='RESTRICT'))
@@ -1039,7 +1063,7 @@ class Playlist(db.Model):
 
     @property
     def duration_ms(self):
-        return sum(item.track.duration_ms or 0 for item in self.items)
+        return sum(item.track.playback_duration_ms or 0 for item in self.items)
 
     @property
     def enabled(self):

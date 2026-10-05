@@ -356,13 +356,14 @@ def request_abort_block(station, user, execution_id):
 
 
 def safe_item(row):
+    from app.services.track_audio import decision_duration_ms
     source = 'CART' if row.playback_bus == 'CART' else 'BLOCK' if row.selection_method == 'event_block' else 'EVENT' if row.selection_method == 'timed_event' else 'CUE' if row.selection_method == 'cue_auto' else 'MANUAL' if row.admin_user_id else 'AUTO'
     started_at = row.started_at.replace(tzinfo=row.started_at.tzinfo or timezone.utc).isoformat() if row.started_at else None
     if row.track:
         return dict(decision_id=row.id, kind='track', title=row.track.title,
                     artist=row.track.artist,album=row.track.album,category=row.category.name if row.category else None,source=source,
                     started_at=started_at,
-                    duration_ms=row.track.duration_ms, uuid=row.track.uuid,
+                    duration_ms=decision_duration_ms(row), uuid=row.track.uuid,
                     bpm=row.track.bpm, genre=row.track.genre,
                     year=row.track.release_year, loudness_lufs=row.track.loudness_lufs,
                     album_id=row.track.album_id, bitrate_kbps=row.track.bitrate_kbps,

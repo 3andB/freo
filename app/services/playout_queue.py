@@ -25,7 +25,7 @@ def _command(slug, command):
     if '\n' in command or '\r' in command or len(command) > 262144:
         raise ValueError('Invalid Liquidsoap command')
     media_root = re.escape(str(LocalMediaStorage().root))
-    music_pattern = rf'(?:freo_queue\.(?:push|insert)|freo_(?:a|b|cart|event)\.push) annotate:freo_decision=(?P<decision>[1-9][0-9]*)(?:,freo_gain="-?[0-9]{{1,2}}\.[0-9]{{3}} dB")?:{media_root}/(?P<owner>[a-z0-9](?:[a-z0-9-]{{0,62}}[a-z0-9])?)/originals/(?P<key>[0-9a-f]{{32}}\.(?:mp3|wav|m4a|flac))'
+    music_pattern = rf'(?:freo_queue\.(?:push|insert)|freo_(?:a|b|cart|event)\.push) annotate:freo_decision=(?P<decision>[1-9][0-9]*)(?:,freo_gain="-?[0-9]{{1,2}}\.[0-9]{{3}} dB")?(?:,liq_cue_in="[0-9]+\.[0-9]{{3}}",liq_cue_out="[0-9]+\.[0-9]{{3}}",freo_fade_in="[0-9]+\.[0-9]{{3}}",freo_fade_out="[0-9]+\.[0-9]{{3}}")?:{media_root}/(?P<owner>[a-z0-9](?:[a-z0-9-]{{0,62}}[a-z0-9])?)/originals/(?P<key>[0-9a-f]{{32}}\.(?:mp3|wav|m4a|flac))'
     imaging_pattern = rf'(?:freo_queue\.(?:push|insert)|freo_(?:a|b|cart|event)\.push) annotate:freo_decision=[1-9][0-9]*,title="[A-Za-z0-9 ._-]{{1,120}}",artist="[A-Za-z0-9 ._-]{{1,120}}":{media_root}/{re.escape(slug)}/imaging/[0-9a-f]{{32}}\.mp3'
     batch = command.startswith(('freo_queue.insert_many ','freo_event.load_many '))
     if batch:
@@ -182,9 +182,10 @@ def push_decision(decision, storage=None, *, prepare_only=False):
         artist = _metadata(decision.station.name, slug)
         command = f'{queue_name}.{operation} annotate:freo_decision={decision.id},title="{title}",artist="{artist}":{path}'
     else:
-        from app.services.loudness import gain_for
-        gain = gain_for(track, decision.station)['db']
-        command = f'{queue_name}.{operation} annotate:freo_decision={decision.id},freo_gain="{gain:.3f} dB":{path}'
+        from app.services.track_audio import prepare_snapshot, snapshot_annotations
+        saved = prepare_snapshot(decision)
+        gain = saved['gain_db']
+        command = f'{queue_name}.{operation} annotate:freo_decision={decision.id},freo_gain="{gain:.3f} dB"{snapshot_annotations(saved)}:{path}'
     if prepare_only: return command.split(' ',1)[1]
     response = _command(slug, command)
     if not REQUEST_ID.fullmatch(response):

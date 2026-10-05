@@ -5,6 +5,7 @@ from app.models import (ChannelSchedule, ScheduleTransition, SelectionDecision,
                         TimedEventOccurrence, EventBlockExecution, LiveControlCommand, Clock)
 from app.services.visual_schedule import resolve_visual, select_visual
 from app.services.media_storage import LocalMediaStorage
+from app.services.track_audio import prepare_snapshot
 from app.services.playout_queue import (_command, push_decision, socket_identity,
                                        queued_ids, active_ids, request_decision_id, remove_future)
 
@@ -54,7 +55,7 @@ def process_transition(station, reader):
             else:
                 decision=select_visual(station,resolved,LocalMediaStorage(),datetime.now(timezone.utc))
             if not decision:raise ValueError('Selected content and default playlist are unavailable. Current playback retained.')
-            db.session.flush();command.decision_id=decision.id;command.state='PREPARING';db.session.commit()
+            db.session.flush();prepare_snapshot(decision);command.decision_id=decision.id;command.state='PREPARING';db.session.commit()
         decision=command.decision
         if command.state=='PREPARING':
             # Recover an accepted push if a worker died before saving its request ID.
@@ -63,6 +64,8 @@ def process_transition(station, reader):
                     if request_decision_id(station.slug,request_id)==decision.id:
                         decision.liquidsoap_request_id=request_id;break
                 if decision.liquidsoap_request_id is None:
+                    prepare_snapshot(decision)
+                    db.session.commit()
                     decision.liquidsoap_request_id=push_decision(decision)
                 decision.socket_identity=socket_identity(station.slug);decision.status='queued';db.session.commit()
             # Commit intent before mutation; token makes replay safe inside the engine.

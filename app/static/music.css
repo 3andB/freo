@@ -119,3 +119,4 @@ html:has(#music-player:not([hidden])){scroll-padding-bottom:var(--music-preview-
 #playlist-separation label{display:grid;gap:6px}
 #playlist-form details .playlist-fields{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(180px,100%),1fr));gap:16px}
 #playlist-form label:has(>input[type=checkbox]){flex-direction:row;align-items:flex-start}
+.audio-edit-fields{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px}.audio-edit-fields input{width:100%;box-sizing:border-box}#audio-edits fieldset{border:0;padding:0;min-width:0}.audio-edit-overlay{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}.audio-edit-marker{position:absolute;top:0;z-index:2;transform:translateX(-50%);max-width:65px;padding:4px;font-size:11px;touch-action:none}.audio-edit-marker.fade-marker{top:65px}.waveform-wrap{margin-left:34px;margin-right:34px}

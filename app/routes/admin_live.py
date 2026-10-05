@@ -70,7 +70,7 @@ def song_search(slug):
         query=query.filter(or_(Track.title.ilike(pattern,escape='\\'),Track.artist.ilike(pattern,escape='\\'),Track.album.ilike(pattern,escape='\\')))
     offset = max(0, min(request.args.get('offset', 0, type=int), 100000))
     tracks=query.order_by(Track.artist,Track.title,Track.id).offset(offset).limit(51).all()
-    songs = [{'uuid':x.uuid,'title':x.title,'artist':x.artist,'album':x.album,'bpm':x.bpm,'duration_ms':x.duration_ms,
+    songs = [{'uuid':x.uuid,'title':x.title,'artist':x.artist,'album':x.album,'bpm':x.bpm,'duration_ms':x.playback_duration_ms,
               'artwork': url_for('admin_media.album_artwork', slug=station.slug, album_id=x.catalog_album.id) if x.catalog_album and x.catalog_album.artwork_key else None} for x in tracks[:50]]
     return jsonify(dict(songs=songs, has_more=len(tracks)>50)) if request.args.get('paged') == '1' else jsonify(songs)
 

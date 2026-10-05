@@ -44,7 +44,7 @@ def detail(slug, identifier):
     for position, track in enumerate(members(row), 1):
         if available(track, station.id):
             song = dict(uuid=track.uuid, title=track.title, artist=track.artist, album=track.album,
-                        duration_ms=track.duration_ms, playable=playable(track, station.id), gain=gain_for(track, station))
+                        duration_ms=track.playback_duration_ms, playable=playable(track, station.id), gain=gain_for(track, station))
             if track.ingest_status == 'accepted' and not track.decommissioned_at:
                 song['audition'] = url_for('admin_media.audition', slug=station.slug, track_uuid=track.uuid)
         else:

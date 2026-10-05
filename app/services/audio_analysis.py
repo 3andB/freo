@@ -20,8 +20,8 @@ def analyze_song(song, storage=None, timeout=120):
         song.loudness_lufs, song.true_peak_db = loudness, peak
         starts=[float(x) for x in re.findall(r'silence_end: ([0-9.]+)',result.stderr)]
         ends=[float(x) for x in re.findall(r'silence_start: ([0-9.]+)',result.stderr)]
-        if song.cue_in_ms is None: song.cue_in_ms=round(starts[0]*1000) if starts and starts[0]<10 else 0
-        if song.cue_out_ms is None: song.cue_out_ms=round(ends[-1]*1000) if ends and ends[-1]>song.duration_ms/1000-10 else song.duration_ms
+        if not song.audio_edit_enabled and song.cue_in_ms is None: song.cue_in_ms=round(starts[0]*1000) if starts and starts[0]<10 else 0
+        if not song.audio_edit_enabled and song.cue_out_ms is None: song.cue_out_ms=round(ends[-1]*1000) if ends and ends[-1]>song.duration_ms/1000-10 else song.duration_ms
         try: song.bpm = _estimate_bpm(path,min(timeout,60))
         except (OSError,subprocess.SubprocessError,ValueError): pass
         try: song.waveform = waveform(path, song.duration_ms, timeout)

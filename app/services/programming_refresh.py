@@ -52,6 +52,8 @@ def signature(station,now=None):
     tracks=db.session.query(m.Track.id,m.Track.enabled,m.Track.decommissioned_at,m.Track.ingest_status,m.Track.storage_key,
         m.Track.artist,m.Track.title,m.Track.duration_ms,m.Track.loudness_lufs,m.Track.true_peak_db,
         m.Track.genre,m.Track.bpm,m.Track.release_year,m.Track.album,
+        m.Track.audio_edit_enabled,m.Track.audio_edit_revision,m.Track.cue_in_ms,m.Track.cue_out_ms,
+        m.Track.fade_in_ms,m.Track.fade_out_ms,m.Track.gain_trim_db,m.Track.analysis_status,
         m.Track.audio_kind,m.Track.artist_id,m.Track.album_id,m.Track.disc_number,m.Track.track_number).filter(track_scope(station.id),db.or_(
             visual_scope,
             m.Track.id.in_(select(m.Playlist.leader_track_id).where(m.Playlist.station_id==station.id)),

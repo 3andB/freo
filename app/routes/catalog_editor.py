@@ -43,8 +43,10 @@ def availability_data(song):
 
 
 def state(song, *, include_waveform=True):
+    from app.services.track_audio import state as audio_state
+    station = station_or_404(context_slug(song), require_enabled=False)
     eligible = song.enabled and not song.decommissioned_at and any(c.enabled for c in song.categories)
-    return dict(availability=availability_data(song), uuid=song.uuid, audio_kind=song.audio_kind, audio_subtype=song.audio_subtype, cart_code=song.cart_code, isrc=song.isrc, title=song.title, artist=song.artist, album=song.album, track_number=song.track_number, disc_number=song.disc_number, release_year=song.release_year, artist_id=song.artist_id, album_id=song.album_id, album_artist_id=song.catalog_album.artist_id if song.catalog_album else None, album_artist=song.album_artist,
+    return dict(audio=audio_state(song, station), availability=availability_data(song), uuid=song.uuid, audio_kind=song.audio_kind, audio_subtype=song.audio_subtype, cart_code=song.cart_code, isrc=song.isrc, title=song.title, artist=song.artist, album=song.album, track_number=song.track_number, disc_number=song.disc_number, release_year=song.release_year, artist_id=song.artist_id, album_id=song.album_id, album_artist_id=song.catalog_album.artist_id if song.catalog_album else None, album_artist=song.album_artist,
                 enabled=song.enabled, analysis=song.analysis_status, error=song.analysis_error,
                 processing_requested=song.analysis_requested, **({'waveform':song.waveform} if include_waveform else {}), cover=cover_url(song),
                 tags=[t.id for t in song.tags], categories=[c.id for c in song.categories],
@@ -111,6 +113,37 @@ def song(slug,identifier):
         except (ValueError,TypeError,IntegrityError) as error:
             db.session.rollback();return jsonify(message=str(error) if not isinstance(error,IntegrityError) else 'Catalog changed. Please try again.'),409
     response=jsonify(state(track));response.headers['Cache-Control']='private, no-store';return response
+
+
+@catalog_editor.post('/admin/api/stations/<slug>/song/<identifier>/audio')
+@media_mutation_required
+def save_audio(slug, identifier):
+    from sqlalchemy import update
+    from app.services.track_audio import validate
+    station = station_or_404(slug, require_enabled=False)
+    track = tracks_for(station.id).filter_by(uuid=identifier, deleted_at=None).first_or_404()
+    if track.decommissioned_at:
+        return jsonify(message='This song is decommissioned'), 409
+    try:
+        data = json.loads(request.form.get('data', '{}'))
+        if not isinstance(data, dict) or type(data.get('revision')) is not int or not 0 <= data['revision'] < 2147483647:
+            raise ValueError('An audio revision is required')
+        values = validate(data, track.duration_ms)
+        changed = db.session.execute(update(Track).where(
+            Track.id == track.id, Track.audio_edit_revision == data['revision'],
+            Track.deleted_at.is_(None), Track.decommissioned_at.is_(None)
+        ).values(**values, audio_edit_enabled=True, audio_edit_revision=data['revision'] + 1))
+        if not changed.rowcount:
+            db.session.rollback()
+            return jsonify(message='Audio settings changed. Reload the saved settings before saving again.'), 409
+        audit('track_audio_updated', user_id=current_admin().id, station_id=station.id,
+              target_id=track.uuid, summary='Cue points, fades and gain trim saved')
+        db.session.commit()
+        db.session.refresh(track)
+        return jsonify(state(track))
+    except ValueError as error:
+        db.session.rollback()
+        return jsonify(message=str(error)), 400
 
 
 @catalog_editor.post('/admin/api/stations/<slug>/artwork')

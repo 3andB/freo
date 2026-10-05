@@ -1,4 +1,6 @@
 """Station-local event definitions, durable occurrences and playback snapshots."""
+from app.services.track_audio import duration_ms as audio_duration_ms
+
 import calendar
 import uuid
 from datetime import date, datetime, timedelta, timezone
@@ -371,12 +373,12 @@ def recurrence_summary(event):
 def estimated_duration(event):
     if event.playlist:
         from app.services.playlists import playable_tracks, leader_track
-        durations=[t.duration_ms for t in playable_tracks(event.playlist,event.station_id)]
+        durations=[audio_duration_ms(t) for t in playable_tracks(event.playlist,event.station_id)]
         leader=leader_track(event.playlist)
-        leader_duration=(leader.duration_ms or 0) if leader else 0
+        leader_duration=(audio_duration_ms(leader) or 0) if leader else 0
         return (leader_duration + (sum(durations) if event.playlist_playback=='ALL' else max(durations,default=0)))/1000
     target=event.track or event.imaging_asset or event.event_block
-    return target.duration_ms/1000 if target else 0
+    return audio_duration_ms(target)/1000 if target else 0
 
 
 def conflict_warnings(event):

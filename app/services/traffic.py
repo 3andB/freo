@@ -1,4 +1,6 @@
 """Deterministic traffic planning, EventBlock materialization, and as-run reconciliation."""
+from app.services.track_audio import duration_ms as audio_duration_ms
+
 import re, uuid
 from collections import defaultdict
 from datetime import datetime, time, timezone
@@ -93,9 +95,9 @@ def generate_log(code,date):
             if scheduled>=requested or not creatives or used[(stop.id,'campaign',campaign.id)]: continue
             existing=TrafficPlacement.query.filter_by(traffic_log_id=log.id,traffic_stopset_id=stop.id).all()
             if stop.max_spots and len(existing)>=stop.max_spots: continue
-            creative=creatives[scheduled%len(creatives)]; duration=creative.audio.duration_ms/1000
-            fixed=sum(i.audio.duration_ms/1000 for i in stop.template_items if i.audio)
-            placed=sum(p.creative.audio.duration_ms/1000 for p in existing)
+            creative=creatives[scheduled%len(creatives)]; duration=audio_duration_ms(creative.audio)/1000
+            fixed=sum(audio_duration_ms(i.audio)/1000 for i in stop.template_items if i.audio)
+            placed=sum(audio_duration_ms(p.creative.audio)/1000 for p in existing)
             when=_instant(station,date,stop.local_time)
             prior=last.get(campaign.id)
             if prior and (when-prior).total_seconds()<rule.minimum_separation_seconds: continue
@@ -153,8 +155,8 @@ def _editable(log):
 
 def _stop_capacity(log,stopset,exclude=None):
     rows=[p for p in log.placements if p.traffic_stopset_id==stopset.id and p.id!=(exclude.id if exclude else None) and p.status!='CANCELLED']
-    fixed=sum(i.audio.duration_ms for i in stopset.template_items if i.audio)/1000
-    used=sum(p.creative.audio.duration_ms for p in rows)/1000
+    fixed=sum(audio_duration_ms(i.audio) for i in stopset.template_items if i.audio)/1000
+    used=sum(audio_duration_ms(p.creative.audio) for p in rows)/1000
     return rows,fixed+used
 
 def _validate_draft_placement(log,stopset,creative,exclude=None):
@@ -170,7 +172,7 @@ def _validate_draft_placement(log,stopset,creative,exclude=None):
     if any(p.campaign_id==campaign.id for p in rows): raise ValueError('Campaign already has a placement in this stopset')
     slots=sum(i.item_type=='COMMERCIAL_SLOT' for i in stopset.template_items)
     if len(rows)>=slots or stopset.max_spots and len(rows)>=stopset.max_spots: raise ValueError('Stopset has no remaining commercial inventory')
-    if used+creative.audio.duration_ms/1000>stopset.capacity_seconds: raise ValueError('Placement does not fit stopset capacity')
+    if used+audio_duration_ms(creative.audio)/1000>stopset.capacity_seconds: raise ValueError('Placement does not fit stopset capacity')
     when=_instant(log.station,log.log_date,stopset.local_time)
     minimum=max(r.minimum_separation_seconds for r in rules)
     for p in log.placements:

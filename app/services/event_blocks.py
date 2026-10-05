@@ -1,4 +1,5 @@
 """Station-scoped block definitions and immutable ordered execution snapshots."""
+from app.services.track_audio import snapshot, prepare_snapshot
 from app.services.availability import available
 from app.services.availability import tracks_for
 import re
@@ -127,6 +128,7 @@ def create_execution(block, source, *, occurrence=None, clock_slot=None, admin_u
     for item in block.items:
         if item.enabled:
             db.session.add(EventBlockItemExecution(execution=execution,event_block_item_id=item.id,position=item.position,
+                audio_snapshot=snapshot(item.track, block.station) if item.track else None,
                 item_type=item.item_type,track_id=item.track_id,imaging_asset_id=item.imaging_asset_id,label=item.label,
                 failure_policy=item.failure_policy or block.failure_policy))
     db.session.commit(); return execution
@@ -145,7 +147,7 @@ def prepare_next(execution, now=None):
         if item.failure_policy=='ABORT_BLOCK': execution.state='FAILED'; execution.failure_reason='content_unavailable'
         db.session.commit(); return None
     decision=SelectionDecision(station_id=execution.station_id,track_id=item.track_id,imaging_asset_id=item.imaging_asset_id,
-        selection_method='event_block',status='selected',selected_at=now,admin_user_id=execution.admin_user_id,
+        audio_snapshot=item.audio_snapshot,selection_method='event_block',status='selected',selected_at=now,admin_user_id=execution.admin_user_id,
         clock_slot_id=execution.clock_slot_id,reason=f'block:{execution.id}:item:{item.position}')
     if execution.timed_event_occurrence:
         selection = (execution.timed_event_occurrence.runtime or {}).get('playlist_selection', {}).get(str(item.position), {})
@@ -230,7 +232,7 @@ def create_playlist_execution(occurrence, storage=None):
     db.session.add(execution)
     for position, track in enumerate(tracks, 1):
         execution.items.append(EventBlockItemExecution(position=position,item_type='TRACK',track=track,
-            label=track.title[:120],failure_policy='SKIP_FAILED_ITEM'))
+            label=track.title[:120],audio_snapshot=snapshot(track,event.station),failure_policy='SKIP_FAILED_ITEM'))
     db.session.flush()
     return execution
 
@@ -329,6 +331,7 @@ def submit_snapshot(execution, now):
                 for key in ('candidate_count', 'relaxation'):
                     if key in selection: setattr(decision, key, selection[key])
             db.session.add(decision);db.session.flush();item.selection_decision=decision
+        prepare_snapshot(decision)
         decision.status='submitting';decisions.append(decision);items.append(item)
     if not decisions:
         execution.state='FAILED';execution.failure_reason='no_playable_items'

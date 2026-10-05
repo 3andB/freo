@@ -12,9 +12,28 @@ The Songs tab of Music contains the listening and organization workspace. The fo
 
 The ingest worker processes explicit analysis requests first, then ingest jobs, then the unfinished accepted-song backlog, one at a time. ffmpeg runs at lower priority with a bounded timeout. Failure retries back off, stop after three attempts, and can be retried explicitly. Restart recovery restores interrupted work. Analysis validates finite LUFS/true-peak measurements and preserves manually entered cue points and notes. Successful analysis enables imports that still have automatic enable pending; manual disables remain disabled.
 
-Stations default to −16 LUFS. Music can set the target between −30 and −12 LUFS. `gain_for` derives a fixed gain from measured integrated LUFS and limits boosts by the measured true peak (−1.5 dBTP ceiling) and a 12 dB maximum boost. Songs unable to reach the target are labeled Peak limited or Gain limited. Unanalyzed songs use unity gain and show Needs analysis. Originals are never rewritten.
+Stations default to −16 LUFS. Music can set the target between −30 and −12 LUFS. `gain_for` derives a fixed gain from measured integrated LUFS and limits boosts by the measured true peak (−1.5 dBTP ceiling) and a 12 dB maximum boost. Songs unable to reach the target are labeled Peak limited or Gain limited. Unanalyzed songs use unity gain and show Needs analysis, except that an explicitly saved negative manual trim can attenuate them. Originals are never rewritten.
 
 The automation worker adds a bounded `freo_gain` annotation to music requests. Liquidsoap applies this gain before crossfading and a zero-makeup output limiter reduces overlap peaks. New targets affect newly queued songs, not already submitted requests. Browser previews use the same gain policy. This is overall song loudness matching, not constant momentary loudness; lossy encoding and overlapping music can alter final measured peaks. `test_loudness_playout.py` measures actual Liquidsoap output with differently leveled test signals.
+
+## V1 track audio edits
+
+Open a song and use **Audio edits** to set cue-in/out, linear fade-in/out, and optional
+manual gain trim. Drag the waveform handles, adjust them with arrow keys (Shift for
+larger steps), or enter exact milliseconds. Numeric editing remains available before
+a waveform is ready. **Preview edits** auditions the draft; **Audition original**
+bypasses edits and normalization. Save explicitly to activate edits. Reset to full
+track is also a draft until saved; Reload saved settings discards the draft.
+
+Existing stored cue points, including analysis suggestions, stay inactive until an
+audio-editor save. Blank cue points mean file start/end, and combined fades must fit
+within the selected interval. Manual gain supports −12 to +12 dB after automatic
+normalization, retaining the measured peak ceiling. Positive boost requires valid
+analysis. Preview volume changes listening only; preview excludes station-wide
+processing and live mixing. Queued manual audio and finite event executions retain
+their prepared settings when a song is edited.
+
+See [V1 upgrade notes](../V1_UPGRADE_NOTES.md) for migration and engine requirements.
 
 ## Permanent deletion
 

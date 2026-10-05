@@ -25,7 +25,7 @@ def listing(station_id):
 def summaries(station_id):
     """Library navigation needs counts, not every playlist's audio objects."""
     rows = db.session.query(Playlist, func.count(PlaylistItem.track_id),
-        func.coalesce(func.sum(Track.duration_ms), 0)).outerjoin(PlaylistItem,
+        func.coalesce(func.sum(Track.playback_duration_ms), 0)).outerjoin(PlaylistItem,
         PlaylistItem.playlist_id == Playlist.id).outerjoin(Track, Track.id == PlaylistItem.track_id).filter(
         Playlist.station_id == station_id, Playlist.deleted_at.is_(None)).group_by(Playlist.id).order_by(
         case(*[(Playlist.system_key == key, index) for index, key in enumerate(
@@ -35,7 +35,7 @@ def summaries(station_id):
         if row.smart_enabled:
             from app.services.smart_playlists import members
             tracks = members(row)
-            count, duration = len(tracks), sum(t.duration_ms or 0 for t in tracks)
+            count, duration = len(tracks), sum(t.playback_duration_ms or 0 for t in tracks)
         result.append(dict(id=row.id, name=row.name, description=row.description, mode=row.mode,
             purpose=row.purpose, system_key=row.system_key, revision=row.revision, count=count,
             duration_ms=duration, smart_enabled=row.smart_enabled))
@@ -56,7 +56,7 @@ def summary(row):
     tracks = members(row) if row.smart_enabled else [i.track for i in row.items]
     return dict(id=row.id, name=row.name, description=row.description, mode=row.mode,
                 purpose=row.purpose, system_key=row.system_key, revision=row.revision, count=len(tracks),
-                duration_ms=sum(track.duration_ms or 0 for track in tracks),
+                duration_ms=sum(track.playback_duration_ms or 0 for track in tracks),
                 leader_track_id=row.leader_track_id, smart_enabled=row.smart_enabled,
                 smart_rules=row.smart_rules, selection_weights=row.selection_weights)
 

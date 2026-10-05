@@ -21,9 +21,14 @@ def process_analysis(requested=False):
     cue_in, cue_out = song.cue_in_ms, song.cue_out_ms
     # Do not overwrite edits made while ffmpeg was running.
     with db.session.no_autoflush:
-        db.session.refresh(song, attribute_names=['cue_in_ms','cue_out_ms','notes'])
-    if song.cue_in_ms is None: song.cue_in_ms=cue_in
-    if song.cue_out_ms is None: song.cue_out_ms=cue_out
+        db.session.refresh(song, attribute_names=['cue_in_ms','cue_out_ms','notes','audio_edit_enabled'])
+    # Conditional writes also protect a save arriving after the refresh above.
+    # Explicit blank boundaries mean file start/end and must stay blank.
+    from sqlalchemy import update
+    for name, value in (('cue_in_ms', cue_in), ('cue_out_ms', cue_out)):
+        db.session.execute(update(Track).where(Track.id == song.id,
+            Track.audio_edit_enabled.is_(False), getattr(Track, name).is_(None)
+        ).values(**{name: value}))
     if song.analysis_status=='complete':
         song.analyzed_at=datetime.now(timezone.utc);song.analysis_retry_at=None
         if not song.artwork_key:
