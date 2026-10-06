@@ -335,7 +335,7 @@ def reconcile_engine(station, identity, live, complete):
     if not rows:
         return
     observed = {request_decision_id(station.slug, rid): rid for rid in live} if complete else {}
-    future = queued_order(station.slug) if complete else []
+    queue_order = queued_order(station.slug) if complete else []
     by_request = {rid: identifier for identifier, rid in observed.items()}
     missing = current_app.extensions.setdefault('listener_request_missing', {})
     now = datetime.now(timezone.utc)
@@ -357,8 +357,8 @@ def reconcile_engine(station, identity, live, complete):
         invalid = row is None or row.status in TERMINAL or not settings(station)['enabled']
         if not invalid and decision.status in ('selected', 'queued'):
             try:
-                position = future.index(decision.liquidsoap_request_id) if decision.liquidsoap_request_id in future else None
-                later = {by_request[rid] for rid in future[position+1:] if rid in by_request} if position is not None else set()
+                position = queue_order.index(decision.liquidsoap_request_id) if decision.liquidsoap_request_id in queue_order else None
+                later = {by_request[rid] for rid in queue_order[position+1:] if rid in by_request} if position is not None else set()
                 validate_decision(decision, now, later_queued=later)
             except ValueError:
                 invalid = True

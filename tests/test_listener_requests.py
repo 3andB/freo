@@ -275,7 +275,8 @@ def test_recovery_waits_for_complete_inventory_then_recovers_uncertain_push(app,
         assert req.status == 'queued'
 
 
-def test_rejected_future_request_uses_programming_refresh_and_keeps_current(app, monkeypatch):
+@pytest.mark.parametrize('requested_successor', [False, True])
+def test_rejected_future_request_uses_programming_refresh_and_keeps_current(app, monkeypatch, requested_successor):
     from app.services import playout_queue as q
     from app.services.programming_refresh import refresh, signature
     from types import SimpleNamespace
@@ -286,6 +287,10 @@ def test_rejected_future_request_uses_programming_refresh_and_keeps_current(app,
         req.status = 'rejected'; db.session.commit()
         successor = m.SelectionDecision(station_id=station.id, track=tracks[1], status='queued',
             liquidsoap_request_id=43, socket_identity='engine', programming_signature=decision.programming_signature)
+        if requested_successor:
+            following = submit(station, tracks[1], key='second-listener', at=datetime.now(timezone.utc))
+            successor.listener_request_id = following.id
+            following.status = 'queued'
         db.session.add(successor); db.session.commit()
         future = {42, 43}; removed = []
         monkeypatch.setattr(q, 'request_decision_id', lambda slug, rid: {42: decision.id, 43: successor.id}.get(rid, 999))

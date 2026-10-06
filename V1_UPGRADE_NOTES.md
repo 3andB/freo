@@ -1621,6 +1621,14 @@ queue entries and other live/deck sources still enforce separation. Focused and
 real-engine tests cover that ordering and confirmed request completion. This
 interrupted interval is excluded from the final six-hour acceptance run.
 
+A follow-up multi-request cancellation regression also reproduced a worker
+exception: retiring a rejected request's tail overwrote the queue-order list
+before the next request was checked. The queue order now retains its own name
+throughout reconciliation. The test covers both an ordinary successor and a
+second listener request, including retirement of both while retaining current
+audio. The intermediate soak was archived and the acceptance interval restarted
+after this correction.
+
 Regression expectations were updated for the intentional 192 kbps new-station
 default and the three public PWA installation assets. The trimmed-duration
 calendar test's fake events now include their actual playlist/track content types.
