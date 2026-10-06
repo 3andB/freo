@@ -32,18 +32,47 @@ def _command(slug, command):
         uris = command.split(' ',1)[1].split('|')
         if not 1 <= len(uris) <= 500 or any(not (re.fullmatch(music_pattern,'freo_queue.insert '+uri) or re.fullmatch(imaging_pattern,'freo_queue.insert '+uri)) for uri in uris):
             raise ValueError('Invalid event sequence')
+    bulletin_command = bool(re.fullmatch(r'freo_bulletin\.(?:state|(?:lease|cancel) [1-9][0-9]*)', command))
+    bulletin_uris = []
+    if command.startswith('freo_bulletin.prepare '):
+        from app.services.bulletins import root
+        fields = command.split(' ',1)[1].split('|')
+        if len(fields) != 6: raise ValueError('Invalid bulletin command')
+        identifier, kind, source, duration, intro, outro = fields
+        from app.models import TimedEventOccurrence
+        occurrence = db.session.get(TimedEventOccurrence, int(identifier)) if identifier.isdigit() else None
+        if not occurrence or occurrence.station.slug != slug or occurrence.event.content_type != 'BULLETIN' or occurrence.state != 'READY':
+            raise ValueError('Invalid bulletin occurrence')
+        if not re.fullmatch(r'[0-9]+\.[0-9]{3}',duration) or not 0 < float(duration) <= 600:
+            raise ValueError('Invalid bulletin duration')
+        if kind == 'LIVE':
+            if not re.fullmatch(r'http://127\.0\.0\.1:[0-9]{1,5}/[0-9a-f]{64}',source):raise ValueError('Invalid bulletin transport')
+        elif kind == 'FILE':
+            expected = root()/str(occurrence.station_id)/f'{occurrence.id}.wav'
+            if source != str(expected) or expected.is_symlink() or not expected.is_file():raise ValueError('Invalid bulletin file')
+        else: raise ValueError('Invalid bulletin kind')
+        bulletin_uris = [uri for uri in (intro,outro) if uri != '-']
+        for uri in bulletin_uris:
+            match = re.fullmatch(music_pattern,'freo_queue.insert '+uri)
+            if not match:raise ValueError('Invalid bulletin station audio')
+            from app.models import SelectionDecision
+            selected = db.session.get(SelectionDecision,int(match['decision']))
+            if not selected or selected.station.slug != slug or not selected.track or selected.track.audio_kind != 'STATION' or not playable(selected.track,selected.station_id):
+                raise ValueError('Invalid bulletin station audio')
+        bulletin_command = True
+    processor_command = re.fullmatch(r'freo_processor\.(?:state|apply -?[0-9]+\.[0-9]+(?: -?[0-9]+\.[0-9]+){7})', command)
     relay_command = command in ('freo_relay.state', 'freo_relay.reserve') or bool(re.fullmatch(r'freo_relay\.(?:discard [1-9][0-9]*|hold (?:true|false)|apply [1-9][0-9]* (?:-|http://127\.0\.0\.1:[0-9]{1,5}/[0-9a-f]{64}))', command))
     recording_command = re.fullmatch(r'freo_record\.(?:state|(?:arm|lease|stop) [0-9a-f]{32})', command)
     mic_command = re.fullmatch(r'freo_mic\.(?:state|(?:prepare|lease) [0-9a-f]{32}|(?:take|end) [0-9a-f]{32} (?:[0-9]\.[0-9]{3}|10\.000))', command)
     schedule_command = re.fullmatch(r'freo_schedule\.switch [0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12} [0-9]+', command)
     event_command = re.fullmatch(r'freo_event\.(?:arm|release|cancel) [1-9][0-9]*', command)
     return_command = re.fullmatch(r'freo_mixer\.(?:return_cancel|return_discard [1-9][0-9]*|return_stopped [1-9][0-9]*|return_arm [AB] [1-9][0-9]* [1-9][0-9]*)', command)
-    if not relay_command and not recording_command and not return_command and not batch and not event_command and not schedule_command and not mic_command and command not in ('freo_show.state', 'freo_schedule.status', 'freo_queue.queue', 'request.on_air', 'freo_queue.skip', 'freo_queue.flush_and_skip', 'freo_program.rms', 'freo_program.current', 'freo_deck.requests', 'freo_event.state') and not re.fullmatch(r'(?:freo_music\.remove [1-9][0-9]*|freo_(?:queue|event)\.remove [0-9]+(?: [0-9]+){0,19}|freo_deck\.(?:take|fade)_[ab](?: (?:[0-9]\.[0-9]{3}|10\.000))?|freo_deck\.(?:pause|clear|future)_[ab]|request.metadata [0-9]+|freo_(?:a|b|cart|event)\.queue|freo_mixer\.(?:state|fade_a|fade_next [1-9][0-9]*|clear_future|mode (?:AUTO|DJ_BOOTH)|crossfader (?:0\.[0-9]{3}|1\.000)|(?:a_play|b_play) (?:true|false)|cart_mode (?:OVER|TAKEOVER)|duck (?:0\.[0-9]{3}|1\.000)))', command) and not (re.fullmatch(music_pattern, command) or re.fullmatch(imaging_pattern, command)):
+    if not bulletin_command and not processor_command and not relay_command and not recording_command and not return_command and not batch and not event_command and not schedule_command and not mic_command and command not in ('freo_show.state', 'freo_schedule.status', 'freo_queue.queue', 'request.on_air', 'freo_queue.skip', 'freo_queue.flush_and_skip', 'freo_program.rms', 'freo_program.current', 'freo_deck.requests', 'freo_event.state') and not re.fullmatch(r'(?:freo_music\.remove [1-9][0-9]*|freo_(?:queue|event)\.remove [0-9]+(?: [0-9]+){0,19}|freo_deck\.(?:take|fade)_[ab](?: (?:[0-9]\.[0-9]{3}|10\.000))?|freo_deck\.(?:pause|clear|future)_[ab]|request.metadata [0-9]+|freo_(?:a|b|cart|event)\.queue|freo_mixer\.(?:state|fade_a|fade_next [1-9][0-9]*|clear_future|mode (?:AUTO|DJ_BOOTH)|crossfader (?:0\.[0-9]{3}|1\.000)|(?:a_play|b_play) (?:true|false)|cart_mode (?:OVER|TAKEOVER)|duck (?:0\.[0-9]{3}|1\.000)))', command) and not (re.fullmatch(music_pattern, command) or re.fullmatch(imaging_pattern, command)):
         raise ValueError('Liquidsoap command is not allowlisted')
     matches=[re.fullmatch(music_pattern,'freo_queue.insert '+uri) for uri in uris] if batch else [re.fullmatch(music_pattern,command)]
+    matches += [re.fullmatch(music_pattern,'freo_queue.insert '+uri) for uri in bulletin_uris]
     for music in matches:
         if music and music['owner'] != slug:
-            from app.extensions import db
             from app.models import SelectionDecision
             row = db.session.get(SelectionDecision, int(music['decision']))
             if (row is None or row.station.slug != slug or not row.station.enabled or
@@ -63,6 +92,8 @@ def _command(slug, command):
                 raise RuntimeError('Invalid Liquidsoap response')
             response.extend(chunk)
     body = response.split(b'END\r\n', 1)[0].decode('utf-8', errors='replace').strip()
+    if body in ('ERROR event busy','ERROR unavailable bulletin','ERROR event already armed','ERROR microphone active'):
+        raise RuntimeError(body)
     if body.startswith('ERROR'):
         raise RuntimeError('Liquidsoap queue operation failed')
     return body

@@ -149,6 +149,8 @@ def cookie_policy(response):
 
 
 def guard_setup():
+    if request.endpoint and request.endpoint.startswith('studio_pwa.'):
+        return None
     if not request.path.startswith('/admin'):
         return None
     configure_cookie_policy()

@@ -732,6 +732,7 @@ def process_dj_events(station, reader, now=None, allow_new=True):
         if aware(occurrence.scheduled_for_utc) > now: break
         if now > aware(occurrence.deadline_at_utc) and not occurrence.boundary_reserved:
             occurrence.state='MISSED';occurrence.failure_reason='dj_control';continue
+        if occurrence.event.content_type == 'BULLETIN': continue
         if not occurrence.event.interrupt_dj:
             occurrence.failure_reason='waiting_for_dj';continue
         if occurrence.event.recurrence_type != 'ONE_TIME' and occurrence.event.missed_policy == 'SKIP' and not occurrence.boundary_reserved and TimedEventOccurrence.query.filter_by(timed_event_id=occurrence.timed_event_id).filter(TimedEventOccurrence.scheduled_for_utc > occurrence.scheduled_for_utc,TimedEventOccurrence.scheduled_for_utc <= now,TimedEventOccurrence.state.in_(('PENDING','READY','QUEUED','STARTED','COMPLETED'))).first():
@@ -794,6 +795,7 @@ def process_timed_events(station, reader, now=None):
             occurrence.queued_at = occurrence.queued_at or now
             db.session.commit()
         event = occurrence.event
+        if event.content_type == 'BULLETIN': continue
         if event.recurrence_type != 'ONE_TIME' and event.missed_policy == 'SKIP' and not occurrence.boundary_reserved and any(other.timed_event_id == event.id and other.scheduled_for_utc > occurrence.scheduled_for_utc and other.scheduled_for_utc.replace(tzinfo=other.scheduled_for_utc.tzinfo or timezone.utc) <= now for other in rows):
             occurrence.state='MISSED';occurrence.failure_reason='superseded_repeat';db.session.commit();continue
         deadline = occurrence.deadline_at_utc.replace(tzinfo=occurrence.deadline_at_utc.tzinfo or timezone.utc)
@@ -1033,6 +1035,11 @@ def continuity_depth(station, now=None):
 
 def tick(reader, target_depth=2):
     heartbeat()
+    from app.services.bulletins import housekeeping as bulletin_housekeeping
+    try:
+        bulletin_housekeeping(reader)
+    except OSError:
+        logger.warning('Bulletin staging cleanup unavailable')
     from app.services.recording_manager import process_deletions
     process_deletions()
     from app.services.listener_requests import housekeeping
@@ -1083,6 +1090,12 @@ def tick(reader, target_depth=2):
                 db.session.commit()
             process_manual(state.station, reader)
             process_event_cancellations(state.station)
+            from app.services.bulletins import reconcile as reconcile_bulletins
+            try:
+                reconcile_bulletins(state.station,reader,allow_new=not relay_selected and not mic_active and state.operator_mode=='AUTO')
+            except (OSError,RuntimeError,ValueError):
+                db.session.rollback()
+                logger.warning('Bulletin engine unavailable station=%s',slug)
             if not relay_selected and not mic_active and state.operator_mode == 'AUTO' and process_dj_events(state.station,reader,allow_new=False):
                 state.worker_heartbeat_at=datetime.now(timezone.utc);db.session.commit();observe_queue(state.station);continue
             if mic_active:

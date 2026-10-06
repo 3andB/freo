@@ -639,6 +639,8 @@ thread.run(every=0.05, {
   end
 })
 
+__BULLETIN__
+
 music_a = source.on_end(delay=0.0, track_fades(deck_a), fun (remaining, metadata) -> dj_finished("A", remaining, metadata))
 music_b = source.on_end(delay=0.0, track_fades(deck_b), fun (remaining, metadata) -> dj_finished("B", remaining, metadata))
 music_a = amplify(override="freo_gain", 1.0, music_a)
@@ -666,7 +668,7 @@ event_output = amplify(override="freo_gain", 1.0, event_output)
 event_output = mksafe(switch(track_sensitive=false, [({event_playing() and not mic_active() and not (cart_takeover() and cart.is_ready())}, event_output)]))
 event_output = amplify({main_gain()}, event_output)
 cart_output = amplify(override="freo_gain", 1.0, track_fades(cart))
-radio = add(normalize=false, [music_auto, music_a, music_b, mksafe(cart_output), mic_audio, event_output, relay_output])
+radio = add(normalize=false, [music_auto, music_a, music_b, mksafe(cart_output), mic_audio, event_output, relay_output, mksafe(bulletin_output)])
 # Confirmed channel mode changes fade the complete outgoing program, including
 # a cart or DJ source, then atomically replace the queue with prepared audio.
 schedule_switch_token = ref("")
@@ -907,7 +909,7 @@ thread.run(every=0.05, fun () -> begin
 end)
 
 output.icecast(
-  %mp3(bitrate=__BITRATE__),
+  __ENCODER__,
   host="127.0.0.1",
   port=8001,
   mount=__MOUNT__,

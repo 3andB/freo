@@ -88,6 +88,12 @@ def create_app(config_name=None):
     app.register_blueprint(dmca)
     from .routes.central_api import central_api
     app.register_blueprint(central_api, cli_group=None)
+    from .routes.bulletins import bulletins
+    app.register_blueprint(bulletins)
+    from .routes.broadcast_reports import broadcast_reports
+    app.register_blueprint(broadcast_reports)
+    from .routes.studio_pwa import studio_pwa
+    app.register_blueprint(studio_pwa)
     from .routes.statistics import statistics
     app.register_blueprint(statistics, cli_group=None)
     app.register_blueprint(admin_cli, cli_group=None)

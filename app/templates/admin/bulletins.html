@@ -1,0 +1,19 @@
+{% extends 'admin/base.html' %}
+{% block title %}External Bulletin · Freo{% endblock %}
+{% block admin_content %}
+<h1>External Bulletin</h1><p>Schedule news, weather or a syndicated update. Files are downloaded and checked before airtime. Live streams require a ready buffer and play for the selected duration. Unavailable bulletins are skipped; a feed failure returns to automation.</p>
+{% set spec=event.bulletin if event else {} %}
+{% macro val(key, default='') %}{{ request.form.get(key,default) }}{% endmacro %}
+<form method="post" class="admin-card"><input type="hidden" name="csrf" value="{{ csrf_token() }}">{% if event %}<input type="hidden" name="revision" value="{{ event.revision }}">{% endif %}
+<label>Name<input name="name" maxlength="120" required value="{{ val('name',event.name if event else '') }}"></label>
+<label>Source type<select name="kind">{% for key,label in [('FILE','Downloadable audio file'),('LIVE','Continuous live stream')] %}<option value="{{ key }}" {% if val('kind',spec.get('kind','FILE'))==key %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
+<label>Direct remote audio URL<input type="url" name="url" maxlength="2048" required value="{{ val('url',spec.get('url','')) }}"></label><p>No web pages, playlists, redirects or URL login credentials. Files: at most 100 MB and ten minutes; download timeout 20 seconds. Live connection timeout: ten seconds.</p>
+<label>Live segment duration (seconds)<input name="duration" type="number" min="5" max="600" required value="{{ val('duration',spec.get('duration',180)) }}"></label>
+{% for key in ['intro','outro'] %}<label>Optional STATION {{ key }} · up to 60 seconds<select name="{{ key }}"><option value="">None</option>{% for song in audio %}<option value="{{ song.uuid }}" {% if val(key,spec.get(key,''))==song.uuid %}selected{% endif %}>{{ song.title }}</option>{% endfor %}</select></label>{% endfor %}
+<label>Schedule<select name="recurrence_type">{% for key,label in [('HOURLY','Hourly'),('DAILY','Daily'),('WEEKLY','Weekly'),('ONE_TIME','Once')] %}<option value="{{ key }}" {% if val('recurrence_type',event.recurrence_type if event else 'HOURLY')==key %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
+<label>Time · {{ selected.timezone }}<input type="time" name="local_time" required value="{{ val('local_time',event.local_time.strftime('%H:%M') if event and event.local_time else '00:00') }}"></label><p>Hourly schedules use the minute from Time. The example 00:00 runs every hour at :00.</p>
+<label>Date · for Once<input type="date" name="local_date" value="{{ val('local_date',event.local_date if event and event.local_date else '') }}"></label>
+<label>Weekday · for Weekly<select name="weekday">{% for name in ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'] %}<option value="{{ loop.index0 }}" {% if val('weekday',event.weekday if event else 0)|int==loop.index0 %}selected{% endif %}>{{ name }}</option>{% endfor %}</select></label>
+<label>Timing<select name="timing_mode"><option value="SOFT">After the current track</option><option value="HARD" {% if event and event.timing_mode=='HARD' %}selected{% endif %}>At scheduled time · interrupt automation music</option></select></label><p>Wait up to five minutes. DJ control and live microphones remain protected. If the bulletin is unavailable, the whole sequence is skipped. Live feed failure skips the outro and resumes automation.</p><button>Save bulletin</button></form>
+<section class="admin-card"><h2>Scheduled bulletins</h2>{% for row in bulletins %}<p><a href="{{ url_for('admin_events.detail',slug=selected.slug,identifier=row.uuid) }}">{{ row.name }} · {{ row.recurrence_summary }} · {{ 'Enabled' if row.enabled else 'Disabled' }}</a></p>{% else %}<p>No bulletins configured.</p>{% endfor %}</section>
+{% endblock %}

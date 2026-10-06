@@ -104,6 +104,7 @@ def selected_station(stations):
     return next((station for station in stations if station.desired_state == 'running' and station.enabled), stations[0] if stations else None)
 
 
+@web_blueprint.get('/admin/')
 @web_blueprint.get('/admin')
 @login_required
 def admin_home():

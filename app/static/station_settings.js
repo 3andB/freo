@@ -52,6 +52,7 @@
     const response=await scope.fetch(audio.dataset.audioApi,{cache:'no-store'});if(!response.ok)return;
     const result=await response.json(),busy=['pending','applying'].includes(result.status);
     document.getElementById('audio-active-bitrate').textContent=result.active.bitrate;
+    document.getElementById('audio-active-codec').textContent=result.active.codec.toUpperCase();
     document.getElementById('audio-settings-status').textContent=result.error||(busy?`Saved · audio changes ${result.status}…`:'Saved audio settings are on air.');
     if(!dirty&&result.revision===Number(form.elements.revision.value))audio.querySelector('fieldset').disabled=busy;
     // Polling never overwrites an unsaved draft.

@@ -187,14 +187,14 @@ class StationAlias(db.Model):
 class StreamMount(db.Model):
     __tablename__ = 'stream_mounts'
     __table_args__ = (
-        db.CheckConstraint("format = 'mp3'", name='ck_stream_mounts_format'),
+        db.CheckConstraint("format IN ('mp3','aac')", name='ck_stream_mounts_format'),
         db.CheckConstraint('bitrate IN (64,96,128,192)', name='ck_stream_mounts_bitrate'),
         db.CheckConstraint("audio_status IN ('ready','pending','applying','failed')", name='ck_stream_mounts_audio_status'),
     )
     id = db.Column(db.Integer, primary_key=True)
     station_id = db.Column(db.Integer, db.ForeignKey('stations.id', ondelete='CASCADE'), nullable=False, unique=True)
     format = db.Column(db.String(12), nullable=False, default='mp3')
-    bitrate = db.Column(db.Integer, nullable=False, default=128, server_default='128')
+    bitrate = db.Column(db.Integer, nullable=False, default=192, server_default='192')
     audio_processing = db.Column(db.JSON, nullable=False, default=dict, server_default='{}')
     pending_audio = db.Column(db.JSON)
     audio_status = db.Column(db.String(12), nullable=False, default='ready', server_default='ready')
@@ -679,6 +679,7 @@ class RotationCursor(db.Model):
 
 
 class SelectionDecision(db.Model):
+    performance_snapshot = db.Column(db.JSON)
     __tablename__ = 'selection_decisions'
     __table_args__ = (
         db.Index('ix_decision_stats_started', 'status', 'started_at', 'station_id'),
@@ -792,15 +793,16 @@ class LiveQueueSnapshot(db.Model):
 
 
 class TimedEvent(db.Model):
+    bulletin = db.Column(db.JSON)
     __tablename__ = 'timed_events'
     __table_args__ = (
         db.UniqueConstraint('uuid', name='timed_events_uuid_key'),
         db.CheckConstraint("timing_mode IN ('SOFT','HARD','NON_INTERRUPTING')", name='ck_timed_event_mode'),
         db.CheckConstraint("recurrence_type IN ('ONE_TIME','QUARTER_HOUR','HOURLY','DAILY','WEEKLY','MONTHLY')", name='ck_timed_event_recurrence'),
-        db.CheckConstraint("content_type IN ('TRACK','IMAGING_ASSET','EVENT_BLOCK','PLAYLIST')", name='ck_timed_event_content_type'),
+        db.CheckConstraint("content_type IN ('TRACK','IMAGING_ASSET','EVENT_BLOCK','PLAYLIST','BULLETIN')", name='ck_timed_event_content_type'),
         db.CheckConstraint("missed_policy IN ('SKIP','PLAY_LATE')", name='ck_timed_event_missed'),
         db.CheckConstraint("interrupt_policy IN ('NEVER','MUSIC_ONLY')", name='ck_timed_event_interrupt'),
-        db.CheckConstraint("(content_type='TRACK' AND track_id IS NOT NULL AND imaging_asset_id IS NULL AND event_block_id IS NULL AND playlist_id IS NULL) OR (content_type='IMAGING_ASSET' AND imaging_asset_id IS NOT NULL AND track_id IS NULL AND event_block_id IS NULL AND playlist_id IS NULL) OR (content_type='EVENT_BLOCK' AND event_block_id IS NOT NULL AND track_id IS NULL AND imaging_asset_id IS NULL AND playlist_id IS NULL) OR (content_type='PLAYLIST' AND playlist_id IS NOT NULL AND track_id IS NULL AND imaging_asset_id IS NULL AND event_block_id IS NULL)", name='ck_timed_event_content'),
+        db.CheckConstraint("(content_type='TRACK' AND track_id IS NOT NULL AND imaging_asset_id IS NULL AND event_block_id IS NULL AND playlist_id IS NULL) OR (content_type='IMAGING_ASSET' AND imaging_asset_id IS NOT NULL AND track_id IS NULL AND event_block_id IS NULL AND playlist_id IS NULL) OR (content_type='EVENT_BLOCK' AND event_block_id IS NOT NULL AND track_id IS NULL AND imaging_asset_id IS NULL AND playlist_id IS NULL) OR (content_type='PLAYLIST' AND playlist_id IS NOT NULL AND track_id IS NULL AND imaging_asset_id IS NULL AND event_block_id IS NULL) OR (content_type='BULLETIN' AND bulletin IS NOT NULL AND track_id IS NULL AND imaging_asset_id IS NULL AND event_block_id IS NULL AND playlist_id IS NULL)", name='ck_timed_event_content'),
         db.CheckConstraint("(recurrence_type='ONE_TIME' AND scheduled_at_utc IS NOT NULL AND weekday IS NULL) OR (recurrence_type!='ONE_TIME' AND scheduled_at_utc IS NULL AND local_time IS NOT NULL)", name='ck_timed_event_schedule'),
         db.CheckConstraint('early_tolerance_seconds BETWEEN 0 AND 3600 AND late_tolerance_seconds BETWEEN 1 AND 86400', name='ck_timed_event_window'),
     )
@@ -849,6 +851,7 @@ class TimedEvent(db.Model):
 
     @property
     def content_name(self):
+        if self.content_type == 'BULLETIN': return 'External Bulletin'
         target = self.playlist or self.track or self.imaging_asset or self.event_block
         return getattr(target, 'title', None) or getattr(target, 'name', 'Unavailable audio')
 

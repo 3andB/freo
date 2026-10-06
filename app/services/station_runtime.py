@@ -110,7 +110,7 @@ def install_staged(path, temp):
 def render_liquidsoap(station, password, audio_settings=None):
     from app.services.live_mic import enabled as live_mic_enabled
     mic_enabled = live_mic_enabled()
-    from app.services.station_audio import active_settings, validate_settings, processing_liquidsoap
+    from app.services.station_audio import active_settings, validate_settings, processing_liquidsoap, encoder_liquidsoap
     audio = validate_settings(audio_settings) if audio_settings is not None else active_settings(station.stream)
     slug = validate_slug(station.slug)
     frequency = 300 + zlib.crc32(slug.encode()) % 300
@@ -118,7 +118,9 @@ def render_liquidsoap(station, password, audio_settings=None):
     values = {
         '__RECORDING_DIR__': json.dumps(str(LocalMediaStorage().station_dir(slug) / 'recordings')),
         '__BITRATE__': str(audio['bitrate']),
+        '__ENCODER__': encoder_liquidsoap(audio),
         '__AUDIO_PROCESSING__': processing_liquidsoap(audio),
+        '__BULLETIN__': (Path(__file__).resolve().parents[2] / 'deploy/liquidsoap/bulletin.liq').read_text(),
         '__MIC_START__': 'mic_input.start()' if mic_enabled else '()',
         '__MIC_STOP__': 'mic_input.stop()' if mic_enabled else '()',
         '__MIC_ENABLED__': 'true' if mic_enabled else 'false',
@@ -146,8 +148,8 @@ def render(station):
     slug = validate_slug(station.slug)
     if not station.enabled or not station.stream or not station.stream.enabled:
         raise ValueError('Station and stream must be enabled to render')
-    if station.stream.format != 'mp3' or station.stream.bitrate not in (64, 96, 128, 192):
-        raise ValueError('Choose a supported MP3 bitrate')
+    if station.stream.format not in ('mp3','aac') or station.stream.bitrate not in (64, 96, 128, 192):
+        raise ValueError('Choose a supported stream codec and bitrate')
     from app.services.media import refresh_playlist
     refresh_playlist(slug)
     password = credential(slug)
@@ -244,13 +246,25 @@ def restore_audio(station):
         raise AudioRecoveryError('Invalid audio backup')
     try:
         target = CONFIGS / f'{validate_slug(station.slug)}.liq'
-        staged = atomic_install(target, backup.read_text(), 0o640, 'root', 'freo-playout')
-        os.replace(staged, target)
+        saved = backup.read_text()
+        candidate = target.read_text()
+        from app.services.station_audio import active_settings, encoder_liquidsoap, processor_command
         from app.extensions import db
         db.session.refresh(station)
+        db.session.refresh(station.stream)
+        previous = active_settings(station.stream)
+        encoder = '\n  ' + encoder_liquidsoap(previous) + ',\n'
+        live = all('freo_processor' in script and encoder in script for script in (saved,candidate))
+        staged = atomic_install(target, saved, 0o640, 'root', 'freo-playout')
+        os.replace(staged, target)
         if station.desired_state == 'running':
-            service_action(station.slug, 'restart')
-            wait_audio_online(station)
+            if live:
+                from app.services.playout_queue import _command
+                if _command(station.slug, processor_command(previous)) != 'OK':
+                    raise RuntimeError('Processor rollback was not acknowledged')
+            else:
+                service_action(station.slug, 'restart')
+                wait_audio_online(station)
         backup.unlink()
     except Exception as error:
         raise AudioRecoveryError('Could not restore station audio') from error
@@ -284,8 +298,17 @@ def apply_audio(station, values):
         running = station.desired_state == 'running'
         os.replace(staged, target)
         if running:
-            service_action(slug, 'restart')
-            wait_audio_online(station)
+            from app.services.station_audio import active_settings, processor_command
+            previous = active_settings(station.stream)
+            # Existing installations acquire the live-control endpoint on their first regeneration.
+            live = values['codec'] == previous['codec'] and values['bitrate'] == previous['bitrate'] and 'freo_processor' in backup.read_text()
+            if live:
+                from app.services.playout_queue import _command
+                if _command(slug, processor_command(values)) != 'OK':
+                    raise RuntimeError('Processor did not accept settings')
+            else:
+                service_action(slug, 'restart')
+                wait_audio_online(station)
     except Exception:
         restore_audio(station)
         raise

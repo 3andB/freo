@@ -1434,3 +1434,139 @@ for replaced responsive images. A mobile screenshot is retained at
 All work remained in `/opt/freo-v1` on `develop/v1`, preserving prior uncommitted
 work. `/opt/freo` production files, databases, and services were not modified.
 Main, production tags and releases were untouched. No deployment or merge occurred.
+
+## Phase 10 — Broadcast Tools and Freo Studio
+
+Developed from `33671a4ffbd3be46ea34c9c2f39d30a3c3220b51` on `develop/v1`.
+This is still an unpublished V1 development build. No production deployment,
+`main` merge, tag, or release is part of this phase.
+
+### Processor and streaming
+
+Station Settings now offers **Off, Light, Standard, Punchy**, plus Custom controls
+under Advanced. Liquidsoap 2.2.4 supplies LUFS-based `normalize`, three-band
+`compress.multiband`, and `filter.iir.eq.peak`; Freo implements no DSP algorithms.
+Preset AGC targets are −18/−16/−14 LUFS, compression ratios 1.3/1.8/2.5, and AGC
+excursion is bounded to ±6 dB. EQ is neutral in presets; Custom exposes only
+AGC target, compression strength, and bass/mid/treble. Existing custom settings
+are retained. Source loudness normalization and per-track gain remain independent.
+
+Processing follows the combined program sources. The pre-existing −1.5 dB
+final limiter remains active, including with Off. Off is verified against the
+baseline PCM path. Constructor failure and source unavailability have an
+unprocessed program fallback; invalid settings retain the prior configuration.
+This protects processor failures, not a host, encoder, or whole-engine outage.
+
+MP3 (LAME) and AAC-LC (Liquidsoap's FFmpeg encoder, ADTS) are available at
+64/96/128/192 kbps. AAC-LC and MP3 were received and decoded from an isolated
+Icecast instance. AAC+/HE-AAC is **not** offered: no suitable encoder was confirmed.
+New stations default to MP3/192; existing formats and bitrates remain unchanged.
+Stream URLs remain stable. Codec/bitrate changes use the existing validated
+station-only restart and rollback and may reconnect listeners. Once the Phase 10
+engine configuration is installed, preset-only changes apply through its socket
+without restarting the station.
+
+No codec package was added. Platform/player support for an AAC ADTS radio stream
+can differ, so MP3 remains the compatibility default. Codec availability does
+not establish patent or redistribution rights: FFmpeg's license depends on its
+build configuration, and MPEG-related patent considerations depend on jurisdiction.
+See [FFmpeg's official licensing notes](https://ffmpeg.org/legal.html).
+
+### Broadcast Reports and External Bulletin
+
+**Broadcast Reports** uses confirmed playback decisions, frozen metadata for new
+performances, and existing audience/session observations. It includes performance
+history, track summaries, nearby audience samples (within 45 seconds), ISRC,
+source duration, observed session totals, peak audience, completed-session average
+duration, listener-hours, coverage, and CSV exports. Date boundaries use station
+timezone; session summaries retain their existing hourly resolution. Historical
+metadata without a snapshot comes from the current library. New snapshots survive
+master-library deletion; older history already deleted cannot be reconstructed.
+Source duration is not verified airtime. Unique people cannot be derived from
+existing connection rollups and are shown as unavailable. No ASCAP/BMI/SESAC/
+SoundExchange or other licensing-compliance certification is claimed.
+
+**External Bulletin** creates an ordinary timed event with private source settings.
+Configure a direct HTTP(S) file or continuous stream, optional available STATION
+intro/outro (up to 60 seconds each), and hourly/daily/weekly/one-time timing in the station timezone.
+The default waits for the next track boundary, up to five minutes; Hard timing
+may interrupt automation music. DJ control and live microphones stay protected.
+Files are prefetched 60 seconds ahead with a 20-second download budget, 100 MB
+limit, bounded local decoding, and ten-minute audio limit. Live sources require
+readiness within ten seconds and a 5–600 second segment duration (default 180).
+Live playback consumes the current feed, not an earlier captured recording.
+
+An unavailable source skips the whole sequence. A live disconnect, depleted
+buffer, or three seconds of silence releases the event bus and skips the outro.
+Normal completion plays the outro and resumes automation. Engine leases recover
+worker loss; occurrence identities prevent replaying a completed/failed sequence.
+Private files are removed after playback; abandoned staging is reaped after a day.
+Remote transport reuses the relay's URL, DNS, TLS, and private-network policy;
+redirects, playlists, and embedded login credentials remain unsupported.
+No new content provider, scheduler, worker service, or analytics collector was added.
+
+### Freo Studio installation and offline behavior
+
+The existing management UI has a manifest, standalone display, 192/512 maskable
+icons, an Apple touch icon, and an `/admin/` service worker. Only icons and a
+public offline shell are cached. Management navigation is network-only;
+authenticated pages, API responses, streams, and control mutations are never
+stored in the service-worker cache or replayed later. Offline/error navigation
+shows a reconnect screen with no station controls.
+
+Use HTTPS (or localhost for development). Android/desktop browsers expose their
+Install/Add to Home Screen action; on iOS Safari, use Share → Add to Home Screen.
+The IP-only HTTP test install remains usable in a browser but does not provide
+the secure-context PWA experience. No native applications or UI redesign.
+
+### Migration and installation impact
+
+Migration `fa06a1b2c3d4` follows `f906a1b2c3d4`: it adds confirmed-performance JSON
+snapshots and bulletin JSON on existing timed events, expands codec constraints,
+and changes only the default bitrate for newly created streams. Existing station
+values are preserved. Downgrade refuses configured bulletins, non-MP3 streams,
+or pending audio changes.
+
+The fresh V1 source-install command documented above is unchanged. Its normal
+migration step applies the new head. Provisioning additionally creates
+`/var/lib/freo/bulletins` as `freo-automation:freo-playout`, mode 2750, and the existing
+automation unit receives write access only to this private directory. No new
+Python/system dependency, environment secret, port, or service is required;
+bulletin live transport shares the existing loopback relay listener.
+
+For an **existing disposable V1 installation**, migrate the database, create that
+private directory with the ownership/mode above, install the updated automation
+unit and reload systemd, then restart the V1 application/automation services.
+Regenerate station Liquidsoap configurations from this checkout and restart those
+V1 playout instances once before using bulletins or live preset changes. The first
+audio apply against an older engine also performs the existing station restart.
+Do not rerun the fresh installer over existing state. These instructions apply
+only to the disposable V1 installation, never the frozen production host.
+
+Native iOS/Android apps, CarPlay/Android Auto, branded listener apps, podcast
+publishing/editing, and push notifications remain deferred. Licensing-specific
+report exports and AAC+/HE-AAC are not included.
+
+### Phase 10 validation
+
+- Existing audio, event/block completion, station, statistics/session, and deletion
+  regression selection: **132 passed**, one opt-in test skipped.
+- Focused reporting, validation, DST, CSV, pending-config failure, live processor
+  apply/rollback, bulletin revision/idempotency/restart, and file-decoding checks
+  passed. Real audio proved all four presets, AAC-LC decoding, exact Off PCM
+  equivalence, and constructor-failure bypass equivalence.
+- Private Icecast: both MP3 and AAC-LC streamed and decoded successfully. Private
+  Liquidsoap: intro/body/outro confirmation and automation recovery passed for
+  both disconnected and stalled live feeds. File ownership was tested using the
+  actual automation/playout accounts against temporary storage only.
+- Chromium at desktop and 390-pixel mobile widths: reports, bulletin editor,
+  audio settings, service-worker installation, offline shell, reconnection,
+  and the existing audio-settings save/status flow passed. The offline test
+  disables both the page and service-worker network targets. Physical iOS/Android
+  installation has not been exercised on this host.
+- Isolated PostgreSQL: the complete fresh migration chain, baseline→Phase 10
+  upgrade, guarded round-trip, and PostgreSQL report aggregation passed. The
+  existing source-installer tests also passed with host commands stubbed in `/tmp`.
+- All new runtime templates, icons, JavaScript and migrations are included by the
+  existing installer inventory. No production services or installation paths were
+  changed during testing.

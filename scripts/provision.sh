@@ -101,6 +101,7 @@ fi
 install -d -o freo-playout -g freo-playout -m 0750 /var/lib/freo/playout
 install -d -o root -g freo-playout -m 0750 /var/lib/freo/media /var/lib/freo/playlists
 chmod 0751 /var/lib/freo/media
+install -d -o freo-automation -g freo-playout -m 2750 /var/lib/freo/bulletins
 install -d -o freo -g freo-ingest -m 2770 /var/lib/freo/uploads
 # Web previews and the production worker share only this private staging area.
 install -d -o freo -g freo -m 2770 /var/lib/freo/uploads/production

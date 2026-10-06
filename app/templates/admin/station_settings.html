@@ -74,23 +74,26 @@
 <label>Embed code<input readonly value='&lt;iframe src="{{ url_for('listener_requests.page',slug=selected.public_slug or selected.slug,_external=True) }}" title="Request a song" width="100%" height="600"&gt;&lt;/iframe&gt;'></label>
 </section>
 <section class="admin-card station-settings" id="audio-settings" data-audio-api="{{ url_for('station_settings.audio',slug=selected.slug) }}">
-<h2>Stream quality & audio processing</h2>
-<p>Broadcasting at <strong id="audio-active-bitrate">{{ selected.stream.bitrate }}</strong> kbps MP3. Uploads keep their original quality.</p>
+<h2>Freo Broadcast Processor & stream codec</h2>
+<p>Broadcasting at <strong id="audio-active-bitrate">{{ selected.stream.bitrate }}</strong> kbps <strong id="audio-active-codec">{{ selected.stream.format|upper }}</strong>. Uploads keep their original quality.</p>
 <p id="audio-settings-status" role="status">{% if selected.stream.audio_status == 'failed' %}{{ selected.stream.audio_error }}{% elif selected.stream.audio_status in ['pending','applying'] %}Audio changes {{ selected.stream.audio_status }}…{% else %}Audio settings are up to date.{% endif %}</p>
 <div>
 <input type="hidden" name="csrf" value="{{ csrf_token() }}"><input type="hidden" name="revision" value="{{ selected.stream.audio_revision }}">
 <fieldset {% if selected.stream.audio_status in ['pending','applying'] %}disabled{% endif %}>
 <legend>Station audio</legend>
+<label>Output codec<select name="codec">{% for codec,label in [('mp3','MP3'),('aac','AAC-LC')] %}<option value="{{ codec }}" {% if audio_values.codec == codec %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
+<label>Processor preset<select name="preset">{% for key in ['off','light','standard','punchy','custom'] %}<option value="{{ key }}" {% if audio_values.preset == key %}selected{% endif %}>{{ key|title }}</option>{% endfor %}</select></label>
+<p>Off preserves the existing output and final peak protection. Source loudness matching remains separate.</p>
 <label>Stream quality<select name="bitrate">{% for rate,usage in [(64,'28.8'),(96,'43.2'),(128,'57.6'),(192,'86.4')] %}<option value="{{ rate }}" {% if audio_values.bitrate == rate %}selected{% endif %}>{{ rate }} kbps · approximately {{ usage }} MB per listener-hour</option>{% endfor %}</select></label>
 <p class="quiet">Higher bitrates use more bandwidth. Data estimates exclude network overhead.</p>
-<label><input type="checkbox" name="agc" value="yes" {% if audio_values.agc %}checked{% endif %}> AGC — gentle automatic level control</label>
+<details><summary>Advanced · select Custom to use these controls</summary><label>AGC target (LUFS)<input type="number" name="target" min="-22" max="-12" step="0.1" value="{{ audio_values.target }}"></label><label>Compression ratio<input type="number" name="ratio" min="1" max="3" step="0.1" value="{{ audio_values.ratio }}"></label><label><input type="checkbox" name="agc" value="yes" {% if audio_values.agc %}checked{% endif %}> AGC — gentle automatic level control</label>
 <p class="quiet">Smooths changing levels with slow, limited gain adjustments. Very quiet passages and silence do not trigger gain increases.</p>
 <label><input type="checkbox" name="multiband" value="yes" {% if audio_values.multiband %}checked{% endif %}> Multiband compression — gentle preset</label>
 <p class="quiet">Light compression across three frequency bands. Listen to the broadcast when choosing processing settings.</p>
 <label><input type="checkbox" name="eq" value="yes" {% if audio_values.eq %}checked{% endif %}> Enable EQ</label>
 <div class="settings-columns">{% for key,label in [('bass','Bass'),('mid','Mid'),('treble','Treble')] %}<label>{{ label }} (dB)<input type="number" name="{{ key }}" min="-6" max="6" step="0.1" value="{{ audio_values[key] }}" required></label>{% endfor %}</div>
 <p class="quiet">EQ ranges from −6 to +6 dB. Existing song loudness matching and the final output limiter remain active.</p>
-<p>Applying audio changes restarts this station if it is running. Listeners may briefly reconnect.</p>
+</details><p>Processor changes apply live after the Phase 10 engine update. Codec or bitrate changes restart this station; listeners may briefly reconnect.</p>
 </fieldset></div></section>
 <section class="admin-card station-settings" id="playback-settings" data-base="{{ (playback_policy.default_playlist_id if playback_policy else none)|tojson }}" data-playback-api="{{ url_for('schedule_studio.write',slug=selected.slug,action='default') }}" data-source-api="{{ url_for('schedule_studio.read',slug=selected.slug,action='sources') }}" data-revision="{{ playback_policy.revision if playback_policy else 1 }}" data-csrf="{{ csrf_token() }}">
 <h2>Playback</h2><p>What plays when the active mode has nothing playable? Choose the default playlist for Calendar, Blocks, and Simple.</p>

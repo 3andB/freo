@@ -159,7 +159,7 @@ def delete_audio(song):
             storage.imaging_path(legacy.station.slug, legacy.storage_key).unlink(missing_ok=True)
             db.session.flush()
             db.session.execute(db.delete(m.ImagingAsset).where(m.ImagingAsset.id == legacy.id))
-    # Remove history and import metadata; the operation log retains only its generic result.
+    # Retain confirmed broadcast evidence; remove pending selections and import metadata.
     for decision in m.SelectionDecision.query.filter_by(track_id=song.id).all():
         # Clear ORM backrefs with constrained event targets already removed above.
         db.session.execute(db.delete(m.CuePlayback).where(m.CuePlayback.decision_id == decision.id))
@@ -168,7 +168,10 @@ def delete_audio(song):
         db.session.execute(db.update(m.LiveControlCommand).where(m.LiveControlCommand.expected_decision_id == decision.id).values(expected_decision_id=None, status='failed', error_code='song_deleted'))
         db.session.execute(db.update(m.ScheduleTransition).where(m.ScheduleTransition.decision_id == decision.id).values(decision_id=None))
         db.session.execute(db.update(m.TimedEventOccurrence).where(m.TimedEventOccurrence.selection_decision_id == decision.id).values(selection_decision_id=None))
-        db.session.execute(db.delete(m.SelectionDecision).where(m.SelectionDecision.id == decision.id))
+        if decision.status == 'started' and decision.performance_snapshot:
+            decision.track_id = None
+        else:
+            db.session.execute(db.delete(m.SelectionDecision).where(m.SelectionDecision.id == decision.id))
     for job in m.MediaIngestJob.query.filter_by(track_id=song.id):
         for item in m.MusicImportItem.query.filter_by(job_id=job.id):
             from app.services.admin_media import staged_path

@@ -381,6 +381,8 @@ def playback_started(decision_id, slug, now=None):
         db.session.refresh(decision)
         if decision.status == 'started':
             return False
+    from app.services.broadcast_reports import capture
+    capture(decision)
     decision.status = 'started'
     decision.started_at = now or datetime.now(timezone.utc)
     from app.services.listener_requests import confirmed

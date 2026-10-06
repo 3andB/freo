@@ -10,35 +10,60 @@ BITRATES = (64, 96, 128, 192)
 DEFAULT_PROCESSING = dict(agc=False, multiband=False, eq=False, bass=0.0, mid=0.0, treble=0.0)
 
 
+PRESETS = {'off': (-16.0, 1.0), 'light': (-18.0, 1.3), 'standard': (-16.0, 1.8), 'punchy': (-14.0, 2.5)}
+
+
 def validate_settings(value):
-    if not isinstance(value, dict) or set(value) - {'bitrate', *DEFAULT_PROCESSING}:
+    if not isinstance(value, dict) or set(value) - {'bitrate', 'codec', 'preset', 'target', 'ratio', *DEFAULT_PROCESSING}:
         raise ValueError('Invalid audio settings')
     bitrate = value.get('bitrate')
     if type(bitrate) is not int or bitrate not in BITRATES:
         raise ValueError('Choose 64, 96, 128 or 192 kbps')
-    result = dict(DEFAULT_PROCESSING, **value)
+    result = dict(DEFAULT_PROCESSING, codec='mp3', target=-16.0, ratio=1.5, **{'bitrate':bitrate})
+    result.update(value)
+    result.setdefault('preset', 'custom' if any(result[k] for k in ('agc','multiband','eq')) else 'off')
+    if result['codec'] not in ('mp3', 'aac') or result['preset'] not in (*PRESETS, 'custom'):
+        raise ValueError('Choose a supported codec and processor preset')
     for key in ('agc', 'multiband', 'eq'):
         if type(result[key]) is not bool:
             raise ValueError('Invalid processing option')
-    for key in ('bass', 'mid', 'treble'):
+    for key, low, high in [('bass',-6,6),('mid',-6,6),('treble',-6,6),('target',-22,-12),('ratio',1,3)]:
         number = result[key]
-        if type(number) not in (int, float) or not math.isfinite(number) or not -6 <= number <= 6:
-            raise ValueError('EQ must be between −6 and +6 dB')
+        if type(number) not in (int, float) or not math.isfinite(number) or not low <= number <= high:
+            raise ValueError(f'{key} must be between {low} and {high}')
         result[key] = round(float(number), 1)
+    if result['preset'] in PRESETS:
+        result['target'], result['ratio'] = PRESETS[result['preset']]
+        result.update(agc=result['preset'] != 'off', multiband=result['preset'] != 'off', eq=False, bass=0., mid=0., treble=0.)
     return result
 
 
 def active_settings(stream):
-    return validate_settings(dict(stream.audio_processing or {}, bitrate=stream.bitrate))
+    return validate_settings(dict(stream.audio_processing or {}, bitrate=stream.bitrate, codec=stream.format))
 
 
 def from_form(form):
     try:
-        return validate_settings(dict(bitrate=int(form.get('bitrate', '')),
+        values = dict(bitrate=int(form.get('bitrate', '')), codec=form.get('codec','mp3'),
             **{key: form.get(key) == 'yes' for key in ('agc', 'multiband', 'eq')},
-            **{key: float(form.get(key, '0')) for key in ('bass', 'mid', 'treble')}))
+            **{key: float(form.get(key, '0')) for key in ('bass', 'mid', 'treble')},
+            target=float(form.get('target', '-16')), ratio=float(form.get('ratio', '1.5')))
+        if 'preset' in form: values['preset'] = form['preset']
+        return validate_settings(values)
     except (ValueError, TypeError) as error:
-        raise ValueError('Choose 64, 96, 128 or 192 kbps and EQ values between −6 and +6 dB') from error
+        raise ValueError('Choose supported audio settings and finite values within the displayed ranges') from error
+
+
+def encoder_liquidsoap(values):
+    values = validate_settings(values)
+    if values['codec'] == 'mp3': return f"%mp3(bitrate={values['bitrate']})"
+    return f'%ffmpeg(format="adts", %audio(codec="aac", b="{values["bitrate"]}k", ar=44100, ac=2))'
+
+
+def processor_command(values):
+    v = validate_settings(values)
+    return 'freo_processor.apply ' + ' '.join(str(float(x)) for x in (
+        int(v['agc']), int(v['multiband']), int(v['eq']), v['target'], v['ratio'], v['bass'], v['mid'], v['treble']))
 
 
 def queue_settings(station, values, revision, user):
@@ -65,19 +90,11 @@ def queue_settings(station, values, revision, user):
 
 
 def processing_liquidsoap(values):
-    values = validate_settings(values)
-    lines = []
-    if values['agc']:
-        lines.append('radio = normalize(target=-16.0, lufs=true, gain_min=-6.0, gain_max=6.0, threshold=-40.0, up=10.0, down=0.5, window=3.0, lookahead=0.0, track_sensitive=false, radio)')
-    if values['eq']:
-        for key, frequency in (('bass', 100.0), ('mid', 1000.0), ('treble', 8000.0)):
-            if values[key]:
-                lines.append(f'radio = filter.iir.eq.peak(frequency={frequency:.1f}, gain={values[key]:.1f}, q=0.7, radio)')
-    if values['multiband']:
-        lines.append('radio = compress.multiband(limit=false, radio, [\n' + ',\n'.join(
-            f'  {{frequency={frequency}, attack=20.0, release=250.0, ratio=1.5, threshold=-18.0, gain=0.0}}'
-            for frequency in ('200.0', '2500.0', '22050.0')) + '\n])')
-    return '\n'.join(lines)
+    v = validate_settings(values)
+    from pathlib import Path
+    template = (Path(__file__).resolve().parents[2] / 'deploy/liquidsoap/processor.liq').read_text()
+    initial = ', '.join(str(float(x)) for x in (int(v['agc']), int(v['multiband']), int(v['eq']), v['target'], v['ratio'], v['bass'], v['mid'], v['treble']))
+    return template.replace('__PROCESSOR_INITIAL__', '[' + initial + ']')
 
 
 def process_audio(station):
@@ -96,14 +113,21 @@ def process_audio(station):
             stream.audio_error = 'Audio change cancelled because the station is no longer ready.'
             db.session.commit()
             return
-        values = validate_settings(stream.pending_audio)
+        try:
+            values = validate_settings(stream.pending_audio)
+        except ValueError:
+            stream.audio_status = 'failed'
+            stream.audio_error = 'Invalid audio settings. Existing output retained.'
+            db.session.commit()
+            return
         # Keep active values unchanged until runtime validation and restart succeed.
         stream.audio_status = 'applying'
         db.session.commit()
         try:
             runtime.apply_audio(station, values)
             stream.bitrate = values['bitrate']
-            stream.audio_processing = {key: values[key] for key in DEFAULT_PROCESSING}
+            stream.format = values['codec']
+            stream.audio_processing = {key: value for key, value in values.items() if key not in ('bitrate','codec')}
             stream.pending_audio = None
             stream.audio_status = 'ready'
             stream.audio_error = ''

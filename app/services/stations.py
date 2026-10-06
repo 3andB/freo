@@ -38,7 +38,7 @@ def create_station(name, slug, description='', *, pending=False, timezone_name='
     from app.services.central_api.licensing import check_expansion
     check_expansion()
     station = Station(timezone=timezone_name, lifecycle_state='pending_create' if pending else 'ready', name=name, slug=slug, description=description, enabled=True, desired_state='stopped')
-    station.stream = StreamMount(format='mp3', bitrate=128, enabled=True)
+    station.stream = StreamMount(format='mp3', bitrate=192, enabled=True)
     db.session.add(station)
     db.session.flush()
     from app.services.music_tags import seed_starter_tags

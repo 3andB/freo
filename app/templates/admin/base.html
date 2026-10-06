@@ -55,6 +55,8 @@
       <a href="{{ url_for('playlists.page',slug=selected.slug) }}" {% if page == 'playlists' %}aria-current="page"{% endif %}>Playlists</a>
       <a href="{{ url_for('schedule_studio.page',slug=selected.slug,view='shows') }}" {% if page == 'studio-shows' %}aria-current="page"{% endif %}>Shows</a>
       <a href="{{ url_for('admin_events.list_page',slug=selected.slug) }}" {% if page == 'events' %}aria-current="page"{% endif %}>Events</a>
+      <a href="{{ url_for('bulletins.page',slug=selected.slug) }}">External Bulletin</a>
+      <a href="{{ url_for('broadcast_reports.page',slug=selected.slug) }}">Broadcast Reports</a>
       <a href="{{ url_for('statistics.page',slug=selected.slug) }}" {% if page == 'stats' %}aria-current="page"{% endif %}>Statistics</a>
       <a href="{{ url_for('web.admin_section',section='history',station=selected.slug) }}" {% if page == 'history' %}aria-current="page"{% endif %}>History</a>
       <a href="{{ url_for('web.admin_section',section='system',station=selected.slug) }}" {% if page == 'system' %}aria-current="page"{% endif %}>System</a>

@@ -45,6 +45,8 @@ def test_audio_settings_queue_and_status_in_browser(booth):
     driver.get(base + '/admin/stations/test-station/settings')
     from selenium.webdriver.support.ui import Select
     Select(driver.find_element(By.CSS_SELECTOR, '#audio-settings [name=bitrate]')).select_by_value('128')
+    Select(driver.find_element(By.CSS_SELECTOR, '#audio-settings [name=preset]')).select_by_value('custom')
+    driver.find_element(By.CSS_SELECTOR, '#audio-settings details summary').click()
     for name in ('agc','multiband','eq'):
         element=driver.find_element(By.CSS_SELECTOR, f'#audio-settings [name={name}]')
         driver.execute_script('arguments[0].scrollIntoView({block:"center"})', element);element.click()

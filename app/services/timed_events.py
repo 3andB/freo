@@ -170,7 +170,7 @@ def save_event(slug, *, identifier=None, name, description='', timing_mode='SOFT
                early_tolerance_seconds=0, late_tolerance_seconds=300, missed_policy='SKIP',
                interrupt_policy='NEVER', priority=100, repeat_hours=None, starts_on=None, ends_on=None,
                interrupt_dj=False, playlist_playback=None, month_day=None, month_nth=None,
-               month_weekday=None, revision=None):
+               month_weekday=None, revision=None, bulletin=None):
     station = get_station(slug)
     if station is None: raise ValueError('Station not found')
     db.session.query(Station.id).filter_by(id=station.id).with_for_update().first()
@@ -186,7 +186,13 @@ def save_event(slug, *, identifier=None, name, description='', timing_mode='SOFT
         from app.services.audio_classification import migrated_audio
         content_identifier = migrated_audio(station.id,content_identifier).uuid
         content_type = 'TRACK'
-    target = _target(station, content_type, content_identifier)
+    if content_type == 'BULLETIN':
+        from app.services.bulletins import validate
+        bulletin = validate(station, bulletin)
+        target = None
+        if interrupt_dj: raise ValueError('Bulletins run in automation; live operators remain protected')
+    else:
+        target = _target(station, content_type, content_identifier)
     rule = recurrence_rule(station,recurrence_type,local_time=local_time,local_date=local_date,
         weekday=weekday,weekdays=weekdays,repeat_hours=repeat_hours,starts_on=starts_on,
         ends_on=ends_on,month_day=month_day,month_nth=month_nth,month_weekday=month_weekday)
@@ -202,6 +208,7 @@ def save_event(slug, *, identifier=None, name, description='', timing_mode='SOFT
     if row.playlist_id != (target.id if content_type == 'PLAYLIST' else None): row.playlist_state = {}
     row.name, row.description = clean_name, clean_description
     row.timing_mode, row.recurrence_type, row.content_type = timing_mode, recurrence_type, content_type
+    row.bulletin = bulletin if content_type == 'BULLETIN' else None
     row.track = target if content_type == 'TRACK' else None
     row.imaging_asset = target if content_type == 'IMAGING_ASSET' else None
     row.event_block = target if content_type == 'EVENT_BLOCK' else None
@@ -297,6 +304,9 @@ def generate_occurrences(station, now=None, horizon_hours=192):
 
 def validate_content(event, storage=None, *, check_files=True):
     storage = storage or LocalMediaStorage()
+    if event.content_type == 'BULLETIN':
+        from app.services.bulletins import validate
+        return validate(event.station, event.bulletin)
     if event.playlist:
         from app.services.playlists import playable_tracks
         from app.services.availability import playable
@@ -371,6 +381,7 @@ def recurrence_summary(event):
 
 
 def estimated_duration(event):
+    if event.content_type == 'BULLETIN': return (event.bulletin or {}).get('duration',180)
     if event.playlist:
         from app.services.playlists import playable_tracks, leader_track
         durations=[audio_duration_ms(t) for t in playable_tracks(event.playlist,event.station_id)]

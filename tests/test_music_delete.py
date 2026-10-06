@@ -36,6 +36,9 @@ def exercise_references(application,tmp_path,monkeypatch):
         playlist=m.Playlist(station_id=other.id,name='Playlist',items=[m.PlaylistItem(position=1,track_id=song.id)])
         event=m.TimedEvent(uuid=str(uuid.uuid4()),station_id=other.id,name='Play song',timing_mode='SOFT',content_type='TRACK',track_id=song.id,recurrence_type='ONE_TIME',scheduled_at_utc=datetime.now(timezone.utc))
         db.session.add_all([block,playlist,event]);db.session.flush()
+        confirmed=m.SelectionDecision(station_id=other.id,track=song,status='started',started_at=datetime.now(timezone.utc))
+        from app.services.broadcast_reports import capture
+        capture(confirmed);db.session.add(confirmed);db.session.flush();confirmed_id=confirmed.id
         decision=m.SelectionDecision(station_id=other.id,track_id=song.id,status='queued')
         db.session.add(decision);db.session.flush()
         execution=m.EventBlockExecution(station_id=other.id,event_block_id=block.id,source='MANUAL',state='QUEUED',items=[m.EventBlockItemExecution(position=1,item_type='TRACK',track_id=song.id,event_block_item_id=block.items[0].id,selection_decision_id=decision.id,failure_policy='ABORT_BLOCK',state='QUEUED')])
@@ -64,6 +67,8 @@ def exercise_references(application,tmp_path,monkeypatch):
         assert db.session.get(m.Track,keep.id) is not None
         assert m.EventBlock.query.filter_by(id=block.id).one().items[0].track_id==keep.id
         assert m.SelectionDecision.query.filter_by(track_id=identifier).count()==0
+        retained=db.session.get(m.SelectionDecision,confirmed_id)
+        assert retained.status=='started' and retained.track_id is None and retained.performance_snapshot['title']=='Song 1'
         assert db.session.get(m.MediaIngestJob,job_id).track_id is None
 
 
