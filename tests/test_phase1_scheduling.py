@@ -141,6 +141,37 @@ def test_separation_boundary_failed_cross_station_blank_artist_and_fallback(app)
         assert len(pool)==2 and relaxation=='none'
 
 
+@pytest.mark.parametrize('path', ['playlist', 'visual', 'category'])
+@pytest.mark.parametrize('status', ['selected', 'submitting', 'queued'])
+@pytest.mark.parametrize('age', [130, 7200])
+def test_unheard_music_keeps_separation_reserved_until_resolved(app, path, status, age):
+    with app.app_context():
+        station, row, songs = setup_playlist()
+        m.SelectionDecision.query.delete()
+        station.automation.artist_separation_seconds = 120
+        station.automation.track_separation_seconds = 300
+        songs[1].artist = songs[0].artist
+        pending = m.SelectionDecision(station_id=station.id, track=songs[0], status=status,
+            selected_at=AT-timedelta(seconds=age))
+        db.session.add(pending); db.session.commit()
+        if path == 'playlist':
+            program(station, row, AT); db.session.commit()
+            chosen = select_next(station.slug, now=AT)
+        elif path == 'visual':
+            chosen = select_visual(station, dict(source=dict(kind='playlist', id=row.id), key='unheard'),
+                                   LocalMediaStorage(), AT)
+        else:
+            from app.services.automation import _select_category
+            category = songs[0].categories[0]; category.tracks = list(songs)
+            chosen = _select_category(station, category, station.automation, LocalMediaStorage(), AT, {})
+        assert chosen.track_id not in {songs[0].id, songs[1].id}
+        assert chosen.relaxation == 'none'
+        pending.status = 'failed'; db.session.flush()
+        pool, relaxation, _ = eligible(songs, recent(station, station.automation, AT), AT, 300, 120)
+        assert {songs[0].id, songs[1].id}.issubset({song.id for song in pool})
+        assert relaxation == 'none'
+
+
 def test_smart_membership_live_metadata_filters_availability_and_signature(app):
     with app.app_context():
         station,row,songs=setup_playlist();tag=m.MusicTag(station_id=station.id,name='Night',slug='night');db.session.add(tag);db.session.flush()

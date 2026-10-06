@@ -15,8 +15,7 @@ def recent(station, state, now):
         SelectionDecision.station_id == station.id,
         SelectionDecision.track.has(Track.audio_kind == 'MUSIC'),
         or_(and_(SelectionDecision.status == 'started', SelectionDecision.started_at >= since),
-            and_(SelectionDecision.status.in_(('selected', 'submitting', 'queued')),
-                 SelectionDecision.selected_at >= since))).all()
+            SelectionDecision.status.in_(('selected', 'submitting', 'queued')))).all()
 
 
 def eligible(tracks, history, now, track_seconds, artist_seconds):
@@ -32,6 +31,10 @@ def eligible(tracks, history, now, track_seconds, artist_seconds):
         occurred = occurred.replace(tzinfo=occurred.tzinfo or timezone.utc)
         if occurred > now:
             continue
+        if item.status != 'started':
+            # Selection is a reservation, not a play. Lookahead can wait longer
+            # than a separation window before its confirmed on-air start.
+            occurred = now
         last_track[item.track_id] = max(last_track.get(item.track_id, occurred), occurred)
         key = artist_key(item.track.artist)
         if key:

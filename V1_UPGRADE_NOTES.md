@@ -1636,6 +1636,15 @@ and reloads each locked occurrence so a concurrent cancellation cannot be prepar
 from a stale snapshot. Isolated PostgreSQL regressions reproduce both the lock
 cycle and cancellation race and verify safe completion on the corrected path.
 
+A later confirmed-history audit found an unrelaxed artist repeat after 90 seconds
+despite a 120-second window. The first song had waited almost four minutes in
+lookahead; its separation reservation had incorrectly aged from selection time
+before it aired. Unheard selected/submitting/queued music now remains reserved
+until it starts or is retired, including waits beyond the recent-history horizon.
+Confirmed music still ages from its actual start, and the existing explicit
+exhaustion relaxation remains available to avoid empty programming. Regressions
+cover playlist, visual-schedule and category selection plus released reservations.
+
 Regression expectations were updated for the intentional 192 kbps new-station
 default and the three public PWA installation assets. The trimmed-duration
 calendar test's fake events now include their actual playlist/track content types.
