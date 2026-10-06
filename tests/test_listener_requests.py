@@ -267,6 +267,7 @@ def test_recovery_waits_for_complete_inventory_then_recovers_uncertain_push(app,
         decision = select_next(station.slug)
         decision.status, decision.reason = 'failed', 'queue_failed'; db.session.commit()
         monkeypatch.setattr(q, 'request_decision_id', lambda *args: decision.id)
+        monkeypatch.setattr(q, 'queued_order', lambda *args: [42])
         r.reconcile_engine(station, 'engine', set(), False)
         assert req.status == 'queued' and decision.status == 'failed'
         r.reconcile_engine(station, 'engine', {42}, True)
@@ -290,12 +291,42 @@ def test_rejected_future_request_uses_programming_refresh_and_keeps_current(app,
         monkeypatch.setattr(q, 'request_decision_id', lambda slug, rid: {42: decision.id, 43: successor.id}.get(rid, 999))
         monkeypatch.setattr(q, 'socket_identity', lambda *args: 'engine')
         monkeypatch.setattr(q, 'queued_ids', lambda *args: set(future))
+        monkeypatch.setattr(q, 'queued_order', lambda *args: sorted(future))
         monkeypatch.setattr(q, 'active_ids', lambda *args: {99})
         monkeypatch.setattr(q, 'remove_future', lambda slug, ids: (removed.extend(ids), future.difference_update(ids)))
         r.reconcile_engine(station, 'engine', future | {99}, True)
         reader = SimpleNamespace(collect=lambda *args: None, starved_until={})
         assert refresh(station, reader, signature(station))
         assert removed == [42, 43] and successor.reason == 'programming_changed' and decision.reason == 'programming_changed' and req.status == 'rejected'
+
+
+@pytest.mark.parametrize('position', ['after', 'before', 'other_bus', 'confirmed'])
+def test_queued_request_separation_uses_engine_order(app,monkeypatch,position):
+    from app.services import playout_queue as q
+    now=datetime.now(timezone.utc)
+    with app.app_context():
+        station,_,tracks=setup(delay_songs=0,restrict_programming=False)
+        station.automation.track_separation_seconds=300
+        req=submit(station,tracks[0],at=now)
+        decision=select_next(station.slug)
+        decision.status='queued';decision.liquidsoap_request_id=42;decision.socket_identity='engine'
+        successor=m.SelectionDecision(station_id=station.id,track=tracks[0],status='queued',
+            selected_at=now,liquidsoap_request_id=43,socket_identity='engine',
+            programming_signature=decision.programming_signature,playback_bus='B' if position=='other_bus' else 'A')
+        if position=='confirmed':successor.status='started';successor.started_at=now
+        db.session.add(successor);db.session.commit()
+        original=decision.programming_signature
+        monkeypatch.setattr(q,'request_decision_id',lambda slug,rid:{42:decision.id,43:successor.id}[rid])
+        monkeypatch.setattr(q,'queued_order',lambda slug:[43,42] if position=='before' else [42] if position=='other_bus' else [42,43])
+        r.reconcile_engine(station,'engine',{42,43},True)
+        if position=='after':
+            assert decision.programming_signature==original
+            assert decision.reason!='programming_refresh_pending'
+            assert req.status=='queued' and req.played_at is None
+            assert playback_started(decision.id,station.slug,now+timedelta(seconds=1))
+            assert req.status=='played'
+        else:
+            assert decision.reason=='programming_refresh_pending'
 
 
 def test_dj_load_is_durable_and_never_play_on_load(app, monkeypatch):

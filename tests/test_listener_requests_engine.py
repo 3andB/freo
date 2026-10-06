@@ -16,7 +16,8 @@ from tests.test_playlists import setup_playlist
 pytestmark = pytest.mark.skipif(os.environ.get('FREO_ENGINE_TEST') != '1', reason='Explicit private Liquidsoap integration')
 
 
-def test_request_normal_queue_confirmed_start_and_reader_restart(app, tmp_path, monkeypatch):
+@pytest.mark.parametrize('duplicate_tail', [False, True])
+def test_request_normal_queue_confirmed_start_and_reader_restart(app, tmp_path, monkeypatch, duplicate_tail):
     runtime = tmp_path / 'run'; directory = runtime / 'test-station'; directory.mkdir(parents=True)
     media = tmp_path / 'media'; originals = media / 'test-station' / 'originals'; originals.mkdir(parents=True)
     monkeypatch.setenv('FREO_MEDIA_ROOT', str(media))
@@ -25,13 +26,14 @@ def test_request_normal_queue_confirmed_start_and_reader_restart(app, tmp_path, 
     with app.app_context():
         station, playlist, tracks = setup_playlist()
         m.SelectionDecision.query.delete()
-        playlist.items = [item for item in playlist.items if item.track_id in [t.id for t in tracks[:2]]]
+        playlist.items = [item for item in playlist.items if item.track_id in [t.id for t in (tracks[2:3] if duplicate_tail else tracks[:2])]]
         for i, track in enumerate(tracks):
-            track.storage_key = str(i + 1) * 32 + '.mp3'; track.duration_ms = 3000
-            subprocess.run(['ffmpeg', '-v', 'error', '-f', 'lavfi', '-i', f'sine=frequency={440+i*220}:duration=3', '-y', str(originals / track.storage_key)], check=True)
+            duration=12 if duplicate_tail and i==0 else 3
+            track.storage_key = str(i + 1) * 32 + '.mp3'; track.duration_ms = duration*1000
+            subprocess.run(['ffmpeg', '-v', 'error', '-f', 'lavfi', '-i', f'sine=frequency={440+i*220}:duration={duration}', '-y', str(originals / track.storage_key)], check=True)
         schedule = policy(station, True); schedule.mode = 'SIMPLE'; schedule.activated = True
         schedule.simple = schedule.live_simple = dict(kind='playlist', id=playlist.id); schedule.activation = 'phase5-engine'
-        station.request_settings = dict(r.DEFAULTS, enabled=True, delay_songs=1, restrict_programming=False)
+        station.request_settings = dict(r.DEFAULTS, enabled=True, delay_songs=0 if duplicate_tail else 1, restrict_programming=False)
         db.session.commit()
         req = r.submit(station, tracks[2].uuid, 'engine-listener', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'); db.session.commit()
         source = render_liquidsoap(station, 'isolated-test').replace('/run/freo/playout/test-station', str(directory))
@@ -46,9 +48,18 @@ def test_request_normal_queue_confirmed_start_and_reader_restart(app, tmp_path, 
                     time.sleep(.1)
                 assert (directory / 'control.sock').exists()
                 reader = EventReader(); heard = False; restarted = False
+                if duplicate_tail:
+                    from app.services.playout_queue import push_decision, socket_identity
+                    current=m.SelectionDecision(station_id=station.id,track=tracks[0],status='selected')
+                    db.session.add(current);db.session.commit()
+                    current.liquidsoap_request_id=push_decision(current)
+                    current.socket_identity=socket_identity(station.slug);current.status='queued';db.session.commit()
                 deadline = time.monotonic() + 30
                 while time.monotonic() < deadline:
                     refill_station(station.slug, reader)
+                    if duplicate_tail:
+                        bound=m.SelectionDecision.query.filter_by(listener_request_id=req.id).first()
+                        assert bound and bound.reason!='programming_refresh_pending', 'Later queue audio invalidated an earlier request'
                     heard = heard or program_rms(station.slug) > .03
                     db.session.refresh(req)
                     if req.status == 'queued' and not restarted:

@@ -289,7 +289,7 @@ class RequestIneligible(ValueError):
     pass
 
 
-def validate_decision(decision, now=None):
+def validate_decision(decision, now=None, *, later_queued=()):
     if not decision.listener_request_id:
         return
     station = decision.station
@@ -307,7 +307,15 @@ def validate_decision(decision, now=None):
             tracks = source_tracks(station, dict(kind='category', id=decision.category_id))
         elif decision.clock_slot_id and decision.clock_slot and decision.clock_slot.playlist_id:
             tracks = source_tracks(station, dict(kind='playlist', id=decision.clock_slot.playlist_id))
-    waiting = reason(row, station, tracks, now, ignore_decision=decision.id) if row else 'Request unavailable'
+    history = None
+    if later_queued:
+        recent, separation, pending, audible = eligibility_history(station, now or datetime.now(timezone.utc))
+        # Rechecking a queued request must respect the engine's actual order.
+        # A later automatic repeat cannot retroactively evict its predecessor.
+        # Confirmed starts and other live/deck sources still count in full.
+        history = (recent, [item for item in separation if item.status=='started' or item.id not in later_queued],
+                   [item for item in pending if item.id not in later_queued], audible)
+    waiting = reason(row, station, tracks, now, ignore_decision=decision.id, history=history) if row else 'Request unavailable'
     if fixed or waiting:
         raise RequestIneligible(waiting or 'Waiting for flexible music programming')
 
@@ -319,7 +327,7 @@ def reconcile_engine(station, identity, live, complete):
     """
     import time
     from flask import current_app
-    from app.services.playout_queue import request_decision_id, mixer_state, deck_control
+    from app.services.playout_queue import request_decision_id, mixer_state, deck_control, queued_order
     lock(station)
     rows = SelectionDecision.query.join(ListenerRequest, ListenerRequest.id == SelectionDecision.listener_request_id).filter(
         SelectionDecision.station_id == station.id, SelectionDecision.status != 'started',
@@ -327,6 +335,8 @@ def reconcile_engine(station, identity, live, complete):
     if not rows:
         return
     observed = {request_decision_id(station.slug, rid): rid for rid in live} if complete else {}
+    future = queued_order(station.slug) if complete else []
+    by_request = {rid: identifier for identifier, rid in observed.items()}
     missing = current_app.extensions.setdefault('listener_request_missing', {})
     now = datetime.now(timezone.utc)
     maintain(station, now)
@@ -347,7 +357,9 @@ def reconcile_engine(station, identity, live, complete):
         invalid = row is None or row.status in TERMINAL or not settings(station)['enabled']
         if not invalid and decision.status in ('selected', 'queued'):
             try:
-                validate_decision(decision, now)
+                position = future.index(decision.liquidsoap_request_id) if decision.liquidsoap_request_id in future else None
+                later = {by_request[rid] for rid in future[position+1:] if rid in by_request} if position is not None else set()
+                validate_decision(decision, now, later_queued=later)
             except ValueError:
                 invalid = True
         if not invalid or decision.status not in ('selected', 'queued'):

@@ -1611,6 +1611,16 @@ interruption and retains confirmed playback history. A real-audio regression
 delays event bookkeeping after a boundary refresh; the original path produced a
 2.25-second gap under that delay, while the corrected path produced none.
 
+The first soak attempt exposed a request starvation case and was stopped after
+51 minutes 57 seconds, without an audio interruption. A later automatic repeat
+in the queue could invalidate an earlier queued listener request, causing the
+request to wait again while its song aired without the request binding. Queued
+request revalidation now uses the engine's actual queue order. Audio behind the
+request does not count as an earlier reservation; confirmed starts, earlier
+queue entries and other live/deck sources still enforce separation. Focused and
+real-engine tests cover that ordering and confirmed request completion. This
+interrupted interval is excluded from the final six-hour acceptance run.
+
 Regression expectations were updated for the intentional 192 kbps new-station
 default and the three public PWA installation assets. The trimmed-duration
 calendar test's fake events now include their actual playlist/track content types.
