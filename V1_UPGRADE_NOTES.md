@@ -1602,6 +1602,15 @@ source and lets Liquidsoap's native fallible output open/close on its own clock;
 the worker protocol, private storage and error isolation are unchanged. Tests
 also verify that later shows do not change an already completed recording.
 
+Repeated boundary tests reproduced the previously intermittent 0.4-second
+calendar gap. Automatic programming refresh now resolves a successor through the
+existing selector/queue before removing obsolete lookahead, so decoding and
+subsequent event bookkeeping do not leave an empty queue at the current song's
+end. Refresh recovery recognizes an already accepted successor after worker
+interruption and retains confirmed playback history. A real-audio regression
+delays event bookkeeping after a boundary refresh; the original path produced a
+2.25-second gap under that delay, while the corrected path produced none.
+
 Regression expectations were updated for the intentional 192 kbps new-station
 default and the three public PWA installation assets. The trimmed-duration
 calendar test's fake events now include their actual playlist/track content types.

@@ -37,6 +37,13 @@ def handoff_stack(monkeypatch, tmp_path, request):
             subprocess.run(['ffmpeg','-v','error','-y','-f','lavfi','-i',f'sine=frequency=880:duration={duration}',
                             str(stack.media/stack.slug/'originals'/track.storage_key)], check=True)
             track.duration_ms = duration*1000
+            if request.node.callspec.params.get('boundary') == 'calendar-slow-bookkeeping':
+                from app.services import visual_schedule as vs
+                policy = vs.policy(Station.query.filter_by(slug=stack.slug).one())
+                rule = dict(frequency='daily', anchor=datetime.now(timezone.utc).date().isoformat())
+                policy.mode = 'CALENDAR'
+                policy.calendar = vs.clean_document(policy.station, [dict(id='0', start=0, end=86400,
+                    source=policy.live_simple, rule=rule)])
             db.session.commit()
         stack.start()
         yield stack
@@ -221,10 +228,31 @@ def tone_windows(path):
 
 @pytest.mark.parametrize('boundary,lead_seconds', [
     ('calendar',12), ('calendar',14), ('calendar',16),
+    ('calendar-slow-bookkeeping',17),
     ('hard-event',14), ('soft-event',14)])
-def test_auto_does_not_run_empty_inside_boundary_window(handoff_stack,boundary,lead_seconds):
+def test_auto_does_not_run_empty_inside_boundary_window(handoff_stack,monkeypatch,boundary,lead_seconds):
     stack=handoff_stack
     wait_for(lambda: stack.query(lambda: program_decision_id(stack.slug)))
+    delays = []
+    if boundary == 'calendar-slow-bookkeeping':
+        wait_for(lambda: stack.query(lambda: db.session.get(SelectionDecision,
+            program_decision_id(stack.slug)).started_at))
+        from app import automation_worker as worker
+        from app.services import programming_refresh
+        refresh, events = programming_refresh.refresh, worker.process_timed_events
+        pending = []
+        def refreshed(*args, **kwargs):
+            result = refresh(*args, **kwargs)
+            if result: pending.append(True)
+            return result
+        def slow_bookkeeping(*args, **kwargs):
+            if pending:
+                pending.clear()
+                delays.append(True)
+                time.sleep(4.25)
+            return events(*args, **kwargs)
+        monkeypatch.setattr(programming_refresh, 'refresh', refreshed)
+        monkeypatch.setattr(worker, 'process_timed_events', slow_bookkeeping)
     def configure():
         from datetime import timedelta
         from app.services import visual_schedule as vs
@@ -232,7 +260,10 @@ def test_auto_does_not_run_empty_inside_boundary_window(handoff_stack,boundary,l
         station=Station.query.filter_by(slug=stack.slug).one()
         now=datetime.now(timezone.utc)
         due=now+timedelta(seconds=lead_seconds)
-        if boundary=='calendar':
+        if boundary.startswith('calendar'):
+            if boundary == 'calendar-slow-bookkeeping':
+                row = db.session.get(SelectionDecision, program_decision_id(stack.slug))
+                due = row.started_at.replace(tzinfo=timezone.utc) + timedelta(seconds=lead_seconds)
             policy=vs.policy(station)
             second=due.hour*3600+due.minute*60+due.second
             assert due.date()==now.date(), 'Retry fixture outside the last minute of UTC day'
@@ -250,6 +281,8 @@ def test_auto_does_not_run_empty_inside_boundary_window(handoff_stack,boundary,l
     time.sleep(27)
     stack.stop_worker()
     stop_process(stack.engine)
+    if boundary == 'calendar-slow-bookkeeping':
+        assert delays, 'The fixture must refresh queued audio at the calendar boundary'
     windows=tone_windows(stack.evidence/'handoff.wav')
     present=[music>500 for _,music in windows]
     first=present.index(True)

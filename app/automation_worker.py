@@ -1151,7 +1151,8 @@ def tick(reader, target_depth=2):
                         from app.services.playout_queue import _command
                         _command(slug, f'freo_relay.discard {prepared_row.id}')
                     prepared_relay_id = None
-            refresh(state.station,reader,current_signature, prepared_auto_id=prepared_relay_id)
+            refresh(state.station,reader,current_signature, prepared_auto_id=prepared_relay_id,
+                prefill=state.enabled and not state.hold and state.operator_mode == 'AUTO' and not relay_selected)
             reader.programming_signatures[slug]=current_signature
             # Hard timed events must not skip the outgoing DJ source mid-fade.
             returning=time.monotonic()<reader.auto_return_until.get(slug,0)
