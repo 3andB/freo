@@ -1605,6 +1605,8 @@ also verify that later shows do not change an already completed recording.
 Regression expectations were updated for the intentional 192 kbps new-station
 default and the three public PWA installation assets. The trimmed-duration
 calendar test's fake events now include their actual playlist/track content types.
+The domain browser case waits for workspace navigation to finish before its next
+submission, matching the existing workspace tests; all routing/URL assertions remain.
 The access matrix still
 checks protected routes and verifies those public assets are identical for an
 anonymous visitor and a DJ. No additional migration or dependency is required;
