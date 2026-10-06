@@ -1595,7 +1595,9 @@ sequences after each disconnected or stalled live feed and confirms both station
 audio performances in every sequence.
 
 Regression expectations were updated for the intentional 192 kbps new-station
-default and the three public PWA installation assets. The access matrix still
+default and the three public PWA installation assets. The trimmed-duration
+calendar test's fake events now include their actual playlist/track content types.
+The access matrix still
 checks protected routes and verifies those public assets are identical for an
 anonymous visitor and a DJ. No additional migration or dependency is required;
 existing V1 installations need refreshed station engine configurations for the

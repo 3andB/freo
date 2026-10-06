@@ -103,9 +103,9 @@ def test_calendar_warnings_use_trimmed_smart_members_and_leader(app, monkeypatch
         db.session.add(row)
         db.session.commit()
         instant = datetime(2026, 10, 5, 12, tzinfo=timezone.utc)
-        first = SimpleNamespace(name='First', playlist=row, station_id=song.station_id,
+        first = SimpleNamespace(name='First', content_type='PLAYLIST', playlist=row, station_id=song.station_id,
             playlist_playback='ALL', track=None, imaging_asset=None, event_block=None, late_tolerance_seconds=0)
-        second = SimpleNamespace(name='Second', playlist=None, track=song,
+        second = SimpleNamespace(name='Second', content_type='TRACK', playlist=None, track=song,
             imaging_asset=None, event_block=None, late_tolerance_seconds=0)
         monkeypatch.setattr(planning, 'coverage', lambda *args: [])
         monkeypatch.setattr('app.services.timed_events.validate_content', lambda event: True)
