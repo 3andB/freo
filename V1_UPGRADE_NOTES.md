@@ -1594,6 +1594,14 @@ end callbacks. The regression exercises three consecutive intro/body/outro
 sequences after each disconnected or stalled live feed and confirms both station
 audio performances in every sequence.
 
+Consecutive installed recordings exposed a second clock race: explicit file
+output start/stop calls from the observer thread could mark a valid recording
+partial or leave the next short recording empty. An isolated consecutive-show
+test reproduced the empty file. The recorder now gates its existing program
+source and lets Liquidsoap's native fallible output open/close on its own clock;
+the worker protocol, private storage and error isolation are unchanged. Tests
+also verify that later shows do not change an already completed recording.
+
 Regression expectations were updated for the intentional 192 kbps new-station
 default and the three public PWA installation assets. The trimmed-duration
 calendar test's fake events now include their actual playlist/track content types.

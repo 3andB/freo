@@ -67,6 +67,25 @@ def test_record_final_program_and_fail_independently(app,tmp_path,monkeypatch,en
                     shows.sync(station)
                     assert show.ended_at and show.recording.status=='complete',show.recording.error
                     assert show.recording.duration_ms>2000
+                    # Reuse the same engine/output for a second recorded show.
+                    # A fresh engine per recording cannot expose close/reopen races.
+                    first_path=recordings/show.recording.storage_key
+                    first_audio=first_path.read_bytes()
+                    show=shows.claim(station,user,True);db.session.commit();shows.sync(station)
+                    assert _command(station.slug,'freo_record.state').split('|')[1]=='ARMED'
+                    _command(station.slug,'freo_mixer.mode DJ_BOOTH')
+                    another=SelectionDecision(station_id=station.id,track=song,status='selected',reason='deck_load',playback_bus='A')
+                    db.session.add(another);db.session.commit();push_decision(another);deck_control(station.slug,'A','take',0)
+                    wait_for(lambda: _command(station.slug,'freo_record.state').split('|')[1]=='RECORDING')
+                    for _ in range(5):
+                        shows.sync(station);time.sleep(.5)
+                    _command(station.slug,'freo_mixer.mode AUTO')
+                    wait_for(lambda: shows.engine_observation(station.slug)['source']=='AUTO')
+                    state=wait_for(lambda: (value if (value:=_command(station.slug,'freo_record.state')).split('|')[1] in ('CLOSED','ERROR') else None))
+                    shows.sync(station)
+                    assert show.recording.status=='complete',state
+                    assert show.recording.duration_ms>2000
+                    assert first_path.read_bytes()==first_audio
                 else:
                     state=wait_for(lambda: (value if (value:=_command(station.slug,'freo_record.state')).split('|')[1]=='ERROR' else None),20)
                     assert state.split('|')[4]
