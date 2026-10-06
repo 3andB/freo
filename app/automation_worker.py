@@ -635,6 +635,10 @@ def observe_queue(station, error_code=None):
             candidates = [row for row in rows if row.liquidsoap_request_id in active]
             current = max(candidates, key=lambda row: (row.status == 'started', row.id), default=None)
             snapshot.current_decision_id = current.id if current else None
+        from app.services.bulletins import current_body
+        bulletin_active, bulletin_decision = current_body(station, identity)
+        if bulletin_active:
+            snapshot.current_decision_id = bulletin_decision
         snapshot.queued_decision_ids = [by_request[rid] for rid in ordered if rid in by_request]
         snapshot.unknown_count = len([rid for rid in set(ordered) | active if rid not in by_request])
     db.session.commit()

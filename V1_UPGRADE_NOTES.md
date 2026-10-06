@@ -1570,3 +1570,25 @@ report exports and AAC+/HE-AAC are not included.
 - All new runtime templates, icons, JavaScript and migrations are included by the
   existing installer inventory. No production services or installation paths were
   changed during testing.
+
+### Final integration corrections
+
+The disposable-VM integration pass reproduced missing/stale Now Playing during
+an external bulletin. The engine now distinguishes bulletin intro/outro audio
+from waiting automation, and the worker projects the confirmed bulletin body
+into the existing playback snapshot. Public/player, booth and management history
+use the bulletin's captured name; no source URL is exposed.
+
+A stalled live bulletin and relay each reproduced an approximately eight-second
+program clock delay. Their HTTP decoders now use dedicated Liquidsoap clocks and bounded
+native buffer (0.5-second prebuffer, two-second maximum) before joining the program
+clock. Tests monitor output-file growth throughout upstream failure and recovery,
+in addition to checking eventual source state. This uses Liquidsoap's existing
+[clock/buffer facilities](https://www.liquidsoap.info/doc-2.2.5/clocks.html).
+
+Regression expectations were updated for the intentional 192 kbps new-station
+default and the three public PWA installation assets. The access matrix still
+checks protected routes and verifies those public assets are identical for an
+anonymous visitor and a DJ. No additional migration or dependency is required;
+existing V1 installations need refreshed station engine configurations for the
+runtime corrections. Full regression and endurance results follow after testing.

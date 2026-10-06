@@ -585,7 +585,7 @@ def relay_labels(metadata)
   end
   [("title", label("title")), ("artist", label("artist"))]
 end
-relay_input = input.http(id="freo_relay_input", start=false, clock_safe=false,
+relay_input = input.http(id="freo_relay_input", start=false, clock_safe=true,
   max_buffer=2.0, poll_delay=5.0, timeout=10.0,
   string_args=[("protocol_whitelist", "http,tcp"), ("format_whitelist", "mp3,aac,ogg,flac,wav")],
   metadata_filter=relay_labels,
@@ -594,11 +594,12 @@ relay_input = input.http(id="freo_relay_input", start=false, clock_safe=false,
 # Minimize source logging. Upstream addresses never enter this decoder.
 relay_input.log.level.set(0)
 relay_input.on_metadata(fun (m) -> relay_metadata := m)
+relay_buffer = buffer(id="freo_relay_buffer", buffer=0.5, max=2.0, relay_input)
 relay_audio = blank.detect(max_blank=3.0, min_noise=0.2, threshold=-55.0, start_blank=true,
-  track_sensitive=false, on_noise={relay_noise := true}, {relay_noise := false}, relay_input)
+  track_sensitive=false, on_noise={relay_noise := true}, {relay_noise := false}, relay_buffer)
 # Consume even off air so a reconnect/live override never replays old speech.
 output.dummy(id="freo_relay_drain", fallible=true, relay_audio)
-def relay_available() = relay_enabled() and relay_input.is_ready() and relay_noise() end
+def relay_available() = relay_enabled() and relay_buffer.is_ready() and relay_noise() end
 def relay_gain()
   if relay_selected() and relay_available() then min(1.0,max(0.0,time()-relay_take())) else 0.0 end
 end
@@ -781,7 +782,11 @@ end)
 # Prefetched, paused requests are current() before request.on_air reports them.
 server.register(namespace="freo_deck", "requests", fun (_) -> string.concat(separator=" ", list.map(fun (r) -> string(request.id(r)), list.filter_map(fun (r) -> r, [queue.current(), deck_a.current(), deck_b.current(), cart.current(), event_audio.current()]))))
 server.register(namespace="freo_program", "current", fun (_) ->
-  if event_playing() and not mic_active() and not (cart_takeover() and cart.is_ready()) and current_event() != "" then current_event()
+  if event_playing() and event_token() == bulletin_id() and not mic_active() and not (cart_takeover() and cart.is_ready()) then
+    source = if bulletin_phase() == "INTRO" then bulletin_intro else bulletin_outro end
+    current = source.current()
+    if bulletin_phase() != "BODY" and null.defined(current) then decision(request.metadata(null.get(current))) else "" end
+  elsif event_playing() and not mic_active() and not (cart_takeover() and cart.is_ready()) and current_event() != "" then current_event()
   elsif current_cart() != "" then current_cart()
   elsif mic_phase() == "LIVE" then ""
   elsif auto_play() and relay_gain() >= 0.5 and auto_mix() >= max(a_mix(), b_mix()) then ""

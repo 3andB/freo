@@ -80,6 +80,14 @@ def test_relay_fallback_recovery_and_disable(app, tmp_path, monkeypatch, failure
                 local=m.SelectionDecision(station_id=station.id,track=track,status='selected');db.session.add(local);db.session.commit()
                 push_decision(local)
                 wait_for(lambda: program_rms(station.slug)>.02)
+                stop_probe=threading.Event();audio_stall=[0.0]
+                def probe_output():
+                    size=0;changed=time.monotonic()
+                    while not stop_probe.wait(.05):
+                        observed=(tmp_path/'output.wav').stat().st_size
+                        if observed!=size:size=observed;changed=time.monotonic()
+                        audio_stall[0]=max(audio_stall[0],time.monotonic()-changed)
+                probe=threading.Thread(target=probe_output);probe.start()
                 state['up']=False
                 capability=transport.configure(station.id,url)
                 _command(station.slug,'freo_relay.apply 1 '+capability)
@@ -137,7 +145,9 @@ def test_relay_fallback_recovery_and_disable(app, tmp_path, monkeypatch, failure
                 wait_for(lambda: read_engine(station.slug)['source']=='automation')
                 assert program_rms(station.slug)>.02
                 assert proc.poll() is None
+                assert audio_stall[0]<3, f'Program output stalled for {audio_stall[0]:.3f}s'
             finally:
+                if 'stop_probe' in locals():stop_probe.set();probe.join(timeout=2)
                 proc.terminate()
                 try: proc.wait(timeout=10)
                 except subprocess.TimeoutExpired: proc.kill();proc.wait()

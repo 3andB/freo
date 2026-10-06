@@ -101,6 +101,12 @@ def test_all_restricted_routes_and_unassigned_station_routes(app, accounts):
         if not (rule.rule.startswith('/admin') or rule.rule.startswith('/dashboard')):
             continue
         if rule.endpoint == 'web.login': continue
+        if rule.endpoint in {'studio_pwa.manifest', 'studio_pwa.worker', 'studio_pwa.offline'}:
+            # Installation assets are public and contain no account/station data.
+            public = anonymous.get(rule.rule)
+            assert public.status_code == 200
+            assert client.get(rule.rule).data == public.data
+            continue
         if rule.endpoint in DJ_ENDPOINTS and 'slug' not in rule.arguments: continue
         # Allowed station routes must deny an unassigned station, including POST.
         url = concrete_url(rule, 'second-station' if rule.endpoint in DJ_ENDPOINTS else 'test-station')

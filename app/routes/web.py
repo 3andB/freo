@@ -219,9 +219,9 @@ def admin_now(slug):
     station = station_or_404(slug, require_enabled=False)
     rows = latest_rows(station, 1)
     row = rows[0] if rows else None
-    return jsonify(now_playing=({'title': row.track.title if row.track else row.imaging_asset.name if row.imaging_asset else None,
+    return jsonify(now_playing=({'title': row.track.title if row.track else row.imaging_asset.name if row.imaging_asset else (row.performance_snapshot or {}).get('title'),
                                  'artist': row.track.artist if row.track else None,
-                                 'kind': 'imaging' if row.imaging_asset else 'music',
+                                 'kind': 'bulletin' if row.selection_method == 'bulletin' and not row.track else 'imaging' if row.imaging_asset else 'music',
                                  'imaging_type': row.imaging_asset.asset_type if row.imaging_asset else None,
                                  'started_at': iso(row.started_at),
                                  'category': row.category.name if row.category else None}

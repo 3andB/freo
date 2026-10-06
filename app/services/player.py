@@ -273,8 +273,8 @@ def now_playing(station):
         return dict(discovery_links=track_links(row.track),freo_track_id=row.track.freo_track_id if row.track else None,
             report_url=url_for('dmca.report', supplied_track_id=row.track.freo_track_id, station_text=station.name) if row.track else None,
             artwork=url_for('player_experience.artwork',slug=station.slug,decision_id=row.id) if art else None, decision_id=row.id,track=row.track.uuid if row.track else None,
-            title=row.track.title if row.track else row.imaging_asset.name if row.imaging_asset else 'Station audio',
-            artist=row.track.artist if row.track else 'Station imaging',
+            title=row.track.title if row.track else row.imaging_asset.name if row.imaging_asset else (row.performance_snapshot or {}).get('title', 'Station audio'),
+            artist=row.track.artist if row.track else (row.performance_snapshot or {}).get('artist', 'Station imaging'),
             started_at=row.started_at.replace(tzinfo=row.started_at.tzinfo or timezone.utc).isoformat(),
             votable=bool(row.track and not row.track.deleted_at and now-row.started_at.replace(tzinfo=row.started_at.tzinfo or timezone.utc)<timedelta(hours=24)))
     current=SelectionDecision.query.filter(SelectionDecision.station_id==station.id,

@@ -15,11 +15,11 @@ from tests.test_player_experience import config_form, ADMIN, CSRF
 from tests.test_station_settings_flags import png
 
 
-def test_default_128_and_explicit_192_preserves_existing(app):
+def test_default_192_and_explicit_change_preserves_existing(app):
     client = admin_client(app)
     with app.app_context():
         station = create_station('New radio', 'new-radio')
-        assert station.stream.bitrate == 128
+        assert station.stream.bitrate == 192
         assert Station.query.filter_by(slug='test-station').one().stream.bitrate == 64
     response = client.post('/admin/stations/test-station/settings/audio', data=dict(csrf=CSRF, bitrate='192', revision='1'))
     assert response.status_code == 303

@@ -384,6 +384,10 @@ def safe_item(row):
                     source=source,
                     started_at=started_at,
                     duration_ms=asset.duration_ms, uuid=asset.uuid)
+    if row.selection_method == 'bulletin' and row.performance_snapshot:
+        return dict(decision_id=row.id, kind='bulletin', title=row.performance_snapshot['title'],
+                    artist='', source='EVENT', started_at=started_at,
+                    duration_ms=row.performance_snapshot.get('duration_ms'), uuid=None)
     return dict(decision_id=row.id, kind='unavailable', title='Unavailable item', artist='', source='UNKNOWN')
 
 

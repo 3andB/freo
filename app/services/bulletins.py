@@ -105,6 +105,25 @@ def sequence_uri(occurrence, spec, key):
     return uri
 
 
+def current_body(station, identity):
+    """Project an observed bulletin body into the existing playback snapshot."""
+    try:
+        observed = _command(station.slug, 'freo_bulletin.state')
+    except (OSError, RuntimeError, ValueError):
+        return False, None  # Engines predating broadcast tools have no endpoint.
+    fields = observed.split('|') if isinstance(observed, str) else []
+    if len(fields) != 3 or fields[1] != 'BODY' or not fields[0].isdigit():
+        return False, None
+    occurrence = db.session.get(TimedEventOccurrence, int(fields[0]))
+    if (not occurrence or occurrence.station_id != station.id or
+            (occurrence.runtime or {}).get('identity') != identity):
+        return True, None
+    decision = SelectionDecision.query.filter_by(station_id=station.id,
+        status='started', socket_identity=identity, selection_method='bulletin',
+        reason=f'bulletin:{occurrence.id}:body').first()
+    return True, decision.id if decision else None
+
+
 def prepare(occurrence, reader, now):
     runtime = dict(occurrence.runtime or {})
     if 'bulletin' not in runtime:
@@ -193,7 +212,7 @@ def reconcile(station, reader, now=None, allow_new=True):
         if float(state[2])>0 and not active.started_at:
             began=float(state[2]); active.started_at=datetime.fromtimestamp(began,timezone.utc)
             decision=SelectionDecision(station_id=station.id,status='started',started_at=active.started_at,
-                selection_method='bulletin',reason=f'bulletin:{active.id}:body',
+                selection_method='bulletin',reason=f'bulletin:{active.id}:body',socket_identity=active.runtime['identity'],
                 performance_snapshot=dict(track_uuid='',title=active.runtime.get('title',active.event.name),artist='',album='',isrc=None,kind='BULLETIN',duration_ms=round(active.runtime['duration']*1000)))
             db.session.add(decision)
         if phase in ('FAILED','COMPLETED'):

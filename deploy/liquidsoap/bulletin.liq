@@ -10,18 +10,20 @@ bulletin_intro = program_queue("freo_bulletin_intro")
 bulletin_file = program_queue("freo_bulletin_file")
 bulletin_outro = program_queue("freo_bulletin_outro")
 bulletin_connected = ref(false)
-bulletin_live = input.http(id="freo_bulletin_live", start=false, clock_safe=false, max_buffer=2.0,
+bulletin_live = input.http(id="freo_bulletin_live", start=false, clock_safe=true, max_buffer=2.0,
   poll_delay=10.0, timeout=10.0,
   string_args=[("protocol_whitelist","http,tcp"),("format_whitelist","mp3,aac,ogg,flac,wav")],
   on_connect=fun (_) -> bulletin_connected := true,
   on_disconnect={bulletin_connected := false}, on_error=fun (_) -> bulletin_connected := false, "")
 bulletin_live.log.level.set(0)
+# Network decoding must not hold the program clock while a remote feed stalls.
+bulletin_buffer = buffer(id="freo_bulletin_buffer", buffer=0.5, max=2.0, bulletin_live)
 bulletin_noise = ref(false)
 bulletin_live_audio = blank.detect(max_blank=3.0, min_noise=0.1, threshold=-55.0, start_blank=true,
-  track_sensitive=false, on_noise={bulletin_noise := true}, {bulletin_noise := false}, bulletin_live)
+  track_sensitive=false, on_noise={bulletin_noise := true}, {bulletin_noise := false}, bulletin_buffer)
 output.dummy(id="freo_bulletin_drain", fallible=true, bulletin_live_audio)
 def bulletin_ready()
-  if bulletin_kind() == "LIVE" then bulletin_connected() and bulletin_live.is_ready() and bulletin_noise()
+  if bulletin_kind() == "LIVE" then bulletin_connected() and bulletin_buffer.is_ready() and bulletin_noise()
   else bulletin_file.is_ready() end
 end
 def bulletin_finish(phase)

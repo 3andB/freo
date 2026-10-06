@@ -205,6 +205,26 @@ def test_bulletin_confirmation_idempotent_and_restart_fails_safe(app,monkeypatch
         assert bulletins.reconcile(occurrence.station,reader,now)
         assert bulletins.reconcile(occurrence.station,reader,now)
         assert SelectionDecision.query.filter_by(selection_method='bulletin').count()==1
+        confirmed=SelectionDecision.query.filter_by(selection_method='bulletin').one()
+        SelectionDecision.query.filter(SelectionDecision.id != confirmed.id).update(
+            {'started_at': now-timedelta(seconds=10)})
+        assert bulletins.current_body(occurrence.station,'engine1') == (True,confirmed.id)
+        assert bulletins.current_body(occurrence.station,'different-engine') == (True,None)
+        other=Station.query.filter_by(slug='second-station').one()
+        assert bulletins.current_body(other,'engine1') == (True,None)
+        from app.models import LiveQueueSnapshot
+        snapshot=LiveQueueSnapshot(station_id=occurrence.station_id,observed_at=now,
+            current_decision_id=confirmed.id,queued_decision_ids=[])
+        db.session.add(snapshot);db.session.commit()
+        from app.services.player import now_playing
+        from app.services.live_assist import safe_item
+        with app.test_request_context('/'):
+            public=now_playing(occurrence.station)
+        assert public['current'][0]['title']=='Live news'
+        assert public['recent'][0]['title']=='Live news'
+        assert not public['current'][0]['votable']
+        assert safe_item(confirmed)['title']=='Live news'
+        assert client.get('/admin/api/stations/test-station/now').json['now_playing']['title']=='Live news'
         identity[0]='engine2'
         assert not bulletins.reconcile(occurrence.station,reader,now)
         assert occurrence.state=='FAILED' and occurrence.failure_reason=='bulletin_engine_restarted'

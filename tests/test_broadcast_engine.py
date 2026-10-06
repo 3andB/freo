@@ -6,6 +6,7 @@ import os
 import socket
 import subprocess
 import time
+import threading
 import pytest
 from app.extensions import db
 from app.models import Station, Track, SelectionDecision, TimedEventOccurrence
@@ -46,6 +47,14 @@ def test_bulletin_file_live_failure_and_processor_controls(app,tmp_path,monkeypa
                 def music():
                     d=SelectionDecision(station_id=station.id,track=track,status='selected');db.session.add(d);db.session.commit();push_decision(d)
                 music();wait_for(lambda:program_rms(station.slug)>.02)
+                stop_probe=threading.Event();audio_stall=[0.0]
+                def probe_output():
+                    size=0;changed=time.monotonic()
+                    while not stop_probe.wait(.05):
+                        observed=(tmp_path/'output.wav').stat().st_size
+                        if observed!=size:size=observed;changed=time.monotonic()
+                        audio_stall[0]=max(audio_stall[0],time.monotonic()-changed)
+                probe=threading.Thread(target=probe_output);probe.start()
                 for preset in ('light','standard','punchy','off'):
                     assert _command(station.slug,processor_command(dict(bitrate=64,preset=preset)))=='OK'
                     time.sleep(.3);assert program_rms(station.slug)>.01 and proc.poll() is None
@@ -65,6 +74,14 @@ def test_bulletin_file_live_failure_and_processor_controls(app,tmp_path,monkeypa
                 # Simulate the current song reaching its boundary; queued automation is retained.
                 music();_command(station.slug,'freo_queue.skip')
                 wait_for(lambda:'|BODY|' in _command(station.slug,'freo_bulletin.state'))
+                assert _command(station.slug,'freo_program.current')==''
+                assert bulletins.reconcile(station,reader)
+                monkeypatch.setattr('app.services.broadcast_status.observation',lambda slug:(True,0))
+                from app.automation_worker import observe_queue
+                from app.models import LiveQueueSnapshot
+                observe_queue(station)
+                current=db.session.get(LiveQueueSnapshot,station.id).current_decision_id
+                assert current and db.session.get(SelectionDecision,current).reason==f'bulletin:{live.id}:body'
                 if failure=='disconnect':up['up']=False
                 else:up['stall']=True
                 wait_for(lambda:'|FAILED|' in _command(station.slug,'freo_bulletin.state'),15)
@@ -86,6 +103,7 @@ def test_bulletin_file_live_failure_and_processor_controls(app,tmp_path,monkeypa
                 wait_for(lambda:'|READY|' in _command(station.slug,'freo_bulletin.state'))
                 _command(station.slug,f'freo_event.arm {file.id}');music();_command(station.slug,'freo_queue.skip')
                 wait_for(lambda:'|COMPLETED|' in _command(station.slug,'freo_bulletin.state'),10)
+                assert audio_stall[0]<3, f'Program output stalled for {audio_stall[0]:.3f}s'
                 assert _command(station.slug,'freo_event.state').startswith('|')
                 assert program_rms(station.slug)>.01
                 from app.automation_worker import EventReader
@@ -93,6 +111,7 @@ def test_bulletin_file_live_failure_and_processor_controls(app,tmp_path,monkeypa
                 EventReader().collect(station.slug)
                 assert SelectionDecision.query.filter_by(track_id=imaging.id,status='started').count()==2
             finally:
+                if 'stop_probe' in locals():stop_probe.set();probe.join(timeout=2)
                 proc.terminate()
                 try:proc.wait(timeout=10)
                 except subprocess.TimeoutExpired:proc.kill();proc.wait()
