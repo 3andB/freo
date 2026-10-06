@@ -789,7 +789,10 @@ def process_timed_events(station, reader, now=None):
         future=[row for row in rows if row.state in ('PENDING','READY')]
         return min(((row.scheduled_for_utc.replace(tzinfo=row.scheduled_for_utc.tzinfo or timezone.utc)-now).total_seconds() for row in future),default=None)
     for candidate in rows:
-        occurrence = TimedEventOccurrence.query.filter_by(id=candidate.id).with_for_update().first()
+        # Event edits lock the station before its occurrences. Keep that order
+        # through the scan and the selector that follows, including future rows.
+        db.session.query(Station.id).filter_by(id=station.id).with_for_update().first()
+        occurrence = TimedEventOccurrence.query.filter_by(id=candidate.id).with_for_update().populate_existing().first()
         if occurrence is None or occurrence.state not in ('PENDING','READY','QUEUED'):
             continue
         if occurrence.block_execution and occurrence.block_execution.state in ('PENDING','QUEUED','STARTED','COMPLETED'):

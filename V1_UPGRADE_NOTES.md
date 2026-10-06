@@ -1629,6 +1629,13 @@ second listener request, including retirement of both while retaining current
 audio. The intermediate soak was archived and the acceptance interval restarted
 after this correction.
 
+Disabling test events during cleanup exposed a PostgreSQL deadlock between an
+event edit and the worker's scan of future occurrences. The worker now takes the
+existing station lock before occurrence locks, matching the editor and selector,
+and reloads each locked occurrence so a concurrent cancellation cannot be prepared
+from a stale snapshot. Isolated PostgreSQL regressions reproduce both the lock
+cycle and cancellation race and verify safe completion on the corrected path.
+
 Regression expectations were updated for the intentional 192 kbps new-station
 default and the three public PWA installation assets. The trimmed-duration
 calendar test's fake events now include their actual playlist/track content types.
