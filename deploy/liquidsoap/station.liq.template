@@ -819,6 +819,7 @@ thread.run(every=0.1, {
   end
 })
 radio = server.rms(id="freo_program", radio)
+radio = source.on_frame(radio, bulletin_tick)
 def relay_source()
   if broadcasting_tone() then "tone"
   elsif cart.is_ready() then "cart"

@@ -92,24 +92,27 @@ def test_bulletin_file_live_failure_and_processor_controls(app,tmp_path,monkeypa
                 subprocess.run(['ffmpeg','-v','error','-f','lavfi','-i','sine=frequency=990:duration=1','-y',str(bumper)],check=True)
                 imaging=Track(station_id=station.id,uuid='bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',title='Station bumper',artist='Station',original_filename='bumper.mp3',storage_key=bumper.name,media_type='mp3',audio_kind='STATION',duration_ms=1000,sample_rate_hz=44100,channels=1,file_size_bytes=bumper.stat().st_size,checksum_sha256='b'*64,enabled=True,ingest_status='accepted')
                 db.session.add(imaging);db.session.commit()
-                file=event('FILE');file.state='READY';db.session.commit()
-                intro=bulletins.sequence_uri(file,dict(intro=imaging.uuid),'intro')
-                outro=bulletins.sequence_uri(file,dict(outro=imaging.uuid),'outro')
-                db.session.commit()
-                folder=bulletins.root()/str(station.id);folder.mkdir(parents=True)
-                target=folder/f'{file.id}.wav'
-                subprocess.run(['ffmpeg','-v','error','-f','lavfi','-i','sine=frequency=660:duration=2','-y',str(target)],check=True)
-                assert _command(station.slug,f'freo_bulletin.prepare {file.id}|FILE|{target}|2.000|{intro}|{outro}')=='OK'
-                wait_for(lambda:'|READY|' in _command(station.slug,'freo_bulletin.state'))
-                _command(station.slug,f'freo_event.arm {file.id}');music();_command(station.slug,'freo_queue.skip')
-                wait_for(lambda:'|COMPLETED|' in _command(station.slug,'freo_bulletin.state'),10)
-                assert audio_stall[0]<3, f'Program output stalled for {audio_stall[0]:.3f}s'
-                assert _command(station.slug,'freo_event.state').startswith('|')
-                assert program_rms(station.slug)>.01
-                from app.automation_worker import EventReader
-                monkeypatch.setattr('app.automation_worker.EVENT_ROOT',sockets)
-                EventReader().collect(station.slug)
-                assert SelectionDecision.query.filter_by(track_id=imaging.id,status='started').count()==2
+                # Repeated natural EOF transitions must retain the event through
+                # each outro, including immediately after a failed live feed.
+                for repetition in range(3):
+                    file=event('FILE');file.state='READY';db.session.commit()
+                    intro=bulletins.sequence_uri(file,dict(intro=imaging.uuid),'intro')
+                    outro=bulletins.sequence_uri(file,dict(outro=imaging.uuid),'outro')
+                    db.session.commit()
+                    folder=bulletins.root()/str(station.id);folder.mkdir(parents=True,exist_ok=True)
+                    target=folder/f'{file.id}.wav'
+                    subprocess.run(['ffmpeg','-v','error','-f','lavfi','-i','sine=frequency=660:duration=2','-y',str(target)],check=True)
+                    assert _command(station.slug,f'freo_bulletin.prepare {file.id}|FILE|{target}|2.000|{intro}|{outro}')=='OK'
+                    wait_for(lambda:'|READY|' in _command(station.slug,'freo_bulletin.state'))
+                    _command(station.slug,f'freo_event.arm {file.id}');music();_command(station.slug,'freo_queue.skip')
+                    wait_for(lambda:'|COMPLETED|' in _command(station.slug,'freo_bulletin.state'),10)
+                    assert audio_stall[0]<3, f'Program output stalled for {audio_stall[0]:.3f}s'
+                    assert _command(station.slug,'freo_event.state').startswith('|')
+                    assert program_rms(station.slug)>.01
+                    from app.automation_worker import EventReader
+                    monkeypatch.setattr('app.automation_worker.EVENT_ROOT',sockets)
+                    EventReader().collect(station.slug)
+                    assert SelectionDecision.query.filter_by(track_id=imaging.id,status='started').count()==2*(repetition+1)
             finally:
                 if 'stop_probe' in locals():stop_probe.set();probe.join(timeout=2)
                 proc.terminate()

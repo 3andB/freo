@@ -83,7 +83,10 @@ server.register(namespace="freo_bulletin", "cancel", fun (id) -> begin
 end)
 server.register(namespace="freo_bulletin", "state", fun (_) ->
   bulletin_id() ^ "|" ^ bulletin_phase() ^ "|" ^ string.float(bulletin_began()))
-thread.run(every=0.05, fun () -> begin
+# Run readiness/deadline checks on the program clock alongside source.on_end.
+# A background poll can see the file reach EOF while its completion callback is
+# changing BODY to OUTRO, clear the event reservation, then leave OUTRO stranded.
+def bulletin_tick()
   phase = bulletin_phase()
   if phase == "PREPARING" and bulletin_ready() then bulletin_phase := "READY" end
   if phase == "PREPARING" or phase == "READY" or phase == "INTRO" or phase == "BODY" or phase == "OUTRO" then
@@ -102,7 +105,7 @@ thread.run(every=0.05, fun () -> begin
       end
     end
   end
-end)
+end
 bulletin_output = switch(track_sensitive=false, [
   ({event_playing() and event_token()==bulletin_id() and bulletin_phase()=="INTRO"}, amplify(override="freo_gain",1.0,bulletin_intro_audio)),
   ({event_playing() and event_token()==bulletin_id() and bulletin_phase()=="BODY" and bulletin_kind()=="FILE"}, bulletin_file_audio),

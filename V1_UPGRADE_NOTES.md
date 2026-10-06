@@ -1586,6 +1586,14 @@ clock. Tests monitor output-file growth throughout upstream failure and recovery
 in addition to checking eventual source state. This uses Liquidsoap's existing
 [clock/buffer facilities](https://www.liquidsoap.info/doc-2.2.5/clocks.html).
 
+Repeated real-engine tests also reproduced a bulletin EOF race: the background
+readiness poll could clear the event reservation while the body completion
+callback entered OUTRO, omitting the outro and leaving completion state stale.
+Bulletin readiness/deadline checks now run on the program clock alongside the
+end callbacks. The regression exercises three consecutive intro/body/outro
+sequences after each disconnected or stalled live feed and confirms both station
+audio performances in every sequence.
+
 Regression expectations were updated for the intentional 192 kbps new-station
 default and the three public PWA installation assets. The access matrix still
 checks protected routes and verifies those public assets are identical for an
