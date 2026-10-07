@@ -1712,3 +1712,71 @@ the commit and exercise the real `v1-test-1` player, including natural metadata
 transitions, live audio analysis and injected renderer failure. Production source,
 database/services, `main`, production tags/releases and the 0.3.2 installation
 remain frozen.
+
+## Public player acceptance corrections — 7 October 2026
+
+The Phase 5 request page/API existed but the public player omitted its entry
+point. `REQUEST A SONG` now appears only when the station's existing request
+settings enable it. Its dialog embeds the existing request page, keeping playback
+alive and preserving the original search, submission, moderation, rate limits,
+programming restrictions, separation, recovery and confirmed-start rules. The
+public CSP permits this same-origin frame on HTTP installations as well as HTTPS.
+Disabled requests and disabled advertising render no reserved controls/containers.
+
+Phase 10's install manifest and service worker covered `/admin/` only. Public
+players now advertise a station-specific manifest at
+`/player/<slug>/manifest.webmanifest`, with a stable station identity, the station
+player as start URL, existing validated Freo icons, and `/player/` scope. The
+separate public worker `/player/sw.js` caches only an explicit offline message and
+icons; audio, request submissions, metadata, APIs and authenticated content remain
+network-only. Offline mode displays no simulated station controls. `INSTALL FREO`
+appears only when the browser supplies its native install opportunity, and is
+hidden in installed/unsupported contexts. iPhone installation uses Safari's native
+Share → Add to Home Screen flow; Safari does not provide `beforeinstallprompt`.
+Freo Studio remains a separate installation. Manifests preserve custom-domain
+station boundaries.
+
+The reported Safari/iPhone visualizer failure was reproduced on the real HTTPS
+staging player: `HTMLMediaElement.captureStream` is unavailable in WebKit, while
+Chromium captured real nonzero station samples successfully. The listener URL
+redirects to a stream on the same HTTPS origin, so missing cross-origin permission
+was not the cause and no Icecast/Nginx CORS relaxation is needed.
+
+Chromium keeps its capture-only analysis path. Browsers without capture use one
+playback-owned media-element source and output gain, unlocked in the Play gesture.
+The analyser is a separate branch; visualizer close/fullscreen/render failures
+never own or disconnect the audible output. Capture failures stop automatic
+reattachment loops. The fallback uses the existing stream and handles replacement
+media elements; no extra visualization stream is opened. Music audio-session
+behavior is declared where the browser supports it.
+
+The iPhone volume slider previously assigned `HTMLMediaElement.volume`, which
+Safari on iOS does not apply. The fallback output gain now implements volume and
+mute with short ramps, independently of whether the visualizer is open. Native
+volume remains in use on browsers that support it, with volume/mute intent
+preserved across pause/resume and reconnects. Physical device/system volume remains
+under the listener's control.
+
+The restored 0.3.2 record remains the default visual; the five-mode visualizer,
+artwork/title/station overlay, fullscreen, advertising, discovery and V1 public
+APIs are retained. No database migration or dependency change is required.
+
+Deploy all changed application files and the three new player JavaScript assets
+from one exact `develop/v1` commit. On the disposable staging VM, back up the
+installed files and commit marker, restart only `freo.service`, and verify that the
+station playout PID and 192 kbps stream remain unchanged. Temporarily enable
+requests for the public submission acceptance check, then restore the original
+settings. Never apply this staging procedure to production or the frozen 0.3.2
+installation.
+
+Validation: 246 tests passed across focused acceptance and relevant regression
+suites; one optional retained-resource diagnostic was skipped. This includes
+request submission and disabled-state rendering, public/Studio PWA boundaries,
+actual Chromium installation and standalone launch, offline recovery, all five
+visual modes, fullscreen, metadata, MP3/AAC-LC analysis, failure isolation, and
+measured software volume/mute output. Chromium's native volume/mute preservation
+was also checked after pause/resume. The restored record CSS still matches the
+frozen 0.3.2 implementation. Candidate scripts were exercised against the real
+HTTPS staging stream in desktop WebKit and iPhone emulation, with nonzero audio
+samples and no additional stream loads when opening/closing the visualizer.
+Physical iPhone hardware was unavailable; emulation is not a device certification.

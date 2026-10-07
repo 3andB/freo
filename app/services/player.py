@@ -117,7 +117,9 @@ def public_context(station, config=None):
     for prefix in ('ad_top','ad_bottom'):
         config[prefix+'_visible'] = prefix in ads
     config['socials'] = [x for x in config['socials'] if x.get('visible')] if config['social_enabled'] else []
-    return dict(player_config=config, player_assets=assets, player_ads=ads,
+    from app.services.listener_requests import settings as request_settings
+    return dict(requests_enabled=request_settings(station)['enabled'],
+                player_config=config, player_assets=assets, player_ads=ads,
                 player_revision=station.player_settings.revision if station.player_settings else 0)
 
 

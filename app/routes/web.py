@@ -335,7 +335,7 @@ def page_security_headers(response):
             response.headers['Content-Security-Policy'] = (
                 "default-src 'self'; img-src 'self' data: https:; style-src 'self' 'unsafe-inline'; "
                 "script-src 'self' https://securepubads.g.doubleclick.net https://pagead2.googlesyndication.com https://tpc.googlesyndication.com https://www.googletagservices.com; "
-                "frame-src https:; media-src 'self' blob:; connect-src 'self' https:; "
+                "frame-src 'self' https:; media-src 'self' blob:; connect-src 'self' https:; "
                 "base-uri 'self'; frame-ancestors 'none'; object-src 'none'")
         if request.endpoint == 'listener_requests.page':
             response.headers['Content-Security-Policy'] = response.headers['Content-Security-Policy'].replace("frame-ancestors 'none'", "frame-ancestors *")

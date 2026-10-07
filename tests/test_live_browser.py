@@ -55,6 +55,10 @@ def booth(app_fixture, monkeypatch, tmp_path, request):
     thread=threading.Thread(target=server.serve_forever,daemon=True);thread.start()
     profile=tempfile.mkdtemp(prefix='freo-browser-',dir='/tmp')
     options=Options();options.binary_location=os.environ.get('FREO_TEST_CHROME','/usr/bin/chromium-browser')
+    # Chromium permits native PWA installation automation over a local pipe.
+    if 'pwa_desktop' in request.fixturenames:
+        options.add_argument('--remote-debugging-pipe')
+        options.add_experimental_option('windowTypes',['page','app'])
     if 'eager_navigation' in request.fixturenames:
         options.page_load_strategy = 'eager'
     if 'native_prompts' in request.fixturenames:

@@ -13,7 +13,7 @@
     const saved = localStorage.getItem(key); if (modes.includes(saved)) select.value = saved;
     const savedPalette = localStorage.getItem(key + '-palette'); if (Object.hasOwn(palettes, savedPalette)) palette.value = savedPalette;
   } catch {}
-  let ctx, audio, captured, context, analyser, source, attachListener;
+  let ctx, audio, captured, context, analyser, source, attachListener, borrowed=false, captureFailed=false;
   let fullscreenNoticeUntil = 0;
   let raf = 0, last = 0, phase = 0, disposed = false, failed = false, generation = 0;
   let bass = 0, mids = 0, treble = 0, energy = 0, measured = false;
@@ -29,7 +29,8 @@
     try {source?.disconnect();} catch {}
     // These are capture tracks only; never stop or reset the native audio element.
     try {captured?.getTracks().forEach(track => track.stop());} catch {}
-    try {context?.close().catch(() => {});} catch {}
+    if (!borrowed) try {context?.close().catch(() => {});} catch {}
+    borrowed=false;
     captured = context = analyser = source = attachListener = null;
     measured = false; bass = mids = treble = energy = 0; bars.fill(0); peaks.fill(0);
   }
@@ -39,8 +40,15 @@
   }
   function observeAudio() {
     const next = $('station-audio');
-    if (audio !== next) {detach(); audio = next;}
-    if (!active() || !audio || audio.paused || captured || !(audio.captureStream || audio.mozCaptureStream)) return;
+    if (audio !== next) {detach(); audio = next; captureFailed=false;}
+    if (!active() || !audio || audio.paused || captureFailed) return;
+    if (!(audio.captureStream || audio.mozCaptureStream)) {
+      const graph=window.FreoAudioAnalysis?.read(audio);
+      if(graph?.analyser){borrowed=true;context=graph.context;analyser=graph.analyser;}
+      return;
+    }
+    if(captured)return;
+    canvas.dataset.analysisReason='';
     try {
       captured = (audio.captureStream || audio.mozCaptureStream).call(audio);
       const token = generation;
@@ -51,16 +59,16 @@
           analyser = context.createAnalyser(); analyser.fftSize = 1024; analyser.smoothingTimeConstant = .72;
           source = context.createMediaStreamSource(captured); source.connect(analyser);
           // No context.destination connection: no second playback or audio routing.
-          context.resume().catch(() => {if (token === generation) detach();});
-        } catch {detach();}
+          context.resume().catch(() => {if (token === generation) {captureFailed=true;detach();}});
+        } catch(error) {canvas.dataset.analysisReason=error.name || 'AnalysisError';captureFailed=true;detach();}
       };
       captured.addEventListener('addtrack', attachListener); attachListener();
-    } catch {detach();}
+    } catch(error) {canvas.dataset.analysisReason=error.name || 'AnalysisError';captureFailed=true;detach();}
   }
   function sample(dt) {
     measured = !!(analyser && context?.state === 'running' && audio && !audio.paused);
     if (measured) {
-      try {analyser.getByteFrequencyData(frequency); analyser.getByteTimeDomainData(waveform);} catch {detach();}
+      try {analyser.getByteFrequencyData(frequency); analyser.getByteTimeDomainData(waveform);} catch(error) {canvas.dataset.analysisReason=error.name || 'AnalysisError';captureFailed=true;detach();}
     }
     if (!measured) {frequency.fill(0); waveform.fill(128);}
     const band = (from, to) => {
@@ -152,7 +160,7 @@
       const dt = Math.min((now - last) / 1000 || 1 / 60, .05); last = now;
       // No fabricated audio reactivity when capture is unavailable.
       if (measured) phase += dt * (.6 + energy * 2.5);
-      draw(dt); raf = requestAnimationFrame(tick);
+      observeAudio(); draw(dt); raf = requestAnimationFrame(tick);
     } catch {fail();}
   }
   function update() {
@@ -174,7 +182,8 @@
   }
   $('visualizer-open').addEventListener('click', () => {
     if (dialog.open) return;
-    failed = false; canvas.hidden = false; dialog.showModal();
+    failed = false; captureFailed=false; canvas.hidden = false; dialog.showModal();
+    const playing=$('station-audio');if(playing&&!playing.paused)window.FreoAudioAnalysis?.prepare(playing);
     try {ctx = canvas.getContext('2d'); if (!ctx) throw new Error('No canvas'); size();} catch {fail();}
   });
   const exitFullscreen = () => {

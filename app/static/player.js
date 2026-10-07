@@ -4,6 +4,7 @@
   const scope = window.FreoPage, $ = id => document.getElementById(id);
   const base = `/api/stations/${encodeURIComponent(root.dataset.station)}`;
   let audio = $('station-audio');
+  let volumeLevel=.8,muted=false;
   const play = $('play-button'), message = $('audio-message');
   const stream = audio.getAttribute('src');
   const zone = root.dataset.timezone, canVote = root.dataset.voting === 'yes';
@@ -54,14 +55,16 @@
     // element's playback permission. Neither path reuses a cached stream URL.
     if(!retry){
       const previous=audio;
+      if(nativeVolumeSupported && !window.FreoAudioAnalysis?.read(previous)?.source){volumeLevel=previous.volume;muted=previous.muted;}
       audioEvents.abort();
       audio=document.createElement('audio');
       audio.id='station-audio';audio.preload='none';audio.setAttribute('playsinline','');
-      audio.volume=previous.volume;audio.muted=previous.muted;
+      audio.volume=volumeLevel;audio.muted=muted;
       previous.pause();previous.removeAttribute('src');previous.load();
       previous.replaceWith(audio);
       bindAudio();
     }
+    window.FreoAudioAnalysis?.prepare(audio,volumeLevel,muted);
     const source=new URL(stream,location.href);
     source.searchParams.set('_freo',`${Date.now()}-${attempt}`);
     audio.src=source.href;
@@ -106,14 +109,29 @@
     if(wanted && connecting && Date.now()-connectingSince>=15000)reconnect();
     if(retryAt && Date.now()>=retryAt){retryAt=0;start(true);}
   },1000);
-  audio.volume=.8;
-  $('volume').addEventListener('input',event=>{audio.volume=Number(event.target.value)/100;audio.muted=false;$('mute-button').setAttribute('aria-pressed','false');$('mute-button').setAttribute('aria-label','Mute');});
-  $('mute-button').addEventListener('click',()=>{audio.muted=!audio.muted;$('mute-button').setAttribute('aria-pressed',String(audio.muted));$('mute-button').setAttribute('aria-label',audio.muted?'Unmute':'Mute');});
+  function applyVolume(){
+    if(!window.FreoAudioAnalysis?.setVolume(audio,volumeLevel,muted)){audio.volume=volumeLevel;audio.muted=muted;}
+    $('mute-button').setAttribute('aria-pressed',String(muted));$('mute-button').setAttribute('aria-label',muted?'Unmute':'Mute');
+  }
+  applyVolume();
+  const nativeVolumeSupported=audio.volume===volumeLevel;
+  $('volume').addEventListener('input',event=>{volumeLevel=Number(event.target.value)/100;muted=false;applyVolume();});
+  $('mute-button').addEventListener('click',()=>{muted=!muted;applyVolume();});
   $('share-button').addEventListener('click',async()=>{try{if(navigator.share)await navigator.share({title:root.querySelector('h1').textContent,url:location.href});else{await navigator.clipboard.writeText(location.href);$('share-button').textContent='Link copied';}}catch(error){if(error.name!=='AbortError')$('share-button').textContent='Share this page’s URL';}});
   scope.listen(document,'visibilitychange',()=>root.classList.toggle('tab-hidden',document.hidden));
   if ('mediaSession' in navigator) {
     try {navigator.mediaSession.setActionHandler('play',()=>start());navigator.mediaSession.setActionHandler('pause',pause);}catch{}
     scope.cleanup(()=>{navigator.mediaSession.setActionHandler('play',null);navigator.mediaSession.setActionHandler('pause',null);navigator.mediaSession.metadata=null;});
+  }
+  const requestDialog=$('request-dialog');
+  if(requestDialog){
+    $('request-open').addEventListener('click',event=>{
+      event.preventDefault();const frame=requestDialog.querySelector('iframe');
+      if(!frame.src)frame.src=frame.dataset.src;
+      requestDialog.showModal();
+    });
+    $('request-close').addEventListener('click',()=>requestDialog.close());
+    requestDialog.addEventListener('close',()=>{$('request-open')?.focus();});
   }
   const sentinel=el('div');$('radio-transport').before(sentinel);
   const sticky=new IntersectionObserver(entries=>{const entry=entries[0];$('radio-transport').classList.toggle('transport-sticky',!entry.isIntersecting&&matchMedia('(max-width:650px)').matches);});
