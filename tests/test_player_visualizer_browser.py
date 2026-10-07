@@ -102,7 +102,8 @@ def test_record_modes_fullscreen_metadata_and_mobile(booth, monkeypatch, long_pl
         driver.save_screenshot('/tmp/freo-v1-visual-' + mode + '.png')
         playing(driver)
     assert len(images) == 8
-    for choice in ('sunset', 'electric', 'aurora'):
+    assert Select(driver.find_element(By.ID,'visual-mode')).options[0].text=='Kai'
+    for choice in ('sunset', 'electric', 'aurora','ocean','amethyst','rose_gold','emerald','solar'):
         Select(driver.find_element(By.ID, 'visual-palette')).select_by_value(choice)
     current.update(title='Second album', artwork=artwork + '#second')
     wait_text(driver, '#visualizer-title', 'Second album')
@@ -313,7 +314,7 @@ def test_rich_scene_variation_uses_live_audio_and_releases_resources(booth, long
       FreoVisualScenes.create=(...args)=>{const api=create(...args),render=api.render;
         api.render=(mode,params)=>{if(['fractal','particles','ambient','ethereal','space'].includes(mode)){
           richProbe.frames++;richProbe.params.push({mode,energy:params.energy,bass:params.bass,mids:params.mids,treble:params.treble,measured:params.measured});
-          params={...params,time:params.time+richProbe.offset};}
+          params={...params,time:params.time+richProbe.offset,fractalTime:(params.fractalTime??params.time)+richProbe.offset};}
           return render(mode,params)};return api};''')
     driver.find_element(By.ID,'play-button').click();playing(driver)
     driver.find_element(By.ID,'visualizer-open').click()
@@ -387,3 +388,91 @@ def test_fractal_graphics_failure_falls_back_without_changing_audio(booth, long_
     playing(driver)
     driver.find_element(By.ID,'visualizer-close').click();playing(driver)
     assert js(driver,'return visualProbe.outputConnections')==0
+
+
+
+def test_pending_safari_resume_can_retry_in_a_new_gesture(booth, long_player_stream):
+    app,driver,base,tmp=booth
+    driver.execute_cdp_cmd('Page.addScriptToEvaluateOnNewDocument', {'source': '''
+      HTMLMediaElement.prototype.captureStream=undefined;HTMLMediaElement.prototype.mozCaptureStream=undefined;
+      window.resumeCalls=0;window.allowContext=false;
+      const Native=AudioContext,state=Object.getOwnPropertyDescriptor(BaseAudioContext.prototype,'state').get;
+      Object.defineProperty(Native.prototype,'state',{get(){return allowContext?state.call(this):'interrupted'}});
+      const resume=Native.prototype.resume;
+      Native.prototype.resume=function(){resumeCalls++;if(!allowContext)return new Promise(()=>{});return resume.call(this)};
+    '''})
+    driver.get(base+'/player/test-station')
+    driver.find_element(By.ID,'play-button').click();playing(driver)
+    assert js(driver,'return resumeCalls')>=1
+    assert js(driver,'return FreoAudioAnalysis.read(document.getElementById("station-audio")).resuming')
+    driver.find_element(By.ID,'visualizer-open').click()
+    assert driver.find_element(By.ID,'visualizer-retry').is_displayed()
+    js(driver,'allowContext=true')
+    driver.find_element(By.ID,'visualizer-retry').click()
+    WebDriverWait(driver,8).until(lambda d:js(d,'return document.getElementById("player-visual").dataset.signal==="present"'))
+    assert js(driver,'return resumeCalls')>=2
+    graph=js(driver,'const g=FreoAudioAnalysis.read(document.getElementById("station-audio"));return {sink:g.sink.gain.value,source:!!g.source}')
+    assert graph=={'sink':0,'source':True}
+    before=js(driver,'return document.getElementById("player-visual").toDataURL()')
+    WebDriverWait(driver,5).until(lambda d:js(d,'return document.getElementById("player-visual").toDataURL()')!=before)
+    driver.find_element(By.ID,'visualizer-close').click();playing(driver)
+    assert js(driver,'return !FreoAudioAnalysis.read(document.getElementById("station-audio")).sink')
+
+
+def test_spectrum_equal_level_tones_have_distinct_bands_and_heights(booth, monkeypatch):
+    import math,struct
+    app,driver,base,tmp=booth
+    buffer=io.BytesIO();rate=44100
+    with wave.open(buffer,'wb') as wav:
+        wav.setnchannels(1);wav.setsampwidth(2);wav.setframerate(rate)
+        for hz in (80,1000,6000,0):
+            wav.writeframes(b''.join(struct.pack('<h',int(7000*math.sin(2*math.pi*hz*i/rate))) for i in range(rate*5)))
+    from flask import send_file
+    monkeypatch.setitem(app.view_functions,'test_monitor_stream',lambda:send_file(io.BytesIO(buffer.getvalue()),mimetype='audio/wav',conditional=True))
+    driver.get(base+'/player/test-station')
+    js(driver,'''window.spectrumHeights={};const fill=CanvasRenderingContext2D.prototype.fillRect;
+      CanvasRenderingContext2D.prototype.fillRect=function(x,y,w,h){const c=document.getElementById('player-visual');
+        if(this.canvas===c && c.dataset.mode==='spectrum' && Math.abs(w-c.width*.82/64*.62)<.01 && y<c.height*.77 && h>2){spectrumHeights[Math.round((x-c.width*.09)/(c.width*.82/64))]=h/c.height/.57;}
+        return fill.call(this,x,y,w,h)};''')
+    driver.find_element(By.ID,'play-button').click();playing(driver)
+    driver.find_element(By.ID,'visualizer-open').click();Select(driver.find_element(By.ID,'visual-mode')).select_by_value('spectrum')
+    maxima=[];positions=[]
+    for position in (1,6,11):
+        js(driver,f'document.getElementById("station-audio").currentTime={position};spectrumHeights={{}}')
+        driver.execute_async_script('setTimeout(arguments[0],1400)')
+        data=js(driver,'return spectrumHeights')
+        assert data
+        best=max(data,key=lambda k:data[k]);positions.append(int(best));maxima.append(data[best])
+        assert sum(v>maxima[-1]-.08 for v in data.values())<=4, data
+    assert positions==sorted(set(positions)),positions
+    assert max(maxima)-min(maxima)<.08,maxima
+    js(driver,'document.getElementById("station-audio").currentTime=16;spectrumHeights={}')
+    driver.execute_async_script('setTimeout(arguments[0],1800)')
+    js(driver,'spectrumHeights={}')
+    driver.execute_async_script('setTimeout(arguments[0],500)')
+    assert max(js(driver,'return Object.values(spectrumHeights)') or [0])<.05
+
+
+
+def test_kai_zoom_detects_tempo_from_decoded_music_pulses(booth, monkeypatch):
+    import math,struct
+    app,driver,base,tmp=booth
+    rate=22050;buffer=io.BytesIO();frequencies=(80,150,300,450,700,1000)
+    with wave.open(buffer,'wb') as wav:
+        wav.setnchannels(1);wav.setsampwidth(2);wav.setframerate(rate)
+        pulse=b''.join(struct.pack('<h',int(1600*math.exp(-(i/rate)*24)*sum(math.sin(2*math.pi*hz*i/rate) for hz in frequencies))) for i in range(rate//2))
+        wav.writeframes(pulse*240)
+    from flask import send_file
+    monkeypatch.setitem(app.view_functions,'test_monitor_stream',lambda:send_file(io.BytesIO(buffer.getvalue()),mimetype='audio/wav',conditional=True))
+    driver.get(base+'/player/test-station')
+    driver.find_element(By.ID,'play-button').click();playing(driver)
+    driver.find_element(By.ID,'visualizer-open').click();Select(driver.find_element(By.ID,'visual-mode')).select_by_value('spectrum')
+    try:
+        WebDriverWait(driver,15).until(lambda d:(lambda bpm:bpm and abs(float(bpm)-120)<8)(d.find_element(By.ID,'player-visual').get_attribute('data-bpm')))
+    except Exception:
+        pytest.fail(str(js(driver,'return {...document.getElementById("player-visual").dataset,time:document.getElementById("station-audio").currentTime}')))
+    Select(driver.find_element(By.ID,'visual-mode')).select_by_value('fractal')
+    first=float(driver.find_element(By.ID,'player-visual').get_attribute('data-fractal-zoom'))
+    driver.execute_async_script('setTimeout(arguments[0],700)')
+    assert float(driver.find_element(By.ID,'player-visual').get_attribute('data-fractal-zoom'))<first
+    playing(driver)

@@ -163,3 +163,45 @@ remain in place. Hidden/closed/paused scenes stop their rendering loop. Page
 cleanup releases the single graphics context, buffer, shader program and fallback
 raster. No visualizer identifiers, settings API, default precedence or database
 schema changed. Reduced-motion suppression remains removed at the user's request.
+
+
+## Scene refinement and Safari recovery
+
+The fractal selector and station-default label are now **Kai**; the stored
+`fractal` identifier is unchanged. Kai's 20-unit zoom journey spans 32 beats
+when a stable 60–180 BPM estimate is available. Positive spectral changes drive
+an onset tracker; periodic intervals set a smoothed speed, without resetting the
+zoom position. Sustained tones and missing beats do not invent a tempo. Without
+a reliable estimate, the existing gentle zoom speed remains. Silence and
+inactive playback still stop the scene clock.
+
+Ethereal adds fixed, subtle blue/purple accents to its white strands, stronger
+music deformation and two ray fans. Geometric adds sweeping depth movement,
+transient pulses and traveling gradients inside shape contours. Aurora adds stars,
+comets and a lower-third lake using one reusable sky surface and bounded
+reflection strips. Five palettes join the original three: Ocean, Amethyst,
+Rose Gold, Emerald and Solar. Palette preference storage is unchanged.
+
+Spectrum now assigns each FFT bin to one contiguous band, excluding DC and
+ending at 20 kHz or Nyquist. Its 64 bars use peak floating-point decibel levels
+against a fixed −90 to −10 dB scale. The old mapping repeated the lowest bins
+across several bars and treated compressed byte levels as linear power. No
+frequency EQ or automatic normalization is applied to the display or playback.
+
+For Safari's non-capture path, a new gesture can retry a pending context resume
+without waiting for an earlier unresolved promise. A one-sample silent source
+primes the audio unit in the gesture, and the optional analyser connects through
+a zero-gain sink; audible playback retains its separate gain route. The sink is
+removed with analysis. Page restoration and selector gestures retry attachment.
+Rendering uses native media/context state rather than the UI buffering class.
+Missing samples show an Enable visuals action instead of pretending that an
+AudioContext reporting running guarantees a useful signal. Zero samples can
+also mean station silence. These recoverable cases do not establish that every
+physical iOS Web Audio issue is fixed; see
+[WebKit's interruption report](https://bugs.webkit.org/show_bug.cgi?id=273511).
+
+The read-only `scripts/check-player-safari-recovery.py --url URL` reproduces a
+pending initial resume and a second interruption in an iPhone-sized Linux WebKit
+profile. Add `--deployed` to check actual served assets. It requires changing
+Canvas pixels, nonzero real stream samples, one active context, a zero-gain
+analysis sink and continuing audio after closing the visualizer.

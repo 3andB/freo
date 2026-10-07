@@ -11,7 +11,34 @@
     {family:0, x:-.16, y:1.035, cr:0, ci:0, zoom:5.4},
     {family:1, x:0, y:0, cr:-.4, ci:.6, zoom:3.6}
   ];
-  window.FreoVisualScenes = {create(canvas, ctx, scope) {
+  // Presentation-only onset/tempo tracker; no timer or audio graph ownership.
+  function createTempo() {
+    let previous=new Float32Array(64),mean=0,variance=0,time=0,last=-1,age=0,bpm=0,pulse=0,intervals=[],onsets=0;
+    return {sample(data,dt,active) {
+      if(!active){previous.fill(0);mean=variance=0;last=-1;age=0;bpm=0;pulse=0;intervals=[];return {bpm:0,pulse:0,onsets};}
+      if(dt<=0)return {bpm,pulse,onsets};
+      time+=dt;age+=dt;pulse*=Math.exp(-dt*6);
+      let flux=0,level=0;
+      for(let i=1;i<64;i++){const value=data[i]/255;flux+=Math.max(0,value-previous[i]);level+=value;previous[i]=value;}
+      flux/=63;const delta=flux-mean;
+      const onset=age>.4 && level>.3 && flux>.009 && delta>Math.max(.008,Math.sqrt(variance)*1.4) && (last<0 || time-last>.28);
+      const blend=1-Math.exp(-dt*2);mean+=delta*blend;variance+=(delta*delta-variance)*blend;
+      if(onset){
+        if(last>=0){let interval=time-last;
+          if(bpm && interval>1.1)interval/=Math.max(1,Math.round(interval*bpm/60));
+          if(interval>=.28 && interval<=1.03){intervals.push(interval);if(intervals.length>8)intervals.shift();
+            if(intervals.length>=3){const sorted=[...intervals].sort((a,b)=>a-b),median=sorted[Math.floor(sorted.length/2)];
+              const stable=sorted.filter(v=>Math.abs(v-median)<median*.18);
+              if(stable.length>=3){const target=clamp(60/(stable.reduce((a,b)=>a+b,0)/stable.length),60,180);bpm=bpm?mix(bpm,target,.25):target;}}
+          }
+        }
+        last=time;pulse=1;onsets++;
+      }
+      if(last>=0 && time-last>4){bpm=0;intervals=[];}
+      return {bpm,pulse,onsets};
+    }};
+  }
+  window.FreoVisualScenes = {createTempo,create(canvas, ctx, scope) {
     const dots = Array.from({length:420},(_,i)=>({u:(i+.5)/420, a:i*2.399963, seed:((i*137+31)%421)/421, size:1+i%4, x:0,y:0,z:0,px:0,py:0}));
     const rocks = Array.from({length:72},(_,i)=>({a:i*2.399963,r:.32+(i%13)/20,z:(i%9)/9,size:1+i%5,spin:i*.71}));
     let view, glState=null, gpuTried=false, gpuDisabled=false, disposed=false;
@@ -204,7 +231,7 @@
       return [Math.cos(a)*r,Math.sin(a*2+time*.2)*r,Math.sin(a+time*.25+layer*.2)*.23];
     }
     function ambient() {
-      const {time,unit,bass,mids,treble,energy,color,mobile}=view;
+      const {w,h,time,unit,bass,mids,treble,energy,color,mobile}=view;
       const seq=time/10,a=Math.floor(seq)%geometry.length,b=(a+1)%geometry.length,blend=ease((seq%1-.45)/.55);
       canvas.dataset.formation=geometry[a];
       const steps=Math.floor((mobile?56:84)*Math.max(.7,quality)),layers=Math.floor((mobile?10:14)*Math.max(.65,quality));
@@ -213,25 +240,38 @@
         const points=[];
         for(let i=0;i<=steps;i++){
           const t=i/steps,p=geometricPoint(a,t,layer,time),q=geometricPoint(b,t,layer,time);
-          const x=mix(p[0],q[0],blend),y=mix(p[1],q[1],blend),z=mix(p[2],q[2],blend);
-          points.push(project(x*(1+bass*.25+pulse*.08),y*(1+bass*.25),z+Math.sin(t*15+time)*mids*.06));
+          const sweep=Math.sin(time*.9+layer*.3)*(.045+mids*.065);
+          const x=mix(p[0],q[0],blend)+sweep,y=mix(p[1],q[1],blend)+Math.cos(time*.7+layer*.25)*(.02+mids*.035),z=mix(p[2],q[2],blend);
+          const ripple=Math.sin(t*TAU*3-time*2-layer*.55)*(.012+mids*.035+pulse*.035);
+          const expansion=1+bass*.32+pulse*.3+ripple;
+          points.push(project(x*expansion,y*expansion,z+Math.sin(t*15+time*1.6)*mids*.09));
         }
-        if(a!==2 && blend<.8){ctx.beginPath();for(let i=0;i<points.length;i++)i?ctx.lineTo(points[i][0],points[i][1]):ctx.moveTo(points[i][0],points[i][1]);ctx.closePath();ctx.fillStyle=color(layer,.012+energy*.018);ctx.fill();}
-        stroke(points,color(layer,.24+mids*.35),Math.max(.8,unit/900));
+        if(a!==2 && blend<.8){ctx.beginPath();for(let i=0;i<points.length;i++)i?ctx.lineTo(points[i][0],points[i][1]):ctx.moveTo(points[i][0],points[i][1]);ctx.closePath();
+          const sweep=(time*.16+layer*.11)%1;
+          const fill=ctx.createLinearGradient(w*(sweep-.5),h*.2,w*(sweep+.5),h*.8);
+          for(let stop=0;stop<5;stop++)fill.addColorStop(stop/4,color(layer+stop,.045+energy*.09+pulse*.09));
+          ctx.fillStyle=fill;ctx.fill();
+          const wave=ctx.createRadialGradient(w*(.5+Math.sin(time*.65+layer)*.2),h*(.5+Math.cos(time*.7+layer)*.2),unit*.02,w*.5,h*.5,unit*(.3+pulse*.18));
+          wave.addColorStop(0,color(layer+1,.025+energy*.1));wave.addColorStop(.45,color(layer+2,.025+pulse*.12));wave.addColorStop(1,color(layer,0));
+          ctx.fillStyle=wave;ctx.fill();}
+        stroke(points,color(layer,.24+mids*.35),Math.max(.8,unit/900)*(1+pulse*.7));
         if(layer%3===0)stroke(points,white(.1+treble*.23),Math.max(.6,unit/1400));
         if(layer && a===1){const p=points[layer*5%steps],q=project(0,0,(layer-6)*.035);stroke([p,q],color(layer,.15+treble*.15),.8);}
       }
     }
     function ethereal() {
-      const {w,h,unit,time,mids,treble,energy,color,mobile}=view;
+      const {w,h,unit,time,bass,mids,treble,energy,color,mobile}=view;
       ctx.globalCompositeOperation='screen';
       const ox=w*(.5+Math.sin(time*.17)*.23),oy=h*(-.08+Math.sin(time*.11)*.07);
-      for(let ray=0;ray<8;ray++){
-        const end=w*((ray+.5)/8+.12*Math.sin(time*.18+ray)),spread=w*(.035+treble*.035);
-        const glow=ctx.createLinearGradient(ox,oy,end,h);
-        glow.addColorStop(0,white(.12+treble*.2));glow.addColorStop(.45,white(.025+energy*.07));glow.addColorStop(1,white(0));
-        ctx.fillStyle=glow;ctx.beginPath();ctx.moveTo(ox,oy);ctx.lineTo(end-spread,h);ctx.lineTo(end+spread,h);ctx.closePath();ctx.fill();
+      const fans=mobile?[6,4]:[8,6];
+      for(let fan=0;fan<2;fan++)for(let ray=0;ray<fans[fan];ray++){
+        const origin=fan?w*(.8+Math.sin(time*.13)*.14):ox;
+        const end=w*((ray+.5)/fans[fan]+.12*Math.sin(time*.18+ray+fan)),spread=w*(.025+treble*.03);
+        const glow=ctx.createLinearGradient(origin,oy,end,h);
+        glow.addColorStop(0,white((fan?.07:.12)+treble*.17+pulse*.05));glow.addColorStop(.45,white((fan?.012:.025)+energy*.055));glow.addColorStop(1,white(0));
+        ctx.fillStyle=glow;ctx.beginPath();ctx.moveTo(origin,oy);ctx.lineTo(end-spread,h);ctx.lineTo(end+spread,h);ctx.closePath();ctx.fill();
       }
+      canvas.dataset.rayFans='2';
       const detail=Math.max(.65,quality),layers=Math.floor((mobile?5:7)*detail),strands=Math.floor((mobile?9:12)*detail),steps=Math.floor((mobile?56:76)*detail);
       // Layer depth controls apparent scale, opacity and parallax; clouds cross
       // the camera gently rather than merely oscillating on a flat baseline.
@@ -246,10 +286,10 @@
             const t=i/steps,envelope=Math.sin(t*Math.PI),around=strand/strands*TAU;
             const perspective=1/(1-Math.cos(around)*envelope*.22*depth);
             const x=cx+(t-.5)*w*1.35*scale*perspective;
-            const y=cy+(Math.sin(t*8+time*.48+layer)*h*.07*scale+Math.sin(t*17-time*.32+strand*.13)*envelope*h*(.025+mids*.045)+Math.sin(around)*h*.075*envelope*scale)*perspective;
+            const y=cy+(Math.sin(t*8+time*.48+layer)*h*.07*scale+Math.sin(t*17-time*(.32+mids*.9)+strand*.13)*envelope*h*(.025+mids*.075)+Math.sin(t*TAU*3-time*1.1-layer)*envelope*h*(bass*.025+pulse*.018)+Math.sin(around)*h*.075*envelope*scale)*perspective;
             points.push([x,y]);
           }
-          stroke(points,strand%5===0?color(layer,alpha*.65):white(alpha+energy*.16*fade),Math.max(.65,unit/1400*(1+depth)));
+          stroke(points,strand%6===0?`hsla(${strand%12===0?218:273},85%,78%,${(.035+energy*.055+pulse*.035)*fade})`:white(alpha+energy*.16*fade),Math.max(.65,unit/1400*(1+depth)));
         }
       }
       for(let mote=0;mote<(mobile?24:45);mote++){
@@ -297,16 +337,17 @@
           audioTime+=dt;const previous=bassFloor;bassFloor+=(params.bass-bassFloor)*(1-Math.exp(-dt*2));
           if(params.energy>.02 && params.bass>previous+.055 && audioTime-onsetAt>.28){pulse=Math.min(1,(params.bass-previous)*3);onsetAt=audioTime;}
           else pulse*=Math.exp(-dt*4);
+          pulse=Math.max(pulse,params.beatPulse || 0);
         } else if(!params.measured)pulse=0;
         if(lastMode!==mode){qualities[lastMode]=quality;quality=qualities[mode]??1;lastMode=mode;particleReady=false;cost=0;frames=0;}
         const started=performance.now();ctx.save();
         try {
-          if(mode==='fractal')fractal();else if(mode==='particles')particles();else if(mode==='ambient')ambient();else if(mode==='ethereal')ethereal();else if(mode==='space'){spaceLayer(false);params.earth();spaceLayer(true);}else return false;
+          if(mode==='fractal'){view={...params,time:params.fractalTime??params.time};fractal();}else if(mode==='particles')particles();else if(mode==='ambient')ambient();else if(mode==='ethereal')ethereal();else if(mode==='space'){spaceLayer(false);params.earth();spaceLayer(true);}else return false;
         }finally{ctx.restore();}
         // Downgrade detail after sustained expensive frames, never increase it
         // on a brief quiet passage. Each mode retains its own quality across switches.
         cost+=performance.now()-started;frames++;
-        if(frames===45){if(cost/frames>16)quality=Math.max(.5,quality*.75);cost=0;frames=0;}
+        if(frames===6){if(cost/frames>16)quality=Math.max(.5,quality*.75);cost=0;frames=0;}
         canvas.dataset.sceneQuality=quality.toFixed(2);
         return true;
       },

@@ -11,8 +11,8 @@
     try { g.captureSource?.disconnect(); } catch {}
     try { g.capture?.getTracks().forEach(track => track.stop()); } catch {}
     try { if (g.analyser && g.source) g.source.disconnect(g.analyser); } catch {}
-    try { g.analyser?.disconnect(); } catch {}
-    g.capture = g.captureSource = g.analyser = null;
+    try { g.analyser?.disconnect(); g.sink?.disconnect(); } catch {}
+    g.capture = g.captureSource = g.analyser = g.sink = null;
   }
   function release() {
     const previous = graph;
@@ -46,7 +46,13 @@
       if (!input) return;
       const analyser = g.context.createAnalyser();
       analyser.fftSize = 1024; analyser.smoothingTimeConstant = .72;
-      input.connect(analyser); g.analyser = analyser;
+      g.analyser = analyser;
+      if(!g.capturing){
+        // A silent, pulled analysis branch; audible output remains source -> gain.
+        g.sink=g.context.createGain();g.sink.gain.value=0;
+        analyser.connect(g.sink);g.sink.connect(g.context.destination);
+      }
+      input.connect(analyser);
       changed();
     } catch (reason) { error(g, reason); }
   }
@@ -81,29 +87,42 @@
       analyse(g);
     }
   }
-  function resume(g) {
-    if (graph !== g || !g.context || g.resuming || (g.error && !g.source)) return;
-    if (g.context.state === 'running') { connect(g); return; }
-    g.resuming = true;
+  function resume(g, gesture=false) {
+    if (graph !== g || !g.context || (g.error && !g.source)) return;
+    if (g.context.state === 'running' && !gesture) {connect(g);return;}
+    // Safari can leave a resume promise pending through an interruption. A fresh
+    // gesture must be able to retry without waiting for that promise forever.
+    if(g.resuming && !gesture)return;
+    const attempt=++g.resumeAttempt;g.resuming=true;
     try {
-      g.context.resume().then(() => { if (graph === g) { g.resuming = false; connect(g); changed(); } })
-        .catch(reason => { g.resuming = false; error(g, reason); });
-    } catch (reason) { g.resuming = false; error(g, reason); }
+      g.context.resume().then(() => {if(graph===g && attempt===g.resumeAttempt){g.resuming=false;connect(g);changed();}})
+        .catch(reason => {if(graph===g && attempt===g.resumeAttempt){g.resuming=false;error(g,reason);}});
+    } catch(reason){g.resuming=false;error(g,reason);}
   }
-  function prepare(audio, level, muted) {
+  function unlock(g) {
+    if(g.capturing || !g.context || g.unlocked || !navigator.userActivation?.isActive)return;
+    // Prime iOS's audio unit inside the same gesture, before asynchronous media
+    // readiness. A single silent sample has no stream or audible output.
+    try {
+      const node=g.context.createBufferSource();node.buffer=g.context.createBuffer(1,1,g.context.sampleRate);
+      const gain=g.context.createGain();gain.gain.value=0;node.connect(gain);gain.connect(g.context.destination);
+      node.onended=()=>{node.disconnect();gain.disconnect();};node.start();g.unlocked=true;
+    }catch{}
+  }
+  function prepare(audio, level, muted, gesture=false) {
     if (!audio) return;
     if (graph?.audio !== audio) {
       release();
       const capturing = captureSupported(audio);
       const g = graph = {audio, capturing, level:level ?? audio.volume, muted:muted ?? audio.muted, context:null, source:null, gain:null, analyser:null,
-        capture:null, captureSource:null, error:null, resuming:false, events:new AbortController()};
+        capture:null, captureSource:null, error:null, resuming:false, resumeAttempt:0, unlocked:false, events:new AbortController()};
       // Our public /listen route redirects to the same-origin /stream proxy.
       // Never reroute an unknown external resource through a media-element source.
       const url = new URL(audio.getAttribute('src') || audio.dataset.stream || '', location.href);
       g.safe = url.origin === location.origin && /^\/(listen|stream)\//.test(url.pathname);
       const listen = (name, fn) => audio.addEventListener(name, fn, {signal:g.events.signal});
       listen('playing', () => { resume(g); connect(g); changed(); });
-      listen('loadstart', () => { clearAnalysis(g); g.error = null; });
+      listen('loadstart', () => { clearAnalysis(g); g.error = null; g.resuming=false; ++g.resumeAttempt; });
       listen('pause', () => { clearAnalysis(g); changed(); });
       listen('emptied', () => { clearAnalysis(g); changed(); });
     }
@@ -114,10 +133,10 @@
         try { if (!g.capturing && navigator.audioSession) navigator.audioSession.type = 'playback'; } catch {}
         // Called synchronously from Play / visualizer-open, even before media is ready.
         g.context = new (window.AudioContext || window.webkitAudioContext)();
-        g.context.addEventListener('statechange', () => { if (graph === g) { connect(g); changed(); } });
+        g.context.addEventListener('statechange', () => { if (graph === g) { if(g.context.state==='running')g.resuming=false;connect(g); changed(); } });
       } catch (reason) { error(g, reason); }
     }
-    resume(g);
+    unlock(g);resume(g,gesture);
   }
   function activate(audio) {
     enabled = true;
@@ -126,7 +145,7 @@
       graph.error = null;
       if (graph.context?.state === 'closed') graph.context = null;
     }
-    prepare(audio);
+    prepare(audio,undefined,undefined,true);
   }
   function deactivate() {
     enabled = false;
@@ -140,5 +159,6 @@
   scope.listen(document, 'visibilitychange', () => {
     if (!document.hidden && graph && !graph.audio.paused) resume(graph);
   });
+  scope.listen(window,'pageshow',()=>{if(graph && !graph.audio.paused)resume(graph);});
   scope.cleanup(() => {release(); if (window.FreoAudioAnalysis === api) delete window.FreoAudioAnalysis;});
 })();

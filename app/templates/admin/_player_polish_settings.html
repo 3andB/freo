@@ -1,7 +1,7 @@
 <p><a class="ui-button" href="{{ url_for('advertising.page',slug=selected.slug) }}">Manage Advertising →</a></p>
 <fieldset><legend>Merchandise & visuals</legend>
 <label>Station store / merchandise URL (optional)<input type="url" name="merch_url" maxlength="1000" value="{{ config.merch_url }}" placeholder="https://"></label>
-<label>Default player visual<select name="visual_mode">{% for mode in visual_modes %}<option value="{{ mode }}" {% if config.visual_mode==mode %}selected{% endif %}>{{ 'Ambient / geometric' if mode=='ambient' else mode|title }}</option>{% endfor %}</select></label>
+<label>Default player visual<select name="visual_mode">{% for mode in visual_modes %}<option value="{{ mode }}" {% if config.visual_mode==mode %}selected{% endif %}>{{ 'Ambient / geometric' if mode=='ambient' else 'Kai' if mode=='fractal' else mode|title }}</option>{% endfor %}</select></label>
 <p>Listeners may choose another visual. Visuals animate while audio is playing.</p>
 <a href="{{ url_for('platform_polish.profiles',slug=selected.slug) }}">Edit this station’s public DJ profiles →</a>
 </fieldset>

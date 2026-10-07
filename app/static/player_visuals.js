@@ -8,26 +8,31 @@
   const fullscreen = $('visualizer-fullscreen');
   const key = 'freo-visual-' + root.dataset.station;
   const modes = Array.from(select.options, option => option.value);
-  const palettes = {aurora: [155, 205, 285], sunset: [18, 335, 275], electric: [190, 260, 320]};
+  const palettes = {aurora: [155, 205, 285], sunset: [18, 335, 275], electric: [190, 260, 320], ocean: [190, 215, 170], amethyst: [265, 290, 225], rose_gold: [345, 20, 42], emerald: [145, 170, 80], solar: [42, 18, 330]};
   try {
     const saved = localStorage.getItem(key); if (modes.includes(saved)) select.value = saved;
     const savedPalette = localStorage.getItem(key + '-palette'); if (Object.hasOwn(palettes, savedPalette)) palette.value = savedPalette;
   } catch {}
   let ctx, audio, context, analyser, scenes;
-  let sceneTime = 0, sceneElapsed = 0;
+  let sceneTime = 0, sceneElapsed = 0, fractalTime = 0;
+  const tempo=window.FreoVisualScenes?.createTempo();
+  let beat={bpm:0,pulse:0,onsets:0};
   let fullscreenNoticeUntil = 0;
   let raf = 0, last = 0, phase = 0, disposed = false, failed = false;
   let bass = 0, mids = 0, treble = 0, energy = 0, measured = false;
-  const frequency = new Uint8Array(512), waveform = new Uint8Array(1024);
+  const frequency = new Uint8Array(512), waveform = new Uint8Array(1024), decibels = new Float32Array(512);
+  let spectrumEdges = [], spectrumRate = 0, waitingSince = 0;
+  const retry = $('visualizer-retry');
   const bars = new Float32Array(64), peaks = new Float32Array(64);
   const particles = Array.from({length: 150}, (_, i) => ({angle: i * 2.399963, radius: ((i * 73) % 151) / 151, size: 1 + i % 4}));
   const active = () => dialog.open && !disposed && !failed && !document.hidden;
-  const moving = () => active() && audio && !audio.paused && root.classList.contains('is-playing') && analyser && context?.state==='running';
+  const moving = () => active() && audio && !audio.paused && !audio.ended && analyser && context?.state==='running';
   const color = (index, alpha = 1, light = 65) => `hsla(${palettes[palette.value][index % 3]},95%,${light}%,${alpha})`;
   function detach() {
     window.FreoAudioAnalysis?.deactivate();
     context = analyser = null;
     measured = false; bass = mids = treble = energy = 0; bars.fill(0); peaks.fill(0);
+    beat=tempo?.sample(frequency,0,false) || {bpm:0,pulse:0,onsets:0};waitingSince=0;
   }
   function fail() {
     failed = true; cancelAnimationFrame(raf); raf = 0; detach(); canvas.hidden = true;
@@ -55,13 +60,35 @@
     let rms = 0;
     for (const value of waveform) rms += Math.pow((value - 128) / 128, 2);
     energy = Math.min(1, Math.sqrt(rms / waveform.length) * 2 + bass * .35 + mids * .3 + treble * .15);
-    for (let i = 0; i < bars.length; i++) {
-      const from = Math.floor(Math.pow(512, i / 64)), to = Math.max(from + 1, Math.floor(Math.pow(512, (i + 1) / 64)));
-      bars[i] += (band(from, Math.min(512, to)) - bars[i]) * smooth;
-      peaks[i] = Math.max(bars[i], peaks[i] - dt * .25);
+    // Distinct contiguous FFT bands: never repeat the first bin across bars.
+    if (context && analyser && spectrumRate !== context.sampleRate) {
+      spectrumRate = context.sampleRate;
+      const limit = Math.min(512, Math.floor(20000 * analyser.fftSize / spectrumRate) + 1);
+      spectrumEdges = [1];
+      for (let i=1;i<=64;i++) spectrumEdges.push(Math.min(limit-64+i, Math.max(spectrumEdges[i-1]+1, Math.round(Math.pow(limit,i/64)))));
     }
+    if (select.value === 'spectrum') {
+      decibels.fill(-Infinity);
+      if (measured) {try {analyser.getFloatFrequencyData(decibels);} catch { /* Keep playback independent. */ }}
+      for (let i=0;i<bars.length;i++) {
+        let peak=-Infinity;
+        for(let bin=spectrumEdges[i] || 1;bin<(spectrumEdges[i+1] || 1);bin++)peak=Math.max(peak,decibels[bin]);
+        const level=Math.max(0,Math.min(1,(peak+90)/80));
+        bars[i]+=(level-bars[i])*smooth;peaks[i]=Math.max(bars[i],peaks[i]-dt*.25);
+      }
+    }
+    beat=tempo?.sample(frequency,sceneElapsed,measured) || beat;
+    canvas.dataset.bpm=beat.bpm?String(Math.round(beat.bpm)):'';
+    canvas.dataset.beatOnsets=String(beat.onsets);
+    const signal = measured && (frequency.some(value=>value>0) || rms>.000001);
+    if (signal || !audio || audio.paused) waitingSince=0;
+    else waitingSince ||= performance.now();
+    const waiting = !!waitingSince && performance.now()-waitingSince>6000;
+    canvas.dataset.contextState=context?.state || 'unavailable';
+    canvas.dataset.signal=signal?'present':'waiting';
+    if(retry)retry.hidden=!(audio && !audio.paused && ((!measured) || waiting));
     canvas.dataset.analysis = measured ? 'live' : 'unavailable';
-    const notice = measured ? '' : audio && !audio.paused ? 'Audio analysis unavailable · resting visual' : 'Press play on the player to bring this scene to life.';
+    const notice = waiting ? 'No audio samples yet. Enable visuals to retry.' : measured ? '' : audio && !audio.paused ? 'Audio analysis unavailable · resting visual' : 'Press play on the player to bring this scene to life.';
     if (performance.now() > fullscreenNoticeUntil && status.textContent !== notice) status.textContent = notice;
   }
   function line(points, stroke, width) {
@@ -82,21 +109,53 @@
     {orbit:.46,offset:4.1,speed:.024,size:.032,tint:'#d9c89b',kind:'saturn'},
     {orbit:.35,offset:5.4,speed:.046,size:.023,tint:'#6596e5',kind:'neptune'}
   ];
+  let auroraSurface, auroraContext, auroraDetail=1, auroraCost=0, auroraFrames=0;
+  scope.cleanup(()=>{if(auroraSurface)auroraSurface.width=auroraSurface.height=1;auroraSurface=auroraContext=null;});
   function aurora(w,h) {
+    const started=performance.now();
+    auroraSurface ||= document.createElement('canvas');auroraContext ||= auroraSurface.getContext('2d');
+    const skyHeight=Math.round(h*.67);
+    const skyRatio=Math.min(1,Math.sqrt(350000*auroraDetail/(w*skyHeight))),skyWidth=Math.max(1,Math.round(w*skyRatio)),skyPixels=Math.max(1,Math.round(skyHeight*skyRatio));
+    if(auroraSurface.width!==skyWidth || auroraSurface.height!==skyPixels){auroraSurface.width=skyWidth;auroraSurface.height=skyPixels;}
+    const main=ctx;ctx=auroraContext;
+    try {
+      ctx.setTransform(skyWidth/w,0,0,skyPixels/skyHeight,0,0);ctx.clearRect(0,0,w,skyHeight);
+      ctx.fillStyle='#dce9ff';
+      const count=w<700?48:85;
+      for(let i=0;i<count;i++){const star=stars[i];ctx.globalAlpha=.22+star.size*.13+treble*.12;ctx.beginPath();ctx.arc(star.x*w,star.y*skyHeight*.9,Math.max(.5,star.size*w/1200),0,Math.PI*2);ctx.fill();}ctx.globalAlpha=1;
+      auroraCurtains(w,skyHeight);
+      const cycle=(sceneTime+2)%23;
+      canvas.dataset.auroraComet=cycle<7?'visible':'waiting';
+      if(cycle<7){const t=cycle/7,x=w*(-.1+t*1.3),y=skyHeight*(.06+t*.4),length=w*.12;
+        const trail=ctx.createLinearGradient(x-length,y-length*.25,x,y);trail.addColorStop(0,'#b5bfff00');trail.addColorStop(1,`rgba(224,239,255,${.45+energy*.4})`);
+        line([[x-length,y-length*.25],[x,y]],trail,Math.max(1,w*.002));ctx.fillStyle='#eaf4ff';ctx.beginPath();ctx.arc(x,y,Math.max(1,w*.0018),0,Math.PI*2);ctx.fill();}
+    }finally{ctx=main;}
+    ctx.drawImage(auroraSurface,0,0,w,skyHeight);
+    const lake=ctx.createLinearGradient(0,skyHeight,0,h);lake.addColorStop(0,'#132137');lake.addColorStop(1,'#030812');ctx.fillStyle=lake;ctx.fillRect(0,skyHeight,w,h-skyHeight);
+    // Reflected sky strips stay bounded; ripples move without pixel readbacks.
+    const strips=Math.round((w<700?18:30)*Math.max(.7,auroraDetail));
+    for(let i=0;i<strips;i++){const t=i/strips,dy=(h-skyHeight)/strips,sy=skyHeight*(1-t)-skyHeight/strips;
+      const shift=Math.sin(t*37-sceneTime*.8)*w*(.002+t*.009)*(1+bass*.35);
+      ctx.globalAlpha=(1-t)*.36;ctx.drawImage(auroraSurface,0,Math.max(0,sy)*skyPixels/skyHeight,skyWidth,skyPixels/strips,shift,skyHeight+i*dy,w,dy+1);}
+    ctx.globalAlpha=1;ctx.strokeStyle=color(1,.13);ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(0,skyHeight);ctx.lineTo(w,skyHeight);ctx.stroke();
+    canvas.dataset.waterReflection='true';
+    auroraCost+=performance.now()-started;if(++auroraFrames===6){if(auroraCost/auroraFrames>20)auroraDetail=Math.max(.5,auroraDetail*.75);auroraCost=auroraFrames=0;}
+  }
+  function auroraCurtains(w,h) {
     ctx.globalCompositeOperation='screen';
-    for(let layer=0;layer<4;layer++) {
-      const base=h*(.3+layer*.105), amplitude=h*(.05+mids*.05), drift=phase*(.13+layer*.025);
+    for(let layer=0;layer<(w<700?3:4);layer++) {
+      const base=h*(.3+layer*.105), amplitude=h*(.05+mids*.05), drift=sceneTime*(.045+layer*.015)*(1+energy*.3);
       const curve=x=>base+Math.sin(x/w*5+drift+layer)*amplitude+Math.sin(x/w*11-drift*.7+layer)*h*.025;
       const height=x=>h*(.2+.07*Math.sin(x/w*5+layer)+bass*.08);
       const beam=ctx.createLinearGradient(0,base-h*.4,0,base+h*.16);
       beam.addColorStop(0,color(layer,0));beam.addColorStop(.55,color(layer,.1+energy*.25));beam.addColorStop(.82,color(layer,.16+energy*.22));beam.addColorStop(1,color(layer,0));
       ctx.fillStyle=beam;ctx.beginPath();
-      for(let i=0;i<=100;i++){const x=w*i/100,y=curve(x);if(i)ctx.lineTo(x,y);else ctx.moveTo(x,y);}
-      for(let i=100;i>=0;i--){const x=w*i/100;ctx.lineTo(x,curve(x)-height(x));}
+      for(let i=0;i<=60;i++){const x=w*i/60,y=curve(x);if(i)ctx.lineTo(x,y);else ctx.moveTo(x,y);}
+      for(let i=60;i>=0;i--){const x=w*i/60;ctx.lineTo(x,curve(x)-height(x));}
       ctx.closePath();ctx.fill();
       for(let ribbon=0;ribbon<5;ribbon++) {
         const points=[];
-        for(let i=0;i<=90;i++){const x=w*i/90;points.push([x,curve(x)+ribbon*h*.005]);}
+        for(let i=0;i<=60;i++){const x=w*i/60;points.push([x,curve(x)+ribbon*h*.005]);}
         line(points,color(layer,(.28+energy*.35)/(1+ribbon)),Math.max(1,w/850));
       }
     }
@@ -175,7 +234,7 @@
 
   function draw(dt = 1 / 60) {
     sample(dt);
-    if (measured && energy > .001) sceneTime += sceneElapsed;
+    if (measured && energy > .001) {sceneTime += sceneElapsed;fractalTime += sceneElapsed*(beat.bpm?beat.bpm/96:1);}
     const w = canvas.width, h = canvas.height, cx = w / 2, cy = h / 2, unit = Math.min(w, h);
     ctx.clearRect(0, 0, w, h); ctx.fillStyle = '#070914'; ctx.fillRect(0, 0, w, h);
     const glow = ctx.createRadialGradient(cx, cy, 0, cx, cy, Math.max(w, h) * .65);
@@ -184,7 +243,7 @@
     ctx.lineCap = 'round'; ctx.lineJoin = 'round';
     canvas.dataset.mode = select.value;
     const rendered = scenes?.render(select.value, {w,h,unit,time:sceneTime,elapsed:sceneElapsed,bass,mids,treble,energy,measured,
-      mobile:stage.clientWidth<700, color, hues:palettes[palette.value], earth:()=>space(w,h,unit)});
+      fractalTime,beatPulse:beat.pulse,mobile:stage.clientWidth<700, color, hues:palettes[palette.value], earth:()=>space(w,h,unit)});
     if (rendered) { /* Rich scenes use the same canvas and borrowed audio measurements. */
     } else if (select.value === 'aurora') {aurora(w,h);
     } else if (select.value === 'ethereal') {ethereal(w,h);
@@ -192,7 +251,7 @@
     } else if (select.value === 'spectrum') {
       const gap = w * .82 / 64, floor = h * .77;
       for (let i = 0; i < 64; i++) {
-        const x = w * .09 + i * gap, height = Math.max(2, bars[i] * h * .57), hue = palettes[palette.value][0] + i * 2.4;
+        const x = w * .09 + i * gap, height = Math.max(2, bars[i] * h * .57), hue = palettes[palette.value][Math.min(2,Math.floor(i/22))] + (i%22)*.7;
         const gradient = ctx.createLinearGradient(0, floor, 0, floor - height);
         gradient.addColorStop(0, `hsla(${hue},95%,45%,.45)`); gradient.addColorStop(1, `hsl(${hue + 40},100%,75%)`);
         ctx.fillStyle = gradient; ctx.fillRect(x, floor - height, gap * .62, height);
@@ -291,10 +350,13 @@
   });
   scope.listen(document, 'fullscreenchange', () => {fullscreen.textContent = document.fullscreenElement === stage ? 'Exit fullscreen' : 'Fullscreen'; size();});
   for (const control of [select, palette]) control.addEventListener('change', () => {
-    if (control === select) {sceneTime=0;sceneElapsed=0;}
+    if (control === select) {sceneTime=0;fractalTime=0;sceneElapsed=0;}
+    if(active())window.FreoAudioAnalysis?.activate($('station-audio'));
     try {localStorage.setItem(key, select.value); localStorage.setItem(key + '-palette', palette.value);} catch {}
     update();
   });
+  retry?.addEventListener('click',()=>{waitingSince=0;window.FreoAudioAnalysis?.activate($('station-audio'));update();});
+  scope.listen(window,'pageshow',activity);
   const observer = new MutationObserver(activity); observer.observe(root, {attributes: true, attributeFilter: ['class']});
   scope.listen(document, 'playing', update, true); scope.listen(document, 'pause', update, true);
   function activity() {

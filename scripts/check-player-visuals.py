@@ -28,6 +28,9 @@ with sync_playwright() as p:
     if 'id="volume-help"' not in body:
      body=body.replace('</label></div>\n<audio id="station-audio"','</label><small id="volume-help" hidden>Use your device volume buttons.</small></div>\n<audio id="station-audio"')
     body=re.sub(r'(<select id="visual-mode".*?</select>)',lambda m:m[0].replace('</select>',''.join(f'<option value="{mode}">{mode.title()}</option>' for mode in modes[-3:] if f'value="{mode}"' not in m[0])+'</select>'),body)
+    body=re.sub(r'(<option value="fractal"[^>]*>)[^<]*',r'\1Kai',body)
+    body=re.sub(r'(<select id="visual-palette".*?</select>)',lambda m:m[0].replace('</select>',''.join(f'<option value="{key}">{label}</option>' for key,label in [('ocean','Ocean'),('amethyst','Amethyst'),('rose_gold','Rose Gold'),('emerald','Emerald'),('solar','Solar')] if f'value="{key}"' not in m[0])+'</select>'),body)
+    if 'id="visualizer-retry"' not in body:body=body.replace('<button id="visualizer-fullscreen"','<button type="button" id="visualizer-retry" hidden>Enable visuals</button><button id="visualizer-fullscreen"')
     route.fulfill(response=response,body=body)
    if not args.deployed:
     context.route('**'+urlparse(args.url).path,document)
@@ -46,6 +49,8 @@ with sync_playwright() as p:
    page.locator('#play-button').click();page.wait_for_function('() => document.getElementById("station-audio").currentTime>1',timeout=30000)
    if device.get('is_mobile'):assert page.locator('#volume').is_visible() == (engine=='chromium')
    assert page.evaluate('() => !!window.FreoVisualScenes')
+   assert page.locator('#visual-mode option[value="fractal"]').inner_text()=='Kai'
+   assert page.locator('#visual-palette option').count()==8
    page.locator('#visualizer-open').click();page.wait_for_function('() => probe.peak>0',timeout=15000)
    initial=len(streams)
    for mode in modes:
@@ -56,9 +61,15 @@ with sync_playwright() as p:
     before=page.evaluate('() => ({frames:probe.frames,samples:probe.samples})')
     page.wait_for_function('(before) => probe.frames>before.frames && probe.samples>before.samples',arg=before,timeout=20000)
     assert page.locator('#player-visual').get_attribute('data-analysis')=='live'
+    # Prove changed pixels, not just RAF callbacks on a still Safari scene.
+    image=page.locator('#player-visual').evaluate('(c)=>c.toDataURL()')
+    page.wait_for_function('(image)=>document.getElementById("player-visual").toDataURL()!==image',arg=image,timeout=20000)
+    if mode=='ethereal':assert page.locator('#player-visual').get_attribute('data-ray-fans')=='2'
+    if mode=='aurora':assert page.locator('#player-visual').get_attribute('data-water-reflection')=='true'
     if mode=='fractal':assert page.locator('#player-visual').get_attribute('data-fractal-renderer') in ('canvas','webgl')
     if mode=='particles':assert int(page.locator('#player-visual').get_attribute('data-particle-count'))<=(220 if device.get('is_mobile') else 420)
     if mode=='space':assert int(page.locator('#player-visual').get_attribute('data-asteroid-count'))<=(36 if device.get('is_mobile') else 72)
+   for choice in ['aurora','sunset','electric','ocean','amethyst','rose_gold','emerald','solar']:page.locator('#visual-palette').select_option(choice)
    for mode in modes*3:page.locator('#visual-mode').select_option(mode)
    assert page.evaluate('() => probe.contexts.filter(c=>c.state!=="closed").length')==1
    assert page.evaluate('() => probe.graphics.length')<=1

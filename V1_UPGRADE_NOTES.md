@@ -1957,3 +1957,58 @@ fractal check confirmed sustained slow GPU draws switch to Canvas (35 ms median,
 these software-rendered frame rates do not establish physical-device smoothness.
 A normal-speed live-stream video exercised complete formation/event cycles.
 Physical Android, macOS Safari, iPhone and iPad checks remain for human testing.
+
+
+### 2026-10-07 — Musical scene refinement, Kai and Safari recovery
+
+Renamed the displayed Fractal mode to Kai in listener and station-default
+selectors, retaining `fractal` storage/API compatibility. Kai now paces each
+zoom journey over 32 beats when a stable 60–180 BPM estimate is available.
+Positive measured spectral changes drive tempo and geometric pulses; silence,
+sustained sound and unreliable beat detection do not fabricate a BPM. Added
+Ocean, Amethyst, Rose Gold, Emerald and Solar to the three existing palettes.
+
+Ethereal gains subtle blue/purple accents, stronger music-following strands and
+a second ray fan. Geometric gains sweeping movement, beat expansion and color
+waves inside shape contours. Aurora gains stars, comets and a lower-third lake:
+one reusable sky surface capped at 350,000 pixels, bounded reflection strips
+and adaptive detail. Existing mode/default identifiers remain unchanged. No
+migration or dependency was introduced. Player asset version is v1-audio-visuals-6.
+
+Spectrum's old logarithmic mapping repeated the lowest FFT bin across several
+bars and averaged compressed byte values as linear power. Distinct contiguous
+bands and peak float-decibel levels against a fixed −90 to −10 dB scale remove
+that duplication without EQ or per-frequency gain changes. Equal-level decoded
+80 Hz, 1 kHz and 6 kHz tones passed distinct-band/comparable-height checks;
+silence settled the bars.
+
+A pending AudioContext resume could prevent fresh Safari gestures from retrying.
+Attempt generations now permit retry and ignore obsolete promise completions.
+The non-capture graph gets a gesture-owned silent priming sample and an optional
+zero-gain analysis sink separate from audible playback. Page/selector recovery
+and an Enable visuals toolbar action handle interruption or missing samples.
+Animation follows native media state rather than UI buffering classes. The
+reported physical-device freeze was not directly reproduced: WebKit has known
+interruption/sample-delivery limitations, and real iPhone/iPad Safari remains
+for human verification. No fake activity or extra stream is used.
+
+Validation: 25 settings tests and the corrected tempo unit acceptance passed;
+periodic inputs at 90–180 BPM estimate within roughly one BPM and sustained sound
+produces no beat. Eight Chromium browser cases passed across the initial and
+focused reruns, covering all modes/palettes, reconnect, calibrated spectrum,
+pending Safari resume, actual decoded 120 BPM zoom pacing, and canvas/capture/
+analyser failure while audio continues. Four live-station desktop/mobile
+Chromium/WebKit profiles passed with changed pixels in every mode, actual FFT
+samples, repeated switching, bounded contexts, pause/resume and renderer failure.
+A separate iPhone-sized WebKit interruption simulation recovered twice with
+actual samples, changing pixels and continued playback. Reusable candidate/
+deployed verifier scripts retain these checks. Syntax and whitespace checks pass.
+
+Performance corrections remove full-frame geometry clipping and bound sky
+resolution/reflection detail. Final headless desktop Chromium median frame
+rendering was 9.2 ms Ethereal, 6.9 ms Geometric and 23.75 ms Aurora; iPhone-sized
+Linux WebKit was 8 ms, 13 ms and 9.5 ms respectively. Observed frame rates remained
+low on this software-rendered host (desktop 5.7–13.8 fps, WebKit 2.2–3.2 fps),
+so physical-device smoothness is not established. No page errors occurred.
+Production stays frozen; only develop/v1 and the designated V1 test server are
+within this release's deployment scope.
