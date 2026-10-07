@@ -39,8 +39,7 @@ def test_player_listening_calendar_feedback_and_mobile(booth):
     driver.find_element(By.CSS_SELECTOR,'.feedback-close').click()
     with app.app_context():
         assert ListenerVote.query.one().comment=='Keep this one in rotation'
-    driver.find_element(By.ID,'motion-button').click()
-    assert driver.find_element(By.CSS_SELECTOR,'.radio-experience.low-motion')
+    assert not driver.find_elements(By.ID,'motion-button')
     driver.execute_script('window.scrollTo(0,0)')
     driver.save_screenshot('/tmp/freo-player-desktop.png')
     driver.set_window_size(390,844)

@@ -14,7 +14,7 @@ def test_requests_entry_and_public_pwa(app):
         station.request_settings={'enabled':True}
         db.session.commit()
     page=client.get('/player/test-station').text
-    assert 'REQUEST A SONG' in page and '/requests/test-station' in page
+    assert '>REQUESTS</a>' in page and '/requests/test-station' in page
     assert '/player/test-station/manifest.webmanifest' in page
     manifest=client.get('/player/test-station/manifest.webmanifest')
     assert manifest.mimetype=='application/manifest+json'

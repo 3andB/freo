@@ -1780,3 +1780,9 @@ frozen 0.3.2 implementation. Candidate scripts were exercised against the real
 HTTPS staging stream in desktop WebKit and iPhone emulation, with nonzero audio
 samples and no additional stream loads when opening/closing the visualizer.
 Physical iPhone hardware was unavailable; emulation is not a device certification.
+
+Public-player controls now use two explicit rows: REQUESTS / VISUALIZER / INSTALL,
+then SHARE / URL. Requests still require station enablement, and Install still
+requires a native browser installation opportunity. Removed the Reduce motion
+button and its event handler; OS/station reduced-motion preferences remain in
+effect. Updated asset versions prevent stale player JavaScript after rollout.

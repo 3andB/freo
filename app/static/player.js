@@ -26,10 +26,8 @@
   let audioAttempt=0, connectingSince=0;
   let audioEvents=new AbortController();
   let currentTitle=root.querySelector('h1').textContent, currentArtist='Live radio';
-  let motionReduced=matchMedia('(prefers-reduced-motion: reduce)').matches || storage.get('freo-motion') === 'reduced' || root.dataset.motion!=='yes';
-  function motion() {root.classList.toggle('low-motion',motionReduced);$('motion-button').setAttribute('aria-pressed',String(motionReduced));}
-  motion();
-  $('motion-button').addEventListener('click',()=>{motionReduced=!motionReduced;storage.set('freo-motion',motionReduced?'reduced':'full');motion();});
+  const motionReduced=matchMedia('(prefers-reduced-motion: reduce)').matches || storage.get('freo-motion') === 'reduced' || root.dataset.motion!=='yes';
+  root.classList.toggle('low-motion',motionReduced);
   const announcement=root.querySelector('.radio-announcement');
   if (announcement) {
     const key='freo-message-'+announcement.dataset.messageKey;
