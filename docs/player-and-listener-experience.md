@@ -205,3 +205,37 @@ pending initial resume and a second interruption in an iPhone-sized Linux WebKit
 profile. Add `--deployed` to check actual served assets. It requires changing
 Canvas pixels, nonzero real stream samples, one active context, a zero-gain
 analysis sink and continuing audio after closing the visualizer.
+
+### 2026-10-07 — On-device audio report and sample-confirmed retry
+
+The visualizer toolbar now includes **Audio report**, with a copy button and a
+selectable-text fallback for iPhone Safari. Use the player URL with
+`?audio_debug=1` to collect observations before the first Play gesture. Play the
+station, open the visualizer, wait ten seconds, and copy the report. Close the
+report, tap **Enable visuals**, wait ten seconds, then copy a second report.
+Include whether music was audible and the iOS version from Settings → General →
+About. A Mac connection is not required.
+
+The report identifies build `v1-iphone-debug-1` and includes the current audio
+element/context/source/analyser identities, source binding, context and media
+clock progress, frequency peak, float PCM RMS/peak, graph/read/media errors,
+stream URL without query parameters, crossOrigin observed at loadstart, and
+recent media/retry/context events. It retains at most 40 sample snapshots and
+60 events in page memory. Sampling is opt-in, twice per second while the
+visualizer is open, plus event snapshots. No report is uploaded automatically,
+no second stream is fetched, and diagnostics never connect, resume, recreate or
+stop the playback graph. Closing the report leaves collection enabled for the
+next retry; navigation disposes its listeners and timer.
+
+**Enable visuals** previously reset its no-signal timer and hid when a context
+and analyser existed, even without usable samples. Once shown during playback,
+it now stays visible until a real sample read detects signal. The visualizer's
+`data-analysis` is `waiting` for a running analyser without signal and `live`
+only after signal detection. A silent station can also produce zero samples;
+the report explicitly avoids treating silence as proof of a browser defect.
+
+The physical iPhone stream-to-Web-Audio failure remains unconfirmed. This change
+repairs the demonstrated retry UI bug and supplies evidence for the audio-path
+fix; it does not alter stream CORS or native audio routing. The existing WebKit
+interruption helper now releases its simulated interruption inside the retry
+click, avoiding the observed pre-click automatic-recovery race.

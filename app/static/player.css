@@ -75,3 +75,10 @@ html:has(.visualizer-dialog[open]){overflow:hidden}
 
 /* The modal owns the scene; do not animate the obscured record underneath it. */
 .radio-experience:has(.visualizer-dialog[open]) .radio-deck *{animation-play-state:paused!important}
+
+/* The report overlays the scene without touching audio or the analysis graph. */
+.visual-diagnostics:not([hidden]){position:absolute;z-index:5;inset:12px;display:flex;flex-direction:column;gap:10px;padding:18px;background:#111627;color:#fff;border:1px solid #ffffff40;border-radius:14px;overflow:auto;overscroll-behavior:contain;font:14px/1.5 system-ui}
+.visual-diagnostics h2,.visual-diagnostics p{margin:0}.visual-diagnostics h2{font-size:20px}
+.audio-diagnostics-actions{display:flex;gap:8px;flex-wrap:wrap}
+.audio-diagnostics-actions button{font:inherit;color:#fff;background:#28344f;border:1px solid #ffffff60;border-radius:8px;padding:10px 12px;min-height:44px;cursor:pointer}
+.visual-diagnostics textarea{flex:1;min-height:160px;width:100%;box-sizing:border-box;resize:none;background:#080d18;color:#e3ecff;border:1px solid #ffffff40;padding:10px;font:12px/1.4 monospace;user-select:text;-webkit-user-select:text}

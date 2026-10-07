@@ -21,7 +21,7 @@
   let raf = 0, last = 0, phase = 0, disposed = false, failed = false;
   let bass = 0, mids = 0, treble = 0, energy = 0, measured = false;
   const frequency = new Uint8Array(512), waveform = new Uint8Array(1024), decibels = new Float32Array(512);
-  let spectrumEdges = [], spectrumRate = 0, waitingSince = 0;
+  let spectrumEdges = [], spectrumRate = 0, waitingSince = 0, retryNeeded = false;
   const retry = $('visualizer-retry');
   const bars = new Float32Array(64), peaks = new Float32Array(64);
   const particles = Array.from({length: 150}, (_, i) => ({angle: i * 2.399963, radius: ((i * 73) % 151) / 151, size: 1 + i % 4}));
@@ -86,9 +86,12 @@
     const waiting = !!waitingSince && performance.now()-waitingSince>6000;
     canvas.dataset.contextState=context?.state || 'unavailable';
     canvas.dataset.signal=signal?'present':'waiting';
-    if(retry)retry.hidden=!(audio && !audio.paused && ((!measured) || waiting));
-    canvas.dataset.analysis = measured ? 'live' : 'unavailable';
-    const notice = waiting ? 'No audio samples yet. Enable visuals to retry.' : measured ? '' : audio && !audio.paused ? 'Audio analysis unavailable · resting visual' : 'Press play on the player to bring this scene to life.';
+    // A running context is not proof of sample delivery (notably on iOS).
+    if (signal) retryNeeded = false;
+    else if (!measured || waiting) retryNeeded = true;
+    if(retry)retry.hidden=!(audio && !audio.paused && retryNeeded);
+    canvas.dataset.analysis = signal ? 'live' : measured ? 'waiting' : 'unavailable';
+    const notice = waiting ? 'No audio signal detected. Enable visuals to retry, or open Audio report.' : signal ? '' : measured ? 'Waiting for audio samples…' : audio && !audio.paused ? 'Audio analysis unavailable · resting visual' : 'Press play on the player to bring this scene to life.';
     if (performance.now() > fullscreenNoticeUntil && status.textContent !== notice) status.textContent = notice;
   }
   function line(points, stroke, width) {
@@ -355,7 +358,7 @@
     try {localStorage.setItem(key, select.value); localStorage.setItem(key + '-palette', palette.value);} catch {}
     update();
   });
-  retry?.addEventListener('click',()=>{waitingSince=0;window.FreoAudioAnalysis?.activate($('station-audio'));update();});
+  retry?.addEventListener('click',()=>{window.FreoAudioAnalysis?.activate($('station-audio'));update();});
   scope.listen(window,'pageshow',activity);
   const observer = new MutationObserver(activity); observer.observe(root, {attributes: true, attributeFilter: ['class']});
   scope.listen(document, 'playing', update, true); scope.listen(document, 'pause', update, true);
