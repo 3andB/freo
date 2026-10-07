@@ -2112,3 +2112,51 @@ Chromium and Linux WebKit: normal delivery, original-analyser silence and absent
 live-source delivery each produced their distinct expected result while media
 time advanced. JavaScript syntax and diff whitespace checks passed. These
 controls still need the affected physical iPhone; no native Safari fix is claimed.
+
+### 2026-10-07 — Make the iPhone source check independent of MP3 decoding
+
+The second physical iPhone report confirms `crossOrigin="anonymous"` at
+loadstart, a same-origin basic 200 MP3 response, stable source bindings and
+advancing playback/context clocks, but all live analyser samples remain zero.
+Changing request mode did not restore sample delivery. The diagnostic's captured
+192 KiB fragment failed `decodeAudioData` with `EncodingError` before the fresh
+live tap ran. This is a diagnostic design flaw: a live fragment is not a complete
+audio asset, and accepting it in Chromium/Linux WebKit did not establish native
+Safari compatibility. The error does not establish corrupt station audio or
+explain the live media-element-source failure. See
+[WebKit's decodeAudioData asset limitation](https://bugs.webkit.org/show_bug.cgi?id=106658).
+
+Build `v1-iphone-debug-3` removes the fragment request and decode dependency.
+**Run source check** first measures the existing live source through a fresh,
+muted analyser, then feeds a deterministic PCM calibration buffer into that same
+analyser. Calibration is explicitly labeled `known-pcm-self-test`; it goes only
+through the probe's zero-gain branch and never into the player's analyser,
+visualizers or audible output gain. No additional stream request or context is
+created. The original live analyser is measured separately before/after. All
+probe nodes and its specific temporary input edge are removed on completion,
+cancellation, changed playback or failure. The audibility selector records the
+listener's observation as `heardMusic`; its default is `unknown`.
+
+`live-source-silent-calibration-passed` means both live reads were silent while
+the same context/analyser processed the known input. If station music was
+confirmed audible, that isolates missing delivery through the native source;
+it does not identify Apple's internal backend defect. A positive fresh live tap
+with a silent original analyser instead identifies the original analysis branch.
+A failed calibration remains inconclusive. Native live-stream delivery problems
+are also documented in [WebKit bug 180696](https://bugs.webkit.org/show_bug.cgi?id=180696),
+but that external report alone is not proof of this device's underlying cause.
+
+The visualizer still requires actual station samples. This revision fixes the
+diagnostic; it is not a claim that the iPhone visualizer has been repaired.
+Playback routing, stream headers and the sample-confirmed Enable visuals action
+remain unchanged. To obtain the missing evidence, play music, open Audio report,
+run the source check, select whether music was audible, and copy its result.
+
+Validation: three browser regression cases passed. Coverage includes both player
+source routes, retry visibility and clipboard behavior, pre-load CORS, injected
+native-source/analyser faults, calibration isolation, decoder independence,
+allocation failure, inconclusive calibration, cancellation in both probe phases,
+zero additional stream requests and automatic reconnect with continuing playback.
+Six candidate real-station checks passed in Chromium and Linux WebKit, with the
+fragment decoder deliberately unavailable. JavaScript syntax and whitespace
+checks passed. Physical iPhone confirmation remains required.

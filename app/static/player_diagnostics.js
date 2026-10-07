@@ -4,7 +4,7 @@
   const panel = $('audio-diagnostics'), dialog = $('visualizer-dialog');
   if (!scope || !panel || !dialog) return;
   const output = $('audio-diagnostics-report'), message = $('audio-diagnostics-status');
-  const build = 'v1-iphone-debug-2', started = performance.now();
+  const build = 'v1-iphone-debug-3', started = performance.now();
   let enabled = new URLSearchParams(location.search).get('audio_debug') === '1';
   const enabledFromLoad = enabled;
   let nextId = 0, previous = null, sourceCheck = null;
@@ -77,7 +77,7 @@
     }
     message.textContent = assessment;
     const data = {
-      reportVersion: 2, build, enabledFromLoad, sourceCheck, capturedAt: new Date().toISOString(), page: url(location.href),
+      reportVersion: 3, build, enabledFromLoad, sourceCheck, heardMusic: $('audio-diagnostics-audible').value, capturedAt: new Date().toISOString(), page: url(location.href),
       userAgent: navigator.userAgent, platform: navigator.platform, secureContext: isSecureContext,
       visibility: document.visibilityState, standalone: !!navigator.standalone,
       userActivation: navigator.userActivation ? {active: navigator.userActivation.isActive, hasBeenActive: navigator.userActivation.hasBeenActive} : null,
@@ -120,6 +120,7 @@
   });
   scope.listen($('audio-diagnostics-close'), 'click', () => {panel.hidden = true; $('audio-diagnostics-open').focus();});
   scope.listen($('audio-diagnostics-refresh'), 'click', refresh);
+  scope.listen($('audio-diagnostics-audible'), 'change', refresh);
   scope.listen($('audio-diagnostics-copy'), 'click', async () => {
     const text = refresh(); if (!text) return;
     try {await navigator.clipboard.writeText(text); message.textContent = 'Report copied. Paste it into the support conversation.';}
