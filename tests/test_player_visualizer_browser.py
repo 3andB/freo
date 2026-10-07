@@ -266,6 +266,9 @@ def test_real_frequency_bands_silence_and_external_fallback(booth, monkeypatch):
     from flask import send_file
     monkeypatch.setitem(app.view_functions,'test_monitor_stream',lambda:send_file(io.BytesIO(buffer.getvalue()),mimetype='audio/wav',conditional=True))
     driver.get(base+'/player/test-station')
+    js(driver, '''const create=FreoVisualScenes.create;window.sceneBands=null;
+      FreoVisualScenes.create=(...args)=>{const api=create(...args),render=api.render;
+        api.render=(mode,p)=>{sceneBands={bass:p.bass,mids:p.mids,treble:p.treble,energy:p.energy,measured:p.measured};return render(mode,p)};return api};''')
     driver.find_element(By.ID,'play-button').click();playing(driver)
     driver.find_element(By.ID,'visualizer-open').click()
     WebDriverWait(driver,8).until(lambda d:js(d,'return !!FreoAudioAnalysis.read(document.getElementById("station-audio"))?.analyser'))
@@ -279,9 +282,108 @@ def test_real_frequency_bands_silence_and_external_fallback(booth, monkeypatch):
             WebDriverWait(driver,8).until(lambda d:(lambda v:v and (v['peak']==0 if not hz else v['peak']>50 and abs(v['hz']-hz)<65))(sample(d)))
         except Exception:
             pytest.fail(str(dict(position=position,expected_hz=hz,sample=sample(driver),audio=js(driver,'const a=document.getElementById("station-audio");return {time:a.currentTime,paused:a.paused,duration:a.duration,seekable:a.seekable.length}'))))
+        if hz:
+            band={80:'bass',1000:'mids',6000:'treble'}[hz]
+            WebDriverWait(driver,8).until(lambda d:js(d,f'return sceneBands?.measured && sceneBands.{band}>.05 && sceneBands.{band}>=Math.max(...Object.entries(sceneBands).filter(([k])=>["bass","mids","treble"].includes(k)).map(([,v])=>v))'))
+        else:
+            WebDriverWait(driver,8).until(lambda d:js(d,'return sceneBands?.measured && sceneBands.energy<.005'))
     driver.find_element(By.ID,'visualizer-close').click()
     # Unknown cross-origin media must never be attached to Safari's audible graph.
     js(driver,'''window.externalAudio=new Audio('https://example.invalid/radio.mp3');
       externalAudio.captureStream=undefined;externalAudio.mozCaptureStream=undefined;
       FreoAudioAnalysis.prepare(externalAudio);''')
     assert js(driver,'return !FreoAudioAnalysis.read(externalAudio).source && !FreoAudioAnalysis.read(externalAudio).context')
+
+
+
+@pytest.fixture
+def software_graphics():
+    """Exercise actual WebGL in headless Chromium using its software GPU."""
+
+
+def test_rich_scene_variation_uses_live_audio_and_releases_resources(booth, long_player_stream, software_graphics):
+    """Accelerate only choreography; analyser data and playback remain real."""
+    app, driver, base, tmp = booth
+    instrument(driver)
+    driver.get(base+'/player/test-station')
+    js(driver, '''window.richProbe={frames:0,offset:0,gl:[],params:[]};
+      const get=HTMLCanvasElement.prototype.getContext;
+      HTMLCanvasElement.prototype.getContext=function(kind,...args){const result=get.call(this,kind,...args);if(kind==='webgl'&&result)richProbe.gl.push(result);return result};
+      const create=FreoVisualScenes.create;
+      FreoVisualScenes.create=(...args)=>{const api=create(...args),render=api.render;
+        api.render=(mode,params)=>{if(['fractal','particles','ambient','ethereal','space'].includes(mode)){
+          richProbe.frames++;richProbe.params.push({mode,energy:params.energy,bass:params.bass,mids:params.mids,treble:params.treble,measured:params.measured});
+          params={...params,time:params.time+richProbe.offset};}
+          return render(mode,params)};return api};''')
+    driver.find_element(By.ID,'play-button').click();playing(driver)
+    driver.find_element(By.ID,'visualizer-open').click()
+    WebDriverWait(driver,8).until(lambda d:js(d,'return visualProbe.peak')>0)
+    initial=len(long_player_stream)
+    cases = {
+        'fractal': [(0,'fractalVisit','0'),(20,'fractalVisit','1'),(40,'fractalVisit','2')],
+        'particles': [(0,'formation','galaxy'),(9,'formation','vortex'),(18,'formation','torus'),(27,'formation','ribbons'),(36,'formation','constellation')],
+        'ambient': [(0,'formation','mandala'),(10,'formation','polyhedra'),(20,'formation','lattice'),(30,'formation','ribbons')],
+        'ethereal': [(0,None,None),(8,None,None),(16,None,None)],
+        'space': [(0,'comet','visible'),(12,'comet','visible'),(24,'ufo','visible')]
+    }
+    for mode, moments in cases.items():
+        images=set()
+        for moment,field,expected in moments:
+            js(driver,f'richProbe.offset={moment}')
+            Select(driver.find_element(By.ID,'visual-mode')).select_by_value(mode)
+            # Re-selecting the current mode must also reset its local scene clock.
+            js(driver,"document.getElementById('visual-mode').dispatchEvent(new Event('change'))")
+            if field:
+                WebDriverWait(driver,8).until(lambda d:d.find_element(By.ID,'player-visual').get_attribute('data-'+''.join('-'+c.lower() if c.isupper() else c for c in field))==expected)
+            images.add(js(driver,'return document.getElementById("player-visual").toDataURL()'))
+            assert driver.find_element(By.ID,'player-visual').get_attribute('data-analysis')=='live'
+            playing(driver)
+        assert len(images)==len(moments), mode
+    assert js(driver,'return richProbe.params.some(p=>p.measured&&p.energy>0&&p.mids>0)')
+    assert js(driver,'return richProbe.gl.length')<=1
+    assert js(driver,'return visualProbe.contexts.filter(c=>c.state!=="closed").length')==1
+    assert len(long_player_stream)==initial
+    # Visibility pauses rendering without changing native audio playback.
+    js(driver, "Object.defineProperty(document,'hidden',{configurable:true,get:()=>true});document.dispatchEvent(new Event('visibilitychange'))")
+    before=js(driver,'return richProbe.frames')
+    driver.execute_async_script('setTimeout(arguments[0],300)')
+    assert js(driver,'return richProbe.frames')==before
+    playing(driver)
+    js(driver,"Object.defineProperty(document,'hidden',{configurable:true,get:()=>false});document.dispatchEvent(new Event('visibilitychange'))")
+    WebDriverWait(driver,8).until(lambda d:js(d,'return richProbe.frames')>before)
+    driver.find_element(By.ID,'visualizer-close').click()
+    before=js(driver,'return richProbe.frames')
+    driver.execute_async_script('setTimeout(arguments[0],300)')
+    assert js(driver,'return richProbe.frames')==before
+    playing(driver)
+    js(driver,'FreoPage.dispose()')
+    assert js(driver,'return richProbe.gl.every(gl=>gl.isContextLost())')
+
+
+@pytest.mark.parametrize('failure',['unavailable','shader','draw','context-loss'])
+def test_fractal_graphics_failure_falls_back_without_changing_audio(booth, long_player_stream, failure, software_graphics):
+    app, driver, base, tmp = booth
+    instrument(driver)
+    driver.get(base+'/player/test-station')
+    assert js(driver, "const c=document.createElement('canvas'),gl=c.getContext('webgl');if(!gl)return false;gl.getExtension('WEBGL_lose_context')?.loseContext();return true"), 'WebGL must be available to exercise these failure paths'
+    if failure=='unavailable':
+        js(driver, "const get=HTMLCanvasElement.prototype.getContext;HTMLCanvasElement.prototype.getContext=function(kind,...args){return kind==='webgl'?null:get.call(this,kind,...args)}")
+    elif failure=='shader':
+        js(driver, "WebGLRenderingContext.prototype.compileShader=()=>{throw Error('shader unavailable')}")
+    elif failure=='draw':
+        js(driver, "WebGLRenderingContext.prototype.drawArrays=()=>{throw Error('GPU draw failure')}")
+    else:
+        js(driver, "const draw=WebGLRenderingContext.prototype.drawArrays;WebGLRenderingContext.prototype.drawArrays=function(...args){this.getExtension('WEBGL_lose_context')?.loseContext();return draw.apply(this,args)}")
+    driver.find_element(By.ID,'play-button').click();playing(driver)
+    driver.find_element(By.ID,'visualizer-open').click()
+    Select(driver.find_element(By.ID,'visual-mode')).select_by_value('fractal')
+    WebDriverWait(driver,8).until(lambda d:d.find_element(By.ID,'player-visual').get_attribute('data-fractal-renderer')=='canvas')
+    assert driver.find_element(By.ID,'player-visual').is_displayed()
+    assert 'Visualization unavailable' not in driver.find_element(By.ID,'visual-status').text
+    before=js(driver,'return document.getElementById("player-visual").toDataURL()')
+    WebDriverWait(driver,8).until(lambda d:js(d,'return document.getElementById("player-visual").toDataURL()')!=before)
+    playing(driver)
+    Select(driver.find_element(By.ID,'visual-mode')).select_by_value('ethereal')
+    playing(driver)
+    driver.find_element(By.ID,'visualizer-close').click();playing(driver)
+    assert js(driver,'return visualProbe.outputConnections')==0

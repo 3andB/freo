@@ -9,6 +9,7 @@ from urllib.parse import urlparse
 parser=argparse.ArgumentParser(description="Read-only live-stream check with local candidate player assets.")
 parser.add_argument("--url",required=True)
 parser.add_argument("--engines",default="chromium,webkit")
+parser.add_argument("--deployed",action="store_true",help="Check served assets directly instead of local candidate assets")
 args=parser.parse_args()
 root=Path(__file__).resolve().parents[1];modes=['fractal','spectrum','waveform','particles','ambient','aurora','ethereal','space']
 with sync_playwright() as p:
@@ -22,15 +23,19 @@ with sync_playwright() as p:
    context=browser.new_context(**device,reduced_motion='reduce')
    def document(route):
     response=route.fetch();body=response.text()
+    if '/static/player_scenes.js' not in body:
+     body=body.replace('<script defer src="/static/player_visuals.js', '<script defer src="/static/player_scenes.js?v=v1-audio-visuals-5"></script><script defer src="/static/player_visuals.js')
     if 'id="volume-help"' not in body:
      body=body.replace('</label></div>\n<audio id="station-audio"','</label><small id="volume-help" hidden>Use your device volume buttons.</small></div>\n<audio id="station-audio"')
     body=re.sub(r'(<select id="visual-mode".*?</select>)',lambda m:m[0].replace('</select>',''.join(f'<option value="{mode}">{mode.title()}</option>' for mode in modes[-3:] if f'value="{mode}"' not in m[0])+'</select>'),body)
     route.fulfill(response=response,body=body)
-   context.route('**'+urlparse(args.url).path,document)
-   context.route('**/static/player*.js?*',lambda route:route.fulfill(content_type='application/javascript',body=(root/'app/static'/route.request.url.split('/')[-1].split('?')[0]).read_text()))
-   context.route('**/static/player.css?*',lambda route:route.fulfill(content_type='text/css',body=(root/'app/static/player.css').read_text()))
-   context.route('**/static/freo.css?*',lambda route:route.fulfill(content_type='text/css',body=(root/'app/static/freo.css').read_text()))
-   context.add_init_script('''localStorage.setItem('freo-motion','reduced');window.probe={peak:0,samples:0,frames:0,contexts:[]};
+   if not args.deployed:
+    context.route('**'+urlparse(args.url).path,document)
+    context.route('**/static/player*.js?*',lambda route:route.fulfill(content_type='application/javascript',body=(root/'app/static'/route.request.url.split('/')[-1].split('?')[0]).read_text()))
+    context.route('**/static/player.css?*',lambda route:route.fulfill(content_type='text/css',body=(root/'app/static/player.css').read_text()))
+    context.route('**/static/freo.css?*',lambda route:route.fulfill(content_type='text/css',body=(root/'app/static/freo.css').read_text()))
+   context.add_init_script('''localStorage.setItem('freo-motion','reduced');window.probe={peak:0,samples:0,frames:0,contexts:[],graphics:[]};
+     const get=HTMLCanvasElement.prototype.getContext;HTMLCanvasElement.prototype.getContext=function(kind,...args){const c=get.call(this,kind,...args);if(kind==='webgl' && c)probe.graphics.push(c);return c};
      const Native=AudioContext;window.AudioContext=class extends Native{constructor(){super();probe.contexts.push(this)}};
      const sample=AnalyserNode.prototype.getByteFrequencyData;AnalyserNode.prototype.getByteFrequencyData=function(a){sample.call(this,a);probe.samples++;probe.peak=Math.max(probe.peak,...a)};
      const clear=CanvasRenderingContext2D.prototype.clearRect;CanvasRenderingContext2D.prototype.clearRect=function(...args){probe.frames++;return clear.apply(this,args)};''')
@@ -40,6 +45,7 @@ with sync_playwright() as p:
    page.goto(args.url,wait_until='domcontentloaded')
    page.locator('#play-button').click();page.wait_for_function('() => document.getElementById("station-audio").currentTime>1',timeout=30000)
    if device.get('is_mobile'):assert page.locator('#volume').is_visible() == (engine=='chromium')
+   assert page.evaluate('() => !!window.FreoVisualScenes')
    page.locator('#visualizer-open').click();page.wait_for_function('() => probe.peak>0',timeout=15000)
    initial=len(streams)
    for mode in modes:
@@ -50,8 +56,12 @@ with sync_playwright() as p:
     before=page.evaluate('() => ({frames:probe.frames,samples:probe.samples})')
     page.wait_for_function('(before) => probe.frames>before.frames && probe.samples>before.samples',arg=before,timeout=20000)
     assert page.locator('#player-visual').get_attribute('data-analysis')=='live'
+    if mode=='fractal':assert page.locator('#player-visual').get_attribute('data-fractal-renderer') in ('canvas','webgl')
+    if mode=='particles':assert int(page.locator('#player-visual').get_attribute('data-particle-count'))<=(220 if device.get('is_mobile') else 420)
+    if mode=='space':assert int(page.locator('#player-visual').get_attribute('data-asteroid-count'))<=(36 if device.get('is_mobile') else 72)
    for mode in modes*3:page.locator('#visual-mode').select_option(mode)
    assert page.evaluate('() => probe.contexts.filter(c=>c.state!=="closed").length')==1
+   assert page.evaluate('() => probe.graphics.length')<=1
    page.emulate_media(reduced_motion='reduce')
    count=page.evaluate('() => probe.frames');page.wait_for_function('(count) => probe.frames>count',arg=count)
    assert 'Reduced motion' not in page.locator('#visual-status').inner_text()
@@ -66,6 +76,6 @@ with sync_playwright() as p:
    page.locator('#visualizer-close').click();before=page.evaluate('() => document.getElementById("station-audio").currentTime');page.wait_for_timeout(600)
    assert page.evaluate('() => document.getElementById("station-audio").currentTime')>before
    assert not errors,errors
-   print(json.dumps({'engine':engine,'mobile':device.get('is_mobile',False),'peak':page.evaluate('() => probe.peak'),'modes':modes,'errors':errors,'passed':True}),flush=True)
+   print(json.dumps({'engine':engine,'mobile':device.get('is_mobile',False),'peak':page.evaluate('() => probe.peak'),'modes':modes,'graphics_contexts':page.evaluate('() => probe.graphics.length'),'deployed':args.deployed,'errors':errors,'passed':True}),flush=True)
    context.close()
   browser.close()

@@ -13,7 +13,8 @@
     const saved = localStorage.getItem(key); if (modes.includes(saved)) select.value = saved;
     const savedPalette = localStorage.getItem(key + '-palette'); if (Object.hasOwn(palettes, savedPalette)) palette.value = savedPalette;
   } catch {}
-  let ctx, audio, context, analyser;
+  let ctx, audio, context, analyser, scenes;
+  let sceneTime = 0, sceneElapsed = 0;
   let fullscreenNoticeUntil = 0;
   let raf = 0, last = 0, phase = 0, disposed = false, failed = false;
   let bass = 0, mids = 0, treble = 0, energy = 0, measured = false;
@@ -174,6 +175,7 @@
 
   function draw(dt = 1 / 60) {
     sample(dt);
+    if (measured && energy > .001) sceneTime += sceneElapsed;
     const w = canvas.width, h = canvas.height, cx = w / 2, cy = h / 2, unit = Math.min(w, h);
     ctx.clearRect(0, 0, w, h); ctx.fillStyle = '#070914'; ctx.fillRect(0, 0, w, h);
     const glow = ctx.createRadialGradient(cx, cy, 0, cx, cy, Math.max(w, h) * .65);
@@ -181,7 +183,10 @@
     ctx.fillStyle = glow; ctx.fillRect(0, 0, w, h);
     ctx.lineCap = 'round'; ctx.lineJoin = 'round';
     canvas.dataset.mode = select.value;
-    if (select.value === 'aurora') {aurora(w,h);
+    const rendered = scenes?.render(select.value, {w,h,unit,time:sceneTime,elapsed:sceneElapsed,bass,mids,treble,energy,measured,
+      mobile:stage.clientWidth<700, color, hues:palettes[palette.value], earth:()=>space(w,h,unit)});
+    if (rendered) { /* Rich scenes use the same canvas and borrowed audio measurements. */
+    } else if (select.value === 'aurora') {aurora(w,h);
     } else if (select.value === 'ethereal') {ethereal(w,h);
     } else if (select.value === 'space') {space(w,h,unit);
     } else if (select.value === 'spectrum') {
@@ -241,11 +246,12 @@
     raf = 0; if (!moving()) return;
     try {
       if (now - last < 1000 / 30) {raf = requestAnimationFrame(tick);return;}
-      const dt = Math.min((now - last) / 1000 || 1 / 30, .1); last = now;
+      const elapsed = Math.min((now - last) / 1000 || 1 / 30, 2);
+      const dt = Math.min(elapsed, .1); last = now;
       // No fabricated audio reactivity when capture is unavailable.
       if (measured && energy > .001) phase += dt * (.3 + energy * .8);
-      observeAudio(); draw(dt); raf = requestAnimationFrame(tick);
-    } catch {fail();}
+      observeAudio(); sceneElapsed=elapsed; draw(dt); sceneElapsed=0; raf = requestAnimationFrame(tick);
+    } catch {sceneElapsed=0;fail();}
   }
   function update() {
     if (!active() || !ctx) return;
@@ -269,7 +275,8 @@
     if (dialog.open) return;
     failed = false; canvas.hidden = false; dialog.showModal();
     window.FreoAudioAnalysis?.activate($('station-audio'));
-    try {ctx = canvas.getContext('2d'); if (!ctx) throw new Error('No canvas'); size();} catch {fail();}
+    try {ctx = canvas.getContext('2d'); if (!ctx) throw new Error('No canvas');
+      scenes ||= window.FreoVisualScenes?.create(canvas,ctx,scope); size();} catch {fail();}
   });
   const exitFullscreen = () => {
     if (document.fullscreenElement === stage) return document.exitFullscreen().catch(() => {});
@@ -284,6 +291,7 @@
   });
   scope.listen(document, 'fullscreenchange', () => {fullscreen.textContent = document.fullscreenElement === stage ? 'Exit fullscreen' : 'Fullscreen'; size();});
   for (const control of [select, palette]) control.addEventListener('change', () => {
+    if (control === select) {sceneTime=0;sceneElapsed=0;}
     try {localStorage.setItem(key, select.value); localStorage.setItem(key + '-palette', palette.value);} catch {}
     update();
   });

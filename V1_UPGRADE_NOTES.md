@@ -1915,3 +1915,45 @@ checks passed, including all eight modes with retired motion settings,
 reconnects, playback isolation, mobile advertising, and settings preview. The
 older mobile advertising fixture was updated to use current campaign APIs and
 the animated record grooves. Physical iPhone/Safari verification remains manual.
+
+
+### 2026-10-07 — Richer fractal, particle, geometric, Ethereal and Space scenes
+
+Implemented the approved classic-fractal / rich-and-fluid direction within the
+existing player. `player_scenes.js` adds Mandelbrot/Julia zoom destinations,
+evolving particle and geometric formations, pearl-white cloud depth and beams,
+and comets, asteroid fields and UFO passes around Earth. Aurora, Spectrum and
+Waveform retain their existing renderers. The selector identifiers, station
+visualizer defaults and saved preferences are unchanged.
+
+Scenes borrow real analyser measurements. They create no audio graph, stream
+requests or separate animation loops. A single lazy WebGL surface serves classic
+fractals; unsupported, failed or slow graphics falls back to bounded Canvas
+escape-time fractals without touching stream playback. Object counts, raster
+sizes, iterations and per-mode adaptive detail are bounded. Scene time stops
+when inactive or silent; reduced-motion suppression stays removed. Asset
+versions are `v1-audio-visuals-5`; no dependencies or database migration are added.
+
+Initial validation: 25 settings/default tests and seven focused Chromium browser
+checks passed. Extended live-stream video covers fractal transitions, five
+particle formations, four geometric families, moving white clouds, and a full
+minute of Space events without page errors. The headless software GPU triggered
+the slow-render fallback as intended. Final forced-WebGL failure checks and
+idle desktop/mobile Chromium/WebKit measurements are recorded separately below.
+
+Final validation: all four forced graphics failures (missing WebGL, shader
+compile, GPU draw and context loss) and measured frequency-band forwarding
+passed: five browser cases. These checks require an actual software WebGL
+context rather than passing through an unavailable-GPU path. The earlier seven
+browser cases and 25 settings cases also passed. Syntax and whitespace checks
+passed. No dependencies or production files were changed.
+
+Real-station performance checks covered all five scenes in desktop and mobile
+Chromium and Linux WebKit profiles, with live FFT peaks and no page errors.
+Median scene rendering on Chromium was approximately 0.2–9.1 ms; Linux WebKit
+software rendering was substantially slower. A targeted iPhone-sized WebKit
+fractal check confirmed sustained slow GPU draws switch to Canvas (35 ms median,
+69 ms p95 on this headless host). The fallback trades detail for bounded work;
+these software-rendered frame rates do not establish physical-device smoothness.
+A normal-speed live-stream video exercised complete formation/event cycles.
+Physical Android, macOS Safari, iPhone and iPad checks remain for human testing.

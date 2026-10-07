@@ -105,7 +105,8 @@ saved reduced-motion preferences and legacy station motion settings do not
 disable player animation. A browser-level failure of the audible
 AudioContext remains a limitation of Safari's non-capture route.
 
-Rendering uses Canvas 2D, a 30 fps ceiling, bounded geometry, and a canvas budget
+Rendering uses Canvas 2D plus an optional fractal WebGL surface, a 30 fps ceiling,
+bounded geometry, and a canvas budget
 of one million pixels on desktop / 600,000 on narrow screens, with DPR capped at
 1.25. The obscured record pauses while the visualizer dialog is open. No graphics
 framework, additional audio stream, or database migration is introduced.
@@ -117,8 +118,48 @@ browsers in a disposable test environment, then run:
 python scripts/check-player-visuals.py --url https://YOUR-STAGING-HOST/player/YOUR-STATION
 ```
 
-The verifier serves repository candidate assets only inside its test browsers;
-it does not deploy or modify the server. It checks desktop/Android Chromium and
+By default the verifier serves repository candidate assets only inside its test
+browsers; it does not deploy or modify the server. Add `--deployed` to verify
+assets actually served by the target server without interception. It checks desktop/Android Chromium and
 desktop/iPhone WebKit, all modes, real analyser samples, repeated switching,
 animation with OS reduced motion enabled, pause/resume, resource bounds, and
 renderer failure while playback continues. Automated WebKit/mobile profiles are not physical Safari/iPhone tests.
+
+
+## Rich visual scenes (V1)
+
+`player_scenes.js` supplies optional scene rendering to the existing visualizer.
+It borrows bass/mid/high energy and waveform RMS from `player_visuals.js`; it
+never creates audio nodes, requests streams, or owns an animation loop.
+
+- **Fractal:** five Mandelbrot/Julia destinations, continuous Julia deformation,
+  bass-sensitive zoom, rotation and blended transitions every 20 seconds.
+  A lazily created WebGL surface is reused between switches. Desktop rendering
+  is capped at 400,000 pixels/96 iterations; narrow screens at 180,000/64.
+  Missing WebGL, insufficient precision, shader/draw errors, context loss or
+  two consecutive draws above 80 ms or a sustained draw average above 40 ms
+  select a bounded Canvas escape-time renderer.
+  The Canvas fallback is intentionally lower resolution/detail, refreshed at
+  most roughly 8 Hz during ordinary playback, with immediate palette updates.
+- **Particles:** galaxy, vortex, torus, ribbons and constellation formations
+  blend on nine-second cycles, with projected depth and trails. A rolling bass
+  baseline detects actual transients for expansion/ring accents. Counts are
+  bounded at 420 desktop / 220 narrow-screen particles.
+- **Ambient / geometric:** mandalas, projected polygon structures, lattices
+  and curved ribbons blend on ten-second cycles, with layered surfaces and
+  audio-driven deformation, expansion and edge light.
+- **Ethereal:** predominantly pearl-white strands, soft mist, moving god rays
+  and luminous motes. Perspective, layer parallax, scale and depth fading
+  create dimension using Canvas rather than a volumetric rendering framework.
+- **Space:** Earth/planet audio-wave behavior is retained, with up to 72 desktop
+  / 36 mobile asteroids, a comet pass on a 15-second cycle and a UFO flyby on a
+  24-second cycle. Lights, tails and expansion react to measured audio.
+
+Scene time advances only during active playback with measured non-silent audio;
+silence settles the effects and unavailable analysis retains a resting scene.
+Each mode retains its own adaptive quality. Sustained expensive rendering reduces
+geometry counts or raster resolution; the existing responsive main-canvas limits
+remain in place. Hidden/closed/paused scenes stop their rendering loop. Page
+cleanup releases the single graphics context, buffer, shader program and fallback
+raster. No visualizer identifiers, settings API, default precedence or database
+schema changed. Reduced-motion suppression remains removed at the user's request.

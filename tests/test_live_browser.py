@@ -59,6 +59,8 @@ def booth(app_fixture, monkeypatch, tmp_path, request):
     if 'pwa_desktop' in request.fixturenames:
         options.add_argument('--remote-debugging-pipe')
         options.add_experimental_option('windowTypes',['page','app'])
+    if 'software_graphics' in request.fixturenames:
+        options.add_argument('--enable-unsafe-swiftshader')  # Isolated graphics failure tests only.
     if 'eager_navigation' in request.fixturenames:
         options.page_load_strategy = 'eager'
     if 'native_prompts' in request.fixturenames:
