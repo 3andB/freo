@@ -2216,12 +2216,29 @@ The effective analysis input and native media source have separate identities.
 The optional native-source self-test does not run against an active fallback,
 which would otherwise mix the meaning of the two routes.
 
-Physical-device acceptance: refresh the V1 player, Play, open a visualizer and tap
-Enable visuals if no samples arrive. Check that music continues, visuals react,
-mode switching and reopening work, then copy Audio report. A successful fallback
-has route `stream-decoder`, increasing decoded samples and nonzero current RMS /
-FFT values. iPhone verification of this workaround is still required; the root
-cause has been demonstrated on the physical device.
+Physical-device confirmation (2026-10-07): after deploying commit
+`80927c239fb2835076a60af09c0178c7724a9b2d` / build `v1-iphone-stream-1` to
+`v1.freo.world`, the user confirmed that the visualizer works on their iPhone
+17 Pro Max in Safari. This confirms the workaround on the previously failing
+physical device. The confirmation did not separately enumerate every reconnect,
+backgrounding or mode-switching check; automated coverage is recorded below.
+
+Maintenance note: preserve the native audible playback path. The successful fix
+bypasses Safari's silent media-element source for analysis by decoding actual
+station MP3 bytes in `player_stream_worker.js`; `player_stream_analysis.js` feeds
+that PCM into a separate muted analyser branch. `player_audio.js` owns activation
+and cleanup, while `player_visuals.js` hides Enable visuals only after usable
+samples arrive. Do not replace this with repeated context resumes, source-node
+recreation or synthetic visualizer samples. Healthy desktop analysis retains its
+existing route. Keep decoder resources bounded and release the extra stream when
+visuals stop. The second connection and independent buffering remain the known
+bandwidth/timing tradeoffs.
+
+Post-deployment checks also passed against the public V1 player in Chromium and
+Linux WebKit at 48 kHz, covering real station samples, all eight modes, reconnect,
+close/reopen and continued playback. Public assets matched the committed files;
+the V1 station playout process was not restarted. Production and main were not
+changed.
 
 Validation: ten targeted browser regression cases passed (805.79 seconds),
 including the new real-MP3 fallback lifecycle/silence/HTTP/stall/worker-failure
