@@ -1,7 +1,7 @@
 {% extends 'base.html' %}
 {% block title %}{{ site.seo_title or site.name ~ ' · ' ~ site.tagline }}{% endblock %}
 {% block body_class %}public station-home font-{{ site.font }} focal-{{ site.focal }} shade-{{ site.overlay }}{% endblock %}
-{% block head %}
+{% block head %}<link rel="stylesheet" href="{{ url_for('static',filename='advertising_public.css',v='1') }}">
 <meta name="description" content="{{ site.seo_description or site.intro }}">
 <meta property="og:title" content="{{ site.seo_title or site.name }}">
 <meta property="og:description" content="{{ site.seo_description or site.intro }}">
@@ -25,6 +25,8 @@
 {% if session.get('admin_user_id') %}<div class="site-owner-bar site-wrap"><a href="{{ url_for('website.editor') }}">Edit website ↗</a><div data-master-monitor data-preserve-station></div></div>{% endif %}
 {% endblock %}
 {% block content %}
+{% from '_advertising.html' import advertising_slot %}
+{% if featured %}{% set home_ads=advertising_context(featured.station,'homepage') %}{{ advertising_slot(featured.station,'homepage','top',home_ads.get('ad_top'),preview) }}{% endif %}
 <section class="station-hero" aria-labelledby="station-title">
   <img class="hero-photo" src="{{ site_image('hero') }}" srcset="{{ site_image('hero',True) }} 800w, {{ site_image('hero') }} 1600w" sizes="100vw" alt="{{ site.hero_alt }}" width="1600" height="960" fetchpriority="high">
   <div class="hero-shade"></div>
@@ -60,8 +62,9 @@
 {% elif section == 'announcement' and announcement_visible %}
 <section class="site-wrap announcement-section"><div><p class="site-eyebrow">FROM THE STATION</p><h2>{{ site.announcement_title }}</h2><p>{{ site.announcement }}</p></div>{% if site.announcement_url %}<a class="site-button" href="{{ site.announcement_url }}" rel="noopener noreferrer">{{ site.announcement_label or 'Find out more' }} ↗</a>{% endif %}</section>
 {% endif %}{% endfor %}
+{% if featured %}{{ advertising_slot(featured.station,'homepage','bottom',home_ads.get('ad_bottom'),preview) }}{% endif %}
 {% endblock %}
 {% block footer %}
 <footer id="contact" class="station-footer"><div class="site-wrap"><div class="footer-top"><div><p class="site-eyebrow">STAY A LITTLE LONGER</p><h2>Keep good company.</h2><p>Wherever you are, take {{ site.name }} with you.</p></div><a class="station-brand" href="#main"><img src="{{ site_image('logo',True) }}" width="64" height="64" alt=""><span>{{ site.name }}<small>{{ site.genre }}</small></span></a></div><div class="footer-links">{% for social in site.socials %}<a href="{{ social.url }}" rel="noopener noreferrer">{{ social.label }} ↗</a>{% endfor %}{% if site.publish_contact %}{% if site.contact_email %}<a href="mailto:{{ site.contact_email }}">{{ site.contact_email }}</a>{% endif %}{% if site.phone %}<span>{{ site.phone }}</span>{% endif %}{% endif %}</div><div class="footer-bottom"><span>© {{ year }} {{ site.copyright or site.name }}</span><span><a href="https://freo.live/">Learn more about Freo Free Radio</a><span aria-hidden="true"> · </span><a href="{{ url_for('web.admin_home') if session.get('admin_user_id') else url_for('web.login') }}">{{ 'Open studio' if session.get('admin_user_id') else 'Station sign in' }}</a></span></div></div></footer>
 {% endblock %}
-{% block scripts %}<script defer src="{{ url_for('static',filename='home.js',v='rc4') }}"></script>{% endblock %}
+{% block scripts %}<script defer src="{{ url_for('static',filename='player_ads.js',v='campaigns-1') }}"></script><script defer src="{{ url_for('static',filename='home.js',v='rc4') }}"></script>{% endblock %}

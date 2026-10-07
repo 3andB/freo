@@ -1786,3 +1786,49 @@ then SHARE / URL. Requests still require station enablement, and Install still
 requires a native browser installation opportunity. Removed the Reduce motion
 button and its event handler; OS/station reduced-motion preferences remain in
 effect. Updated asset versions prevent stale player JavaScript after rollout.
+
+## Advertising manager — 7 October 2026
+
+Migration `fb06a1b2c3d4` adds display policy to existing Campaign records and a
+campaign image table. Advertising now has its own station navigation entry;
+Station Settings links to it and retains merchandise and visual defaults.
+Configured legacy Top/Bottom slots become separate campaigns, including disabled
+slots with saved creatives or network configuration. Their existing Public Player
+exposure is preserved; Homepage and Visualizer are opt-in. Original player JSON
+and images remain for recovery and unrelated settings saves preserve them.
+
+Display policy is separate from traffic lifecycle, dates, and priority. Highest
+eligible display priority wins; positive weights share selections at that priority.
+Start/end inputs use the station timezone, store UTC, and use inclusive starts and
+exclusive ends. One placement applies to all enabled surfaces. The shared homepage
+uses its featured channel; station-domain homepages use their own station. Existing
+exact image sizes, 10 MB limit, Google/adapter fill contract, and hidden-until-filled
+behavior remain. 300 × 250 is Bottom only. Long-lived pages revalidate every minute
+and when visible again, retaining eligible selections rather than rotating them.
+The public, no-store revalidation interface is
+`GET /api/stations/<slug>/advertising/<homepage|player|visualizer>/<top|bottom>`.
+
+Linked audio is **convenience only**. Uploads use normal COMMERCIALS ingest and
+remain disabled until enabled in the library. Existing station commercials can
+be selected, previewed, replaced, or detached. Scheduler/Traffic still owns every
+audio schedule. Campaign display edits, disabling, or deletion never change
+existing audio schedules, media enablement, finalized traffic, or confirmed-start
+history. Deletion archives the display entry; media and historical references are
+retained. Existing traffic creatives are offered as the initial audio link.
+There is no song-frequency policy or new playback/queue engine.
+
+Deploy only to V1 staging `209.38.64.12`, verifying hostname `Freo-v1-Test-1` and
+an exact `develop/v1` commit. Back up its database, installed changed files, and
+release marker before applying the migration and restarting V1 Python services.
+Liquidsoap configuration and playback services do not need to change. Roll back
+with the matching database/files backup: downgrading alone discards new display
+configuration and assets, and is not a data-preserving rollback. No production
+release, tag, stable update, or 0.3.2 → 1.0 bridge is included.
+
+Validation: 113 advertising/public-site regressions passed; 80 audio/scheduling
+regressions passed, including isolated real-Liquidsoap playback and worker
+recovery. Four browser checks cover desktop/mobile management, all three display
+surfaces, zero-height empty slots, provider fill contracts, and listener playback
+isolation. Two disposable-PostgreSQL checks verify migration preservation and
+schema consistency. Linked-audio tests cover valid/rejected ingest, preview,
+replace/remove, and preservation of existing traffic inventory and schedules.

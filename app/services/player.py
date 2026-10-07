@@ -112,8 +112,8 @@ def public_context(station, config=None):
     config['message_version']=hashlib.sha256((config['message']+config['message_start']+config['message_end']).encode()).hexdigest()[:16]
     config['message_visible'] = active(config,'message') and bool(config['message'])
     assets = {row.kind:row.version for row in StationPlayerAsset.query.filter_by(station_id=station.id).all()}
-    from app.services.polish import ad_context
-    ads = ad_context(station, config)
+    from app.services.advertising import context
+    ads = context(station, "player")
     for prefix in ('ad_top','ad_bottom'):
         config[prefix+'_visible'] = prefix in ads
     config['socials'] = [x for x in config['socials'] if x.get('visible')] if config['social_enabled'] else []

@@ -91,18 +91,12 @@ def settings(slug):
             if action in ('save','preview','publish','preview-player'):
                 new_config=service.validate_config(request.form)
                 new_config['custom_entries']=config['custom_entries']
+                new_config.update({key: value for key, value in config.items() if key.startswith('ad_')})
                 config=new_config
             elif action=='save-polish':
                 from app.services.polish import validate_config as validate_polish
-                config.update(validate_polish(request.form))
-                for prefix in ('ad_top', 'ad_bottom'):
-                    config[prefix+'_enabled'] = request.form.get(prefix+'_enabled') == 'yes'
-                    config[prefix+'_url'] = service.safe_url(request.form.get(prefix+'_url', ''))
-                    config[prefix+'_alt'] = service.clean_text(request.form.get(prefix+'_alt', ''), 200)
-                    for suffix in ('_start', '_end'):
-                        config[prefix+suffix] = service.clean_text(request.form.get(prefix+suffix, ''), 40)
-                    start, end = service.timestamp(config[prefix+'_start']), service.timestamp(config[prefix+'_end'])
-                    if start and end and start >= end: raise ValueError('End time must follow start time')
+                polish_values = validate_polish(request.form)
+                for key in ('merch_url', 'visual_mode'): config[key] = polish_values[key]
             elif action=='add-entry':
                 if len(config['custom_entries'])>=200:raise ValueError('Use at most 200 custom listings')
                 config['custom_entries']=[*config['custom_entries'],service.custom_entry(request.form, station)]
@@ -124,7 +118,7 @@ def settings(slug):
                 preview=service.build_schedule(station,config)
             else:
                 from app.routes.station_settings import decode_logo
-                for kind in service.ASSETS:
+                for kind in ('cover',):
                     upload=request.files.get(kind)
                     remove=request.form.get('remove_'+kind)=='yes'
                     if upload and upload.filename and remove:raise ValueError('Choose upload or remove for each image')
@@ -138,9 +132,6 @@ def settings(slug):
                         asset.width, asset.height = png_size(images[0])
                         db.session.add(asset)
                     elif remove and asset:db.session.delete(asset)
-                for prefix in ('ad_top', 'ad_bottom'):
-                    if config[prefix+'_enabled'] and config[prefix+'_source'] == 'image' and not config[prefix+'_url']:
-                        raise ValueError('Add a destination URL for each enabled station-managed banner')
                 if not row:
                     row=StationPlayerSettings(station_id=station.id,revision=0)
                     db.session.add(row)
@@ -152,7 +143,7 @@ def settings(slug):
                 audit('player_settings_'+action,user_id=current_admin().id,station_id=station.id,target_type='station',target_id=station.id,summary='Player settings revision '+str(row.revision))
                 db.session.commit()
                 flash('Schedule published.' if action=='publish' else 'Player settings saved.','success')
-                return redirect(url_for('station_settings.page',slug=station.slug)+'#advertising-settings' if action=='save-polish' else url_for('.settings',slug=station.slug))
+                return redirect(url_for('station_settings.page',slug=station.slug) if action=='save-polish' else url_for('.settings',slug=station.slug))
         except (ValueError,TypeError,IntegrityError) as exc:
             db.session.rollback()
             error=str(exc) if not isinstance(exc,IntegrityError) else 'Settings changed. Reload and try again.'

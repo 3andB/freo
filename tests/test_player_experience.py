@@ -45,6 +45,8 @@ def test_settings_validation_assets_aliases_and_atomic_conflicts(app):
     admin=admin_client(app)
     assert app.test_client().get(ADMIN).status_code==302
     assert admin.post(ADMIN,data={}).status_code==400
+    from tests.test_advertising import create
+    create(admin,label="Sponsor")
     data=config_form(message='Welcome <script>bad()</script>',message_enabled='yes',social_enabled='yes',
         social_Instagram='https://instagram.com/station',visible_Instagram='yes',
         ad_top_enabled='yes',ad_top_alt='Sponsor',ad_top_url='https://example.test',
@@ -67,7 +69,7 @@ def test_settings_validation_assets_aliases_and_atomic_conflicts(app):
     with app.app_context():
         assert StationPlayerSettings.query.count()==1
         assert StationPlayerSettings.query.one().config['message']=='New message'
-        assert StationPlayerAsset.query.count()==2
+        assert StationPlayerAsset.query.count()==1
         station=Station.query.filter_by(slug='test-station').one();station.public_slug='new-name';db.session.commit()
     assert app.test_client().get('/player/new-name').status_code==200
     assert app.test_client().get('/api/stations/new-name/player').status_code==200

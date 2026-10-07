@@ -16,6 +16,7 @@
   for (const host of placements) {
     let config;
     try {config = JSON.parse(host.dataset.ad);} catch {host.remove(); continue;}
+    let expiryTimer, refreshTimer, refreshing = false;
     let generation = 0, frame = null, slot = null, timer = null, currentKey = '', nonce = '', slotHandler = null;
     const collapse = () => {host.hidden = true; host.replaceChildren();};
     const clear = () => {
@@ -34,13 +35,17 @@
     }
     function render() {
       if (disposed) return;
-      const variant = choice(), key = JSON.stringify(variant);
+      clearTimeout(expiryTimer);
+      if (!config || (config.end && Date.parse(config.end) <= Date.now())) {clear(); currentKey = ''; return;}
+      if (config.end) expiryTimer = setTimeout(render, Math.min(2147483647, Math.max(0, Date.parse(config.end)-Date.now())));
+      if (host.closest('dialog') && !host.closest('dialog').open) return;
+      const variant = choice(), key = JSON.stringify([config, variant]);
       if (key === currentKey) return;
       currentKey = key; clear();
       if (!variant) return;
       const attempt = generation;
       const reveal = node => {
-        if (disposed || attempt !== generation) return;
+        if (disposed || attempt !== generation || (config.end && Date.parse(config.end) <= Date.now())) return;
         host.replaceChildren(node); host.hidden = false;
       };
       if (config.source === 'image') {
@@ -103,7 +108,31 @@
     scope.listen(window, 'message', message);
     let resizeTimer;
     scope.listen(window, 'resize', () => {clearTimeout(resizeTimer); resizeTimer = setTimeout(render, 150);});
-    controllers.push(() => {clearTimeout(resizeTimer); clear();});
+    const refresh = async () => {
+      if (disposed || refreshing || !host.dataset.adUrl || document.hidden) return;
+      if (host.closest('dialog') && !host.closest('dialog').open) return;
+      refreshing = true;
+      try {
+        const url = new URL(host.dataset.adUrl, location.origin);
+        if (config?.campaign_id) url.searchParams.set('current', config.campaign_id);
+        const response = await fetch(url, {cache:'no-store', signal: aborter.signal});
+        if (!response.ok) throw new Error('Advertisement unavailable');
+        const data = await response.json();
+        if (disposed) return;
+        config = data.ad; render();
+      } catch {if (!disposed) {config = null; currentKey = ''; clear();}}
+      finally {refreshing = false;}
+    };
+    const aborter = new AbortController();
+    if (host.dataset.adUrl) refreshTimer = setInterval(refresh, 60000);
+    scope.listen(document, 'visibilitychange', () => {if (!document.hidden) refresh();});
+    const dialog = host.closest('dialog');
+    const observer = dialog ? new MutationObserver(() => {
+      if (dialog.open) {try {render(); refresh();} catch {clear();}}
+      else {clear(); currentKey = '';}
+    }) : null;
+    if (observer) observer.observe(dialog, {attributes:true, attributeFilter:['open']});
+    controllers.push(() => {aborter.abort(); observer?.disconnect(); clearInterval(refreshTimer); clearTimeout(expiryTimer); clearTimeout(resizeTimer); clear();});
     try {render();} catch {clear();}
   }
   scope.cleanup(() => {disposed = true; for (const dispose of controllers) dispose();});

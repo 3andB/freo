@@ -331,7 +331,7 @@ def page_security_headers(response):
             "default-src 'self'; img-src 'self' data:; style-src 'self'; "
             "script-src 'self'; media-src 'self' blob:; connect-src 'self'; "
             "base-uri 'self'; frame-ancestors 'none'")
-        if request.endpoint == 'web.player' or (request.endpoint in ('web.homepage', 'web.stations') and getattr(g, 'domain_station', None)):
+        if request.endpoint in ('web.player', 'web.homepage', 'web.stations'):
             response.headers['Content-Security-Policy'] = (
                 "default-src 'self'; img-src 'self' data: https:; style-src 'self' 'unsafe-inline'; "
                 "script-src 'self' https://securepubads.g.doubleclick.net https://pagead2.googlesyndication.com https://tpc.googlesyndication.com https://www.googletagservices.com; "

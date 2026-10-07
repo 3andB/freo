@@ -33,43 +33,33 @@ def test_default_192_and_explicit_change_preserves_existing(app):
     ('ad_bottom', (300,250), True), ('ad_bottom_mobile', (300,250), True),
     ('ad_top', (300,250), False), ('ad_top_mobile', (728,90), False), ('ad_bottom', (728,91), False)])
 def test_creative_dimensions(app, kind, size, accepted):
+    from tests.test_advertising import BASE, form
+    from app.models import CampaignDisplayAsset
     client = admin_client(app)
-    data = config_form(**{kind: (BytesIO(png(*size)), 'banner.png')})
-    response = client.post(ADMIN, data=data)
-    assert response.status_code == (302 if accepted else 400)
+    device='mobile' if kind.endswith('_mobile') else 'desktop'
+    response=client.post(BASE+'/new',data=form(placement='bottom' if 'bottom' in kind else 'top',
+        **{device:(BytesIO(png(*size)),'banner.png')}))
+    assert response.status_code == (303 if accepted else 400)
     with app.app_context():
-        row = StationPlayerAsset.query.filter_by(kind=kind).first()
-        assert bool(row) == accepted
-        if row:
-            assert (row.width, row.height) == size
-            assert polish.png_size(row.image) == size
-    if not accepted:
-        assert 'Accepted sizes:' in response.text
+        row=CampaignDisplayAsset.query.first()
+        assert bool(row)==accepted
+        if row: assert (row.width,row.height)==size
+    if not accepted: assert 'Accepted sizes:' in response.text
 
 
 def test_independent_ads_optional_label_and_inert_admin_preview(app):
-    client = admin_client(app)
-    data = config_form(ad_top_enabled='yes', ad_top_url='https://example.test/sponsor',
-                       ad_top_mobile=(BytesIO(png(320,50)), 'mobile.png'))
-    assert client.post(ADMIN, data=data).status_code == 302
-    public = app.test_client()
-    page = public.get('/player/test-station')
-    assert 'data-placement="ad_top"' in page.text
-    assert 'data-placement="ad_bottom"' not in page.text
-    assert 'Advertisement' in page.text
-    assert client.post(ADMIN, data=config_form(1, ad_bottom_enabled='yes', ad_bottom_source='google',
-        ad_bottom_unit='/1234/station/bottom')).status_code == 302
-    page = public.get('/player/test-station')
-    assert 'data-placement="ad_top"' not in page.text
-    assert 'data-placement="ad_bottom"' in page.text
-    preview = client.post(ADMIN, data=config_form(2, action='preview-player', ad_bottom_enabled='yes',
-        ad_bottom_source='google', ad_bottom_unit='/1234/station/bottom'))
-    assert preview.status_code == 200
-    assert 'data-placement="ad_bottom"' not in preview.text
+    from tests.test_advertising import BASE, form
+    client=admin_client(app)
+    assert client.post(BASE+'/new',data=form(mobile=(BytesIO(png(320,50)),'mobile.png'))).status_code==303
+    public=app.test_client()
+    assert public.get('/api/stations/test-station/advertising/player/top').json['ad']['source']=='image'
+    assert public.get('/api/stations/test-station/advertising/player/bottom').json['ad'] is None
+    assert client.post(BASE+'/new',data=form(source='google',placement='bottom',unit='/1234/station/bottom')).status_code==303
+    assert public.get('/api/stations/test-station/advertising/player/bottom').json['ad']['source']=='google'
+    preview=client.post(ADMIN,data=config_form(action='preview-player'))
+    assert preview.status_code==200 and 'data-placement="ad_bottom"' not in preview.text
     assert 'securepubads.g.doubleclick.net' not in preview.headers['Content-Security-Policy']
-    assert 'securepubads.g.doubleclick.net' not in client.get(ADMIN).headers['Content-Security-Policy']
-    assert client.post(ADMIN, data=config_form(2, ad_bottom_enabled='yes', ad_bottom_source='google')).status_code == 302
-    assert 'data-placement=' not in public.get('/player/test-station').text
+    assert 'securepubads.g.doubleclick.net' not in client.get(BASE).headers['Content-Security-Policy']
 
 
 def test_station_settings_preserves_unrelated_player_configuration(app):
@@ -83,8 +73,8 @@ def test_station_settings_preserves_unrelated_player_configuration(app):
         assert config['visual_mode'] == 'fractal'
     assert 'https://example.test/store' in app.test_client().get('/player/test-station').text
     settings = client.get('/admin/stations/test-station/settings')
-    assert settings.status_code == 200 and 'Desktop Top Banner' in settings.text
-    assert '728 × 90' in settings.text and '320 × 50' in settings.text
+    assert settings.status_code == 200 and 'Manage Advertising' in settings.text
+    assert 'Desktop Top Banner' not in settings.text
 
 
 @pytest.mark.parametrize('values', [dict(visual_mode='broken'), dict(merch_url='javascript:alert(1)'),

@@ -60,6 +60,7 @@
       <a href="{{ url_for('statistics.page',slug=selected.slug) }}" {% if page == 'stats' %}aria-current="page"{% endif %}>Statistics</a>
       <a href="{{ url_for('web.admin_section',section='history',station=selected.slug) }}" {% if page == 'history' %}aria-current="page"{% endif %}>History</a>
       <a href="{{ url_for('web.admin_section',section='system',station=selected.slug) }}" {% if page == 'system' %}aria-current="page"{% endif %}>System</a>
+      <a href="{{ url_for('advertising.page',slug=selected.slug) }}" {% if page == 'advertising' %}aria-current="page"{% endif %}>Advertising</a>
       <a href="{{ url_for('station_settings.page',slug=selected.slug) }}" {% if page == 'settings' %}aria-current="page"{% endif %}>Station settings</a>
       {% else %}
       <span class="admin-nav-label scope-label">OPERATIONS <small>All stations</small></span>

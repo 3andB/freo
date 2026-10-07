@@ -17,16 +17,17 @@ def eager_navigation():
 
 
 def seed_ads(app, source='image'):
+    from tests.test_advertising import BASE, form
+    from tests.test_web import admin_client
+    from io import BytesIO
+    client=admin_client(app)
+    response=client.post(BASE+'/new',data=form(source=source,unit='/1234/station/top',
+        iframe='https://example.test/adapter', surfaces=['player','homepage','visualizer'],
+        desktop=(BytesIO(png(728,90)),'desktop.png'),mobile=(BytesIO(png(320,50)),'mobile.png')))
+    assert response.status_code==303, response.text
     with app.app_context():
-        station = Station.query.filter_by(slug='test-station').one()
-        station.player_settings = StationPlayerSettings(config=dict(player.DEFAULTS,
-            ad_top_enabled=True, ad_top_url='https://example.test/sponsor',
-            ad_top_source=source, ad_top_unit='/1234/station/top',
-            ad_top_iframe='https://example.test/adapter', merch_url='https://example.test/store'))
-        for kind, width, height in [('ad_top',728,90), ('ad_top_mobile',320,50)]:
-            data = png(width,height)
-            db.session.add(StationPlayerAsset(station_id=station.id, kind=kind, width=width,
-                height=height, image=data, version=hashlib.sha256(data).hexdigest()))
+        station=Station.query.filter_by(slug='test-station').one()
+        station.player_settings=StationPlayerSettings(revision=1,config=dict(player.DEFAULTS,merch_url='https://example.test/store'))
         db.session.commit()
 
 
@@ -37,7 +38,7 @@ def test_images_visual_modes_reduced_motion_and_audio_failure_isolation(booth, l
     wait_text(driver, '#recent-history', 'Verified Test Track')
     WebDriverWait(driver, 10).until(lambda d: d.find_element(By.CSS_SELECTOR, '.phase9-ad').is_displayed())
     assert driver.find_element(By.CSS_SELECTOR,'.phase9-ad img').get_attribute('width') == '728'
-    assert not driver.find_elements(By.CSS_SELECTOR, '[data-placement="ad_bottom"]')
+    assert all(not el.is_displayed() for el in driver.find_elements(By.CSS_SELECTOR, '[data-placement="ad_bottom"]'))
     driver.find_element(By.ID,'play-button').click()
     WebDriverWait(driver, 8).until(lambda d: d.execute_script('return !document.getElementById("station-audio").paused'))
     driver.find_element(By.ID,'visualizer-open').click()

@@ -136,6 +136,8 @@ def create_app(config_name=None):
     app.register_blueprint(dj)
     from .routes.platform_polish import platform_polish
     app.register_blueprint(platform_polish)
+    from .routes.advertising import advertising
+    app.register_blueprint(advertising)
     from .routes.live_mic import live_mic
     app.register_blueprint(live_mic)
     from .routes.schedule_studio import schedule_studio

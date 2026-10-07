@@ -1,23 +1,4 @@
-<fieldset id="advertising-settings"><legend>Public player advertising</legend>
-<p>Disabled, missing or unfilled banners occupy no space. JPEG, PNG or WebP, up to 10 MB. Uploaded dimensions must match an accepted size exactly; creatives are never stretched.</p>
-{% for prefix,label in [('ad_top','Top Banner'),('ad_bottom','Bottom Banner')] %}
-<h3>{{ label }}</h3>
-<label><input type="checkbox" name="{{ prefix }}_enabled" value="yes" {% if config[prefix+'_enabled'] %}checked{% endif %}> Enable {{ label }}</label>
-<label>Source<select name="{{ prefix }}_source">{% for value,text in [('image','Station-managed image'),('google','Google Ad Manager'),('iframe','Third-party iframe adapter')] %}<option value="{{ value }}" {% if config[prefix+'_source']==value %}selected{% endif %}>{{ text }}</option>{% endfor %}</select></label>
-<label>Image destination URL<input type="url" name="{{ prefix }}_url" value="{{ config[prefix+'_url'] }}" maxlength="1000" placeholder="https://"></label>
-<label>Alt / label text (optional)<input name="{{ prefix }}_alt" value="{{ config[prefix+'_alt'] }}" maxlength="200"></label>
-{% for device in ['desktop','mobile'] %}{% set kind=prefix ~ ('_mobile' if device=='mobile' else '') %}
-<label>{{ device|title }} {{ label }} — {{ '320 × 50' if device=='mobile' else '728 × 90' }} px recommended
-<input type="file" name="{{ kind }}" accept="image/png,image/jpeg,image/webp"></label>
-<p>Accepted: {% for w,h in ad_sizes(prefix,device=='mobile') %}{{ w }} × {{ h }} px{% if not loop.last %}, {% endif %}{% endfor %}.</p>
-{% if kind in player_assets %}<img class="settings-art" src="{{ url_for('player_experience.asset',slug=selected.slug,kind=kind,v=player_assets[kind]) }}" alt="Saved {{ device }} {{ label }}"><label><input type="checkbox" name="remove_{{ kind }}" value="yes"> Remove {{ device }} creative</label>{% endif %}
-<label>{{ device|title }} network size<select name="{{ prefix }}_{{ device }}_size">{% for w,h in ad_sizes(prefix,device=='mobile') %}{% set size=w|string ~ 'x' ~ h|string %}<option value="{{ size }}" {% if config[prefix ~ '_' ~ device ~ '_size']==size %}selected{% endif %}>{{ w }} × {{ h }} px</option>{% endfor %}</select></label>
-{% endfor %}
-<label>Google Ad Manager ad-unit path<input name="{{ prefix }}_unit" value="{{ config[prefix+'_unit'] }}" placeholder="/1234567/station/banner" maxlength="200"></label>
-<label>Third-party adapter HTTPS URL<input type="url" name="{{ prefix }}_iframe" value="{{ config[prefix+'_iframe'] }}" maxlength="1000"></label>
-<p>Third-party adapters must report a filled ad using Freo’s fill-status contract. Network ads run only on public pages; previews never execute them.</p>
-<div class="settings-columns"><label>Starts (optional, with timezone)<input name="{{ prefix }}_start" value="{{ config[prefix+'_start'] }}" placeholder="2026-10-05T09:00+00:00"></label><label>Ends (optional, with timezone)<input name="{{ prefix }}_end" value="{{ config[prefix+'_end'] }}" placeholder="2026-10-06T09:00+00:00"></label></div>
-{% endfor %}</fieldset>
+<p><a class="ui-button" href="{{ url_for('advertising.page',slug=selected.slug) }}">Manage Advertising →</a></p>
 <fieldset><legend>Merchandise & visuals</legend>
 <label>Station store / merchandise URL (optional)<input type="url" name="merch_url" maxlength="1000" value="{{ config.merch_url }}" placeholder="https://"></label>
 <label>Default player visual<select name="visual_mode">{% for mode in visual_modes %}<option value="{{ mode }}" {% if config.visual_mode==mode %}selected{% endif %}>{{ 'Ambient / geometric' if mode=='ambient' else mode|title }}</option>{% endfor %}</select></label>

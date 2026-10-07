@@ -565,6 +565,8 @@ class Advertiser(db.Model):
     created_at=db.Column(db.DateTime(timezone=True),nullable=False,default=lambda:datetime.now(timezone.utc)); updated_at=db.Column(db.DateTime(timezone=True),nullable=False,default=lambda:datetime.now(timezone.utc),onupdate=lambda:datetime.now(timezone.utc)); station=db.relationship('Station',backref='advertisers')
 
 class Campaign(db.Model):
+    # Display policy is independent of the existing on-air traffic lifecycle.
+    advertising = db.Column(db.JSON, nullable=True)
     __tablename__='campaigns'; __table_args__=(db.UniqueConstraint('station_id','slug',name='uq_campaign_station_slug'),db.CheckConstraint("status IN ('DRAFT','ACTIVE','PAUSED','COMPLETED','CANCELLED')",name='ck_campaign_status'),db.CheckConstraint('start_date <= end_date',name='ck_campaign_dates'))
     id=db.Column(db.Integer,primary_key=True); station_id=db.Column(db.Integer,db.ForeignKey('stations.id',ondelete='CASCADE'),nullable=False,index=True); advertiser_id=db.Column(db.Integer,db.ForeignKey('advertisers.id',ondelete='RESTRICT'),nullable=False)
     name=db.Column(db.String(120),nullable=False); slug=db.Column(db.String(64),nullable=False); status=db.Column(db.String(12),nullable=False,default='DRAFT'); start_date=db.Column(db.Date,nullable=False); end_date=db.Column(db.Date,nullable=False); priority=db.Column(db.Integer,nullable=False,default=100); target_spot_count=db.Column(db.Integer); enabled=db.Column(db.Boolean,nullable=False,default=True); notes=db.Column(db.String(1000),nullable=False,default='')
@@ -1375,3 +1377,15 @@ from .relay import StationRelay  # noqa: E402,F401
 from .production import ProviderCredential, StationProduction, ProductionGrant, ProductionDraft, ProductionAttempt
 
 from .polish import DJStationProfile
+
+
+class CampaignDisplayAsset(db.Model):
+    __tablename__ = 'campaign_display_assets'
+    campaign_id = db.Column(db.Integer, db.ForeignKey('campaigns.id', ondelete='CASCADE'), primary_key=True)
+    device = db.Column(db.String(7), primary_key=True)
+    image = db.Column(db.LargeBinary, nullable=False)
+    version = db.Column(db.String(64), nullable=False)
+    width = db.Column(db.Integer, nullable=False)
+    height = db.Column(db.Integer, nullable=False)
+    campaign = db.relationship('Campaign', backref=db.backref('display_assets', cascade='all, delete-orphan'))
+    __table_args__ = (db.CheckConstraint("device IN ('desktop','mobile')", name='ck_campaign_asset_device'),)
