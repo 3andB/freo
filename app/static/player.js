@@ -19,7 +19,7 @@
   const time = value => new Intl.DateTimeFormat([], {timeZone:zone,hour:'2-digit',minute:'2-digit'}).format(new Date(value));
   const dateKey = value => {const parts=new Intl.DateTimeFormat('en-CA',{timeZone:zone,year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(new Date(value));const part=type=>parts.find(p=>p.type===type).value;return `${part('year')}-${part('month')}-${part('day')}`;};
   const shift = (day, days) => {const value=new Date(day+'T12:00:00Z');value.setUTCDate(value.getUTCDate()+days);return value.toISOString().slice(0,10);};
-  const artwork=$('playing-artwork');
+  const artwork=$('playing-artwork'), recordArtwork=$('record-artwork'), visualArtwork=$('visualizer-artwork');
   let artworkKey='';
   let wanted=false, connecting=false, retryAt=0, retries=0, currentKey='', recentKey='', busyRefresh=false;
   let audioAttempt=0, connectingSince=0;
@@ -178,10 +178,12 @@
     $('playing-artist').textContent=song?.artist||'Keep listening. We’ll bring you the details.';
     $('playing-detail').textContent=rows.length>1?`Also on air: ${rows.slice(1).map(row=>row.title).join(' · ')}`:song?'Live stream timing may vary slightly on your device.':fresh?'No confirmed song is currently on air.':'Recent plays are available below.';
     currentTitle=song?.title||root.querySelector('h1').textContent;currentArtist=song?.artist||'Live radio';
+    $('visualizer-title').textContent=currentTitle;
     if((song?.artwork||'')!==artworkKey){
-      artworkKey=song?.artwork||'';artwork.replaceChildren();artwork.hidden=true;
+      artworkKey=song?.artwork||'';
+      for(const host of [artwork,recordArtwork,visualArtwork]){host.replaceChildren();host.hidden=true;}
       if(artworkKey){const key=artworkKey,img=el('img');img.alt=`Cover artwork for ${song.title}`;img.width=144;img.height=144;
-        img.addEventListener('load',()=>{if(key===artworkKey){artwork.replaceChildren(img);artwork.hidden=false;}},{once:true});img.src=key;}
+        img.addEventListener('load',()=>{if(key===artworkKey){for(const host of [artwork,recordArtwork,visualArtwork]){host.replaceChildren(img.cloneNode());host.hidden=false;}}},{once:true});img.src=key;}
     }
     if('mediaSession' in navigator && 'MediaMetadata' in window) navigator.mediaSession.metadata=new MediaMetadata({title:currentTitle,artist:currentArtist,album:root.querySelector('h1').textContent});
     const controls=$('current-feedback');controls.replaceChildren();

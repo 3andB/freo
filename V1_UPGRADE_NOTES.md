@@ -1655,3 +1655,60 @@ checks protected routes and verifies those public assets are identical for an
 anonymous visitor and a DJ. No additional migration or dependency is required;
 existing V1 installations need refreshed station engine configurations for the
 runtime corrections. Full regression and endurance results follow after testing.
+
+## Public-player record restoration and optional visualizer — 7 October 2026
+
+The Phase 9 `.visual-deck` rules hid the original Freo record behind an always-on
+canvas. The record markup and complete CSS were located at frozen production
+commit `83200e6508654bea13f404e9d5699a8ad3eae19d`. That CSS remains an exact prefix
+of the V1 stylesheet: spinning grooves/highlights, inner circular window, outer
+color ring and glow are reused, not reconstructed. The reference used a lava
+center and separate artwork; the restored player places current album artwork
+in the rotating center, retaining lava when artwork is missing or fails to load.
+Reduced motion and hidden-tab behavior remain respected.
+
+VISUALIZER now opens a dedicated full-window dialog, with optional browser
+fullscreen and a compact bottom-right artwork/song/station overlay. Metadata
+comes from the existing player refresh. Closing or changing visualization never
+replaces, reloads, pauses or routes the native stream. The existing captureStream
+and read-only Web Audio analyser architecture is retained; there is no destination
+connection or second playback path. Canvas/capture/analyser failures are contained,
+and closing/navigation releases only the visualization resources.
+
+All five existing mode IDs and station defaults remain compatible. Canvas 2D now
+provides multicolor radial fractals, logarithmic spectrum bars with peak decay,
+layered waveform ribbons, particle trails, and layered rotating geometry. Three
+local palette presets (Aurora, Sunset, Electric) complement smoothed bass/mid/
+treble response. Pixel count, particle count and recursion are bounded. Analysis
+unavailability is displayed as a resting visual, rather than fabricated activity.
+
+Only player presentation and shared artwork rendering changed. V1 reconnects,
+stream settings, requests, discovery/commerce, DJ profiles, feedback, advertising,
+analytics, PWA and public APIs are retained. Disabled ads still create no container.
+No migration, runtime engine refresh, new dependency or station restart is needed.
+
+Validation on isolated fixtures and native Chromium 153:
+
+| Checks | Result |
+|---|---|
+| Player settings/API, ads, discovery, commerce and 192 kbps settings | 35 passed |
+| Requests, audience sessions, public API, PWA metadata and broadcast tools/isolated audio engine | 138 passed |
+| Existing desktop/mobile player, requests, PWA offline and workspace lifecycle browser regressions | 16 passed, 1 opt-in navigation-retention diagnostic skipped |
+| Advertising adapters, all visualization modes and reduced-motion/audio isolation | 3 passed |
+| Record/artwork rotation and changes; five distinct live-audio modes; palettes; fullscreen; mobile; metadata; repeated open/close; native-element continuity; capture/analyser/canvas failure isolation | 5 passed |
+
+Total: **197 passed, 1 optional diagnostic skipped**. The migration tests emit 20
+existing Flask-SQLAlchemy `get_engine` deprecation warnings. Initial screenshot
+runs exhausted the shared two-minute audio sample; the long visual checks now use
+a ten-minute deterministic fixture. The mobile launch target has scroll spacing,
+and its browser check scrolls clear of the existing sticky transport. All final
+runs above passed. JavaScript syntax and `git diff --check` also passed.
+
+Deployment is limited to the V1 staging VM `209.38.64.12`: update its source
+checkout and the four player presentation files plus these notes, preserve a
+backup, update its installed commit marker, and restart only `freo.service`.
+The station playout PID must remain unchanged. Verify public HTTPS assets against
+the commit and exercise the real `v1-test-1` player, including natural metadata
+transitions, live audio analysis and injected renderer failure. Production source,
+database/services, `main`, production tags/releases and the 0.3.2 installation
+remain frozen.

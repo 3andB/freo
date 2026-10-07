@@ -8,6 +8,7 @@ from tests.test_live_browser import booth, app_fixture, wait_text
 from tests.test_station_settings_flags import png
 import hashlib
 import pytest
+from tests.test_player_visualizer_browser import long_player_stream
 
 
 @pytest.fixture
@@ -29,7 +30,7 @@ def seed_ads(app, source='image'):
         db.session.commit()
 
 
-def test_images_visual_modes_reduced_motion_and_audio_failure_isolation(booth):
+def test_images_visual_modes_reduced_motion_and_audio_failure_isolation(booth, long_player_stream):
     app, driver, base, tmp = booth
     seed_ads(app)
     driver.get(base+'/player/test-station')
@@ -39,6 +40,7 @@ def test_images_visual_modes_reduced_motion_and_audio_failure_isolation(booth):
     assert not driver.find_elements(By.CSS_SELECTOR, '[data-placement="ad_bottom"]')
     driver.find_element(By.ID,'play-button').click()
     WebDriverWait(driver, 8).until(lambda d: d.execute_script('return !document.getElementById("station-audio").paused'))
+    driver.find_element(By.ID,'visualizer-open').click()
     for mode in ('fractal','spectrum','waveform','particles','ambient'):
         Select(driver.find_element(By.ID,'visual-mode')).select_by_value(mode)
         WebDriverWait(driver, 5).until(lambda d: d.find_element(By.ID,'player-visual').get_attribute('data-mode') == mode)
