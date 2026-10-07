@@ -8,11 +8,32 @@
   }
   document.querySelectorAll('.provider-form').forEach(form => form.addEventListener('submit', async event => {
     event.preventDefault();
-    const data = new FormData(form); data.set('action', event.submitter.value);
+    if (form.getAttribute('aria-busy') === 'true') return;
+    const action = event.submitter?.value || 'save';
+    const data = new FormData(form); data.set('action', action);
+    const feedback = form.querySelector('[data-provider-message]');
+    const buttons = Array.from(form.querySelectorAll('button'));
     form.querySelector('[name=key]').value = '';
-    try { const result = await submit(form.dataset.url, data); message.textContent = result.message;
-      if (event.submitter.value !== 'test') location.reload();
-    } catch (error) { message.textContent = error.message; }
+    form.setAttribute('aria-busy', 'true');
+    buttons.forEach(button => { button.disabled = true; });
+    feedback.classList.remove('is-error');
+    feedback.textContent = action === 'test' ? 'Testing saved connection…' : 'Saving settings…';
+    try {
+      const result = await submit(form.dataset.url, data);
+      feedback.textContent = result.message;
+      if (action !== 'test') {
+        form.elements.revision.value = result.revision;
+        const badge = form.closest('.ops-provider').querySelector('.ops-badge');
+        badge.textContent = result.configured ? 'Configured' : 'Not configured';
+        badge.classList.toggle('is-ready', result.configured);
+      }
+    } catch (error) {
+      feedback.classList.add('is-error');
+      feedback.textContent = error.message;
+    } finally {
+      form.removeAttribute('aria-busy');
+      buttons.forEach(button => { button.disabled = false; });
+    }
   }));
   const form = document.getElementById('station-production-settings');
   if (!form) return;

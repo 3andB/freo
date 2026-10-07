@@ -189,7 +189,8 @@ def settings():
             request.form.get('revision',0),request.form.get('action')=='remove')
         audit('provider_configuration',user_id=current_admin().id,target_type='provider',target_id=provider,summary='Provider configuration updated')
         db.session.commit()
-        return jsonify(message='Provider configuration saved.')
+        saved = db.session.get(m.ProviderCredential, provider)
+        return jsonify(message='Provider configuration saved.', revision=saved.revision, configured=bool(saved.ciphertext))
     rows={r.provider:r for r in m.ProviderCredential.query.all()}
     values=[dict(provider=p,configured=bool(rows.get(p) and rows[p].ciphertext),revision=rows[p].revision if p in rows else 0,
         model=rows[p].model if p in rows else '') for p in providers.PROVIDERS]

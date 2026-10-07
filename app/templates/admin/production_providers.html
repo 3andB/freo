@@ -1,5 +1,18 @@
 {% extends 'admin/base.html' %}
-{% block admin_content %}<h1>AI provider settings</h1><p>Shared installation accounts. Keys are encrypted on the server and never returned after saving. Set the bootstrap encryption key before adding credentials.</p><p id="production-message" role="status"></p>
-{% for value in values %}<section class="admin-card"><h2>{{ {'elevenlabs':'ElevenLabs audio','openai':'OpenAI / ChatGPT API','anthropic':'Claude API','xai':'Grok API'}[value.provider] }}</h2><p>{{ 'Configured' if value.configured else 'Not configured' }}</p><form class="provider-form" data-url="{{ url_for('production.settings') }}"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="provider" value="{{ value.provider }}"><input type="hidden" name="revision" value="{{ value.revision }}"><label>New API key<input type="password" name="key" autocomplete="new-password" maxlength="1024" placeholder="Leave blank to keep existing key"></label>{% if value.provider != 'elevenlabs' %}<label>Script model ID<input name="model" value="{{ value.model }}" maxlength="120" placeholder="A text model available to this API account"></label>{% endif %}<button name="action" value="save">Save / replace</button> <button name="action" value="test">Test saved connection</button> <button name="action" value="remove">Remove key</button></form></section>{% endfor %}
+{% block title %}AI provider settings · Freo{% endblock %}
+{% block admin_content %}
+<div class="ops-workspace">
+<header class="ops-page-heading"><span class="eyebrow">INSTALLATION / CONNECTIONS</span><h1>AI provider settings</h1><p>Manage the shared accounts used to create scripts and audio.</p></header>
+<p class="ops-note">Keys are encrypted on the server and never returned after saving. Set the bootstrap encryption key before adding credentials.</p>
+<div class="ops-card-grid">
+{% for value in values %}<section class="admin-card ops-provider">
+<div class="ops-card-heading"><div><span class="eyebrow">{{ 'AUDIO' if value.provider == 'elevenlabs' else 'SCRIPTS' }}</span><h2>{{ {'elevenlabs':'ElevenLabs audio','openai':'OpenAI / ChatGPT API','anthropic':'Claude API','xai':'Grok API'}[value.provider] }}</h2></div><span class="ops-badge {{ 'is-ready' if value.configured else '' }}">{{ 'Configured' if value.configured else 'Not configured' }}</span></div>
+<form method="post" action="{{ url_for('production.settings') }}" class="provider-form" data-url="{{ url_for('production.settings') }}"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="provider" value="{{ value.provider }}"><input type="hidden" name="revision" value="{{ value.revision }}">
+<label>New API key<input type="password" name="key" autocomplete="new-password" maxlength="1024" placeholder="Enter a new API key"><small>Leave blank to keep the existing key.</small></label>
+{% if value.provider != 'elevenlabs' %}<label>Script model ID<input name="model" value="{{ value.model }}" maxlength="120" placeholder="Model available to this account"></label>{% endif %}
+<div class="ops-actions"><button type="submit" class="ui-primary" name="action" value="save">Save settings</button><button type="submit" class="admin-action" name="action" value="test">Test saved connection</button><button type="submit" class="ui-danger" name="action" value="remove">Remove key</button></div>
+<p class="ops-feedback" data-provider-message role="status" aria-live="polite"></p>
+</form></section>{% endfor %}
+</div></div>
 {% endblock %}
-{% block scripts %}{{ super() }}<script defer src="{{ url_for('static',filename='production_settings.js') }}"></script>{% endblock %}
+{% block scripts %}{{ super() }}<script defer src="{{ url_for('static',filename='production_settings.js',v='admin-ui-csv-1') }}"></script>{% endblock %}

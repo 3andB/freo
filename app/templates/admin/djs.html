@@ -1,16 +1,18 @@
 {% extends 'admin/base.html' %}
+{% block title %}DJ accounts and station access · Freo{% endblock %}
 {% block admin_content %}
-<h1>DJ accounts and station access</h1><p>DJs can operate assigned booths and access their own recordings. Existing administrators retain full access until explicitly converted here.</p>
+<div class="ops-workspace">
+<header class="ops-page-heading"><span class="eyebrow">PEOPLE / PERMISSIONS</span><h1>DJ accounts and station access</h1><p>Give each DJ access to the stations they operate and their own recordings.</p></header>
+<div class="ops-account-layout"><section aria-label="Existing accounts"><h2 class="ops-section-title">Manage access</h2><p class="ops-note">Administrators retain full access until explicitly converted to DJs.</p>
 {% for user in users if user.id != current_admin().id and not user.installation_admin %}
-<form method="post" class="console-panel"><h2>{{ user.username or user.email }} · {{ user.role }}</h2>
+<form method="post" class="admin-card ops-account"><div class="ops-card-heading"><div><h2>{{ user.username or user.email }}</h2>{% if user.username %}<p>{{ user.email }}</p>{% endif %}</div><span class="ops-badge">{{ user.role }} · {{ 'Enabled' if user.active else 'Disabled' }}</span></div>
 <input type="hidden" name="csrf" value="{{ csrf_token() }}"><input type="hidden" name="user_id" value="{{ user.id }}">
 <label><input type="checkbox" name="active" value="yes" {% if user.active %}checked{% endif %}> Account enabled</label>
-{% for station in stations %}<label><input type="checkbox" name="station_id" value="{{ station.id }}" {% if (user.id,station.id) in assignments %}checked{% endif %}> {{ station.name }}</label>{% endfor %}
-{% for station in stations if (user.id,station.id) in assignments %}<p><a href="{{ url_for('platform_polish.profiles',slug=station.slug) }}">Public profile · {{ station.name }}</a></p>{% endfor %}<button type="submit">{{ 'Save DJ access' if user.role == 'DJ' else 'Convert to DJ with these assignments' }}</button></form>
-{% endfor %}
-<form method="post" class="console-panel"><h2>Create DJ</h2><input type="hidden" name="csrf" value="{{ csrf_token() }}"><input type="hidden" name="active" value="yes">
-<label>DJ name <input name="username" required maxlength="64" autocomplete="off"></label><label>Email <input name="email" type="email" required maxlength="254"></label>
-<label>Initial password <input type="password" name="password" minlength="16" required autocomplete="new-password"></label>
-{% for station in stations %}<label><input type="checkbox" name="station_id" value="{{ station.id }}"> {{ station.name }}</label>{% endfor %}
-<button>Create DJ</button></form>
+<fieldset class="ops-stations"><legend>Station access</legend>{% for station in stations %}<label><input type="checkbox" name="station_id" value="{{ station.id }}" {% if (user.id,station.id) in assignments %}checked{% endif %}> {{ station.name }}</label>{% else %}<p>No stations available.</p>{% endfor %}</fieldset>
+<div class="ops-actions"><button type="submit" class="ui-primary">{{ 'Save DJ access' if user.role == 'DJ' else 'Convert to DJ with these assignments' }}</button></div>
+{% for station in stations if (user.id,station.id) in assignments %}<p class="ops-profile-link"><a href="{{ url_for('platform_polish.profiles',slug=station.slug) }}">Public profile · {{ station.name }}</a></p>{% endfor %}</form>
+{% else %}<div class="admin-card ops-empty">No other accounts to manage. Create a DJ to get started.</div>{% endfor %}</section>
+<section class="admin-card ops-create"><span class="eyebrow">INVITE A VOICE</span><h2>Create DJ</h2><form method="post"><input type="hidden" name="csrf" value="{{ csrf_token() }}"><input type="hidden" name="active" value="yes">
+<label>DJ name<input name="username" required maxlength="64" autocomplete="off"></label><label>Email<input name="email" type="email" required maxlength="254"></label><label>Initial password<input type="password" name="password" minlength="16" required autocomplete="new-password"><small>Use at least 16 characters.</small></label>
+<fieldset class="ops-stations"><legend>Station access</legend>{% for station in stations %}<label><input type="checkbox" name="station_id" value="{{ station.id }}"> {{ station.name }}</label>{% else %}<p>No stations available.</p>{% endfor %}</fieldset><button type="submit" class="ui-primary">Create DJ</button></form></section></div></div>
 {% endblock %}

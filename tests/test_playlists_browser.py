@@ -39,6 +39,12 @@ def test_playlist_music_bubbles_editor_undo_and_schedule(booth):
     driver.find_element(By.CSS_SELECTOR,'#playlist-add-dialog .dialog-close').click()
     driver.set_window_size(430,932)
     assert driver.execute_script('return document.documentElement.scrollWidth <= innerWidth')
+    driver.execute_script("document.getElementById('playlist-delete').scrollIntoView({block:'center',behavior:'instant'})")
+    assert driver.execute_script("""
+      const footer=document.getElementById('playlist-delete').getBoundingClientRect();
+      const dock=document.getElementById('music-player');
+      return footer.bottom <= (dock.hidden ? innerHeight : dock.getBoundingClientRect().top);
+    """), 'Playlist deletion control must stay above the preview dock'
     driver.save_screenshot('/tmp/freo-playlists-mobile.png')
     driver.set_window_size(1600,1200)
     driver.save_screenshot('/tmp/freo-playlists.png')

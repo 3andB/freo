@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 
 from sqlalchemy import func
+from sqlalchemy.orm import joinedload
 
 from app.extensions import db
 from app.models import (AutomationHeartbeat, Clock, ClockState, MediaCategory,
@@ -44,10 +45,45 @@ def worker_health(station):
             'last_seen': station_beat}
 
 
-def latest_rows(station, limit=30):
+def history_query(station):
+    """The same confirmed-start scope and order for the screen and download."""
+    from app.models import TimedEventOccurrence
     return (SelectionDecision.query.filter_by(station_id=station.id, status='started')
-            .order_by(SelectionDecision.started_at.desc(), SelectionDecision.id.desc())
-            .limit(limit).all())
+            .options(joinedload(SelectionDecision.track), joinedload(SelectionDecision.imaging_asset),
+                     joinedload(SelectionDecision.clock), joinedload(SelectionDecision.clock_slot),
+                     joinedload(SelectionDecision.timed_event_occurrence).joinedload(TimedEventOccurrence.event))
+            .order_by(SelectionDecision.started_at.desc(), SelectionDecision.id.desc()))
+
+
+def latest_rows(station, limit=30):
+    return history_query(station).limit(limit).all()
+
+
+def history_entries(station, limit=None):
+    rotations = dict(db.session.query(Rotation.id, Rotation.name).filter_by(station_id=station.id).all())
+    query = history_query(station)
+    if limit is not None:
+        query = query.limit(limit)
+    for row in query.yield_per(250):
+        occurrence = row.timed_event_occurrence
+        event = occurrence.event if occurrence else None
+        started = aware(row.started_at)
+        scheduled = aware(occurrence.scheduled_for_utc) if occurrence else None
+        yield dict(decision_id=row.id, station=station.name, timezone=station.timezone,
+            started_at_utc=started.isoformat() if started else '',
+            started_at_local=started.astimezone(ZoneInfo(station.timezone)).isoformat() if started else '',
+            title=row.track.title if row.track else row.imaging_asset.name if row.imaging_asset else 'Audio unavailable',
+            artist=row.track.artist if row.track else row.imaging_asset.asset_type.replace('_', ' ').title() if row.imaging_asset else '',
+            source='EVENT' if occurrence else 'MANUAL' if row.admin_user_id else 'AUTO',
+            event=event.name if event else '', timing_mode=event.timing_mode if event else '',
+            scheduled_at_utc=scheduled.isoformat() if scheduled else '',
+            scheduled_at_local=scheduled.astimezone(ZoneInfo(station.timezone)).isoformat() if scheduled else '',
+            clock=row.clock.name if row.clock else '',
+            slot=row.clock_slot.position if row.clock_slot else '',
+            slot_type=row.clock_slot.slot_type if row.clock_slot else '',
+            rotation=rotations.get(row.rotation_id, 'Rotation removed') if row.rotation_id else '',
+            timing_offset_seconds=occurrence.timing_offset_seconds if occurrence else None,
+            relaxation=row.relaxation if not occurrence else '')
 
 
 def pending_rows(station, limit=5):
@@ -104,5 +140,5 @@ def section_data(station, section):
                 .order_by(ScheduleAssignment.weekday, ScheduleAssignment.start_time).all())
         return {'days': [(name, [row for row in rows if row.weekday == index]) for index, name in enumerate(DAY_NAMES)]}
     if section == 'history':
-        return {'history': latest_rows(station, 100)}
+        return {'history': list(history_entries(station, 100))}
     return {}

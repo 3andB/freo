@@ -188,6 +188,41 @@ def admin_section(section):
                            data=data, extra=extra, page=section, section=section)
 
 
+@web_blueprint.get('/admin/stations/<slug>/history.csv')
+@login_required
+def history_csv(slug):
+    import csv
+    import io
+    from flask import Response, stream_with_context
+    from app.services.admin_view import history_entries
+
+    station = station_or_404(slug, require_enabled=False)
+    columns = ['decision_id', 'station', 'timezone', 'started_at_utc', 'started_at_local',
+               'title', 'artist', 'source', 'event', 'timing_mode', 'scheduled_at_utc',
+               'scheduled_at_local', 'clock', 'slot', 'slot_type', 'rotation',
+               'timing_offset_seconds', 'relaxation']
+
+    def generate():
+        output = io.StringIO()
+        writer = csv.writer(output)
+
+        def write(values):
+            output.seek(0)
+            output.truncate(0)
+            writer.writerow(["'" + value if isinstance(value, str) and
+                             value.lstrip().startswith(('=', '+', '-', '@')) else value
+                             for value in values])
+            return output.getvalue()
+
+        yield write(columns)
+        for row in history_entries(station):
+            yield write([row[key] for key in columns])
+
+    return Response(stream_with_context(generate()), content_type='text/csv; charset=utf-8', headers={
+        'Content-Disposition': f'attachment; filename="{station.slug}-history.csv"',
+        'Cache-Control': 'private, no-store'})
+
+
 @web_blueprint.get('/admin/api/stations/<slug>/snapshot')
 @login_required
 def admin_snapshot(slug):

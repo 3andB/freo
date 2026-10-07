@@ -120,3 +120,16 @@ html:has(#music-player:not([hidden])){scroll-padding-bottom:var(--music-preview-
 #playlist-form details .playlist-fields{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(180px,100%),1fr));gap:16px}
 #playlist-form label:has(>input[type=checkbox]){flex-direction:row;align-items:flex-start}
 .audio-edit-fields{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px}.audio-edit-fields input{width:100%;box-sizing:border-box}#audio-edits fieldset{border:0;padding:0;min-width:0}.audio-edit-overlay{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}.audio-edit-marker{position:absolute;top:0;z-index:2;transform:translateX(-50%);max-width:65px;padding:4px;font-size:11px;touch-action:none}.audio-edit-marker.fade-marker{top:65px}.waveform-wrap{margin-left:34px;margin-right:34px}
+
+/* Playlist actions stay reachable above the measured preview dock. */
+.admin-content:has(#playlist-workspace){padding-bottom:calc(var(--music-preview-space,0px) + 40px)}
+#playlist-workspace .playlist-tracks{border-top:1px solid var(--theme-border);margin-top:24px;padding-top:8px}
+#playlist-workspace .playlist-toolbar{gap:16px;align-items:end}
+#playlist-workspace .playlist-toolbar label{flex:1;max-width:420px}
+#playlist-workspace .playlist-song{padding:16px 8px;border-radius:8px;gap:12px}
+#playlist-workspace .playlist-song:hover{background:var(--theme-raised)}
+#playlist-workspace .playlist-song button:not(.preview-button){min-width:44px;min-height:44px;border:1px solid var(--theme-border);border-radius:9px;background:var(--theme-surface);color:var(--theme-text)}
+#playlist-workspace footer.playlist-toolbar{border-top:1px solid var(--theme-border);padding-top:24px;margin-top:28px;align-items:center}
+#playlist-workspace footer p{flex:1;min-width:180px;line-height:1.6}
+#playlist-workspace :is(button,input){scroll-margin-bottom:calc(var(--music-preview-space,0px) + 24px)}
+@media(max-width:600px){#playlist-workspace .playlist-toolbar{align-items:stretch}#playlist-workspace .playlist-toolbar label{flex-basis:100%;max-width:none}#playlist-workspace .playlist-song-copy{flex-basis:50%}}

@@ -4,8 +4,8 @@
 <p id="live-relay-status" role="status"></p>
 <main class="dj-booth booth-mode-{{ live.mode|lower|replace('_','-') }}" id="dj-booth" data-status-url="{{ url_for('admin_live.live_status',slug=selected.slug) }}" data-song-search-url="{{ url_for('admin_live.song_search',slug=selected.slug) }}" data-action-base="{{ url_for('admin_live.action',slug=selected.slug,action='ACTION') }}" data-art-base="{{ url_for('admin_media.album_artwork',slug=selected.slug,album_id=0) }}" data-csrf="{{ csrf_token() }}" data-mode="{{ live.mode }}" data-user-id="{{ current_admin().id }}" data-admin="{{ 'true' if current_admin().role == 'ADMIN' else 'false' }}">
 <section class="console-panel" aria-label="Live show">
-<p><a href="{{ url_for('listener_requests.inbox',slug=selected.slug) }}">Listener requests</a></p>
-{% for req in pending_requests %}<p>{{ req.track.title if req.track else 'Unavailable song' }} · {{ req.status }} · {{ req.reason }}</p>{% endfor %}
+<div class="ops-actions"><a class="admin-action" href="{{ url_for('listener_requests.inbox',slug=selected.slug) }}">Listener requests →</a></div>
+{% for req in pending_requests %}<div class="ops-list-row"><div><strong>{{ req.track.title if req.track else 'Unavailable song' }}</strong><small>{{ req.reason }}</small></div><span class="ops-badge">{{ req.status|title }}</span></div>{% endfor %}
 <p id="show-status" role="status">Checking program source…</p>
 <label><input id="record-show" type="checkbox"> Record this show (MP3)</label><small>Select before entering DJ mode or GO LIVE.</small>
 <p id="show-recording-status" role="status"></p><a href="{{ url_for('dj.recordings',slug=selected.slug) }}">Show recordings</a>
