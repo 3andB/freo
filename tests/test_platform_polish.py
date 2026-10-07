@@ -236,3 +236,14 @@ def test_custom_domain_player_uses_public_ad_policy_and_scopes_dj_images(app):
     assert response.status_code == 200 and 'player-page' in response.text
     assert 'securepubads.g.doubleclick.net' in response.headers['Content-Security-Policy']
     assert client.get('/station-assets/second-station/dj/1.png', headers={'Host':'rock.example.test'}).status_code == 404
+
+
+@pytest.mark.parametrize('mode', ['aurora', 'ethereal', 'space'])
+def test_new_visualizer_defaults_round_trip(app, mode):
+    client = admin_client(app)
+    assert client.post(ADMIN, data=config_form(visual_mode=mode)).status_code == 302
+    with app.app_context():
+        assert StationPlayerSettings.query.one().config['visual_mode'] == mode
+    html = app.test_client().get('/player/test-station').text
+    assert f'data-visual="{mode}"' in html
+    assert f'value="{mode}" selected' in html

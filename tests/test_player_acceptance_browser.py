@@ -161,31 +161,32 @@ def test_no_capture_compressed_streams(booth,monkeypatch,codec):
     driver.find_element(By.ID,'visualizer-close').click();playing(driver)
 
 
-def test_iphone_software_volume_changes_real_samples(booth,long_player_stream):
+@pytest.mark.parametrize('unavailable', [False, True])
+def test_iphone_hides_volume_preserves_mute_and_playback(booth, long_player_stream, unavailable):
     app,driver,base,tmp=booth
-    driver.execute_cdp_cmd('Page.addScriptToEvaluateOnNewDocument',{'source':'''HTMLMediaElement.prototype.captureStream=undefined;HTMLMediaElement.prototype.mozCaptureStream=undefined;
-    Object.defineProperty(HTMLMediaElement.prototype,'volume',{get(){return 1},set(value){},configurable:true});'''})
+    script = """HTMLMediaElement.prototype.captureStream=undefined;HTMLMediaElement.prototype.mozCaptureStream=undefined;
+    Object.defineProperty(HTMLMediaElement.prototype,'volume',{get(){return 1},set(value){},configurable:true});"""
+    if unavailable: script += "window.AudioContext=class{constructor(){throw Error('unavailable')}};"
+    driver.execute_cdp_cmd('Page.addScriptToEvaluateOnNewDocument',{'source':script})
     driver.get(base+'/player/test-station')
     driver.set_window_size(390,844)
+    assert not driver.find_element(By.ID,'volume').is_displayed()
+    assert not driver.find_element(By.ID,'volume').is_enabled()
+    assert driver.find_element(By.ID,'volume-help').is_displayed()
     driver.find_element(By.ID,'play-button').click();playing(driver)
-    WebDriverWait(driver,10).until(lambda d:js(d,'return !!FreoAudioAnalysis.read(document.getElementById("station-audio"))?.gain'))
-    js(driver,'const g=FreoAudioAnalysis.read(document.getElementById("station-audio"));window.outputProbe=g.context.createAnalyser();g.gain.connect(outputProbe)')
-    def level(value):
-        js(driver,f'const v=document.getElementById("volume");v.value={value};v.dispatchEvent(new Event("input"))')
+    if not unavailable:
+        WebDriverWait(driver,10).until(lambda d:js(d,'return !!FreoAudioAnalysis.read(document.getElementById("station-audio"))?.gain'))
+        js(driver,'const g=FreoAudioAnalysis.read(document.getElementById("station-audio"));window.outputProbe=g.context.createAnalyser();g.gain.connect(outputProbe)')
     def rms():
         return driver.execute_async_script('const done=arguments[0];setTimeout(()=>{const a=new Float32Array(2048);outputProbe.getFloatTimeDomainData(a);done(Math.sqrt(a.reduce((s,v)=>s+v*v,0)/a.length))},300)')
-    level(80);loud=rms();level(20);quiet=rms()
-    assert loud>0 and .20<quiet/loud<.30
+    if not unavailable: assert rms()>0
     driver.find_element(By.ID,'mute-button').click()
-    assert rms()<.00001
-    driver.find_element(By.ID,'mute-button').click()
-    assert .8<rms()/quiet<1.2
-    level(0);assert rms()<.00001
-    level(35)
-    # Neither native volume support nor an open visualizer is needed.
-    assert not js(driver,'return document.getElementById("visualizer-dialog").open')
-    assert js(driver,'return document.getElementById("station-audio").volume')==1
+    if not unavailable: assert rms()<.00001
+    else: assert js(driver,'return document.getElementById("station-audio").muted')
     driver.find_element(By.ID,'play-button').click()
     driver.find_element(By.ID,'play-button').click();playing(driver)
-    graph_level=js(driver,'return FreoAudioAnalysis.read(document.getElementById("station-audio")).gain.gain.value')
-    assert abs(graph_level-.35)<.001
+    assert driver.find_element(By.ID,'mute-button').get_attribute('aria-pressed')=='true'
+    driver.find_element(By.ID,'mute-button').click();playing(driver)
+    assert not driver.find_element(By.ID,'volume').is_displayed()
+    if not unavailable:
+        assert js(driver,'return FreoAudioAnalysis.read(document.getElementById("station-audio")).gain.gain.value') > .99

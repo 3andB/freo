@@ -75,3 +75,8 @@ html:has(.visualizer-dialog[open]){overflow:hidden}
 .request-dialog::backdrop{background:#000a}
 .request-dialog>button{display:block;margin:0 0 .6rem auto}
 .request-dialog iframe{display:block;width:100%;height:min(70dvh,44rem);border:0;border-radius:.5rem;background:white}
+
+.radio-volume[hidden],#volume-help[hidden]{display:none!important}#volume-help{max-width:90px;font-size:10px;line-height:1.4;color:var(--theme-muted)}
+
+/* The modal owns the scene; do not animate the obscured record underneath it. */
+.radio-experience:has(.visualizer-dialog[open]) .radio-deck *{animation-play-state:paused!important}

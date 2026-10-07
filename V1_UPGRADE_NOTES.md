@@ -1832,3 +1832,63 @@ surfaces, zero-height empty slots, provider fill contracts, and listener playbac
 isolation. Two disposable-PostgreSQL checks verify migration preservation and
 schema consistency. Linked-audio tests cover valid/rejected ingest, preview,
 replace/remove, and preservation of existing traffic inventory and schedules.
+
+## V1 player audio and atmospheric visualizers — 2026-10-07
+
+The iPhone/iPad volume slider is now hidden and disabled, with a device-volume
+hint. Native volume capability is probed before playback, with an Apple touch
+fallback for builds which echo assignments without adjusting output. Desktop
+Safari/Chromium and Android retain volume control. Mute intent survives element
+replacement and reconnects, including when Web Audio initialization is unavailable.
+
+Analysis is consolidated under the existing playback helper. Capture contexts
+are created in the opening/Play gesture rather than waiting for a later track or
+animation callback. A Safari graph that exists but initially remains suspended
+can finish attachment after a later successful resume. Readiness/state events
+notify the renderer. Optional analysers are detached on pause, resource reload,
+close, hidden state, and reduced motion; the audible fallback is never owned by
+renderer cleanup. Returning from reduced motion reactivates analysis instead of
+remaining frozen behind a stale player class. No second audio stream is opened.
+
+The universal desktop failure was not reproduced against the existing V1 live
+player; these specific lifecycle defects were diagnosed and covered with
+regressions. The actual listener redirect and stream remain on the same HTTPS
+origin, and both Chromium and WebKit measured nonzero station samples. No server
+CORS relaxation is required. Unknown external resources do not enter the audible
+Web Audio fallback; unavailable analysis has a labeled resting scene.
+
+Fractal, Spectrum, Waveform, Particles, and Ambient retain their rendering modes.
+Aurora adds layered luminous curtains, Ethereal adds translucent line clouds and
+light beams, and Space adds Earth, four stylized planets, and frequency-sensitive
+wave fronts with planet illumination. All modes use real frequency/time-domain
+samples. The three new modes use the existing selector and station-default
+settings, without resetting existing defaults or adding a database migration.
+
+Rendering has a 30 fps ceiling, bounded geometry, DPR up to 1.25, and pixel budgets
+of 1,000,000 desktop / 600,000 narrow-screen pixels. The record behind the modal
+pauses. No graphics framework is added. Isolated final measurements of the three
+new modes recorded median JavaScript draw costs from 1.5 to 18 ms, with p95 at or
+below 23 ms. Chromium delivered approximately 10–20 fps on this software test
+host; headless WebKit delivered approximately 1–4 fps despite the lower draw
+cost. Physical-device smoothness remains unverified.
+
+Validation: 39 player/settings tests and 16 focused Chromium browser cases
+passed (55 total). Coverage includes all eight modes, real decoded bass/mid/high
+frequencies and silence, MP3/AAC, software mute output, unavailable contexts,
+gesture/suspended-context recovery, repeated switching, pause/resume, bounded
+reconnects, reduced-motion restoration, and canvas/capture/analyser failure while
+audio continues. New station defaults round-trip through existing settings.
+
+Read-only candidate assets were additionally tested against the actual V1 HTTPS
+stream in desktop Chromium, mobile Chromium, desktop WebKit, and iPhone WebKit
+profiles. Each profile passed all eight modes, nonzero station analysis, repeated
+switching with one active context, reduced motion, pause/resume, and forced
+renderer failure with continuing playback. An additional Android/Pixel profile
+passed while retaining the volume slider. No JavaScript page errors were seen.
+The retained `scripts/check-player-visuals.py` reproduces these browser checks
+without deployment. Linux WebKit emulation is not actual macOS Safari or physical
+iPhone/iPad testing. Browser failure of Safari's playback-owned AudioContext
+remains an inherent limitation of the selected non-capture analysis route.
+
+Only `/opt/freo-v1` on `develop/v1` is changed. Production remains frozen; no merge
+or deployment was performed.

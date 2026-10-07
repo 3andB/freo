@@ -26,8 +26,9 @@
   let audioAttempt=0, connectingSince=0;
   let audioEvents=new AbortController();
   let currentTitle=root.querySelector('h1').textContent, currentArtist='Live radio';
-  const motionReduced=matchMedia('(prefers-reduced-motion: reduce)').matches || storage.get('freo-motion') === 'reduced' || root.dataset.motion!=='yes';
-  root.classList.toggle('low-motion',motionReduced);
+  const motionPreference=matchMedia('(prefers-reduced-motion: reduce)');
+  const syncMotion=()=>root.classList.toggle('low-motion',motionPreference.matches || storage.get('freo-motion') === 'reduced' || root.dataset.motion!=='yes');
+  syncMotion();scope.listen(motionPreference,'change',syncMotion);
   const announcement=root.querySelector('.radio-announcement');
   if (announcement) {
     const key='freo-message-'+announcement.dataset.messageKey;
@@ -53,10 +54,10 @@
     // element's playback permission. Neither path reuses a cached stream URL.
     if(!retry){
       const previous=audio;
-      if(nativeVolumeSupported && !window.FreoAudioAnalysis?.read(previous)?.source){volumeLevel=previous.volume;muted=previous.muted;}
+      if(!window.FreoAudioAnalysis?.read(previous)?.source){volumeLevel=nativeVolumeSupported?previous.volume:1;muted=previous.muted;}
       audioEvents.abort();
       audio=document.createElement('audio');
-      audio.id='station-audio';audio.preload='none';audio.setAttribute('playsinline','');
+      audio.id='station-audio';audio.preload='none';audio.setAttribute('playsinline','');audio.dataset.stream=stream;
       audio.volume=volumeLevel;audio.muted=muted;
       previous.pause();previous.removeAttribute('src');previous.load();
       previous.replaceWith(audio);
@@ -108,12 +109,24 @@
     if(retryAt && Date.now()>=retryAt){retryAt=0;start(true);}
   },1000);
   function applyVolume(){
-    if(!window.FreoAudioAnalysis?.setVolume(audio,volumeLevel,muted)){audio.volume=volumeLevel;audio.muted=muted;}
+    if(!window.FreoAudioAnalysis?.setVolume(audio,volumeLevel,muted)){
+      try{audio.volume=volumeLevel;}catch{}
+      audio.muted=muted;
+    }
     $('mute-button').setAttribute('aria-pressed',String(muted));$('mute-button').setAttribute('aria-label',muted?'Unmute':'Mute');
   }
+  // Probe before playback. iPadOS may identify as a Mac; do not rely on UA alone.
+  let nativeVolumeSupported=false;
+  try {audio.volume=.37;nativeVolumeSupported=Math.abs(audio.volume-.37)<.001;}catch{}
+  const appleTouch=/iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform==='MacIntel' && navigator.maxTouchPoints>1);
+  // Some Apple builds echo assignments without applying them to native output.
+  nativeVolumeSupported=nativeVolumeSupported && !appleTouch;
+  if(!nativeVolumeSupported)volumeLevel=1;
+  $('volume').disabled=!nativeVolumeSupported;
+  $('volume').closest('.radio-volume').hidden=!nativeVolumeSupported;
+  $('volume-help').hidden=nativeVolumeSupported;
   applyVolume();
-  const nativeVolumeSupported=audio.volume===volumeLevel;
-  $('volume').addEventListener('input',event=>{volumeLevel=Number(event.target.value)/100;muted=false;applyVolume();});
+  $('volume').addEventListener('input',event=>{if(!nativeVolumeSupported)return;volumeLevel=Number(event.target.value)/100;muted=false;applyVolume();});
   $('mute-button').addEventListener('click',()=>{muted=!muted;applyVolume();});
   $('share-button').addEventListener('click',async()=>{try{if(navigator.share)await navigator.share({title:root.querySelector('h1').textContent,url:location.href});else{await navigator.clipboard.writeText(location.href);$('share-button').textContent='Link copied';}}catch(error){if(error.name!=='AbortError')$('share-button').textContent='Share this page’s URL';}});
   scope.listen(document,'visibilitychange',()=>root.classList.toggle('tab-hidden',document.hidden));

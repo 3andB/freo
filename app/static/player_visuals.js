@@ -7,31 +7,25 @@
   const select = $('visual-mode'), palette = $('visual-palette'), status = $('visual-status');
   const fullscreen = $('visualizer-fullscreen'), reduced = matchMedia('(prefers-reduced-motion: reduce)');
   const key = 'freo-visual-' + root.dataset.station;
-  const modes = ['fractal', 'spectrum', 'waveform', 'particles', 'ambient'];
+  const modes = Array.from(select.options, option => option.value);
   const palettes = {aurora: [155, 205, 285], sunset: [18, 335, 275], electric: [190, 260, 320]};
   try {
     const saved = localStorage.getItem(key); if (modes.includes(saved)) select.value = saved;
     const savedPalette = localStorage.getItem(key + '-palette'); if (Object.hasOwn(palettes, savedPalette)) palette.value = savedPalette;
   } catch {}
-  let ctx, audio, captured, context, analyser, source, attachListener, borrowed=false, captureFailed=false;
+  let ctx, audio, context, analyser;
   let fullscreenNoticeUntil = 0;
-  let raf = 0, last = 0, phase = 0, disposed = false, failed = false, generation = 0;
+  let raf = 0, last = 0, phase = 0, disposed = false, failed = false;
   let bass = 0, mids = 0, treble = 0, energy = 0, measured = false;
   const frequency = new Uint8Array(512), waveform = new Uint8Array(1024);
   const bars = new Float32Array(64), peaks = new Float32Array(64);
   const particles = Array.from({length: 150}, (_, i) => ({angle: i * 2.399963, radius: ((i * 73) % 151) / 151, size: 1 + i % 4}));
   const active = () => dialog.open && !disposed && !failed && !document.hidden;
-  const moving = () => active() && !reduced.matches && !root.classList.contains('low-motion') && audio && !audio.paused && root.classList.contains('is-playing');
+  const moving = () => active() && !reduced.matches && !root.classList.contains('low-motion') && audio && !audio.paused && root.classList.contains('is-playing') && analyser && context?.state==='running';
   const color = (index, alpha = 1, light = 65) => `hsla(${palettes[palette.value][index % 3]},95%,${light}%,${alpha})`;
   function detach() {
-    generation++;
-    try {captured?.removeEventListener('addtrack', attachListener);} catch {}
-    try {source?.disconnect();} catch {}
-    // These are capture tracks only; never stop or reset the native audio element.
-    try {captured?.getTracks().forEach(track => track.stop());} catch {}
-    if (!borrowed) try {context?.close().catch(() => {});} catch {}
-    borrowed=false;
-    captured = context = analyser = source = attachListener = null;
+    window.FreoAudioAnalysis?.deactivate();
+    context = analyser = null;
     measured = false; bass = mids = treble = energy = 0; bars.fill(0); peaks.fill(0);
   }
   function fail() {
@@ -39,59 +33,145 @@
     status.textContent = 'Visualization unavailable. Your audio keeps playing.';
   }
   function observeAudio() {
-    const next = $('station-audio');
-    if (audio !== next) {detach(); audio = next; captureFailed=false;}
-    if (!active() || !audio || audio.paused || captureFailed) return;
-    if (!(audio.captureStream || audio.mozCaptureStream)) {
-      const graph=window.FreoAudioAnalysis?.read(audio);
-      if(graph?.analyser){borrowed=true;context=graph.context;analyser=graph.analyser;}
-      return;
-    }
-    if(captured)return;
-    canvas.dataset.analysisReason='';
-    try {
-      captured = (audio.captureStream || audio.mozCaptureStream).call(audio);
-      const token = generation;
-      attachListener = () => {
-        if (!active() || token !== generation || analyser || !captured?.getAudioTracks().length) return;
-        try {
-          context = new (window.AudioContext || window.webkitAudioContext)();
-          analyser = context.createAnalyser(); analyser.fftSize = 1024; analyser.smoothingTimeConstant = .72;
-          source = context.createMediaStreamSource(captured); source.connect(analyser);
-          // No context.destination connection: no second playback or audio routing.
-          context.resume().catch(() => {if (token === generation) {captureFailed=true;detach();}});
-        } catch(error) {canvas.dataset.analysisReason=error.name || 'AnalysisError';captureFailed=true;detach();}
-      };
-      captured.addEventListener('addtrack', attachListener); attachListener();
-    } catch(error) {canvas.dataset.analysisReason=error.name || 'AnalysisError';captureFailed=true;detach();}
+    audio = $('station-audio');
+    const graph = window.FreoAudioAnalysis?.read(audio);
+    context = graph?.context; analyser = graph?.analyser;
+    canvas.dataset.analysisReason = graph?.error || '';
   }
   function sample(dt) {
     measured = !!(analyser && context?.state === 'running' && audio && !audio.paused);
     if (measured) {
-      try {analyser.getByteFrequencyData(frequency); analyser.getByteTimeDomainData(waveform);} catch(error) {canvas.dataset.analysisReason=error.name || 'AnalysisError';captureFailed=true;detach();}
+      try {analyser.getByteFrequencyData(frequency); analyser.getByteTimeDomainData(waveform);} catch(error) {canvas.dataset.analysisReason=error.name || 'AnalysisError';window.FreoAudioAnalysis?.fail(error);analyser=null;measured=false;}
     }
     if (!measured) {frequency.fill(0); waveform.fill(128);}
     const band = (from, to) => {
-      let total = 0; for (let i = from; i < to; i++) total += frequency[i];
-      return total / ((to - from) * 255);
+      let total = 0; for (let i = from; i < to; i++) total += frequency[i] * frequency[i];
+      return Math.sqrt(total / (to - from)) / 255;
     };
     const smooth = 1 - Math.exp(-dt * 12);
     bass += (band(1, 7) - bass) * smooth; mids += (band(7, 60) - mids) * smooth;
     treble += (band(60, 220) - treble) * smooth;
-    energy = bass * .45 + mids * .4 + treble * .15;
+    let rms = 0;
+    for (const value of waveform) rms += Math.pow((value - 128) / 128, 2);
+    energy = Math.min(1, Math.sqrt(rms / waveform.length) * 2 + bass * .35 + mids * .3 + treble * .15);
     for (let i = 0; i < bars.length; i++) {
       const from = Math.floor(Math.pow(512, i / 64)), to = Math.max(from + 1, Math.floor(Math.pow(512, (i + 1) / 64)));
       bars[i] += (band(from, Math.min(512, to)) - bars[i]) * smooth;
       peaks[i] = Math.max(bars[i], peaks[i] - dt * .25);
     }
     canvas.dataset.analysis = measured ? 'live' : 'unavailable';
-    const notice = measured ? '' : audio && !audio.paused ? 'Audio analysis unavailable · resting visual' : 'Press play on the player to bring this scene to life.';
+    const notice = (reduced.matches || root.classList.contains('low-motion')) ? 'Reduced motion · still scene' : measured ? '' : audio && !audio.paused ? 'Audio analysis unavailable · resting visual' : 'Press play on the player to bring this scene to life.';
     if (performance.now() > fullscreenNoticeUntil && status.textContent !== notice) status.textContent = notice;
   }
   function line(points, stroke, width) {
     ctx.beginPath(); points.forEach(([x, y], i) => i ? ctx.lineTo(x, y) : ctx.moveTo(x, y));
     ctx.strokeStyle = stroke; ctx.lineWidth = width; ctx.stroke();
   }
+  // Bounded geometry shared by all frames; no image downloads or graphics framework.
+  const stars = Array.from({length:110}, (_,i)=>({x:((i*73+19)%211)/211,y:((i*137+31)%223)/223,size:.5+i%3*.4}));
+  const continents = [
+    [[-.72,-.52],[-.43,-.7],[-.1,-.58],[-.15,-.39],[-.32,-.25],[-.21,-.05],[-.38,.02],[-.51,-.19],[-.7,-.28]],
+    [[-.28,.04],[-.03,.13],[.06,.35],[-.11,.66],[-.26,.8],[-.29,.47],[-.39,.2]],
+    [[.05,-.53],[.34,-.65],[.7,-.46],[.88,-.18],[.6,-.07],[.43,-.23],[.25,-.1],[.29,.22],[.1,.51],[-.06,.18],[-.04,-.09],[.11,-.23]],
+    [[.56,.43],[.77,.38],[.89,.56],[.72,.69],[.53,.59]]
+  ];
+  const worlds = [
+    {orbit:.28,offset:.5,speed:.075,size:.018,tint:'#dc8667',kind:'mars'},
+    {orbit:.38,offset:2.4,speed:.036,size:.041,tint:'#cfb896',kind:'jupiter'},
+    {orbit:.46,offset:4.1,speed:.024,size:.032,tint:'#d9c89b',kind:'saturn'},
+    {orbit:.35,offset:5.4,speed:.046,size:.023,tint:'#6596e5',kind:'neptune'}
+  ];
+  function aurora(w,h) {
+    ctx.globalCompositeOperation='screen';
+    for(let layer=0;layer<4;layer++) {
+      const base=h*(.3+layer*.105), amplitude=h*(.05+mids*.05), drift=phase*(.13+layer*.025);
+      const curve=x=>base+Math.sin(x/w*5+drift+layer)*amplitude+Math.sin(x/w*11-drift*.7+layer)*h*.025;
+      const height=x=>h*(.2+.07*Math.sin(x/w*5+layer)+bass*.08);
+      const beam=ctx.createLinearGradient(0,base-h*.4,0,base+h*.16);
+      beam.addColorStop(0,color(layer,0));beam.addColorStop(.55,color(layer,.1+energy*.25));beam.addColorStop(.82,color(layer,.16+energy*.22));beam.addColorStop(1,color(layer,0));
+      ctx.fillStyle=beam;ctx.beginPath();
+      for(let i=0;i<=100;i++){const x=w*i/100,y=curve(x);if(i)ctx.lineTo(x,y);else ctx.moveTo(x,y);}
+      for(let i=100;i>=0;i--){const x=w*i/100;ctx.lineTo(x,curve(x)-height(x));}
+      ctx.closePath();ctx.fill();
+      for(let ribbon=0;ribbon<5;ribbon++) {
+        const points=[];
+        for(let i=0;i<=90;i++){const x=w*i/90;points.push([x,curve(x)+ribbon*h*.005]);}
+        line(points,color(layer,(.28+energy*.35)/(1+ribbon)),Math.max(1,w/850));
+      }
+    }
+    ctx.globalCompositeOperation='source-over';
+  }
+  function ethereal(w,h) {
+    ctx.globalCompositeOperation='screen';
+    const originX=w*(.5+Math.sin(phase*.055)*.12);
+    for(let ray=0;ray<9;ray++) {
+      const x=w*(ray/8), spread=w*(.04+treble*.05);
+      const gradient=ctx.createLinearGradient(originX,-h*.12,x,h*.92);
+      gradient.addColorStop(0,color(ray,.04+treble*.1));gradient.addColorStop(.45,color(ray,.025+energy*.04));gradient.addColorStop(1,color(ray,0));
+      ctx.fillStyle=gradient;ctx.beginPath();ctx.moveTo(originX,-h*.15);ctx.lineTo(x-spread,h);ctx.lineTo(x+spread,h);ctx.closePath();ctx.fill();
+    }
+    for(let cloud=0;cloud<4;cloud++) {
+      for(let strand=0;strand<10;strand++) {
+        const points=[];
+        for(let i=0;i<=90;i++) {
+          const t=i/90,x=w*t,envelope=Math.sin(t*Math.PI);
+          const y=h*(.33+cloud*.13)+Math.sin(t*7+phase*.12+cloud*.9)*h*.07+
+            Math.sin(t*13-phase*.09+strand*.09)*envelope*h*(.025+mids*.06)+
+            Math.cos(strand/9*Math.PI)*h*.055*envelope;
+          points.push([x,y]);
+        }
+        line(points,color(cloud,.055+energy*.09+Math.sin(strand/9*Math.PI)*.055),Math.max(.7,w/1500));
+      }
+    }
+    ctx.globalCompositeOperation='source-over';
+  }
+  function sphere(x,y,r,tint) {
+    const gradient=ctx.createRadialGradient(x-r*.4,y-r*.4,r*.02,x+r*.3,y+r*.2,r*1.4);
+    gradient.addColorStop(0,'#e3eaff');gradient.addColorStop(.2,tint);gradient.addColorStop(.75,tint);gradient.addColorStop(1,'#050b20');
+    ctx.fillStyle=gradient;ctx.beginPath();ctx.arc(x,y,r,0,Math.PI*2);ctx.fill();
+  }
+  function space(w,h,unit) {
+    const cx=w*.5,cy=h*.51,earth=unit*.105,reach=Math.hypot(w,h)*.53;
+    ctx.fillStyle='#c8ddff';
+    for(const star of stars){ctx.globalAlpha=.2+star.size*.2;ctx.beginPath();ctx.arc(star.x*w,star.y*h,star.size*unit/650,0,Math.PI*2);ctx.fill();}
+    ctx.globalAlpha=1;
+    // Expanding fronts share the same travel coordinate used for planet illumination.
+    const fronts=[];
+    for(let n=0;n<6;n++) {
+      const travel=(phase*.09+n/6)%1,radius=earth+travel*reach;
+      fronts.push(radius);
+      ctx.strokeStyle=color(n,(1-travel)*energy*.7);ctx.lineWidth=Math.max(1,unit*(.001+ bass*.004));
+      ctx.beginPath();ctx.ellipse(cx,cy,radius,radius*(.62+mids*.12),-.16,0,Math.PI*2);ctx.stroke();
+      ctx.strokeStyle=color(n+1,(1-travel)*treble*.25);ctx.lineWidth=1;
+      ctx.beginPath();ctx.ellipse(cx,cy,radius+unit*.008,radius*(.62+mids*.12)+unit*.008,-.16,0,Math.PI*2);ctx.stroke();
+    }
+    for(const planet of worlds) {
+      const angle=planet.offset+phase*planet.speed;
+      const x=cx+Math.cos(angle)*w*planet.orbit,y=cy+Math.sin(angle)*h*planet.orbit*.78;
+      const radius=unit*planet.size,dx=x-cx,dy=y-cy;
+      const waveX=dx*Math.cos(.16)-dy*Math.sin(.16),waveY=dx*Math.sin(.16)+dy*Math.cos(.16);
+      const distance=Math.hypot(waveX,waveY/(.62+mids*.12));
+      const hit=Math.max(...fronts.map(front=>Math.max(0,1-Math.abs(front-distance)/(unit*.065))))*energy;
+      if(hit>.005){const glow=ctx.createRadialGradient(x,y,radius,x,y,radius*3);glow.addColorStop(0,color(1,hit*.8));glow.addColorStop(1,color(1,0));ctx.fillStyle=glow;ctx.fillRect(x-radius*3,y-radius*3,radius*6,radius*6);}
+      sphere(x,y,radius,planet.tint);
+      if(planet.kind==='jupiter') {
+        ctx.save();ctx.beginPath();ctx.arc(x,y,radius,0,Math.PI*2);ctx.clip();
+        for(let stripe=-2;stripe<=2;stripe++){ctx.strokeStyle=stripe%2?'#b3796255':'#f5e4bf77';ctx.lineWidth=radius*.18;ctx.beginPath();ctx.ellipse(x,y+stripe*radius*.3,radius*1.2,radius*.15,.15,0,Math.PI*2);ctx.stroke();}
+        ctx.restore();
+      }
+      if(planet.kind==='saturn'){ctx.strokeStyle='#dbc6a480';ctx.lineWidth=radius*.27;ctx.beginPath();ctx.ellipse(x,y,radius*1.85,radius*.5,-.4,0,Math.PI*2);ctx.stroke();}
+    }
+    const halo=ctx.createRadialGradient(cx,cy,earth*.9,cx,cy,earth*1.8);
+    halo.addColorStop(0,'#66d8ff77');halo.addColorStop(.3,color(1,.12+bass*.25));halo.addColorStop(1,'#2565ab00');
+    ctx.fillStyle=halo;ctx.fillRect(cx-earth*1.8,cy-earth*1.8,earth*3.6,earth*3.6);
+    sphere(cx,cy,earth,'#247dbb');
+    ctx.save();ctx.beginPath();ctx.arc(cx,cy,earth,0,Math.PI*2);ctx.clip();
+    ctx.fillStyle='#7dc4ad';
+    for(const land of continents){ctx.beginPath();land.forEach(([x,y],i)=>i?ctx.lineTo(cx+x*earth,cy+y*earth):ctx.moveTo(cx+x*earth,cy+y*earth));ctx.closePath();ctx.fill();}
+    for(let cloud=0;cloud<4;cloud++){const y=cy+(cloud-1.5)*earth*.43;ctx.strokeStyle='#efffff55';ctx.lineWidth=earth*.045;ctx.beginPath();ctx.ellipse(cx+Math.sin(phase*.05+cloud)*earth*.2,y,earth*.85,earth*.1,-.2,0,Math.PI*1.6);ctx.stroke();}
+    const shade=ctx.createLinearGradient(cx-earth,cy-earth,cx+earth,cy+earth);shade.addColorStop(0,'#ffffff20');shade.addColorStop(.5,'#00000000');shade.addColorStop(1,'#020719cc');ctx.fillStyle=shade;ctx.fillRect(cx-earth,cy-earth,earth*2,earth*2);ctx.restore();
+  }
+
   function draw(dt = 1 / 60) {
     sample(dt);
     const w = canvas.width, h = canvas.height, cx = w / 2, cy = h / 2, unit = Math.min(w, h);
@@ -101,7 +181,10 @@
     ctx.fillStyle = glow; ctx.fillRect(0, 0, w, h);
     ctx.lineCap = 'round'; ctx.lineJoin = 'round';
     canvas.dataset.mode = select.value;
-    if (select.value === 'spectrum') {
+    if (select.value === 'aurora') {aurora(w,h);
+    } else if (select.value === 'ethereal') {ethereal(w,h);
+    } else if (select.value === 'space') {space(w,h,unit);
+    } else if (select.value === 'spectrum') {
       const gap = w * .82 / 64, floor = h * .77;
       for (let i = 0; i < 64; i++) {
         const x = w * .09 + i * gap, height = Math.max(2, bars[i] * h * .57), hue = palettes[palette.value][0] + i * 2.4;
@@ -157,14 +240,15 @@
   function tick(now) {
     raf = 0; if (!moving()) return;
     try {
-      const dt = Math.min((now - last) / 1000 || 1 / 60, .05); last = now;
+      if (now - last < 1000 / 30) {raf = requestAnimationFrame(tick);return;}
+      const dt = Math.min((now - last) / 1000 || 1 / 30, .1); last = now;
       // No fabricated audio reactivity when capture is unavailable.
-      if (measured) phase += dt * (.6 + energy * 2.5);
+      if (measured && energy > .001) phase += dt * (.3 + energy * .8);
       observeAudio(); draw(dt); raf = requestAnimationFrame(tick);
     } catch {fail();}
   }
   function update() {
-    if (!active()) return;
+    if (!active() || !ctx) return;
     try {
       observeAudio(); draw();
       if (moving() && !raf) {last = performance.now(); raf = requestAnimationFrame(tick);}
@@ -175,15 +259,16 @@
     if (!active()) return;
     try {
       const bounds = canvas.getBoundingClientRect();
-      const ratio = Math.min(devicePixelRatio || 1, 1.5, Math.sqrt(1800000 / Math.max(1, bounds.width * bounds.height)));
+      const budget = bounds.width < 700 ? 600000 : 1000000;
+      const ratio = Math.min(devicePixelRatio || 1, 1.25, Math.sqrt(budget / Math.max(1, bounds.width * bounds.height)));
       canvas.width = Math.max(1, Math.round(bounds.width * ratio)); canvas.height = Math.max(1, Math.round(bounds.height * ratio));
       update();
     } catch {fail();}
   }
   $('visualizer-open').addEventListener('click', () => {
     if (dialog.open) return;
-    failed = false; captureFailed=false; canvas.hidden = false; dialog.showModal();
-    const playing=$('station-audio');if(playing&&!playing.paused)window.FreoAudioAnalysis?.prepare(playing);
+    failed = false; canvas.hidden = false; dialog.showModal();
+    if(!reduced.matches && !root.classList.contains('low-motion'))window.FreoAudioAnalysis?.activate($('station-audio'));
     try {ctx = canvas.getContext('2d'); if (!ctx) throw new Error('No canvas'); size();} catch {fail();}
   });
   const exitFullscreen = () => {
@@ -202,10 +287,17 @@
     try {localStorage.setItem(key, select.value); localStorage.setItem(key + '-palette', palette.value);} catch {}
     update();
   });
-  const observer = new MutationObserver(update); observer.observe(root, {attributes: true, attributeFilter: ['class']});
+  const observer = new MutationObserver(activity); observer.observe(root, {attributes: true, attributeFilter: ['class']});
   scope.listen(document, 'playing', update, true); scope.listen(document, 'pause', update, true);
-  scope.listen(document, 'visibilitychange', () => {if (document.hidden) {cancelAnimationFrame(raf); raf = 0;} else update();});
-  scope.listen(reduced, 'change', update);
+  function activity() {
+    cancelAnimationFrame(raf);raf=0;
+    if(active() && !reduced.matches && !root.classList.contains('low-motion'))window.FreoAudioAnalysis?.activate($('station-audio'));
+    else detach();
+    update();
+  }
+  scope.listen(document, 'visibilitychange', activity);
+  scope.listen(document, 'freo:analysis', update);
+  scope.listen(reduced, 'change', activity);
   const resize = new ResizeObserver(size); resize.observe(stage);
   scope.cleanup(() => {disposed = true; cancelAnimationFrame(raf); observer.disconnect(); resize.disconnect(); detach(); exitFullscreen(); if (dialog.open) dialog.close();});
 })();

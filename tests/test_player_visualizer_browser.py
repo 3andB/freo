@@ -72,7 +72,7 @@ def test_record_modes_fullscreen_metadata_and_mobile(booth, monkeypatch, long_pl
     WebDriverWait(driver, 5).until(lambda d: d.find_elements(By.CSS_SELECTOR, '#record-artwork img'))
     assert driver.find_element(By.CSS_SELECTOR, '.radio-vinyl').is_displayed()
     assert not driver.find_element(By.ID, 'player-visual').is_displayed()
-    assert not driver.find_elements(By.CSS_SELECTOR, '.radio-ad')
+    assert not any(ad.is_displayed() for ad in driver.find_elements(By.CSS_SELECTOR, '.radio-ad'))
     assert js(driver, 'return visualProbe.captures') == 0
     driver.find_element(By.ID, 'play-button').click()
     wait_text(driver, '#audio-message', 'listening live')
@@ -93,7 +93,7 @@ def test_record_modes_fullscreen_metadata_and_mobile(booth, monkeypatch, long_pl
     WebDriverWait(driver, 5).until(lambda d: js(d, 'return visualProbe.peak') > 0)
     assert js(driver, 'return visualProbe.outputConnections') == 0
     images = set()
-    for mode in ('fractal', 'spectrum', 'waveform', 'particles', 'ambient'):
+    for mode in ('fractal', 'spectrum', 'waveform', 'particles', 'ambient', 'aurora', 'ethereal', 'space'):
         Select(driver.find_element(By.ID, 'visual-mode')).select_by_value(mode)
         WebDriverWait(driver, 3).until(lambda d: d.find_element(By.ID, 'player-visual').get_attribute('data-mode') == mode)
         before = js(driver, 'return document.getElementById("player-visual").toDataURL()')
@@ -101,7 +101,7 @@ def test_record_modes_fullscreen_metadata_and_mobile(booth, monkeypatch, long_pl
         images.add(before)
         driver.save_screenshot('/tmp/freo-v1-visual-' + mode + '.png')
         playing(driver)
-    assert len(images) == 5
+    assert len(images) == 8
     for choice in ('sunset', 'electric', 'aurora'):
         Select(driver.find_element(By.ID, 'visual-palette')).select_by_value(choice)
     current.update(title='Second album', artwork=artwork + '#second')
@@ -179,3 +179,95 @@ def test_visualizer_reduced_motion_and_render_failure(booth):
     playing(driver)
     driver.find_element(By.ID, 'visualizer-close').click()
     assert js(driver, 'return getComputedStyle(document.querySelector(".vinyl-grooves")).animationName') == 'none'
+
+
+def test_gesture_unlock_reconnect_and_motion_resume(booth, long_player_stream):
+    app, driver, base, tmp = booth
+    # Reproduce a context which exists but could not run on the first Play.
+    driver.execute_cdp_cmd('Page.addScriptToEvaluateOnNewDocument', {'source': '''
+      HTMLMediaElement.prototype.captureStream=undefined;
+      HTMLMediaElement.prototype.mozCaptureStream=undefined;
+      window.allowResume=false;window.contexts=[];
+      const Native=AudioContext;
+      window.AudioContext=class extends Native {constructor(){super();contexts.push(this)}};
+      const state=Object.getOwnPropertyDescriptor(BaseAudioContext.prototype,'state').get;
+      Object.defineProperty(Native.prototype,'state',{get(){return allowResume?state.call(this):'suspended'}});
+      const resume=Native.prototype.resume;
+      Native.prototype.resume=function(){return allowResume?resume.call(this):Promise.resolve()};
+    '''})
+    driver.get(base+'/player/test-station')
+    driver.find_element(By.ID,'play-button').click();playing(driver)
+    assert js(driver,'return !FreoAudioAnalysis.read(document.getElementById("station-audio")).source')
+    js(driver,'allowResume=true')
+    driver.find_element(By.ID,'visualizer-open').click()
+    WebDriverWait(driver,8).until(lambda d:js(d,'return !!FreoAudioAnalysis.read(document.getElementById("station-audio"))?.analyser'))
+    for _ in range(3):
+        for mode in ('space','spectrum','aurora','ethereal'):
+            Select(driver.find_element(By.ID,'visual-mode')).select_by_value(mode)
+    assert js(driver,'return contexts.filter(c=>c.state!=="closed").length')==1
+    driver.execute_cdp_cmd('Emulation.setEmulatedMedia',{'features':[{'name':'prefers-reduced-motion','value':'reduce'}]})
+    driver.execute_async_script('setTimeout(arguments[0],200)')
+    before=js(driver,'return document.getElementById("player-visual").toDataURL()')
+    driver.execute_async_script('setTimeout(arguments[0],200)')
+    assert before==js(driver,'return document.getElementById("player-visual").toDataURL()')
+    driver.execute_cdp_cmd('Emulation.setEmulatedMedia',{'features':[{'name':'prefers-reduced-motion','value':'no-preference'}]})
+    WebDriverWait(driver,5).until(lambda d:js(d,'return document.getElementById("player-visual").toDataURL()')!=before)
+    # Retry on the same element must reattach the analyser to the new resource.
+    js(driver,'document.getElementById("station-audio").dispatchEvent(new Event("ended"))')
+    js(driver,'const a=document.getElementById("station-audio");a.src=a.currentSrc+"&reconnect=1";a.play()')
+    WebDriverWait(driver,8).until(lambda d:js(d,'return document.getElementById("player-visual").dataset.analysis==="live"'))
+    playing(driver)
+    assert js(driver,'return contexts.filter(c=>c.state!=="closed").length')==1
+    driver.find_element(By.ID,'visualizer-close').click();playing(driver)
+
+
+def test_open_before_play_and_capture_is_unlocked_in_gesture(booth):
+    app,driver,base,tmp=booth
+    driver.execute_cdp_cmd('Page.addScriptToEvaluateOnNewDocument',{'source': '''
+      window.resumeGestures=[];window.contextGestures=[];const Native=AudioContext;
+      window.AudioContext=class extends Native {constructor(){super();contextGestures.push(navigator.userActivation.isActive)}};
+      const resume=Native.prototype.resume;
+      AudioContext.prototype.resume=function(){resumeGestures.push(navigator.userActivation.isActive);return resume.call(this)};
+    '''})
+    driver.get(base+'/player/test-station')
+    driver.find_element(By.ID,'visualizer-open').click()
+    assert js(driver,'return contextGestures[0]') is True
+    assert js(driver,'return resumeGestures.every(Boolean)') is True
+    driver.find_element(By.ID,'visualizer-close').click()
+    driver.find_element(By.ID,'play-button').click();playing(driver)
+    driver.find_element(By.ID,'visualizer-open').click()
+    WebDriverWait(driver,8).until(lambda d:js(d,'return document.getElementById("player-visual").dataset.analysis==="live"'))
+    driver.find_element(By.ID,'visualizer-close').click();playing(driver)
+
+
+def test_real_frequency_bands_silence_and_external_fallback(booth, monkeypatch):
+    import math
+    import struct
+    app, driver, base, tmp = booth
+    buffer=io.BytesIO()
+    with wave.open(buffer,'wb') as output:
+        output.setnchannels(1);output.setsampwidth(2);output.setframerate(48000)
+        for hz in (80,1000,6000,0):
+            output.writeframes(b''.join(struct.pack('<h',int(7000*math.sin(2*math.pi*hz*n/48000))) for n in range(48000*4)))
+    from flask import send_file
+    monkeypatch.setitem(app.view_functions,'test_monitor_stream',lambda:send_file(io.BytesIO(buffer.getvalue()),mimetype='audio/wav',conditional=True))
+    driver.get(base+'/player/test-station')
+    driver.find_element(By.ID,'play-button').click();playing(driver)
+    driver.find_element(By.ID,'visualizer-open').click()
+    WebDriverWait(driver,8).until(lambda d:js(d,'return !!FreoAudioAnalysis.read(document.getElementById("station-audio"))?.analyser'))
+    for position, hz in ((.5,80),(4.5,1000),(8.5,6000),(12.5,0)):
+        js(driver,f'document.getElementById("station-audio").currentTime={position}')
+        def sample(d):
+            return js(d,'''const g=FreoAudioAnalysis.read(document.getElementById('station-audio'));
+              if(!g?.analyser)return null;const data=new Uint8Array(g.analyser.frequencyBinCount);g.analyser.getByteFrequencyData(data);
+              const peak=Math.max(...data);return {peak,hz:data.indexOf(peak)*g.context.sampleRate/g.analyser.fftSize};''')
+        try:
+            WebDriverWait(driver,8).until(lambda d:(lambda v:v and (v['peak']==0 if not hz else v['peak']>50 and abs(v['hz']-hz)<65))(sample(d)))
+        except Exception:
+            pytest.fail(str(dict(position=position,expected_hz=hz,sample=sample(driver),audio=js(driver,'const a=document.getElementById("station-audio");return {time:a.currentTime,paused:a.paused,duration:a.duration,seekable:a.seekable.length}'))))
+    driver.find_element(By.ID,'visualizer-close').click()
+    # Unknown cross-origin media must never be attached to Safari's audible graph.
+    js(driver,'''window.externalAudio=new Audio('https://example.invalid/radio.mp3');
+      externalAudio.captureStream=undefined;externalAudio.mozCaptureStream=undefined;
+      FreoAudioAnalysis.prepare(externalAudio);''')
+    assert js(driver,'return !FreoAudioAnalysis.read(externalAudio).source && !FreoAudioAnalysis.read(externalAudio).context')

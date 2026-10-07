@@ -10,7 +10,7 @@ from app.models import AdminUser, DJStationAssignment, DJStationProfile, Station
 LINK_KINDS = {'spotify': 'Spotify', 'apple_music': 'Apple Music', 'purchase': 'Buy music',
               'website': 'Website', 'albums': 'Albums / music', 'social': 'Social profile',
               'merch': 'Merch'}
-VISUAL_MODES = ('fractal', 'spectrum', 'waveform', 'particles', 'ambient')
+VISUAL_MODES = ('fractal', 'spectrum', 'waveform', 'particles', 'ambient', 'aurora', 'ethereal', 'space')
 AD_DEFAULTS = dict(merch_url='', visual_mode='ambient')
 for _prefix in ('ad_top', 'ad_bottom'):
     AD_DEFAULTS.update({_prefix+'_source': 'image', _prefix+'_unit': '',

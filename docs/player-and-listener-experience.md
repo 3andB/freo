@@ -69,3 +69,55 @@ Focused service tests cover settings/image validation, public privacy, aliases, 
 Mobile Safari, production-scale traffic, and deployment on a fresh VM still require release-environment verification. No sample-accurate promise is made for metadata arriving ahead of a buffered stream.
 
 Verification recorded on 2026-09-16: full non-browser suite 298 passed / 15 skipped; isolated PostgreSQL suite 5 passed; player/custom-domain/workspace browser run 8 passed / 1 skipped, followed by 3 passing final player browser checks including mobile ads and draft preview. The final focused player suite passed 13 tests, including audible DJ sources, artwork, unpublishing, malformed feedback, retained drafts, and multiline text. These checks do not constitute a production deployment.
+
+## V1 audio analysis and visualizers
+
+The existing visualizer offers Fractal, Spectrum, Waveform, Particles, Ambient,
+Aurora, Ethereal, and Space. All eight use decoded samples from the playing
+station, never random or synthetic audio activity. Aurora draws layered luminous
+curtains; Ethereal draws translucent line clouds and rays; Space places Earth at
+the center with four stylized planets and expanding frequency-sensitive wave
+fronts that illuminate planets as they arrive. Station defaults and listener
+preferences use the existing visual-mode settings.
+
+On iPhone/iPad, the native media volume property cannot reliably adjust output.
+The player hides and disables the slider and displays “Use your device volume
+buttons.” A native-property probe also handles unsupported browsers; iPadOS's
+Mac-style identity is covered. Desktop Safari and Android retain volume control.
+Mute remains available independently of the visualizer, including when Web Audio
+initialization fails.
+
+`player_audio.js` owns analysis and the playback fallback. Capture-capable
+browsers analyse a captured media stream without a destination connection.
+Browsers without capture use one playback-owned media-element source and gain,
+with the analyser on an optional branch. Creation/resume starts in the Play or
+visualizer-open gesture; later readiness/state events complete the connection.
+A context which initially remains suspended can subsequently finish attachment.
+The public `/listen/` route redirects to the same-origin `/stream/` proxy. Unknown
+external media are not routed through the playback fallback. Restricted capture
+or unavailable browser features produce an explicitly labeled resting scene.
+
+Closing, hiding, pausing, or enabling reduced motion releases optional analysis
+and stops animation. The audible fallback remains playback-owned. Renderer and
+analyser failures do not disconnect its output. Reconnects and replaced elements
+reattach analysis; obsolete contexts and capture tracks are disposed. Returning
+from reduced motion restarts analysis. A browser-level failure of the audible
+AudioContext remains a limitation of Safari's non-capture route.
+
+Rendering uses Canvas 2D, a 30 fps ceiling, bounded geometry, and a canvas budget
+of one million pixels on desktop / 600,000 on narrow screens, with DPR capped at
+1.25. The obscured record pauses while the visualizer dialog is open. No graphics
+framework, additional audio stream, or database migration is introduced.
+
+For a read-only live-stream check, install Playwright and its Chromium/WebKit
+browsers in a disposable test environment, then run:
+
+```sh
+python scripts/check-player-visuals.py --url https://YOUR-STAGING-HOST/player/YOUR-STATION
+```
+
+The verifier serves repository candidate assets only inside its test browsers;
+it does not deploy or modify the server. It checks desktop/Android Chromium and
+desktop/iPhone WebKit, all modes, real analyser samples, repeated switching,
+reduced motion, pause/resume, resource bounds, and renderer failure while playback
+continues. Automated WebKit/mobile profiles are not physical Safari/iPhone tests.
