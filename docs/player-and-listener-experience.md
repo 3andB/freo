@@ -239,3 +239,61 @@ repairs the demonstrated retry UI bug and supplies evidence for the audio-path
 fix; it does not alter stream CORS or native audio routing. The existing WebKit
 interruption helper now releases its simulated interruption inside the retry
 click, avoiding the observed pre-click automatic-recovery race.
+
+### 2026-10-07 — Isolate silent native-source delivery on iPhone
+
+The first physical iPhone report (build `v1-iphone-debug-1`) shows stable
+media/context/source/analyser identities, matching bindings, advancing media
+and context clocks, a running 48 kHz context, no reported errors, and exactly
+zero FFT and float PCM samples. Repeated resume attempts therefore do not
+address the observed failure. The report alone cannot distinguish an analyser
+connection issue, source sample delivery, origin enforcement, or actual silence;
+confirmation that music was audible still matters. Linux WebKit uses a different
+media backend and passing it does not establish that native iPhone Safari works.
+
+Build `v1-iphone-debug-2` adds two explicit controls:
+
+- `?audio_debug=1&audio_cors=1` sets `crossOrigin="anonymous"` on each new audio
+  element before any source assignment, and preserves it across automatic
+  reconnect. The report records the mode and loadstart value. The report's
+  comparison link reloads the page; Play must be pressed again. This is an
+  experiment, not a claimed CORS fix. Normal requests retain existing behavior.
+- **Run source check** fetches at most 192 KiB of the same station, with a six
+  second capture limit and eight second decode deadline. It records the final
+  same-origin URL, redirect, status and exposed headers, decodes the MP3 in the
+  existing context, and measures real PCM. A fresh, muted analyser first measures
+  the current live source (`nativeTap`), then the decoded station buffer
+  (`control`). Comparing these with the original analyser separates missing
+  source samples from a problem confined to the original analyser. These samples
+  are never provided to the visualizer.
+
+Opening/copying the passive report still makes no additional stream request.
+The source check runs only on its button, adds no context, does not resume,
+reload or replace playback, and disconnects only its own temporary source edge
+and nodes. Cancel, page cleanup, hidden state, changed playback or errors clean
+up the probe. This explicit diagnostic adds one short listener request. No
+report or captured audio is uploaded or persisted. A failed/zero control is
+inconclusive, not evidence of a browser defect.
+
+The V1 server's actual Icecast and Nginx stream responses lack an
+Access-Control-Allow-Origin header. The observed `/listen/` redirect and final
+`/stream/` response are both on the player's HTTPS origin, so that header's
+absence alone does not establish a CORS failure. Server headers and audible
+routing are unchanged. No continuous second-stream workaround or synthetic
+visualization data has been introduced.
+
+On iPhone, open the CORS comparison URL, press Play, open a visualizer and wait
+ten seconds. Open Audio report, run the source check, wait for completion and
+copy the report. Include whether music stayed audible and whether visuals began
+working. If necessary repeat through the default-request comparison link. The
+actual stream-to-Web-Audio fix remains dependent on this controlled evidence.
+
+Validation: all three final diagnostic browser cases passed, covering default
+capture/native routes, CORS set before load, nonzero station samples, original
+analyser versus source-delivery fault injection, HTTP/decode errors, cancellation
+while connected and during capture, retry visibility, clipboard behavior and
+reconnect without lost playback. Six candidate real-MP3 checks passed across
+Chromium and Linux WebKit: normal delivery, original-analyser silence and absent
+live-source delivery each produced their distinct expected result while media
+time advanced. JavaScript syntax and diff whitespace checks passed. These
+controls still need the affected physical iPhone; no native Safari fix is claimed.

@@ -4,9 +4,10 @@
   const panel = $('audio-diagnostics'), dialog = $('visualizer-dialog');
   if (!scope || !panel || !dialog) return;
   const output = $('audio-diagnostics-report'), message = $('audio-diagnostics-status');
-  const build = 'v1-iphone-debug-1', started = performance.now();
+  const build = 'v1-iphone-debug-2', started = performance.now();
   let enabled = new URLSearchParams(location.search).get('audio_debug') === '1';
-  let nextId = 0, previous = null;
+  const enabledFromLoad = enabled;
+  let nextId = 0, previous = null, sourceCheck = null;
   const ids = new WeakMap(), loads = new WeakMap(), contexts = new WeakSet();
   const events = [], samples = [];
   const elapsed = () => Math.round(performance.now() - started);
@@ -76,13 +77,13 @@
     }
     message.textContent = assessment;
     const data = {
-      reportVersion: 1, build, capturedAt: new Date().toISOString(), page: url(location.href),
+      reportVersion: 2, build, enabledFromLoad, sourceCheck, capturedAt: new Date().toISOString(), page: url(location.href),
       userAgent: navigator.userAgent, platform: navigator.platform, secureContext: isSecureContext,
       visibility: document.visibilityState, standalone: !!navigator.standalone,
       userActivation: navigator.userActivation ? {active: navigator.userActivation.isActive, hasBeenActive: navigator.userActivation.hasBeenActive} : null,
       audioSessionType: navigator.audioSession?.type || null, assessment,
       media: audio ? {
-        src: url(audio.getAttribute('src')), currentSrc: url(audio.currentSrc), crossOrigin: audio.crossOrigin,
+        requestMode: audio.dataset.requestMode || 'default', src: url(audio.getAttribute('src')), currentSrc: url(audio.currentSrc), crossOrigin: audio.crossOrigin,
         lastLoad: loads.get(audio) || null, readyState: audio.readyState, networkState: audio.networkState,
         paused: audio.paused, ended: audio.ended, muted: audio.muted, volume: audio.volume,
         error: audio.error ? {code: audio.error.code, message: audio.error.message} : null,
@@ -106,6 +107,13 @@
       return null;
     }
   }
+  scope.listen(document, 'freo:source-check', e => {sourceCheck = e.detail; event('source-check', {status: sourceCheck.status}); collect(); if (!panel.hidden) refresh();});
+  const comparison = new URL(location.href);
+  const usingCors = new URLSearchParams(location.search).get('audio_debug') === '1' && new URLSearchParams(location.search).get('audio_cors') === '1';
+  comparison.search = ''; comparison.hash = ''; comparison.searchParams.set('audio_debug', '1');
+  if (!usingCors) comparison.searchParams.set('audio_cors', '1');
+  $('audio-cors-comparison').href = comparison.href;
+  $('audio-cors-comparison').textContent = usingCors ? 'Reload with default stream request' : 'Reload with CORS before stream loading';
   scope.listen($('audio-diagnostics-open'), 'click', () => {
     enabled = true; panel.hidden = false; event('report-open'); collect(); refresh();
     $('audio-diagnostics-close').focus();

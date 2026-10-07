@@ -7,6 +7,8 @@
   let volumeLevel=.8,muted=false;
   const play = $('play-button'), message = $('audio-message');
   const stream = audio.getAttribute('src');
+  const debugQuery = new URLSearchParams(location.search);
+  const corsComparison = debugQuery.get('audio_debug') === '1' && debugQuery.get('audio_cors') === '1';
   const zone = root.dataset.timezone, canVote = root.dataset.voting === 'yes';
   const storage = {get(key) {try {return localStorage.getItem(key);} catch {return null;}}, set(key,value) {try {localStorage.setItem(key,value);} catch {}}};
   const el = (tag, text, className) => {const node = document.createElement(tag); if (text !== undefined) node.textContent = text; if (className) node.className = className; return node;};
@@ -55,6 +57,9 @@
       audioEvents.abort();
       audio=document.createElement('audio');
       audio.id='station-audio';audio.preload='none';audio.setAttribute('playsinline','');audio.dataset.stream=stream;
+      // Explicit diagnostic comparison: configure CORS before assigning any src.
+      if(corsComparison)audio.crossOrigin='anonymous';
+      audio.dataset.requestMode=corsComparison?'cors-comparison':'default';
       audio.volume=volumeLevel;audio.muted=muted;
       previous.pause();previous.removeAttribute('src');previous.load();
       previous.replaceWith(audio);
