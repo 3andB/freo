@@ -26,9 +26,6 @@
   let audioAttempt=0, connectingSince=0;
   let audioEvents=new AbortController();
   let currentTitle=root.querySelector('h1').textContent, currentArtist='Live radio';
-  const motionPreference=matchMedia('(prefers-reduced-motion: reduce)');
-  const syncMotion=()=>root.classList.toggle('low-motion',motionPreference.matches || storage.get('freo-motion') === 'reduced' || root.dataset.motion!=='yes');
-  syncMotion();scope.listen(motionPreference,'change',syncMotion);
   const announcement=root.querySelector('.radio-announcement');
   if (announcement) {
     const key='freo-message-'+announcement.dataset.messageKey;

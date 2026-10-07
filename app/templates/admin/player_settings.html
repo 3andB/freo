@@ -11,8 +11,6 @@
 <input type="hidden" name="csrf" value="{{ csrf_token() }}"><input type="hidden" name="revision" value="{{ revision }}">
 <fieldset><legend>Player style</legend>
 <div class="settings-columns"><label>Color palette<select name="palette">{% for value,label in [('aurora','Aurora · violet & mint'),('sunset','Sunset · coral & gold'),('ocean','Ocean · cyan & blue')] %}<option value="{{ value }}" {% if config.palette==value %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label><label>Cover focal point<select name="cover_position">{% for value in ['top','center','bottom'] %}<option {% if config.cover_position==value %}selected{% endif %}>{{ value }}</option>{% endfor %}</select></label></div>
-<label><input type="checkbox" name="motion" value="yes" {% if config.motion %}checked{% endif %}> Animate the record and color rings while listening</label>
-<p class="quiet">Listeners can reduce motion. Their operating system preference is always respected.</p>
 </fieldset>
 <fieldset><legend>Station message</legend><label><input type="checkbox" name="message_enabled" value="yes" {% if config.message_enabled %}checked{% endif %}> Show station message</label>
 <label>Your message<textarea name="message" maxlength="1000" rows="4" placeholder="A note from the studio…">{{ config.message }}</textarea></label>

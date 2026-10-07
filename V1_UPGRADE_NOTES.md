@@ -1892,3 +1892,26 @@ remains an inherent limitation of the selected non-capture analysis route.
 
 Only `/opt/freo-v1` on `develop/v1` is changed. Production remains frozen; no merge
 or deployment was performed.
+
+
+### 2026-10-07 — Remove public player motion suppression
+
+At the user's request, the player no longer uses browser/OS reduced-motion
+preferences, the saved `freo-motion` preference, or the station's old `motion`
+setting to disable animation or audio analysis. Removed the station motion
+checkbox, the still-scene notice, player CSS overrides, and JavaScript gates.
+Shared CSS no longer suppresses animation inside public player pages. Old
+station settings are ignored without a database migration. The default
+visualizer remains unchanged. Hidden/closed visualizers and paused playback
+still stop unnecessary animation and optional analysis.
+
+Regression coverage verifies actual analyser activity and changing Canvas output
+for all eight modes with all three retired preferences present, record animation,
+settings validation, reconnects, and renderer failure while audio continues.
+Public player/shared asset versions were bumped to `v1-audio-visuals-4`.
+
+Validation: 39 player/settings tests passed. Four focused Chromium browser
+checks passed, including all eight modes with retired motion settings,
+reconnects, playback isolation, mobile advertising, and settings preview. The
+older mobile advertising fixture was updated to use current campaign APIs and
+the animated record grooves. Physical iPhone/Safari verification remains manual.

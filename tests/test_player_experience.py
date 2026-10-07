@@ -17,7 +17,7 @@ CSRF='test-admin-csrf-token'
 
 def config_form(revision=0, **values):
     data=MultiDict(dict(csrf=CSRF,revision=str(revision),action='save',palette='aurora',cover_position='center',
-        schedule_mode='automatic',schedule_default='week',motion='yes'))
+        schedule_mode='automatic',schedule_default='week'))
     data.setlist('schedule_views',['day','week','month'])
     for key,value in values.items():data[key]=value
     return data
@@ -265,3 +265,19 @@ def test_invalid_player_settings_retains_draft_without_saving(app):
     assert response.status_code==400 and 'Keep this draft' in response.text
     with app.app_context():assert StationPlayerSettings.query.count()==0
     assert 'Keep this draft' not in app.test_client().get('/player/test-station').text
+
+
+def test_retired_motion_setting_does_not_disable_player(app):
+    admin = admin_client(app)
+    enable(app, motion=False)
+    page = app.test_client().get('/player/test-station').text
+    assert 'low-motion' not in page and 'data-motion=' not in page
+    settings_page = admin.get(ADMIN).text
+    assert 'name="motion"' not in settings_page
+    assert 'Reduced-motion' not in settings_page
+    with app.app_context():
+        station = Station.query.filter_by(slug='test-station').one()
+        assert 'motion' not in service.settings(station)
+    assert admin.post(ADMIN, data=config_form(1, motion='yes')).status_code == 302
+    with app.app_context():
+        assert 'motion' not in StationPlayerSettings.query.one().config

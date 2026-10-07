@@ -19,7 +19,7 @@ with sync_playwright() as p:
    if executable:=shutil.which('chromium-browser'):options['executable_path']=executable
   browser=getattr(p,engine).launch(headless=True,**options)
   for device in ({'viewport':{'width':1440,'height':1000}},p.devices['Pixel 7' if engine=='chromium' else 'iPhone 13']):
-   context=browser.new_context(**device)
+   context=browser.new_context(**device,reduced_motion='reduce')
    def document(route):
     response=route.fetch();body=response.text()
     if 'id="volume-help"' not in body:
@@ -29,7 +29,8 @@ with sync_playwright() as p:
    context.route('**'+urlparse(args.url).path,document)
    context.route('**/static/player*.js?*',lambda route:route.fulfill(content_type='application/javascript',body=(root/'app/static'/route.request.url.split('/')[-1].split('?')[0]).read_text()))
    context.route('**/static/player.css?*',lambda route:route.fulfill(content_type='text/css',body=(root/'app/static/player.css').read_text()))
-   context.add_init_script('''window.probe={peak:0,samples:0,frames:0,contexts:[]};
+   context.route('**/static/freo.css?*',lambda route:route.fulfill(content_type='text/css',body=(root/'app/static/freo.css').read_text()))
+   context.add_init_script('''localStorage.setItem('freo-motion','reduced');window.probe={peak:0,samples:0,frames:0,contexts:[]};
      const Native=AudioContext;window.AudioContext=class extends Native{constructor(){super();probe.contexts.push(this)}};
      const sample=AnalyserNode.prototype.getByteFrequencyData;AnalyserNode.prototype.getByteFrequencyData=function(a){sample.call(this,a);probe.samples++;probe.peak=Math.max(probe.peak,...a)};
      const clear=CanvasRenderingContext2D.prototype.clearRect;CanvasRenderingContext2D.prototype.clearRect=function(...args){probe.frames++;return clear.apply(this,args)};''')
@@ -51,8 +52,9 @@ with sync_playwright() as p:
     assert page.locator('#player-visual').get_attribute('data-analysis')=='live'
    for mode in modes*3:page.locator('#visual-mode').select_option(mode)
    assert page.evaluate('() => probe.contexts.filter(c=>c.state!=="closed").length')==1
-   page.emulate_media(reduced_motion='reduce');page.wait_for_function('() => document.querySelector(".radio-experience").classList.contains("low-motion")');page.wait_for_timeout(1000)
-   count=page.evaluate('() => probe.frames');page.wait_for_timeout(300);assert page.evaluate('() => probe.frames')<=count+1
+   page.emulate_media(reduced_motion='reduce')
+   count=page.evaluate('() => probe.frames');page.wait_for_function('(count) => probe.frames>count',arg=count)
+   assert 'Reduced motion' not in page.locator('#visual-status').inner_text()
    page.emulate_media(reduced_motion='no-preference');page.wait_for_function('(count) => probe.frames>count',arg=count)
    page.locator('#visualizer-close').click();page.wait_for_timeout(300)
    count=page.evaluate('() => probe.frames');page.wait_for_timeout(300);assert page.evaluate('() => probe.frames')<=count+1

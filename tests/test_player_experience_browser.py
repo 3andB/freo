@@ -79,25 +79,29 @@ def test_public_schedule_views_and_feedback_focus(booth):
     assert driver.find_element(By.ID,'feedback-comment').get_attribute('value')=='Captured song'
 
 
-def test_ads_mobile_creatives_reduced_motion_and_draft_preview(booth):
+def test_ads_mobile_creatives_motion_preferences_and_draft_preview(booth):
     import hashlib
     from app.models import StationPlayerAsset
     from tests.test_station_settings_flags import png
     app,driver,base,tmp=booth;seed(app)
+    # Advertising now belongs to campaigns, rather than player settings/assets.
+    from io import BytesIO
+    from tests.test_advertising import create
+    from tests.test_web import admin_client
+    client = admin_client(app)
+    for placement in ('top', 'bottom'):
+        create(client, placement=placement, mobile=(BytesIO(png(320,50)), 'mobile.png'))
     with app.app_context():
         row=StationPlayerSettings.query.one()
-        row.config=dict(row.config,ad_top_enabled=True,ad_bottom_enabled=True,
-            ad_top_alt='Top sponsor',ad_bottom_alt='Bottom sponsor',ad_top_url='https://example.test/sponsor',ad_bottom_url='https://example.test/bottom')
-        for kind in ('cover','ad_top','ad_bottom','ad_top_mobile','ad_bottom_mobile'):
-            raw=png(9,3) if kind.endswith('mobile') else png(20,4)
-            db.session.add(StationPlayerAsset(station_id=row.station_id,kind=kind,image=raw,version=hashlib.sha256(raw).hexdigest()))
+        raw=png(20,4)
+        db.session.add(StationPlayerAsset(station_id=row.station_id,kind='cover',image=raw,version=hashlib.sha256(raw).hexdigest()))
         db.session.commit()
     driver.set_window_size(390,844)
     driver.execute_cdp_cmd('Emulation.setEmulatedMedia',{'features':[{'name':'prefers-reduced-motion','value':'reduce'}]})
     driver.get(base+'/player/test-station')
-    WebDriverWait(driver,8).until(lambda d:len(d.find_elements(By.CSS_SELECTOR,'.radio-ad'))==2)
-    assert 'ad_top_mobile' in driver.find_element(By.CSS_SELECTOR,'.radio-ad img').get_property('currentSrc')
-    assert driver.execute_script('return getComputedStyle(document.querySelector(".radio-vinyl")).animationName')=='none'
+    WebDriverWait(driver,8).until(lambda d:len([ad for ad in d.find_elements(By.CSS_SELECTOR,'.radio-ad') if ad.is_displayed()])==2)
+    assert driver.find_element(By.CSS_SELECTOR,'.radio-ad img').get_attribute('width') == '320'
+    assert driver.execute_script('return getComputedStyle(document.querySelector(".vinyl-grooves")).animationName')!='none'
     assert driver.execute_script('return document.documentElement.scrollWidth<=innerWidth+2')
     driver.save_screenshot('/tmp/freo-player-ads-mobile.png')
     driver.get(base+'/admin/stations/test-station/player-settings')

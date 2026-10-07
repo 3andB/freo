@@ -1,13 +1,13 @@
 # Player settings and listener feedback
 
-The public player now uses a DJ-inspired record with animated color rings, three palettes, cover artwork, track artwork when available, accessible live controls, and a compact mobile listening bar. Animations follow actual browser playback and respect reduced-motion preferences. Current-song metadata comes from fresh worker observations; unavailable observations fall back to labeled recent plays. Public requests do not probe Icecast or open diagnostic streams.
+The public player now uses a DJ-inspired record with animated color rings, three palettes, cover artwork, track artwork when available, accessible live controls, and a compact mobile listening bar. Animations follow actual browser playback. The player has no reduced-motion option or automatic motion override. Current-song metadata comes from fresh worker observations; unavailable observations fall back to labeled recent plays. Public requests do not probe Icecast or open diagnostic streams.
 
 ## Station admin
 
 Open **Player settings** from the admin navigation or the link in **Station settings**. The existing identity page continues to manage the name, description, timezone, logo, contacts, and public URL.
 
 - **Station message:** up to 1,000 plain-text characters, a show/hide switch, and optional start/end timestamps including timezone. Listeners can dismiss a message; editing the message or its schedule makes the revised announcement appear again.
-- **Cover and colors:** separate cover and logo, three palettes, top/center/bottom cover focal point, and an animation default. Listeners can reduce motion independently.
+- **Cover and colors:** separate cover and logo, three palettes, top/center/bottom cover focal point. Record and visualizer animations run during playback.
 - **Social links:** supported platform links with individual visibility and a master switch. Only http/https URLs are accepted.
 - **Advertisements:** independent top and bottom slots, descriptions, optional links, and active dates. Use 5:1 desktop art (recommended 2000 × 400) and optional 3:1 mobile art (900 × 300). Empty slots collapse. Ads are labeled and contain no third-party scripts.
 - **Feedback:** enable voting, optional private comments, and optional public totals independently.
@@ -97,11 +97,12 @@ The public `/listen/` route redirects to the same-origin `/stream/` proxy. Unkno
 external media are not routed through the playback fallback. Restricted capture
 or unavailable browser features produce an explicitly labeled resting scene.
 
-Closing, hiding, pausing, or enabling reduced motion releases optional analysis
+Closing, hiding, or pausing releases optional analysis
 and stops animation. The audible fallback remains playback-owned. Renderer and
 analyser failures do not disconnect its output. Reconnects and replaced elements
-reattach analysis; obsolete contexts and capture tracks are disposed. Returning
-from reduced motion restarts analysis. A browser-level failure of the audible
+reattach analysis; obsolete contexts and capture tracks are disposed. Browser or
+saved reduced-motion preferences and legacy station motion settings do not
+disable player animation. A browser-level failure of the audible
 AudioContext remains a limitation of Safari's non-capture route.
 
 Rendering uses Canvas 2D, a 30 fps ceiling, bounded geometry, and a canvas budget
@@ -119,5 +120,5 @@ python scripts/check-player-visuals.py --url https://YOUR-STAGING-HOST/player/YO
 The verifier serves repository candidate assets only inside its test browsers;
 it does not deploy or modify the server. It checks desktop/Android Chromium and
 desktop/iPhone WebKit, all modes, real analyser samples, repeated switching,
-reduced motion, pause/resume, resource bounds, and renderer failure while playback
-continues. Automated WebKit/mobile profiles are not physical Safari/iPhone tests.
+animation with OS reduced motion enabled, pause/resume, resource bounds, and
+renderer failure while playback continues. Automated WebKit/mobile profiles are not physical Safari/iPhone tests.

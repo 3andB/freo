@@ -52,10 +52,10 @@ def test_images_visual_modes_reduced_motion_and_audio_failure_isolation(booth, l
     driver.execute_cdp_cmd('Emulation.setEmulatedMedia', {'features':[{'name':'prefers-reduced-motion','value':'reduce'}]})
     driver.execute_async_script('const done=arguments[0];requestAnimationFrame(()=>requestAnimationFrame(done))')
     driver.save_screenshot('/tmp/freo-phase9-player-mobile.png')
-    # Reduced motion results in a stable Canvas while playback continues.
+    # OS motion preferences no longer suppress the player Canvas.
     before = driver.execute_script('return document.getElementById("player-visual").toDataURL()')
     driver.execute_async_script('const done=arguments[0];setTimeout(done,150)')
-    assert before == driver.execute_script('return document.getElementById("player-visual").toDataURL()')
+    WebDriverWait(driver,5).until(lambda d:before != d.execute_script('return document.getElementById("player-visual").toDataURL()'))
     assert driver.execute_script('return !document.getElementById("station-audio").paused')
     driver.execute_script("document.querySelector('.phase9-ad img').dispatchEvent(new Event('error'));CanvasRenderingContext2D.prototype.clearRect=()=>{throw new Error('simulated canvas failure')};document.getElementById('visual-mode').dispatchEvent(new Event('change'))")
     assert not driver.find_element(By.CSS_SELECTOR,'.phase9-ad').is_displayed()

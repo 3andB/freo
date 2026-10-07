@@ -163,25 +163,39 @@ def test_visual_failure_never_interrupts_audio(booth, failure):
     assert js(driver, 'return visualProbe.outputConnections') == 0
 
 
-def test_visualizer_reduced_motion_and_render_failure(booth):
+def test_visualizers_ignore_retired_motion_preferences_and_isolate_failure(booth, long_player_stream):
     app, driver, base, tmp = booth
+    from app.models import Station, StationPlayerSettings
+    from app.extensions import db
+    with app.app_context():
+        station = Station.query.filter_by(slug='test-station').one()
+        db.session.add(StationPlayerSettings(station_id=station.id, revision=1, config={'motion': False}))
+        db.session.commit()
+    instrument(driver)
+    driver.execute_cdp_cmd('Page.addScriptToEvaluateOnNewDocument', {'source': "localStorage.setItem('freo-motion','reduced')"})
+    driver.execute_cdp_cmd('Emulation.setEmulatedMedia', {'features': [{'name': 'prefers-reduced-motion', 'value': 'reduce'}]})
     driver.get(base + '/player/test-station')
     driver.find_element(By.ID, 'play-button').click()
     wait_text(driver, '#audio-message', 'listening live')
+    assert js(driver, 'return getComputedStyle(document.querySelector(".vinyl-grooves")).animationPlayState') == 'running'
+    assert js(driver, 'return getComputedStyle(document.querySelector(".vinyl-grooves")).animationName') != 'none'
     driver.find_element(By.ID, 'visualizer-open').click()
-    driver.execute_cdp_cmd('Emulation.setEmulatedMedia', {'features': [{'name': 'prefers-reduced-motion', 'value': 'reduce'}]})
-    driver.execute_async_script('const done=arguments[0];setTimeout(done,200)')
-    before = js(driver, 'return document.getElementById("player-visual").toDataURL()')
-    driver.execute_async_script('const done=arguments[0];setTimeout(done,200)')
-    assert before == js(driver, 'return document.getElementById("player-visual").toDataURL()')
+    WebDriverWait(driver, 8).until(lambda d: js(d, 'return visualProbe.peak') > 0)
+    for mode in ('fractal','spectrum','waveform','particles','ambient','aurora','ethereal','space'):
+        Select(driver.find_element(By.ID, 'visual-mode')).select_by_value(mode)
+        before = js(driver, 'return document.getElementById("player-visual").toDataURL()')
+        WebDriverWait(driver, 5).until(lambda d: js(d, 'return document.getElementById("player-visual").toDataURL()') != before)
+        assert driver.find_element(By.ID, 'player-visual').get_attribute('data-analysis') == 'live'
+        assert 'Reduced motion' not in driver.find_element(By.ID, 'visual-status').text
     js(driver, 'CanvasRenderingContext2D.prototype.clearRect=()=>{throw Error("render failure")};document.getElementById("visual-mode").dispatchEvent(new Event("change"))')
     wait_text(driver, '#visual-status', 'Visualization unavailable')
     playing(driver)
     driver.find_element(By.ID, 'visualizer-close').click()
-    assert js(driver, 'return getComputedStyle(document.querySelector(".vinyl-grooves")).animationName') == 'none'
+    assert js(driver, 'return getComputedStyle(document.querySelector(".vinyl-grooves")).animationPlayState') == 'running'
+    assert js(driver, 'return getComputedStyle(document.querySelector(".vinyl-grooves")).animationName') != 'none'
 
 
-def test_gesture_unlock_reconnect_and_motion_resume(booth, long_player_stream):
+def test_gesture_unlock_reconnect_and_motion_preference_changes(booth, long_player_stream):
     app, driver, base, tmp = booth
     # Reproduce a context which exists but could not run on the first Play.
     driver.execute_cdp_cmd('Page.addScriptToEvaluateOnNewDocument', {'source': '''
@@ -209,7 +223,7 @@ def test_gesture_unlock_reconnect_and_motion_resume(booth, long_player_stream):
     driver.execute_async_script('setTimeout(arguments[0],200)')
     before=js(driver,'return document.getElementById("player-visual").toDataURL()')
     driver.execute_async_script('setTimeout(arguments[0],200)')
-    assert before==js(driver,'return document.getElementById("player-visual").toDataURL()')
+    WebDriverWait(driver,5).until(lambda d:js(d,'return document.getElementById("player-visual").toDataURL()')!=before)
     driver.execute_cdp_cmd('Emulation.setEmulatedMedia',{'features':[{'name':'prefers-reduced-motion','value':'no-preference'}]})
     WebDriverWait(driver,5).until(lambda d:js(d,'return document.getElementById("player-visual").toDataURL()')!=before)
     # Retry on the same element must reattach the analyser to the new resource.

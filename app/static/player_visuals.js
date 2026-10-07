@@ -5,7 +5,7 @@
   if (!root || !scope || !dialog) return;
   const canvas = $('player-visual'), stage = dialog.querySelector('.visualizer-stage');
   const select = $('visual-mode'), palette = $('visual-palette'), status = $('visual-status');
-  const fullscreen = $('visualizer-fullscreen'), reduced = matchMedia('(prefers-reduced-motion: reduce)');
+  const fullscreen = $('visualizer-fullscreen');
   const key = 'freo-visual-' + root.dataset.station;
   const modes = Array.from(select.options, option => option.value);
   const palettes = {aurora: [155, 205, 285], sunset: [18, 335, 275], electric: [190, 260, 320]};
@@ -21,7 +21,7 @@
   const bars = new Float32Array(64), peaks = new Float32Array(64);
   const particles = Array.from({length: 150}, (_, i) => ({angle: i * 2.399963, radius: ((i * 73) % 151) / 151, size: 1 + i % 4}));
   const active = () => dialog.open && !disposed && !failed && !document.hidden;
-  const moving = () => active() && !reduced.matches && !root.classList.contains('low-motion') && audio && !audio.paused && root.classList.contains('is-playing') && analyser && context?.state==='running';
+  const moving = () => active() && audio && !audio.paused && root.classList.contains('is-playing') && analyser && context?.state==='running';
   const color = (index, alpha = 1, light = 65) => `hsla(${palettes[palette.value][index % 3]},95%,${light}%,${alpha})`;
   function detach() {
     window.FreoAudioAnalysis?.deactivate();
@@ -60,7 +60,7 @@
       peaks[i] = Math.max(bars[i], peaks[i] - dt * .25);
     }
     canvas.dataset.analysis = measured ? 'live' : 'unavailable';
-    const notice = (reduced.matches || root.classList.contains('low-motion')) ? 'Reduced motion · still scene' : measured ? '' : audio && !audio.paused ? 'Audio analysis unavailable · resting visual' : 'Press play on the player to bring this scene to life.';
+    const notice = measured ? '' : audio && !audio.paused ? 'Audio analysis unavailable · resting visual' : 'Press play on the player to bring this scene to life.';
     if (performance.now() > fullscreenNoticeUntil && status.textContent !== notice) status.textContent = notice;
   }
   function line(points, stroke, width) {
@@ -268,7 +268,7 @@
   $('visualizer-open').addEventListener('click', () => {
     if (dialog.open) return;
     failed = false; canvas.hidden = false; dialog.showModal();
-    if(!reduced.matches && !root.classList.contains('low-motion'))window.FreoAudioAnalysis?.activate($('station-audio'));
+    window.FreoAudioAnalysis?.activate($('station-audio'));
     try {ctx = canvas.getContext('2d'); if (!ctx) throw new Error('No canvas'); size();} catch {fail();}
   });
   const exitFullscreen = () => {
@@ -291,13 +291,12 @@
   scope.listen(document, 'playing', update, true); scope.listen(document, 'pause', update, true);
   function activity() {
     cancelAnimationFrame(raf);raf=0;
-    if(active() && !reduced.matches && !root.classList.contains('low-motion'))window.FreoAudioAnalysis?.activate($('station-audio'));
+    if(active())window.FreoAudioAnalysis?.activate($('station-audio'));
     else detach();
     update();
   }
   scope.listen(document, 'visibilitychange', activity);
   scope.listen(document, 'freo:analysis', update);
-  scope.listen(reduced, 'change', activity);
   const resize = new ResizeObserver(size); resize.observe(stage);
   scope.cleanup(() => {disposed = true; cancelAnimationFrame(raf); observer.disconnect(); resize.disconnect(); detach(); exitFullscreen(); if (dialog.open) dialog.close();});
 })();

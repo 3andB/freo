@@ -14,7 +14,7 @@ from app.services.schedule import resolve, _wall_to_utc
 PLATFORMS = ('Instagram', 'Facebook', 'TikTok', 'YouTube', 'X', 'SoundCloud', 'Mixcloud', 'Discord', 'Website')
 ASSETS = ('cover', 'ad_top', 'ad_bottom', 'ad_top_mobile', 'ad_bottom_mobile')
 DEFAULTS = dict(message='', message_enabled=False, message_start='', message_end='',
-    social_enabled=False, socials=[], palette='aurora', motion=True, cover_position='center',
+    social_enabled=False, socials=[], palette='aurora', cover_position='center',
     schedule_enabled=False, schedule_mode='automatic', schedule_views=['day','week','month'],
     schedule_default='week', auto_publish=False, custom_entries=[],
     voting_enabled=False, comments_enabled=False, public_totals=False,
@@ -36,7 +36,9 @@ def clean_text(value, limit, required=False, multiline=False):
 
 
 def settings(station):
-    return dict(deepcopy(DEFAULTS), **(station.player_settings.config if station.player_settings else {}))
+    config = dict(deepcopy(DEFAULTS), **(station.player_settings.config if station.player_settings else {}))
+    config.pop('motion', None)  # Ignore retired settings without a database migration.
+    return config
 
 
 def safe_url(value):
