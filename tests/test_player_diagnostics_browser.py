@@ -44,7 +44,7 @@ def test_report_retry_silence_reconnect_and_clipboard(booth, long_player_stream,
     # Both clipboard success and Safari's manual-selection fallback.
     js(driver, '''Object.defineProperty(navigator,'clipboard',{configurable:true,value:{writeText:async text=>{window.copiedReport=text}}})''')
     click('audio-diagnostics-copy')
-    assert json.loads(js(driver, 'return copiedReport'))['build'] == 'v1-iphone-debug-3'
+    assert json.loads(js(driver, 'return copiedReport'))['build'] == 'v1-iphone-stream-1'
     js(driver, '''navigator.clipboard.writeText=async()=>{throw new Error('denied')}''')
     click('audio-diagnostics-copy')
     WebDriverWait(driver, 3).until(lambda d: 'Touch and hold' in d.find_element(By.ID, 'audio-diagnostics-status').text)

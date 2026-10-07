@@ -4,7 +4,7 @@
   const panel = $('audio-diagnostics'), dialog = $('visualizer-dialog');
   if (!scope || !panel || !dialog) return;
   const output = $('audio-diagnostics-report'), message = $('audio-diagnostics-status');
-  const build = 'v1-iphone-debug-3', started = performance.now();
+  const build = 'v1-iphone-stream-1', started = performance.now();
   let enabled = new URLSearchParams(location.search).get('audio_debug') === '1';
   const enabledFromLoad = enabled;
   let nextId = 0, previous = null, sourceCheck = null;
@@ -45,13 +45,13 @@
       } catch (error) {readError = error.name + ': ' + error.message;}
     }
     const sample = {
-      ms: elapsed(), audio: id(audio), context: id(context), source: id(graph?.source || graph?.captureSource), analyser: id(analyser),
+      ms: elapsed(), audio: id(audio), context: id(context), source: id(graph?.fallback?.active ? graph.fallback.input : graph?.source || graph?.captureSource), nativeSource: id(graph?.source), analyser: id(analyser),
       mediaTime: number(audio?.currentTime), contextTime: number(context?.currentTime), contextState: context?.state || 'unavailable',
       paused: audio?.paused ?? null, readyState: audio?.readyState ?? null,
       frequencyPeak, waveformPeak: number(waveformPeak), rms: number(rms), readError,
       signal: readError ? 'read-error' : rms === null ? 'unavailable' : frequencyPeak > 0 || rms > .00001 ? 'present' : 'silent',
       visualSignal: $('player-visual')?.dataset.signal || null,
-      sourceMatchesElement: graph?.source ? graph.source.mediaElement === audio : null,
+      sourceMatchesElement: graph?.source && !graph.fallback?.active ? graph.source.mediaElement === audio : null,
       sourceContextMatches: graph?.source || graph?.captureSource ? (graph.source || graph.captureSource).context === context : null,
       analyserContextMatches: analyser ? analyser.context === context : null,
       graphError: graph?.error || null
@@ -77,7 +77,7 @@
     }
     message.textContent = assessment;
     const data = {
-      reportVersion: 3, build, enabledFromLoad, sourceCheck, heardMusic: $('audio-diagnostics-audible').value, capturedAt: new Date().toISOString(), page: url(location.href),
+      reportVersion: 4, build, enabledFromLoad, sourceCheck, heardMusic: $('audio-diagnostics-audible').value, capturedAt: new Date().toISOString(), page: url(location.href),
       userAgent: navigator.userAgent, platform: navigator.platform, secureContext: isSecureContext,
       visibility: document.visibilityState, standalone: !!navigator.standalone,
       userActivation: navigator.userActivation ? {active: navigator.userActivation.isActive, hasBeenActive: navigator.userActivation.hasBeenActive} : null,
@@ -90,7 +90,8 @@
         captureStreamAvailable: typeof audio.captureStream === 'function' || typeof audio.mozCaptureStream === 'function'
       } : null,
       graph: graph ? {
-        safe: graph.safe, route: graph.capturing ? 'capture-stream' : 'media-element-source',
+        safe: graph.safe, route: graph.fallback?.active ? 'stream-decoder' : graph.capturing ? 'capture-stream' : 'media-element-source',
+        fallback: graph.fallback?.diagnostics() || null,
         resuming: graph.resuming, resumeAttempt: graph.resumeAttempt, unlocked: graph.unlocked,
         sampleRate: graph.context?.sampleRate || null, fftSize: graph.analyser?.fftSize || null,
         outputGain: graph.gain?.gain.value ?? null, analysisSinkGain: graph.sink?.gain.value ?? null,

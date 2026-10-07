@@ -55,6 +55,9 @@
     if (!audio || audio.paused || !graph?.analyser || graph.context?.state !== 'running') {
       status.textContent = 'Play the station and open the visualizer before running this check.'; return;
     }
+    if (graph.fallback?.active) {
+      status.textContent = 'The stream decoder is active. Copy the main report to check its real station samples.'; return;
+    }
     const job = active = {graph, nativeAnalyser: graph.analyser, src: audio.currentSrc,
       cancelled: false, result: {status: 'checking', startedAt: new Date().toISOString(),
         method: 'live-source-tap-and-isolated-pcm-calibration', additionalStreamRequests: 0}};

@@ -2,11 +2,12 @@
 (() => {
   const scope = window.FreoPage;
   if (!scope || !document.querySelector('.radio-experience')) return;
-  let graph = null, enabled = false;
+  let graph = null, enabled = false, streamPreferred = false;
   const changed = () => document.dispatchEvent(new Event('freo:analysis'));
   const captureSupported = audio => !!(audio.captureStream || audio.mozCaptureStream);
   function clearAnalysis(g) {
     if (!g) return;
+    g.fallback?.stop(); g.fallback = null;
     g.capture?.removeEventListener('addtrack', g.attach);
     try { g.captureSource?.disconnect(); } catch {}
     try { g.capture?.getTracks().forEach(track => track.stop()); } catch {}
@@ -53,8 +54,14 @@
         analyser.connect(g.sink);g.sink.connect(g.context.destination);
       }
       input.connect(analyser);
+      if (streamPreferred) startStreamAnalysis(g);
       changed();
     } catch (reason) { error(g, reason); }
+  }
+  function startStreamAnalysis(g) {
+    if (graph !== g || !enabled || g.capturing || !g.safe || !g.source || !g.analyser ||
+        g.fallback?.active || g.audio.paused || g.audio.readyState < 3 || document.hidden || g.context?.state !== 'running') return;
+    window.FreoStreamAnalysis?.start(g, () => graph === g && enabled, changed);
   }
   function connect(g) {
     if (graph !== g || (g.error && (g.capturing || !g.source)) || scope.signal.aborted || g.context?.state !== 'running') return;
@@ -121,7 +128,8 @@
       const url = new URL(audio.getAttribute('src') || audio.dataset.stream || '', location.href);
       g.safe = url.origin === location.origin && /^\/(listen|stream)\//.test(url.pathname);
       const listen = (name, fn) => audio.addEventListener(name, fn, {signal:g.events.signal});
-      listen('playing', () => { resume(g); connect(g); changed(); });
+      listen('playing', () => { resume(g); connect(g); if (streamPreferred) startStreamAnalysis(g); changed(); });
+      listen('waiting', () => {if (g.audio.readyState < 3 && g.fallback) {g.fallback.stop(); g.fallback = null; changed();}});
       listen('loadstart', () => { clearAnalysis(g); g.error = null; g.resuming=false; ++g.resumeAttempt; });
       listen('pause', () => { clearAnalysis(g); changed(); });
       listen('emptied', () => { clearAnalysis(g); changed(); });
@@ -138,7 +146,9 @@
     }
     unlock(g);resume(g,gesture);
   }
-  function activate(audio) {
+  function activate(audio, retryStream = false) {
+    const previousAnalyser = graph?.audio === audio ? graph.analyser : null;
+    const wasRunning = graph?.context?.state === 'running';
     enabled = true;
     // An explicit user gesture can retry an analysis failure.
     if (graph?.audio === audio && graph.error) {
@@ -146,6 +156,20 @@
       if (graph.context?.state === 'closed') graph.context = null;
     }
     prepare(audio,undefined,undefined,true);
+    const g = graph;
+    if (retryStream && wasRunning && previousAnalyser && g?.source && g.analyser === previousAnalyser && g.context?.state === 'running') {
+      // A retry can bypass Safari's silent native media-source output. Healthy
+      // analysers retain the existing route; station silence stays silent.
+      try {
+        const wave = new Float32Array(g.analyser.fftSize);
+        g.analyser.getFloatTimeDomainData(wave);
+        if (!wave.some(value => Math.abs(value) > .00001)) {
+          streamPreferred = true;
+          if (g.fallback?.active && performance.now() - g.fallback.startedAt > 2000) {g.fallback.stop(); g.fallback = null;}
+        }
+      } catch {}
+    }
+    if (streamPreferred && g) startStreamAnalysis(g);
   }
   function deactivate() {
     enabled = false;

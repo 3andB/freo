@@ -2160,3 +2160,77 @@ zero additional stream requests and automatic reconnect with continuing playback
 Six candidate real-station checks passed in Chromium and Linux WebKit, with the
 fragment decoder deliberately unavailable. JavaScript syntax and whitespace
 checks passed. Physical iPhone confirmation remains required.
+
+### 2026-10-07 — Bypass confirmed iPhone native-source sample loss
+
+The physical iPhone report from build `v1-iphone-debug-3` establishes the failing
+boundary: music was audible (`heardMusic=yes`), the original live analyser and a
+fresh tap on the same media-element source both returned zero, while the same
+context/fresh analyser measured calibration peak 0.125 and RMS 0.088388. Media
+and context clocks advanced, bindings matched, and the playback graph did not
+change. Earlier CORS comparison reports still failed with anonymous mode set
+before load and a same-origin basic 200 response. The observed root cause is
+missing PCM delivery from Safari's live MP3 MediaElementAudioSourceNode, rather
+than a suspended context or Freo retaining a retired analyser. This matches the
+class of native streaming problem tracked in
+[WebKit 180696](https://bugs.webkit.org/show_bug.cgi?id=180696); the reports do not
+identify Apple's exact internal defect.
+
+Earlier gesture/resume/priming fixes exercised context recovery, which cannot
+restore PCM that never enters the graph. Linux WebKit's media implementation did
+not reproduce the physical-device failure. The original sample-capture control
+also incorrectly relied on decoding a partial MP3 asset; build 3 corrected that
+diagnostic independently. The sample-confirmed Enable visuals behavior remains.
+
+Build `v1-iphone-stream-1` adds an optional analysis-only fallback. On **Enable
+visuals**, an already running, silent native analyser can use a separate fetch of
+the same station's same-origin MP3. A dedicated worker with pinned mpg123-decoder
+1.0.3 decodes actual incoming bytes. Those PCM samples feed a Web Audio analyser
+through their own zero-output-gain branch. Native audio continues on its existing
+element/context/source/output path; no playback reload, replacement, extra
+AudioContext, fabricated samples or audible duplicate is introduced. Healthy
+native/capture analysis does not load the worker or request a second stream.
+No CSP relaxation, server-side audio process, migration or Python dependency is
+required. Decoder notices and corresponding source are shipped under
+`app/static/vendor/mpg123/`.
+
+The selected fallback is retained for this player page across visualizer switches,
+close/reopen and audio reconnect. Its reader, worker and scheduled buffers stop
+on close, hidden page, pause, native buffering, source change, graph disposal or
+analysis failure. Reconnect starts analysis only once native media is ready to
+play. One decode request runs at a time; PCM scheduling is bounded to roughly
+2.3 seconds and 32 nodes, with decoder and stream-stall timeouts. HTTP, decoder,
+worker and rendering failures never call the native player's pause/reconnect
+methods. The retry action stays visible until nonzero actual station samples
+arrive, and is offered immediately for fallback errors.
+
+The fallback consumes a second station connection only while it is active. This
+also counts as a listener connection and adds the stream's bitrate to network
+use. It receives actual station audio, but independent native/fetch buffering
+means exact synchronization with the audible stream is not guaranteed. No replay
+of old samples or synthetic activity masks a stalled or silent fallback.
+
+The report identifies `graph.route=stream-decoder`, with bytes/samples decoded,
+worker status/error, queue/buffer counts, source sample rate and muted output gain.
+The effective analysis input and native media source have separate identities.
+The optional native-source self-test does not run against an active fallback,
+which would otherwise mix the meaning of the two routes.
+
+Physical-device acceptance: refresh the V1 player, Play, open a visualizer and tap
+Enable visuals if no samples arrive. Check that music continues, visuals react,
+mode switching and reopening work, then copy Audio report. A successful fallback
+has route `stream-decoder`, increasing decoded samples and nonzero current RMS /
+FFT values. iPhone verification of this workaround is still required; the root
+cause has been demonstrated on the physical device.
+
+Validation: ten targeted browser regression cases passed (805.79 seconds),
+including the new real-MP3 fallback lifecycle/silence/HTTP/stall/worker-failure
+case, three source-diagnostic cases, all eight desktop visualizers/fullscreen/
+mobile layout, three visual-failure cases, reconnect/gesture recovery and pending
+Safari resume recovery. Candidate live-station checks passed in Chromium and
+Linux WebKit with mode switching, native reconnect, close/reopen, continuing
+playback and worker cleanup. Linux WebKit also passed with a 48 kHz AudioContext
+and the station's 44.1 kHz decoded PCM. These browser checks deliberately force
+the silent native-analysis condition; they do not emulate Apple's media backend.
+Changed JavaScript syntax and application/documentation whitespace checks passed.
+Vendored upstream bytes, including their original whitespace, remain unchanged.

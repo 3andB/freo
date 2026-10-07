@@ -42,7 +42,7 @@
     audio = $('station-audio');
     const graph = window.FreoAudioAnalysis?.read(audio);
     context = graph?.context; analyser = graph?.analyser;
-    canvas.dataset.analysisReason = graph?.error || '';
+    canvas.dataset.analysisReason = graph?.error || graph?.fallback?.error || '';
   }
   function sample(dt) {
     measured = !!(analyser && context?.state === 'running' && audio && !audio.paused);
@@ -83,15 +83,16 @@
     const signal = measured && (frequency.some(value=>value>0) || rms>.000001);
     if (signal || !audio || audio.paused) waitingSince=0;
     else waitingSince ||= performance.now();
+    const fallback = window.FreoAudioAnalysis?.read(audio)?.fallback;
     const waiting = !!waitingSince && performance.now()-waitingSince>6000;
     canvas.dataset.contextState=context?.state || 'unavailable';
     canvas.dataset.signal=signal?'present':'waiting';
     // A running context is not proof of sample delivery (notably on iOS).
     if (signal) retryNeeded = false;
-    else if (!measured || waiting) retryNeeded = true;
+    else if (!measured || waiting || fallback?.status === 'error') retryNeeded = true;
     if(retry)retry.hidden=!(audio && !audio.paused && retryNeeded);
     canvas.dataset.analysis = signal ? 'live' : measured ? 'waiting' : 'unavailable';
-    const notice = waiting ? 'No audio signal detected. Enable visuals to retry, or open Audio report.' : signal ? '' : measured ? 'Waiting for audio samples…' : audio && !audio.paused ? 'Audio analysis unavailable · resting visual' : 'Press play on the player to bring this scene to life.';
+    const notice = !signal && fallback?.status === 'error' ? 'Visual audio unavailable. Enable visuals to retry.' : !signal && fallback?.status === 'connecting' ? 'Connecting audio for visuals…' : waiting ? 'No audio signal detected. Enable visuals to retry, or open Audio report.' : signal ? '' : measured ? 'Waiting for audio samples…' : audio && !audio.paused ? 'Audio analysis unavailable · resting visual' : 'Press play on the player to bring this scene to life.';
     if (performance.now() > fullscreenNoticeUntil && status.textContent !== notice) status.textContent = notice;
   }
   function line(points, stroke, width) {
@@ -358,7 +359,7 @@
     try {localStorage.setItem(key, select.value); localStorage.setItem(key + '-palette', palette.value);} catch {}
     update();
   });
-  retry?.addEventListener('click',()=>{window.FreoAudioAnalysis?.activate($('station-audio'));update();});
+  retry?.addEventListener('click',()=>{window.FreoAudioAnalysis?.activate($('station-audio'),true);update();});
   scope.listen(window,'pageshow',activity);
   const observer = new MutationObserver(activity); observer.observe(root, {attributes: true, attributeFilter: ['class']});
   scope.listen(document, 'playing', update, true); scope.listen(document, 'pause', update, true);
