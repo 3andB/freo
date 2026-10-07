@@ -1,3 +1,5 @@
+/* Retained for future device debugging: player.html loads this only with
+ * ?audio_debug=1. Open Audio report to inspect/copy local observations. */
 /* Opt-in, local-only audio observations. Never connects, resumes or reloads audio. */
 (() => {
   const scope = window.FreoPage, $ = id => document.getElementById(id);

@@ -1,4 +1,8 @@
 {% extends 'base.html' %}
+{# Temporary iPhone investigation controls remain available with ?audio_debug=1.
+   Gate both markup and scripts so ordinary listeners see no test UI or report
+   collectors. Keep Enable visuals: it activates the working iPhone fallback. #}
+{% set audio_debug = request.args.get('audio_debug') == '1' %}
 {% block title %}{{ station.name }} — listen live{% endblock %}
 {% block body_class %}player-page{% endblock %}
 {% block head %}<link rel="stylesheet" href="{{ url_for('static',filename='advertising_public.css',v='1') }}">{% if player_preview is not defined %}<link rel="manifest" href="{{ url_for('studio_pwa.player_manifest',slug=station.public_slug or station.slug) }}"><link rel="apple-touch-icon" href="/static/studio-180.png"><meta name="apple-mobile-web-app-capable" content="yes"><script defer src="{{ url_for('static',filename='player-pwa.js',v='v1-acceptance-1') }}"></script>{% endif %}<link rel="stylesheet" href="{{ url_for('static',filename='player.css',v='v1-iphone-stream-1') }}"><script defer src="{{ url_for('static',filename='statistics_presence.js',v='1') }}"></script>{% endblock %}
@@ -35,8 +39,9 @@
 <div class="visualizer-toolbar">
 <label><span class="sr-only">Visualization</span><select id="visual-mode" aria-label="Visualization">{% for mode in visual_modes %}<option value="{{ mode }}" {% if cfg.visual_mode==mode %}selected{% endif %}>{{ 'Ambient / Geometric' if mode=='ambient' else 'Kai' if mode=='fractal' else mode|title }}</option>{% endfor %}</select></label>
 <label><span class="sr-only">Palette</span><select id="visual-palette" aria-label="Palette"><option value="aurora">Aurora</option><option value="sunset">Sunset</option><option value="electric">Electric</option><option value="ocean">Ocean</option><option value="amethyst">Amethyst</option><option value="rose_gold">Rose Gold</option><option value="emerald">Emerald</option><option value="solar">Solar</option></select></label>
-<button type="button" id="visualizer-retry" hidden>Enable visuals</button><button type="button" id="audio-diagnostics-open" aria-controls="audio-diagnostics">Audio report</button><button id="visualizer-fullscreen" type="button">Fullscreen</button><button id="visualizer-close" type="button" aria-label="Close visualizer">Close ×</button>
+<button type="button" id="visualizer-retry" hidden>Enable visuals</button>{% if audio_debug %}<button type="button" id="audio-diagnostics-open" aria-controls="audio-diagnostics">Audio report</button>{% endif %}<button id="visualizer-fullscreen" type="button">Fullscreen</button><button id="visualizer-close" type="button" aria-label="Close visualizer">Close ×</button>
 </div>
+{% if audio_debug %}
 <section id="audio-diagnostics" class="visual-diagnostics" aria-labelledby="audio-diagnostics-title" hidden>
 <h2 id="audio-diagnostics-title">Audio diagnostic report</h2>
 <p>Play the station, then tap Run source check below. When it finishes, select whether you heard music and copy the report. The report stays on your device until you share it.</p>
@@ -48,6 +53,7 @@
 <p id="audio-diagnostics-status" role="status"></p>
 <label for="audio-diagnostics-report">Report text</label><textarea id="audio-diagnostics-report" readonly spellcheck="false" autocapitalize="off"></textarea>
 </section>
+{% endif %}
 <p id="visual-status" class="visual-status" role="status"></p>
 <div class="visualizer-now"><div id="visualizer-artwork" hidden></div><div><strong id="visualizer-title">{{ station.name }}</strong><span>{{ station.name }}</span></div></div>
 </div>
@@ -62,4 +68,4 @@
 {{ ad('ad_bottom') }}
 {% if cfg.voting_enabled %}<dialog id="feedback-dialog" class="radio-feedback-dialog" aria-labelledby="feedback-title"><form id="feedback-form"><button class="feedback-close" type="button" aria-label="Close feedback">×</button><p class="radio-kicker">YOUR TASTE MATTERS</p><h2 id="feedback-title">Song feedback</h2><p id="feedback-song"></p><div class="feedback-choice" role="group" aria-label="Your vote"><button type="button" data-vote="1" aria-pressed="false">↑ Love it</button><button type="button" data-vote="-1" aria-pressed="false">↓ Not for me</button><button type="button" data-vote="0" class="ui-danger">Remove vote</button></div>{% if cfg.comments_enabled %}<label>Add a private comment (optional)<textarea id="feedback-comment" maxlength="500" rows="3" placeholder="Tell the station what you think…"></textarea></label><small>Only the station admin sees your comment.</small><button type="submit" id="feedback-save" class="ui-primary">Save comment</button>{% endif %}<p id="feedback-status" role="status"></p><p id="feedback-totals"></p></form></dialog>{% endif %}
 {% endblock %}
-{% block scripts %}<script defer src="{{ url_for('static',filename='player_stream_analysis.js',v='v1-iphone-stream-1') }}"></script><script defer src="{{ url_for('static',filename='player_audio.js',v='v1-iphone-stream-1') }}"></script><script defer src="{{ url_for('static',filename='player_scenes.js',v='v1-iphone-stream-1') }}"></script><script defer src="{{ url_for('static', filename='player_visuals.js',v='v1-iphone-stream-1') }}"></script><script defer src="{{ url_for('static', filename='player_ads.js',v='campaigns-1') }}"></script><script defer src="{{ url_for('static', filename='player.js',v='v1-iphone-stream-1') }}"></script><script defer src="{{ url_for('static',filename='player_diagnostics.js',v='v1-iphone-stream-1') }}"></script><script defer src="{{ url_for('static',filename='player_source_check.js',v='v1-iphone-stream-1') }}"></script>{% endblock %}
+{% block scripts %}<script defer src="{{ url_for('static',filename='player_stream_analysis.js',v='v1-iphone-stream-1') }}"></script><script defer src="{{ url_for('static',filename='player_audio.js',v='v1-iphone-stream-1') }}"></script><script defer src="{{ url_for('static',filename='player_scenes.js',v='v1-iphone-stream-1') }}"></script><script defer src="{{ url_for('static', filename='player_visuals.js',v='v1-iphone-ui-1') }}"></script><script defer src="{{ url_for('static', filename='player_ads.js',v='campaigns-1') }}"></script><script defer src="{{ url_for('static', filename='player.js',v='v1-iphone-stream-1') }}"></script>{% if audio_debug %}<script defer src="{{ url_for('static',filename='player_diagnostics.js',v='v1-iphone-stream-1') }}"></script><script defer src="{{ url_for('static',filename='player_source_check.js',v='v1-iphone-stream-1') }}"></script>{% endif %}{% endblock %}

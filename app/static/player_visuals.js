@@ -92,7 +92,7 @@
     else if (!measured || waiting || fallback?.status === 'error') retryNeeded = true;
     if(retry)retry.hidden=!(audio && !audio.paused && retryNeeded);
     canvas.dataset.analysis = signal ? 'live' : measured ? 'waiting' : 'unavailable';
-    const notice = !signal && fallback?.status === 'error' ? 'Visual audio unavailable. Enable visuals to retry.' : !signal && fallback?.status === 'connecting' ? 'Connecting audio for visuals…' : waiting ? 'No audio signal detected. Enable visuals to retry, or open Audio report.' : signal ? '' : measured ? 'Waiting for audio samples…' : audio && !audio.paused ? 'Audio analysis unavailable · resting visual' : 'Press play on the player to bring this scene to life.';
+    const notice = !signal && fallback?.status === 'error' ? 'Visual audio unavailable. Enable visuals to retry.' : !signal && fallback?.status === 'connecting' ? 'Connecting audio for visuals…' : waiting ? 'No audio signal detected. Enable visuals to retry.' : signal ? '' : measured ? 'Waiting for audio samples…' : audio && !audio.paused ? 'Audio analysis unavailable · resting visual' : 'Press play on the player to bring this scene to life.';
     if (performance.now() > fullscreenNoticeUntil && status.textContent !== notice) status.textContent = notice;
   }
   function line(points, stroke, width) {

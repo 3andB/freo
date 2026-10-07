@@ -2251,3 +2251,19 @@ and the station's 44.1 kHz decoded PCM. These browser checks deliberately force
 the silent native-analysis condition; they do not emulate Apple's media backend.
 Changed JavaScript syntax and application/documentation whitespace checks passed.
 Vendored upstream bytes, including their original whitespace, remain unchanged.
+
+### 2026-10-07 — Keep diagnostics available without listener-facing test controls
+
+The normal player no longer renders Audio report or the report/source-check/CORS
+comparison controls, and does not load their diagnostic scripts. Add
+`?audio_debug=1` to the player URL to restore all investigation controls and
+collect from page load. The source test still requires an explicit click; its
+calibration remains isolated from the visualizer. Code comments document these
+entry points and safeguards. Enable visuals remains available when needed to
+activate the confirmed iPhone real-stream fallback. Normal status text no longer
+refers listeners to the hidden report. Playback and analysis routing are unchanged.
+
+Validation: normal, disabled-debug and CORS-only URLs omit diagnostic markup and
+scripts; the debug URL restores both. The existing media-source diagnostic
+browser regression passed, including retry, reconnect and clipboard behavior.
+JavaScript syntax and whitespace checks passed.

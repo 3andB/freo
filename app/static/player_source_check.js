@@ -1,3 +1,6 @@
+/* Retained behind ?audio_debug=1 and an explicit Run source check click.
+ * The isolated calibration diagnoses sample delivery; never use its generated
+ * PCM for visuals or reconnect/reload native playback from this test. */
 /* Explicit diagnostic only. Calibration PCM never enters the player's analyser. */
 (() => {
   const scope = window.FreoPage, $ = id => document.getElementById(id);
