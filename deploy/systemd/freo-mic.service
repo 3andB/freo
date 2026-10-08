@@ -4,7 +4,7 @@ After=network-online.target
 Wants=network-online.target
 
 [Service]
-ExecStartPre=/usr/bin/python3 /usr/local/lib/freo-hosting/guard.py
+ExecCondition=/usr/bin/python3 /usr/local/lib/freo-hosting/guard.py
 Type=simple
 User=freo
 Group=freo

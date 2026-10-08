@@ -71,8 +71,9 @@ def waveform(path, duration_ms, timeout=120):
     with tempfile.TemporaryDirectory(prefix='freo-waveform-') as directory:
         output = Path(directory) / 'levels.txt'
         filters = f'aresample=8000,asetnsamples=n={frame}:p=0,astats=metadata=1:reset=1,ametadata=mode=print:key=lavfi.astats.Overall.RMS_level:file={output}'
-        subprocess.run(['ffmpeg','-nostdin','-v','error','-threads','1','-i',str(path),'-vn','-af',filters,
-                        '-f','null','-'],capture_output=True,timeout=timeout,check=True)
+        from freo_ops.hosting_storage import run_media
+        run_media(['ffmpeg','-nostdin','-v','error','-threads','1','-i',str(path),'-vn','-af',filters,
+                        '-f','null','-'],max_output_bytes=1024*1024,capture_output=True,timeout=timeout,check=True)
         levels = re.findall(r'lavfi.astats.Overall.RMS_level=([^\s]+)', output.read_text())
         values = [10 ** (float(level)/20) if math.isfinite(float(level)) else 0 for level in levels[:601]]
         maximum = max(values, default=0) or 1

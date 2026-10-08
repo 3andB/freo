@@ -77,12 +77,14 @@ def prepare_icecast(release, state):
     return destination
 
 
-def activate_icecast(binary):
+def activate_icecast(binary, replacing=False):
     directory = Path('/etc/systemd/system/icecast2.service.d')
     directory.mkdir(mode=0o755, exist_ok=True)
     target = directory / 'freo-patched.conf'
     if target.exists() or target.is_symlink():
-        raise recovery.RecoveryError('Existing Icecast patch override requires review')
+        import re
+        if (not replacing or target.is_symlink() or not re.fullmatch(r'\[Service\]\nExecStart=\nExecStart=/opt/freo/engines/[a-f0-9]{64}/icecast -c /etc/freo/radio/icecast.xml\n', target.read_text())):
+            raise recovery.RecoveryError('Existing Icecast patch override requires review')
     target.write_text('[Service]\nExecStart=\nExecStart=' + str(binary) + ' -c /etc/freo/radio/icecast.xml\n')
     target.chmod(0o644)
     recovery.run(['systemctl', 'daemon-reload'])
@@ -197,3 +199,16 @@ def check_services():
     for row in rows:
         if row['active'] == 'failed' or row['sub'] in ('auto-restart', 'failed'):
             raise recovery.RecoveryError('Repair the failing baseline service before upgrading: ' + row['unit'])
+
+
+def hosting_transition(current, release, revision):
+    """The reviewed Phase A -> hosted-capable V1 bridge, not a general bypass."""
+    if (releases.version_at(current) != '1.0.0-dev.1' or revision != 'fc06a1b2c3d4'
+            or (current / 'freo_ops/hosting.py').exists() or not (release / 'freo_ops/hosting.py').exists()):
+        return False
+    expected = json.loads(Path(__file__).with_name('legacy_v1_phase_a.json').read_text())
+    for name, checksum in expected.items():
+        path = current / name
+        if not path.is_file() or path.is_symlink() or recovery.digest(path) != checksum:
+            raise recovery.RecoveryError('Customized Phase A template requires review: ' + name)
+    return True

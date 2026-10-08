@@ -179,6 +179,14 @@ def reconcile_recording(station, show, observation, identity_changed=False):
         if len(fields) != 5:
             raise ValueError('Recording is not supported by this engine.')
         key, phase, start, end, error = fields
+        from freo_ops.hosting import read as hosting_policy
+        if hosting_policy()['hosted']:
+            from pathlib import Path
+            marker = Path('/run/freo/playout') / station.slug / ('recording-' + recording.id + '.error')
+            if marker.is_file():
+                recording.error = 'Recording stopped: hosting storage allowance or disk reserve reached.'
+                if phase in ('ARMED', 'RECORDING'):
+                    _command(station.slug, 'freo_record.stop ' + recording.id)
         if recording.status == 'pending' and key != recording.id:
             if not show.active_station_id:
                 raise ValueError('Show ended before recording started.')

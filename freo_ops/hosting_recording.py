@@ -19,13 +19,23 @@ def main():
     try:
         fd = os.open(target, os.O_CREAT | os.O_EXCL | os.O_WRONLY | os.O_NOFOLLOW, 0o640)
         with os.fdopen(fd, 'wb', buffering=0) as stream:
-            while data := sys.stdin.buffer.read1(65536):
+            while data := sys.stdin.buffer.read(65536):
                 write(stream, data)
             os.fsync(stream.fileno())
         return 0
     except HostingError as error:
+        marker = Path('/run/freo/playout') / sys.argv[1] / ('recording-' + sys.argv[2] + '.error')
+        try:
+            marker.write_text(error.code)
+        except OSError:
+            pass
         print(error.code, file=sys.stderr)
-        return 4
+        # The existing worker requests normal recorder closure after reading the
+        # marker. Drain until that closure (or the engine's 15-second lease expiry)
+        # so quota exhaustion cannot block audio or poison subsequent recordings.
+        while sys.stdin.buffer.read(65536):
+            pass
+        return 0
     except OSError:
         print('recording_storage_unavailable', file=sys.stderr)
         return 5

@@ -1,4 +1,6 @@
 """Station-scoped catalog, artwork, and live media editor endpoints."""
+from freo_ops.hosting_storage import run_media, reserve
+
 from app.services.availability import artists_for, albums_for
 from app.services.availability import tracks_for
 import io
@@ -162,13 +164,13 @@ def upload_artwork(slug):
         if len(payload)>20*1024*1024: raise ValueError('Artwork must be under 20 MB')
         if not (payload.startswith(b'\x89PNG\r\n\x1a\n') or payload.startswith(b'\xff\xd8')):
             raise ValueError('Choose a JPEG or PNG image')
-        with __import__('freo_ops.hosting_storage',fromlist=['reserve']).reserve(32*1024*1024), tempfile.TemporaryDirectory(prefix='freo-art-') as directory:
+        with reserve(80*1024*1024), tempfile.TemporaryDirectory(prefix='freo-art-') as directory:
             source=Path(directory)/'source';source.write_bytes(payload)
             info=subprocess.run(['ffprobe','-v','error','-select_streams','v:0','-show_entries','stream=width,height','-of','json',str(source)],capture_output=True,timeout=10,check=True)
             size=json.loads(info.stdout)['streams'][0]
             if not 1<=size['width']<=10000 or not 1<=size['height']<=10000: raise ValueError('Artwork must be no larger than 10000 pixels on either side')
             output=Path(directory)/'cover.jpg'
-            __import__('freo_ops.hosting_storage',fromlist=['run_media']).run_media(['ffmpeg','-nostdin','-v','error','-threads','1','-i',str(source),'-frames:v','1','-vf',"crop=min(iw\\,ih):min(iw\\,ih),scale=min(3000\\,iw):-1",'-q:v','2',str(output)],max_output_bytes=32*1024*1024,capture_output=True,timeout=20,check=True)
+            run_media(['ffmpeg','-nostdin','-v','error','-threads','1','-i',str(source),'-frames:v','1','-vf',"crop=min(iw\\,ih):min(iw\\,ih),scale=min(3000\\,iw):-1",'-q:v','2',str(output)],max_output_bytes=32*1024*1024,capture_output=True,timeout=20,check=True)
             art=MusicArtwork(id=str(uuid.uuid4()),station_id=station.id,image=output.read_bytes());db.session.add(art)
         if request.form.get('album_id'):
             album = owned(Album, station.id, request.form['album_id'])

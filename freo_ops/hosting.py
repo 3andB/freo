@@ -42,6 +42,8 @@ def validate(value):
     for key, number in limits.items():
         if type(number) is not int or not 1 <= number <= 1_000_000:
             raise HostingError('invalid_configuration', 'Hosting limits must be positive integers no greater than 1000000.', field=key)
+    if limits['listeners'] > 32640:
+        raise HostingError('invalid_configuration', 'Listener allowance exceeds the supported Icecast capacity.')
     if limits['bitrate_kbps'] < 64:
         raise HostingError('invalid_configuration', 'Maximum bitrate must allow at least 64 kbps.')
     reason = value.get('reason', '')

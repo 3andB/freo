@@ -141,7 +141,7 @@ def reserve(amount):
             if used + reserved + amount > limit:
                 raise hosting.HostingError('storage_limit_exceeded', 'Media storage is full. Delete media or increase storage capacity.', used_bytes=used, requested_bytes=amount, limit_bytes=limit)
             devices = set()
-            for root in config['roots']:
+            for root in [*config['roots'], tempfile.gettempdir()]:
                 path = Path(root)
                 while not path.exists():
                     path = path.parent
@@ -156,10 +156,11 @@ def reserve(amount):
             os.fchmod(fd, 0o660)
             fcntl.flock(fd, fcntl.LOCK_EX)
             os.write(fd, str(amount).encode()); os.fsync(fd)
-        yield
+        yield fd
     finally:
         if name:
-            Path(name).unlink(missing_ok=True)
+            with locked():
+                Path(name).unlink(missing_ok=True)
         if fd is not None:
             os.close(fd)
 
@@ -190,5 +191,7 @@ def run_media(args, *, max_output_bytes, **kwargs):
     import subprocess
     if not hosting.read()['hosted']:
         return subprocess.run(args, **kwargs)
-    with reserve(max_output_bytes):
-        return subprocess.run(['/usr/bin/prlimit', '--fsize='+str(max_output_bytes), '--', *args], **kwargs)
+    with reserve(max_output_bytes) as fd:
+        # Keep the reservation live if the parent dies while the encoder runs.
+        inherited = (*kwargs.pop('pass_fds', ()), fd)
+        return subprocess.run(['/usr/bin/prlimit', '--fsize='+str(max_output_bytes), '--', *args], pass_fds=inherited, **kwargs)

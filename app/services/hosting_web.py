@@ -34,7 +34,9 @@ def transaction_guards(session, context, instances):
         stack.enter_context(hosting_storage.reserve(growth))
 
 
-def end_transaction(session):
+def end_transaction(session, transaction):
+    if transaction.parent is not None:
+        return
     stack = session.info.pop('hosting_reservations', None)
     if stack:
         stack.close()
@@ -67,13 +69,14 @@ def summary():
 def install(app):
     if not event.contains(Session, 'before_flush', transaction_guards):
         event.listen(Session, 'before_flush', transaction_guards)
-        event.listen(Session, 'after_commit', end_transaction)
-        event.listen(Session, 'after_rollback', end_transaction)
+        event.listen(Session, 'after_transaction_end', end_transaction)
     @app.errorhandler(hosting.HostingError)
     def hosting_error(error):
         return jsonify(error.response()), 409 if error.code.endswith('_exceeded') else 503
     @app.before_request
     def guard():
+        if request.path in ('/admin/login','/admin/logout') and request.mimetype == 'multipart/form-data' and hosting.read()['hosted']:
+            return jsonify(success=False,error='invalid_arguments',message='File uploads are not accepted here.'), 400
         if request.path.startswith('/static/') or request.path in ('/health', '/ready', '/admin/login', '/admin/logout', '/hosting/status'):
             return None
         try:
@@ -87,9 +90,14 @@ def install(app):
                 reservation.__enter__()
                 g.hosting_upload_reservation = reservation
         except hosting.HostingError as error:
+            if error.code not in ('service_unavailable', 'invalid_configuration'):
+                return jsonify(error.response()), 409
             if request.path.startswith('/api/') or '/api/' in request.path:
                 return jsonify(error.response()), 503
-            return render_template('hosting_status.html', state=hosting.read() if error.code != 'invalid_configuration' else {'status':'maintenance'}), 503
+            state = hosting.read() if error.code != 'invalid_configuration' else {'status':'maintenance'}
+            if (hosting.STATE / 'inhibit').exists() and state.get('status') in ('active','past_due'):
+                state = dict(state,status='maintenance')
+            return render_template('hosting_status.html', state=state), 503
     @app.teardown_request
     def release_upload(error):
         from flask import g

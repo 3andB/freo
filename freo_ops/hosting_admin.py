@@ -170,7 +170,7 @@ def provision_storage():
         for directory in directories:
             run(['setfacl','-m','d:g:freo-storage:r-x','--',str(directory)])
         for parent in path.parents:
-            if str(parent) in ('/','/var','/var/lib','/srv'):
+            if str(parent) in ('/','/var','/var/lib','/srv') or str(parent) in roots:
                 continue
             run(['setfacl','-m','g:freo-storage:--x','--',str(parent)])
     def ident(value):
@@ -184,6 +184,8 @@ def provision_storage():
             statements.append('GRANT SELECT ON TABLE '+ident(table)+' TO '+ident(user)+';')
     run(['runuser','-u','postgres','--','psql','-X','-v','ON_ERROR_STOP=1','-d',url.database],input='\n'.join(statements))
     h.atomic(storage.INVENTORY,dict(roots=roots,media_root=media,database=url.database,socket='/var/run/postgresql',blobs=blobs))
+    from .hosting_recovery import protect_request_spooling
+    protect_request_spooling()
     # Startup groups and write permissions apply equally to all existing workers.
     for unit in ('freo.service','freo-ingest.service','freo-automation.service','freo-production.service','freo-playout@.service'):
         directory=Path('/etc/systemd/system')/(unit+'.d');directory.mkdir(exist_ok=True)
@@ -198,10 +200,24 @@ def audit(operation, previous, requested, result):
         stream.write(json.dumps(row,sort_keys=True)+'\n');stream.flush();os.fsync(stream.fileno())
 
 
+def administrative_policy(repair=False):
+    try:
+        return h.read()
+    except h.HostingError:
+        if not repair:
+            raise
+        path = h.STATE / 'last-valid.json'
+        h.trusted(path)
+        saved = h.validate(json.loads(path.read_text()))
+        if not saved['hosted']:
+            raise h.HostingError('invalid_configuration','No authoritative hosted recovery state is available.')
+        return dict(saved,status='maintenance')
+
+
 def apply(policy, operation):
     from app.extensions import db
     from app.services import station_runtime as runtime
-    previous = h.read()
+    previous = administrative_policy(repair=operation=='configure')
     requested = h.validate(policy)
     changed = False
     with runtime.operation_lock():
@@ -216,17 +232,27 @@ def apply(policy, operation):
                     import tempfile
                     build_state=Path(tempfile.mkdtemp(prefix='hosting-engine-',dir=h.STATE))
                     engine=prepare_icecast(runtime.SOURCE,build_state)
-                    activate_icecast(engine)
+                    activate_icecast(engine, replacing=True)
+                provision_storage()
+            elif operation == 'activate':
                 provision_storage()
             h.atomic(h.STATE/'transaction.json',dict(previous=previous,requested=requested,phase='applying'))
             changed = True
-            h.atomic(h.STATE/'enabled',True)
-            h.atomic(h.CONFIG,requested)
             blocked = requested['status'] in ('suspended','maintenance')
-            if blocked:
+            if first or blocked:
+                # Icecast itself observes this marker: even process death here
+                # cannot leave suspended public audio running.
                 h.atomic(h.STATE/'inhibit',True)
                 stop_broadcasts()
-            radio_policy(requested)
+            reducing = previous['hosted'] and requested['limits']['listeners'] < previous['limits']['listeners']
+            if reducing:
+                radio_policy(requested)
+            h.atomic(h.STATE/'enabled',True)
+            from .hosting_storage import locked
+            with locked():
+                h.atomic(h.CONFIG,requested)
+            if not reducing:
+                radio_policy(requested)
             if not blocked:
                 (h.STATE/'inhibit').unlink(missing_ok=True)
                 if first:
@@ -252,6 +278,7 @@ def apply(policy, operation):
             else:
                 result=verify(requested)
             db.session.commit()
+            h.atomic(h.STATE/'last-valid.json',requested)
             h.atomic(h.STATE/'transaction.json',dict(phase='complete',state=requested))
             audit(operation,previous,requested,dict(success=True,verification=result))
             return dict(success=True,state=requested,verification=result)
@@ -292,11 +319,15 @@ def main(argv=None):
         env=Path('/etc/freo/freo.env')
         if not env.exists():env=Path('/opt/freo/.env')
         values=dotenv_values(env,interpolate=False)
+        for key in list(os.environ):
+            if key.startswith(('FREO_','FLASK_')) or key in ('DATABASE_URL','SECRET_KEY'):
+                os.environ.pop(key,None)
+        os.environ.update(FREO_ENV_FILE=str(env),FLASK_ENV='production',PATH='/usr/sbin:/usr/bin:/sbin:/bin')
         for key,value in values.items():
             if value is not None:os.environ[key]=value
         from app import create_app
         with create_app().app_context(),h.administrative_lock():
-            policy=h.read()
+            policy=administrative_policy(repair=args.command=='configure')
             if args.command=='status':
                 result=dict(success=True,state=policy,inhibited=(h.STATE/'inhibit').exists())
             elif args.command=='storage':
@@ -317,6 +348,10 @@ def main(argv=None):
                     policy=dict(policy,status={'suspend':'suspended','maintenance':'maintenance','past-due':'past_due','activate':'active'}[args.command])
                     policy.pop('reason',None)
                     if args.command=='suspend':policy['reason']=args.reason
+                try:
+                    h.validate(policy)
+                except h.HostingError as error:
+                    raise h.HostingError('invalid_arguments',str(error)) from None
                 result=apply(policy,args.command)
         print(json.dumps(dict(schema_version=1,**result),sort_keys=True));return 0
     except h.HostingError as error:

@@ -152,3 +152,69 @@ def test_radio_limit_is_server_wide(policy):
     assert root.findtext('limits/freo-listeners')=='100'
     assert int(root.findtext('limits/clients'))>100
     assert not root.findall('mount/max-listeners')
+
+
+def test_admin_repair_never_defaults_to_active_or_self_hosted(policy):
+    from freo_ops.hosting_admin import administrative_policy
+    saved=h.read();h.atomic(h.STATE/'last-valid.json',saved)
+    h.atomic(h.STATE/'enabled',True);policy.write_text('invalid')
+    with pytest.raises(h.HostingError):administrative_policy()
+    restored=administrative_policy(repair=True)
+    assert restored['hosted'] and restored['status']=='maintenance'
+    assert restored['limits']==saved['limits']
+
+
+def test_native_listener_limit_rejects_unsupported_capacity(policy):
+    data=h.read();data['limits']['listeners']=32641
+    with pytest.raises(h.HostingError):h.validate(data)
+
+
+def test_blob_reservation_lives_until_outer_transaction_commit(policy,monkeypatch):
+    from contextlib import contextmanager
+    live=[]
+    @contextmanager
+    def reserve(size):
+        live.append(size)
+        try:yield
+        finally:live.remove(size)
+    monkeypatch.setattr(storage,'reserve',reserve)
+    monkeypatch.setenv('DATABASE_URL','sqlite:///:memory:');monkeypatch.setenv('SECRET_KEY','hosting-test')
+    from app import create_app
+    from app.extensions import db
+    from app.models import WebsiteAsset
+    app=create_app('testing')
+    with app.app_context():
+        db.create_all()
+        with db.session.begin_nested():
+            db.session.add(WebsiteAsset(id='hosting-test',image=b'1234',small=b'12'))
+            db.session.flush()
+        assert live==[6], 'savepoint commit must retain the quota reservation'
+        db.session.commit()
+        assert live==[]
+        db.drop_all()
+
+
+def test_encoder_retains_reservation_after_parent_is_killed(quota):
+    import signal,time
+    ctx=multiprocessing.get_context('fork')
+    ready=quota/'ready';finished=quota/'finished'
+    def encode():
+        storage.run_media(['/usr/bin/python3','-c',
+            'import sys,time;from pathlib import Path;Path(sys.argv[1]).write_text("ready");time.sleep(2);Path(sys.argv[2]).write_text("finished")',
+            str(ready),str(finished)],max_output_bytes=600_000_000,check=True)
+    process=ctx.Process(target=encode);process.start()
+    try:
+        deadline=time.monotonic()+10
+        while not ready.exists() and time.monotonic()<deadline:time.sleep(.02)
+        assert ready.exists()
+        os.kill(process.pid,signal.SIGKILL);process.join(5)
+        with pytest.raises(h.HostingError),storage.reserve(500_000_000):pass
+        deadline=time.monotonic()+10
+        while not finished.exists() and time.monotonic()<deadline:time.sleep(.05)
+        assert finished.exists()
+        # Allow the encoder to close its inherited descriptor after the write.
+        deadline=time.monotonic()+5
+        while storage.usage()['reserved_bytes'] and time.monotonic()<deadline:time.sleep(.05)
+        assert storage.usage()['reserved_bytes']==0
+    finally:
+        if process.is_alive():process.kill();process.join(5)

@@ -4,6 +4,7 @@ After=network-online.target postgresql.service
 Wants=network-online.target
 
 [Service]
+ExecCondition=/usr/bin/python3 /usr/local/lib/freo-hosting/guard.py --web
 Type=simple
 User=freo
 Group=freo

@@ -287,6 +287,13 @@ def upgrade(artifact, signature, keyring, env_file, backup, passphrase, verifica
                 raise recovery.RecoveryError('Installed source and schema do not match; recover the baseline first')
             from . import v1
             adopting_v1 = v1.transition(current, release, revision, manifest['version'])
+            adopting_hosting = v1.hosting_transition(current, release, revision)
+            if adopting_hosting:
+                v1.check_services()
+                v1.check_runtime(current, release_environment(values, env_file))
+                v1.check_space(values['DATABASE_URL'], roots, release, backup, verification_directory)
+            if installed_hosting['hosted'] and not (release / 'freo_ops/hosting.py').is_file():
+                raise recovery.RecoveryError('Hosted installations cannot upgrade to code without hosting enforcement')
             if adopting_v1:
                 v1.check_services()
                 v1.check_legacy_templates(current)
@@ -294,7 +301,7 @@ def upgrade(artifact, signature, keyring, env_file, backup, passphrase, verifica
                 v1.check_space(values['DATABASE_URL'], roots, release, backup, verification_directory)
                 for override in Path('/etc/systemd/system/icecast2.service.d').glob('*.conf'):
                     raise recovery.RecoveryError('Existing Icecast override requires review before V1 adoption')
-            for directory in (() if adopting_v1 else ('liquidsoap', 'icecast', 'nginx')):
+            for directory in (() if adopting_v1 or adopting_hosting else ('liquidsoap', 'icecast', 'nginx')):
                 for path in (release / 'deploy' / directory).rglob('*'):
                     if path.is_file():
                         old = current / path.relative_to(release)
@@ -352,7 +359,7 @@ def upgrade(artifact, signature, keyring, env_file, backup, passphrase, verifica
             verified = recovery.restore(backup, passphrase, target_values['DATABASE_URL'], verification_directory)
             journal['verification_database'] = verified['database']
             journal['verification_directory'] = str(verification_directory)
-            if adopting_v1:
+            if adopting_v1 or adopting_hosting:
                 journal['phase'] = 'dependencies'
                 atomic_json(journal_path, journal)
                 binary = v1.prepare_icecast(release, state)
@@ -406,6 +413,16 @@ def upgrade(artifact, signature, keyring, env_file, backup, passphrase, verifica
                     os.fsync(stream.fileno())
                 os.replace(pending, target)
                 sync_directory(target.parent)
+            # Hosting entrypoint and standalone service guards follow the candidate.
+            hosting_installer = release / 'scripts/install-hosting.py'
+            if hosting_installer.exists():
+                recovery.run(['python3', str(hosting_installer)])
+            elif installed_hosting['hosted']:
+                raise recovery.RecoveryError('Hosted installations require a release with hosting enforcement')
+            if adopting_hosting:
+                v1.activate_icecast(binary, replacing=True)
+                v1.provision(release, values, env)
+                v1.verify_permanent_files(backup, passphrase, values)
             if adopting_v1:
                 maintenance_guards(state)
                 v1.activate_icecast(binary)
@@ -416,12 +433,6 @@ def upgrade(artifact, signature, keyring, env_file, backup, passphrase, verifica
                 if microphone and journal['previous_units'].get('/etc/systemd/system/freo-mic.service') is None:
                     recovery.run(['systemctl', 'enable', 'freo-mic.service'])
                     journal['active_units'].append('freo-mic.service')
-            # Hosting entrypoint and standalone service guards follow the candidate.
-            hosting_installer = release / 'scripts/install-hosting.py'
-            if hosting_installer.exists():
-                recovery.run(['python3', str(hosting_installer)])
-            elif installed_hosting['hosted']:
-                raise recovery.RecoveryError('Hosted installations require a release with hosting enforcement')
             switch_pointer(root, release)
             recovery.run(['systemctl', 'daemon-reload'])
             journal['phase'] = 'starting'

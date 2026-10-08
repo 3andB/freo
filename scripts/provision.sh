@@ -228,6 +228,7 @@ if [[ -f "$install_dir/migrations/env.py" ]]; then
 fi
 (cd "$install_dir" && env FREO_ENV_FILE="$install_dir/.env" "$install_dir/venv/bin/flask" --app wsgi:app admin bootstrap)
 unit_src=$source_dir/deploy/systemd/freo.service
+python3 "$source_dir/scripts/install-hosting.py"
 unit_dst=/etc/systemd/system/freo.service
 if [[ -f $unit_dst ]] && ! cmp -s "$unit_src" "$unit_dst"; then
   cp -a "$unit_dst" "$unit_dst.backup.$(date +%Y%m%d%H%M%S)"
@@ -336,7 +337,6 @@ for attempt in {1..30}; do
   sleep 2
 done
 fi
-python3 "$source_dir/scripts/install-hosting.py"
 bash "$source_dir/scripts/install-statistics.sh" "$source_dir"
 (cd "$install_dir" && bash "$source_dir/scripts/validate-install.sh")
 
