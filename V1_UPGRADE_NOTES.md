@@ -113,6 +113,14 @@ restricted to the named trash server and known original paths/identities; do not
 run it unchanged on a customer host. General recovery remains an explicit
 operator procedure as described in [recovery and upgrades](docs/recovery-and-upgrades.md).
 
+Acceptance completed with **two full upgrades using the same final candidate**
+from matched clean 0.3.2 baselines. Both passed original-data, artwork, history,
+scheduling, imaging, DJ/recording, API/production and real WebRTC audio checks.
+The final candidate’s own backup restored working 0.3.2 before the second run.
+A separate SIGKILL-after-migration test and real reboot demonstrated persistent
+maintenance guards and successful backup recovery. No manual row repairs were
+needed. The report records exact commits, artifact hash, evidence and limits.
+
 ## Historical development record
 
 The entries below record their scope at the time. Earlier statements deferring

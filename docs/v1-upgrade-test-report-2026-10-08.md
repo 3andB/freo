@@ -1,6 +1,8 @@
 # Freo 0.3.2 → V1 upgrade acceptance, 8 October 2026
 
-**Status: PENDING FINAL RUNS.** Private candidate testing only; no public release,
+**Status: ACCEPTED for the tested installation profile. Two complete upgrades
+from clean 0.3.2 baselines passed using the final runtime code, without manual
+row repairs or undocumented intervention.** Private candidate testing only; no public release,
 tag, merge to main, production change or hosting-management work.
 
 ## Source, target and environment
@@ -62,12 +64,12 @@ verification, interruption and attachment commands. Private evidence resides in
 
 | Check | Original baseline | Verified after each final upgrade |
 | --- | --- | --- |
-| Stations | IDs 1, 2, 3; two running, one stopped | PENDING |
-| Audio/artwork | 9 music tracks, 3 imaging assets, 3 album covers; 18 files | PENDING |
-| Programming | 12 playlists, 9 members, 3 rotations, 3 clocks, 21 assignments, 3 imaging groups | PENDING |
-| Users/configuration | 2 original accounts, 9 environment keys, 5 secret files | PENDING |
-| History/analytics | 16 confirmed starts, 43 statistic buckets, 80 samples | PENDING |
-| Storage | `/srv/freo-upgrade-media`, custom ingest override | PENDING |
+| Stations | IDs 1, 2, 3; two running, one stopped | Same IDs, settings and running/stopped states |
+| Audio/artwork | 9 music tracks, 3 imaging assets, 3 album covers; 18 files | All 18 hashes match; 3 verified conversion copies added |
+| Programming | 12 playlists, 9 members, 3 rotations, 3 clocks, 21 assignments, 3 imaging groups | All retained; 3 converted playlists added; imaging cart and scheduled group played |
+| Users/configuration | 2 original accounts, 9 environment keys, 5 secret files | Both old logins work; original values and secret bytes match |
+| History/analytics | 16 confirmed starts, 43 statistic buckets, 80 samples | Starts 92/93; buckets 111/119; samples 304/308; exports work |
+| Storage | `/srv/freo-upgrade-media`, custom ingest override | Same root and override; originals, artwork and new recordings accessible |
 
 The updater compares all pre-existing database rows' original columns and
 sequences against its restored recovery point before the explicit Imaging
@@ -120,15 +122,31 @@ streams and Chromium automatic handoff passed. Temporary test tooling removed
 by reboot was recreated outside `/tmp`; the self-contained application backup
 was sufficient to restore the installation.
 
-Final candidate recovery/repeat: PENDING.
+Final candidate `final1` was restored from its own `pre-final1.gpg`; both old
+logins, all hashes, all station pages and two decoded streams passed on 0.3.2.
+That matched baseline then completed `final2`. The off-server backup checksum is
+`5cb60355f68de52c4b05211fee84c53ef22ef1f1972ef12e8f73e171b69fe428`.
+Encrypted backups, the matched candidate and Git bundles are retained in the
+private off-server `/root/freo-v1-upgrade-archive-20261008` directory.
+Identical-candidate reapplication returned `already_installed` and preserved
+the prior completed journal.
 
 ## Acceptance and limits
 
 Focused upgrade/release/imaging regressions: **60 passed**. Isolated real
 PostgreSQL recovery/migration regressions: **29 passed**. Installer/migration-head
-checks: **6 passed**. Real patched-Icecast checks: PENDING.
+checks: **6 passed**. Real patched-Icecast checks: **2 passed** (listener polling with five reloads,
+and decoded MP3/AAC-LC at 128 kbps). The strengthened existing-clock/queued-audio
+relationship regression also passed after its final test-only update.
 
-Full final runs: PENDING.
+| Run | Completed operation | Result |
+| --- | --- | --- |
+| `final1` | `c9021cdc44194b58b395470392c5d0cf` | Full data, imaging, HTTP, DJ/recordings and microphone acceptance passed |
+| `final2` | `75d8d9a06661452b957a9ab20f8a13f0` | Same complete checks passed from restored clean 0.3.2 |
+
+Final `/ready` reports `ok`; no failed systemd units or maintenance marker remain.
+An off-server HTTP check received 200 from the home page and 8,192 audio bytes
+from each running public stream. The third station remains intentionally stopped.
 
 Scope is the tested standard Ubuntu/local-PostgreSQL installation and reviewed
 custom-storage override. Recovery is a demonstrated explicit restore-and-attach

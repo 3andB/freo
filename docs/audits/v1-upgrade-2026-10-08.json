@@ -1,0 +1,785 @@
+{
+  "source_commit": "83200e6508654bea13f404e9d5699a8ad3eae19d",
+  "target_commit": "e6b8b47af908ecf7ad0a72f56a86a471274cbbad",
+  "artifact_sha256": "4ba428aae8c1161a762375b4818baad7b5166ea65db68d7cecbc25a3c5b08149",
+  "baseline": {
+    "version": "0.3.2",
+    "stations": [
+      [
+        1,
+        "acceptance",
+        "Upgrade Acceptance",
+        "UTC",
+        "running"
+      ],
+      [
+        2,
+        "upgrade-two",
+        "upgrade-two",
+        "Europe/London",
+        "running"
+      ],
+      [
+        3,
+        "upgrade-stopped",
+        "upgrade-stopped",
+        "Europe/London",
+        "stopped"
+      ]
+    ],
+    "table_counts": {
+      "admin_bootstrap": 1,
+      "admin_login_sessions": 2,
+      "admin_users": 2,
+      "advertisers": 0,
+      "albums": 3,
+      "alembic_version": 1,
+      "artists": 6,
+      "audit_events": 17,
+      "automation_heartbeat": 1,
+      "automation_states": 3,
+      "booth_cues": 1,
+      "campaign_schedule_rules": 0,
+      "campaigns": 0,
+      "central_connection_check": 0,
+      "central_hourly_metrics": 3,
+      "central_installation": 1,
+      "central_station_state": 3,
+      "channel_schedules": 1,
+      "clock_slots": 3,
+      "clock_states": 1,
+      "clocks": 3,
+      "commercial_creatives": 0,
+      "cue_mutations": 0,
+      "cue_playbacks": 0,
+      "dmca_cases": 0,
+      "event_block_executions": 0,
+      "event_block_item_executions": 0,
+      "event_block_items": 0,
+      "event_blocks": 0,
+      "event_queue_cancellations": 0,
+      "imaging_assets": 3,
+      "imaging_group_assets": 3,
+      "imaging_groups": 3,
+      "installation_settings": 1,
+      "listener_feedback_events": 0,
+      "listener_votes": 0,
+      "live_cart_slots": 0,
+      "live_control_commands": 0,
+      "live_queue_snapshots": 2,
+      "media_categories": 3,
+      "media_ingest_jobs": 2,
+      "music_artwork": 0,
+      "music_edits": 3,
+      "music_import_items": 2,
+      "music_import_sessions": 2,
+      "music_tags": 21,
+      "playlist_cursors": 0,
+      "playlist_items": 9,
+      "playlists": 12,
+      "public_schedule_revisions": 0,
+      "rotation_cursors": 0,
+      "rotation_slots": 3,
+      "rotations": 3,
+      "saved_booth_cues": 0,
+      "schedule_assignments": 21,
+      "schedule_composition_revisions": 0,
+      "schedule_compositions": 0,
+      "schedule_cursors": 1,
+      "schedule_programs": 0,
+      "schedule_transitions": 1,
+      "selection_decisions": 33,
+      "software_license": 0,
+      "song_flags": 0,
+      "song_tags": 0,
+      "station_aliases": 0,
+      "station_domains": 0,
+      "station_logos": 0,
+      "station_player_assets": 0,
+      "station_player_settings": 0,
+      "stations": 3,
+      "stats_buckets": 43,
+      "stats_feedback": 0,
+      "stats_geo_buckets": 0,
+      "stats_geo_reach": 0,
+      "stats_incidents": 5,
+      "stats_presence": 0,
+      "stats_samples": 80,
+      "stats_states": 4,
+      "stats_storage": 1,
+      "stream_mounts": 3,
+      "system_upgrades": 0,
+      "timed_event_occurrences": 0,
+      "timed_events": 0,
+      "track_categories": 9,
+      "tracks": 9,
+      "traffic_logs": 0,
+      "traffic_placements": 0,
+      "traffic_stopset_items": 0,
+      "traffic_stopsets": 0,
+      "website_assets": 0,
+      "website_publications": 0,
+      "website_settings": 0
+    },
+    "media_sha256": {
+      "/srv/freo-upgrade-media/upgrade-stopped/imaging/d919d2e2d8f74a3e807b5bfd40f35a48.mp3": "1e7e38ea2b8a54dda0b344e7cbd4065b43ec40498df3f2da3785aad2f06375a6",
+      "/srv/freo-upgrade-media/upgrade-stopped/artwork/9ad810807fad4c6aa39cd9292a6e2ee0.jpg": "fd69b26603ea9846a7ccc1b0c95bfce2f8f120193a2740b3b9644896534eca3c",
+      "/srv/freo-upgrade-media/upgrade-stopped/previews/bebc01ac71094b16ad09c0e0c626c6f8.mp3": "749f7ca2bf67625277c4cf8de66e8cedb9cbac070ae95f0f1f0ff6ea71bdbec4",
+      "/srv/freo-upgrade-media/upgrade-stopped/originals/bebc01ac71094b16ad09c0e0c626c6f8.m4a": "6a67894cd97f687369e701172e99a59ebbe90557131181a6ab5b2fe51b47e187",
+      "/srv/freo-upgrade-media/upgrade-stopped/originals/70752afb9f8e45dfbbbcf48626b947e3.mp3": "96214042aeb5aa12e1bc00131323ad6e00e09685f7f7e2336f90471068a81f4d",
+      "/srv/freo-upgrade-media/upgrade-stopped/originals/bd53a3c76dbe48228e72145e70a1d460.mp3": "1e7e38ea2b8a54dda0b344e7cbd4065b43ec40498df3f2da3785aad2f06375a6",
+      "/srv/freo-upgrade-media/acceptance/imaging/d509240412f549008809c488d5f486ff.mp3": "1e7e38ea2b8a54dda0b344e7cbd4065b43ec40498df3f2da3785aad2f06375a6",
+      "/srv/freo-upgrade-media/acceptance/artwork/ddfdc38c1d334591ae7872b776fb1540.jpg": "fd69b26603ea9846a7ccc1b0c95bfce2f8f120193a2740b3b9644896534eca3c",
+      "/srv/freo-upgrade-media/acceptance/previews/63133461cb89492fa9d07aad9a318b7c.mp3": "749f7ca2bf67625277c4cf8de66e8cedb9cbac070ae95f0f1f0ff6ea71bdbec4",
+      "/srv/freo-upgrade-media/acceptance/originals/04c7741876074a9e8fda068cb9f941bc.mp3": "96214042aeb5aa12e1bc00131323ad6e00e09685f7f7e2336f90471068a81f4d",
+      "/srv/freo-upgrade-media/acceptance/originals/61addbeb34ec40b2a4c8adbbbb5de1e6.mp3": "1e7e38ea2b8a54dda0b344e7cbd4065b43ec40498df3f2da3785aad2f06375a6",
+      "/srv/freo-upgrade-media/acceptance/originals/63133461cb89492fa9d07aad9a318b7c.m4a": "6a67894cd97f687369e701172e99a59ebbe90557131181a6ab5b2fe51b47e187",
+      "/srv/freo-upgrade-media/upgrade-two/imaging/691104ce0e1e4b3db3bbcb65f923baf3.mp3": "1e7e38ea2b8a54dda0b344e7cbd4065b43ec40498df3f2da3785aad2f06375a6",
+      "/srv/freo-upgrade-media/upgrade-two/artwork/aacd3501836b4d5697b433fd8eb4c047.jpg": "fd69b26603ea9846a7ccc1b0c95bfce2f8f120193a2740b3b9644896534eca3c",
+      "/srv/freo-upgrade-media/upgrade-two/previews/57a349f12e2e4f20b10bedcff26f4119.mp3": "749f7ca2bf67625277c4cf8de66e8cedb9cbac070ae95f0f1f0ff6ea71bdbec4",
+      "/srv/freo-upgrade-media/upgrade-two/originals/02a39ab890044f7e870c46c6da993ba0.mp3": "96214042aeb5aa12e1bc00131323ad6e00e09685f7f7e2336f90471068a81f4d",
+      "/srv/freo-upgrade-media/upgrade-two/originals/57a349f12e2e4f20b10bedcff26f4119.m4a": "6a67894cd97f687369e701172e99a59ebbe90557131181a6ab5b2fe51b47e187",
+      "/srv/freo-upgrade-media/upgrade-two/originals/50f644d5e5794d3480741ef9323ac539.mp3": "1e7e38ea2b8a54dda0b344e7cbd4065b43ec40498df3f2da3785aad2f06375a6"
+    },
+    "confirmed_history": 16,
+    "original_accounts": 2
+  },
+  "runs": {
+    "final1": {
+      "upgrade": {
+        "operation": "c9021cdc44194b58b395470392c5d0cf",
+        "phase": "complete",
+        "source_revision": "c83d4e5f9012",
+        "target_revision": "fc06a1b2c3d4",
+        "version": "1.0.0-dev.1",
+        "backup": "/root/freo-upgrade-tests/pre-final1.gpg",
+        "verification_database": "freo_restore_e21ad4ae4bb247e8bea19e7caf17688a"
+      },
+      "preservation": {
+        "status": "passed",
+        "stations": [
+          [
+            1,
+            "acceptance",
+            "Upgrade Acceptance",
+            "UTC",
+            "running"
+          ],
+          [
+            2,
+            "upgrade-two",
+            "upgrade-two",
+            "Europe/London",
+            "running"
+          ],
+          [
+            3,
+            "upgrade-stopped",
+            "upgrade-stopped",
+            "Europe/London",
+            "stopped"
+          ]
+        ],
+        "original_accounts": 2,
+        "original_media_files": 18,
+        "original_environment_keys": 9,
+        "station_secret_files_checked": 5,
+        "historical_starts_before": 16,
+        "historical_starts_after": 92,
+        "custom_media_root_preserved": true,
+        "custom_ingest_override_preserved": true,
+        "stopped_station_preserved": true
+      },
+      "counts_before_feature_tests": {
+        "admin_bootstrap": 1,
+        "admin_login_sessions": 7,
+        "admin_users": 2,
+        "advertisers": 0,
+        "albums": 3,
+        "alembic_version": 1,
+        "api_credential_stations": 0,
+        "api_credentials": 0,
+        "api_rate_buckets": 0,
+        "artists": 6,
+        "audit_events": 17,
+        "automation_heartbeat": 1,
+        "automation_states": 3,
+        "booth_cues": 2,
+        "campaign_display_assets": 0,
+        "campaign_schedule_rules": 0,
+        "campaigns": 0,
+        "central_connection_check": 0,
+        "central_hourly_metrics": 6,
+        "central_installation": 1,
+        "central_station_state": 3,
+        "channel_schedules": 1,
+        "clock_slots": 3,
+        "clock_states": 1,
+        "clocks": 3,
+        "commercial_creatives": 0,
+        "cue_mutations": 0,
+        "cue_playbacks": 0,
+        "dj_station_assignments": 0,
+        "dj_station_profiles": 0,
+        "dmca_cases": 0,
+        "event_block_executions": 0,
+        "event_block_item_executions": 0,
+        "event_block_items": 0,
+        "event_blocks": 0,
+        "event_queue_cancellations": 0,
+        "imaging_assets": 3,
+        "imaging_group_assets": 3,
+        "imaging_groups": 3,
+        "installation_settings": 1,
+        "listener_feedback_events": 0,
+        "listener_requests": 0,
+        "listener_votes": 0,
+        "live_cart_slots": 0,
+        "live_control_commands": 0,
+        "live_queue_snapshots": 2,
+        "live_sessions": 0,
+        "media_categories": 3,
+        "media_ingest_jobs": 2,
+        "music_artwork": 0,
+        "music_edits": 3,
+        "music_import_items": 2,
+        "music_import_sessions": 2,
+        "music_tags": 21,
+        "playlist_cursors": 0,
+        "playlist_items": 15,
+        "playlists": 15,
+        "production_attempts": 0,
+        "production_drafts": 0,
+        "production_grants": 0,
+        "provider_credentials": 0,
+        "public_schedule_revisions": 0,
+        "request_rate_buckets": 0,
+        "rotation_cursors": 0,
+        "rotation_slots": 3,
+        "rotations": 3,
+        "saved_booth_cues": 0,
+        "schedule_assignments": 21,
+        "schedule_composition_revisions": 0,
+        "schedule_compositions": 0,
+        "schedule_cursors": 1,
+        "schedule_programs": 0,
+        "schedule_transitions": 1,
+        "selection_decisions": 121,
+        "show_recordings": 0,
+        "software_license": 0,
+        "song_flags": 0,
+        "song_tags": 0,
+        "station_aliases": 0,
+        "station_domains": 0,
+        "station_logos": 0,
+        "station_player_assets": 0,
+        "station_player_settings": 0,
+        "station_production": 0,
+        "station_relays": 0,
+        "stations": 3,
+        "stats_buckets": 111,
+        "stats_feedback": 0,
+        "stats_geo_buckets": 1,
+        "stats_geo_reach": 1,
+        "stats_incidents": 13,
+        "stats_presence": 2,
+        "stats_samples": 304,
+        "stats_session_buckets": 3,
+        "stats_states": 4,
+        "stats_storage": 1,
+        "stream_mounts": 3,
+        "system_upgrades": 0,
+        "timed_event_occurrences": 0,
+        "timed_events": 0,
+        "track_categories": 9,
+        "tracks": 12,
+        "traffic_logs": 0,
+        "traffic_placements": 0,
+        "traffic_stopset_items": 0,
+        "traffic_stopsets": 0,
+        "website_assets": 0,
+        "website_publications": 0,
+        "website_settings": 0
+      },
+      "imaging": {
+        "status": "passed",
+        "legacy_assets_converted": 3,
+        "original_music_unchanged": 9,
+        "decoded_converted_files": 3,
+        "legacy_cart_played": 124,
+        "clock_group_played": 125
+      },
+      "features": [
+        {
+          "check": "Original account authenticates",
+          "account": "upgrade-dj@example.test"
+        },
+        {
+          "check": "Original account authenticates",
+          "account": "acceptance@example.test"
+        },
+        {
+          "check": "Original station pages, playlists, schedule and history accessible",
+          "station": "acceptance"
+        },
+        {
+          "check": "Original station pages, playlists, schedule and history accessible",
+          "station": "upgrade-two"
+        },
+        {
+          "check": "Original station pages, playlists, schedule and history accessible",
+          "station": "upgrade-stopped"
+        },
+        {
+          "check": "All original album artwork served through authenticated application"
+        },
+        {
+          "check": "Actual API bearer authentication and station scope"
+        },
+        {
+          "check": "Listener request submitted over installed HTTP API"
+        },
+        {
+          "check": "Installed production and ingest workers created decoded voice track",
+          "track_id": 13
+        },
+        {
+          "check": "Revoked API credential rejected"
+        }
+      ],
+      "dj": [
+        {
+          "test": "Created scoped DJ through browser"
+        },
+        {
+          "test": "Administrator logout"
+        },
+        {
+          "test": "DJ login"
+        },
+        {
+          "test": "DJ route authority",
+          "path": "/admin/stations/acceptance/live",
+          "status": 200
+        },
+        {
+          "test": "DJ route authority",
+          "path": "/admin/stations/upgrade-two/live",
+          "status": 403
+        },
+        {
+          "test": "DJ route authority",
+          "path": "/admin/stations/upgrade-two/recordings",
+          "status": 403
+        },
+        {
+          "test": "DJ route authority",
+          "path": "/admin/djs",
+          "status": 403
+        },
+        {
+          "test": "DJ route authority",
+          "path": "/admin/api-credentials",
+          "status": 403
+        },
+        {
+          "test": "DJ route authority",
+          "path": "/admin/stations/acceptance/media/upload",
+          "status": 403
+        },
+        {
+          "test": "Consecutive short recording decoded",
+          "turn": 0,
+          "id": "5c821a992eaa4064b7f7bcb48241827f",
+          "status": "complete",
+          "size": 297169,
+          "duration": 12382,
+          "key": "5c821a992eaa4064b7f7bcb48241827f.mp3",
+          "error": null
+        },
+        {
+          "test": "Consecutive short recording decoded",
+          "turn": 1,
+          "id": "6361c3c35e2b43c5b314ce1496eb7598",
+          "status": "complete",
+          "size": 199993,
+          "duration": 8333,
+          "key": "6361c3c35e2b43c5b314ce1496eb7598.mp3",
+          "error": null
+        },
+        {
+          "test": "Recorded show actually plays in browser"
+        },
+        {
+          "test": "DJ logout"
+        }
+      ],
+      "microphone": {
+        "status": "passed",
+        "transport": "real installed WebRTC gateway, Liquidsoap and Icecast",
+        "source": "generated 1000 Hz microphone",
+        "decoded_rms": 0.12302379492612842,
+        "decoded_frequency_hz": 1000.0,
+        "disconnect_return": "AUTO"
+      }
+    },
+    "final2": {
+      "upgrade": {
+        "operation": "75d8d9a06661452b957a9ab20f8a13f0",
+        "phase": "complete",
+        "source_revision": "c83d4e5f9012",
+        "target_revision": "fc06a1b2c3d4",
+        "version": "1.0.0-dev.1",
+        "backup": "/root/freo-upgrade-tests/pre-final2.gpg",
+        "verification_database": "freo_restore_9a3fe72e8645489795a0c9505ff44a5d"
+      },
+      "preservation": {
+        "status": "passed",
+        "stations": [
+          [
+            1,
+            "acceptance",
+            "Upgrade Acceptance",
+            "UTC",
+            "running"
+          ],
+          [
+            2,
+            "upgrade-two",
+            "upgrade-two",
+            "Europe/London",
+            "running"
+          ],
+          [
+            3,
+            "upgrade-stopped",
+            "upgrade-stopped",
+            "Europe/London",
+            "stopped"
+          ]
+        ],
+        "original_accounts": 2,
+        "original_media_files": 18,
+        "original_environment_keys": 9,
+        "station_secret_files_checked": 5,
+        "historical_starts_before": 16,
+        "historical_starts_after": 93,
+        "custom_media_root_preserved": true,
+        "custom_ingest_override_preserved": true,
+        "stopped_station_preserved": true
+      },
+      "counts_before_feature_tests": {
+        "admin_bootstrap": 1,
+        "admin_login_sessions": 9,
+        "admin_users": 2,
+        "advertisers": 0,
+        "albums": 3,
+        "alembic_version": 1,
+        "api_credential_stations": 0,
+        "api_credentials": 0,
+        "api_rate_buckets": 0,
+        "artists": 6,
+        "audit_events": 17,
+        "automation_heartbeat": 1,
+        "automation_states": 3,
+        "booth_cues": 2,
+        "campaign_display_assets": 0,
+        "campaign_schedule_rules": 0,
+        "campaigns": 0,
+        "central_connection_check": 0,
+        "central_hourly_metrics": 6,
+        "central_installation": 1,
+        "central_station_state": 3,
+        "channel_schedules": 1,
+        "clock_slots": 3,
+        "clock_states": 1,
+        "clocks": 3,
+        "commercial_creatives": 0,
+        "cue_mutations": 0,
+        "cue_playbacks": 0,
+        "dj_station_assignments": 0,
+        "dj_station_profiles": 0,
+        "dmca_cases": 0,
+        "event_block_executions": 0,
+        "event_block_item_executions": 0,
+        "event_block_items": 0,
+        "event_blocks": 0,
+        "event_queue_cancellations": 0,
+        "imaging_assets": 3,
+        "imaging_group_assets": 3,
+        "imaging_groups": 3,
+        "installation_settings": 1,
+        "listener_feedback_events": 0,
+        "listener_requests": 0,
+        "listener_votes": 0,
+        "live_cart_slots": 0,
+        "live_control_commands": 0,
+        "live_queue_snapshots": 2,
+        "live_sessions": 0,
+        "media_categories": 3,
+        "media_ingest_jobs": 2,
+        "music_artwork": 0,
+        "music_edits": 3,
+        "music_import_items": 2,
+        "music_import_sessions": 2,
+        "music_tags": 21,
+        "playlist_cursors": 0,
+        "playlist_items": 15,
+        "playlists": 15,
+        "production_attempts": 0,
+        "production_drafts": 0,
+        "production_grants": 0,
+        "provider_credentials": 0,
+        "public_schedule_revisions": 0,
+        "request_rate_buckets": 0,
+        "rotation_cursors": 0,
+        "rotation_slots": 3,
+        "rotations": 3,
+        "saved_booth_cues": 0,
+        "schedule_assignments": 21,
+        "schedule_composition_revisions": 0,
+        "schedule_compositions": 0,
+        "schedule_cursors": 1,
+        "schedule_programs": 0,
+        "schedule_transitions": 1,
+        "selection_decisions": 126,
+        "show_recordings": 0,
+        "software_license": 0,
+        "song_flags": 0,
+        "song_tags": 0,
+        "station_aliases": 0,
+        "station_domains": 0,
+        "station_logos": 0,
+        "station_player_assets": 0,
+        "station_player_settings": 0,
+        "station_production": 0,
+        "station_relays": 0,
+        "stations": 3,
+        "stats_buckets": 119,
+        "stats_feedback": 0,
+        "stats_geo_buckets": 1,
+        "stats_geo_reach": 1,
+        "stats_incidents": 15,
+        "stats_presence": 3,
+        "stats_samples": 308,
+        "stats_session_buckets": 3,
+        "stats_states": 4,
+        "stats_storage": 1,
+        "stream_mounts": 3,
+        "system_upgrades": 0,
+        "timed_event_occurrences": 0,
+        "timed_events": 0,
+        "track_categories": 9,
+        "tracks": 12,
+        "traffic_logs": 0,
+        "traffic_placements": 0,
+        "traffic_stopset_items": 0,
+        "traffic_stopsets": 0,
+        "website_assets": 0,
+        "website_publications": 0,
+        "website_settings": 0
+      },
+      "imaging": {
+        "status": "passed",
+        "legacy_assets_converted": 3,
+        "original_music_unchanged": 9,
+        "decoded_converted_files": 3,
+        "legacy_cart_played": 127,
+        "clock_group_played": 129
+      },
+      "features": [
+        {
+          "check": "Original account authenticates",
+          "account": "upgrade-dj@example.test"
+        },
+        {
+          "check": "Original account authenticates",
+          "account": "acceptance@example.test"
+        },
+        {
+          "check": "Original station pages, playlists, schedule and history accessible",
+          "station": "acceptance"
+        },
+        {
+          "check": "Original station pages, playlists, schedule and history accessible",
+          "station": "upgrade-two"
+        },
+        {
+          "check": "Original station pages, playlists, schedule and history accessible",
+          "station": "upgrade-stopped"
+        },
+        {
+          "check": "All original album artwork served through authenticated application"
+        },
+        {
+          "check": "Actual API bearer authentication and station scope"
+        },
+        {
+          "check": "Listener request submitted over installed HTTP API"
+        },
+        {
+          "check": "Installed production and ingest workers created decoded voice track",
+          "track_id": 13
+        },
+        {
+          "check": "Revoked API credential rejected"
+        }
+      ],
+      "dj": [
+        {
+          "test": "Created scoped DJ through browser"
+        },
+        {
+          "test": "Administrator logout"
+        },
+        {
+          "test": "DJ login"
+        },
+        {
+          "test": "DJ route authority",
+          "path": "/admin/stations/acceptance/live",
+          "status": 200
+        },
+        {
+          "test": "DJ route authority",
+          "path": "/admin/stations/upgrade-two/live",
+          "status": 403
+        },
+        {
+          "test": "DJ route authority",
+          "path": "/admin/stations/upgrade-two/recordings",
+          "status": 403
+        },
+        {
+          "test": "DJ route authority",
+          "path": "/admin/djs",
+          "status": 403
+        },
+        {
+          "test": "DJ route authority",
+          "path": "/admin/api-credentials",
+          "status": 403
+        },
+        {
+          "test": "DJ route authority",
+          "path": "/admin/stations/acceptance/media/upload",
+          "status": 403
+        },
+        {
+          "test": "Consecutive short recording decoded",
+          "turn": 0,
+          "id": "3bec046915ed44dc81410e6a0a6a54c7",
+          "status": "complete",
+          "size": 187454,
+          "duration": 7811,
+          "key": "3bec046915ed44dc81410e6a0a6a54c7.mp3",
+          "error": null
+        },
+        {
+          "test": "Consecutive short recording decoded",
+          "turn": 1,
+          "id": "cc6c4312a1674dea9a597ed9d46380ec",
+          "status": "complete",
+          "size": 186827,
+          "duration": 7784,
+          "key": "cc6c4312a1674dea9a597ed9d46380ec.mp3",
+          "error": null
+        },
+        {
+          "test": "Recorded show actually plays in browser"
+        },
+        {
+          "test": "DJ logout"
+        }
+      ],
+      "microphone": {
+        "status": "passed",
+        "transport": "real installed WebRTC gateway, Liquidsoap and Icecast",
+        "source": "generated 1000 Hz microphone",
+        "decoded_rms": 0.12302397739017569,
+        "decoded_frequency_hz": 999.6666666666666,
+        "disconnect_return": "AUTO"
+      }
+    }
+  },
+  "recovery": {
+    "interruption": {
+      "phase": "migration",
+      "operation": "50ffab032687440b8cb3dcc80fc5c60f",
+      "sigkill_exit": 137,
+      "maintenance": true,
+      "new_attempt_refused": true,
+      "verification_database": "freo_restore_2ad2495ff7d24c56bff064d220800a76"
+    },
+    "reboot": {
+      "status": "passed",
+      "reboot_observed": true,
+      "maintenance": true,
+      "active_freo_units": [],
+      "units_checked": 17
+    },
+    "restored_interrupted": {
+      "status": "passed",
+      "version": "0.3.2",
+      "schema": "c83d4e5f9012",
+      "media_checksums": 18,
+      "original_accounts_authenticated": 2,
+      "station_pages": 3,
+      "audio_streams_decoded": 2,
+      "stopped_station_preserved": true
+    },
+    "browser_after_interruption": {
+      "phase": "recoveryinterrupted",
+      "status": "passed",
+      "checks": [
+        "existing administrator login retained",
+        "license acceptance retained",
+        "broadcast started through actual systemd and Icecast",
+        "automatic playback and track handoff observed",
+        "Back navigation and persistent monitor"
+      ]
+    },
+    "restored_final1": {
+      "status": "passed",
+      "version": "0.3.2",
+      "schema": "c83d4e5f9012",
+      "media_checksums": 18,
+      "original_accounts_authenticated": 2,
+      "station_pages": 3,
+      "audio_streams_decoded": 2,
+      "stopped_station_preserved": true
+    }
+  },
+  "same_artifact_noop": {
+    "status": "already_installed",
+    "version": "1.0.0-dev.1"
+  },
+  "checks": {
+    "focused_upgrade_release_imaging": 60,
+    "real_postgresql": 29,
+    "installer": 6,
+    "deployed_icecast_isolated_reload_and_codecs": 2,
+    "strengthened_imaging_relationship_case": 1
+  },
+  "off_server_pre_final1_backup_sha256": "5cb60355f68de52c4b05211fee84c53ef22ef1f1972ef12e8f73e171b69fe428",
+  "external_http": [
+    {
+      "path": "/",
+      "status": 200,
+      "content_type": "text/html",
+      "bytes": 8192
+    },
+    {
+      "path": "/stream/acceptance",
+      "status": 200,
+      "content_type": "audio/mpeg",
+      "bytes": 8192
+    },
+    {
+      "path": "/stream/upgrade-two",
+      "status": 200,
+      "content_type": "audio/mpeg",
+      "bytes": 8192
+    }
+  ]
+}
