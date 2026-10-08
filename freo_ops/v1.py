@@ -109,22 +109,34 @@ def configure_environment(values, destination):
 def provision(release, values, env):
     python = str(release / 'venv/bin/python')
     root = Path(values.get('FREO_UPLOAD_ROOT') or '/var/lib/freo/uploads') / 'production'
+    if any(c in str(root) for c in '\n\r%"\\') or not root.is_absolute():
+        raise recovery.RecoveryError('Production storage must be an absolute systemd-safe path')
     if root.is_symlink():
         raise recovery.RecoveryError('Symlinked production storage requires review')
     recovery.run(['install', '-d', '-o', 'freo', '-g', 'freo', '-m', '2770', str(root)])
+    override = Path('/etc/systemd/system/freo-production.service.d/storage.conf')
+    if override.exists() or override.is_symlink():
+        raise recovery.RecoveryError('Custom production storage override requires review')
+    override.parent.mkdir(mode=0o755, exist_ok=True)
+    override.write_text('[Service]\nReadWritePaths=\nReadWritePaths="' + str(root.parent) + '"\n')
+    override.chmod(0o644)
     connection = recovery.connect(values['DATABASE_URL'])
     try:
         with connection.cursor() as cursor:
-            cursor.execute('SELECT s.slug FROM stations s JOIN stream_mounts t ON t.station_id=s.id WHERE s.enabled AND t.enabled ORDER BY s.id')
-            slugs = [row[0] for row in cursor.fetchall()]
+            cursor.execute('SELECT s.slug, s.enabled AND t.enabled FROM stations s JOIN stream_mounts t ON t.station_id=s.id WHERE s.deleted_at IS NULL ORDER BY s.id')
+            slugs = cursor.fetchall()
+            cursor.execute('SELECT values FROM installation_settings WHERE id=1')
+            microphone = bool(cursor.fetchone()[0].get('FREO_LIVE_MIC'))
     finally:
         connection.close()
-    for slug in slugs:
+    for slug, enabled in slugs:
         recovery.run([python, str(release / 'scripts/recording-storage.py'),
                       values.get('FREO_MEDIA_ROOT') or '/var/lib/freo/media', slug])
-        recovery.run([str(release / 'venv/bin/flask'), '--app', 'wsgi:app', 'station', 'render', slug],
-                     cwd=release, env=env)
+        if enabled:
+            recovery.run([str(release / 'venv/bin/flask'), '--app', 'wsgi:app', 'station', 'render', slug],
+                         cwd=release, env=env)
     recovery.run(['systemctl', 'daemon-reload'])
+    return microphone
 
 
 def check_runtime(current, env):

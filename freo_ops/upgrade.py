@@ -396,10 +396,13 @@ def upgrade(artifact, signature, keyring, env_file, backup, passphrase, verifica
             if adopting_v1:
                 maintenance_guards(state)
                 v1.activate_icecast(binary)
-                v1.provision(release, values, env)
+                microphone = v1.provision(release, values, env)
                 v1.verify_permanent_files(backup, passphrase, values)
                 recovery.run(['systemctl', 'enable', 'freo-production.service'])
                 journal['active_units'].append('freo-production.service')
+                if microphone and journal['previous_units'].get('/etc/systemd/system/freo-mic.service') is None:
+                    recovery.run(['systemctl', 'enable', 'freo-mic.service'])
+                    journal['active_units'].append('freo-mic.service')
             switch_pointer(root, release)
             recovery.run(['systemctl', 'daemon-reload'])
             journal['phase'] = 'starting'
