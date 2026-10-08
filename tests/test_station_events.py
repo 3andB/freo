@@ -327,7 +327,13 @@ def test_guarded_upgrade_converts_duplicate_imaging_without_reclassifying_music(
         db.session.add(asset);db.session.flush()
         cart=m.LiveCartSlot(station_id=station.id,role='HOT',position=1,imaging_asset_id=asset.id,label='Existing cart')
         group=m.ImagingGroup(station_id=station.id,slug='existing-ids',name='Existing IDs',enabled=True)
-        group.assets.append(asset);db.session.add_all([cart,group]);db.session.commit()
+        group.assets.append(asset);db.session.add_all([cart,group]);db.session.flush()
+        clock=m.Clock(station_id=station.id,slug='existing-clock',name='Existing clock')
+        clock.slots.extend([m.ClockSlot(position=1,slot_type='CART',imaging_asset_id=asset.id),
+                            m.ClockSlot(position=2,slot_type='IMAGING_GROUP',imaging_group_id=group.id)])
+        queued=m.SelectionDecision(station_id=station.id,imaging_asset_id=asset.id,status='queued',selection_method='imaging')
+        db.session.add_all([clock,queued]);db.session.commit()
+        clock_slot_ids=[row.id for row in clock.slots]
         with pytest.raises(ValueError,match='Stop this station'):
             convert(station,LocalMediaStorage(tmp_path))
         result=convert(station,LocalMediaStorage(tmp_path),maintenance=True)
@@ -340,6 +346,11 @@ def test_guarded_upgrade_converts_duplicate_imaging_without_reclassifying_music(
         assert cart.track_id==audio.id and cart.imaging_asset_id is None
         collection=m.Playlist.query.filter_by(legacy_imaging_group_id=group.id).one()
         assert [row.track_id for row in collection.items]==[audio.id]
+        db.session.expire_all()
+        assert [row.id for row in clock.slots]==clock_slot_ids
+        assert all(row.slot_type=='PLAYLIST' and row.imaging_asset_id is None and row.imaging_group_id is None for row in clock.slots)
+        assert all([item.track_id for item in row.playlist.items]==[audio.id] for row in clock.slots)
+        assert queued.track_id==audio.id and queued.imaging_asset_id is None and queued.status=='queued'
         assert LocalMediaStorage(tmp_path).regular_file(station.slug,audio.storage_key).read_bytes()==content
         assert (directory/key).read_bytes()==content
         count=m.Track.query.count()
