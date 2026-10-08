@@ -32,6 +32,9 @@ with recovery.unpack(bundle,(P/'passphrase').read_bytes()) as (_,manifest):
  entries=manifest['entries']
 # The existing production-style DB is preserved under a unique failure name.
 psql('ALTER DATABASE freo RENAME TO freo_preserved_'+name+'; ALTER DATABASE '+restored['database']+' RENAME TO freo;')
+for unit in Path('/etc/systemd/system').glob('freo*'):
+ if unit.is_file() and unit.suffix in ('.service','.timer') and str(unit) not in restored['roots']:
+  subprocess.run(['systemctl','disable',unit.name],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,check=True)
 selected=[Path('/opt/freo'),Path('/var/lib/freo'),Path('/etc/freo'),Path('/etc/nginx'),Path('/srv/freo-upgrade-media')]
 selected += list(Path('/etc/systemd/system').glob('freo*'))+[Path('/etc/systemd/system/icecast2.service'),Path('/etc/systemd/system/icecast2.service.d'),Path('/var/lib/freo-updates')]
 for source in selected:

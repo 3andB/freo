@@ -26,8 +26,13 @@ async def main():
    csrf=re.search(r'name="csrf" value="([^"]+)"',body).group(1)
    async with s.post(base+'/admin/login',data={'csrf':csrf,'email':email,'password':password}) as r:assert '/admin/login' not in str(r.url)
    note('Original account authenticates',account=email)
+  for slug in ('acceptance','upgrade-two','upgrade-stopped'):
+   for suffix in ('media','playlists','schedule-studio/control','history.csv'):
+    async with s.get(base+'/admin/stations/'+slug+'/'+suffix) as r:
+     assert r.status==200,(slug,suffix,r.status)
+   note('Original station pages, playlists, schedule and history accessible',station=slug)
   async with s.get(base+'/admin/stations/acceptance/production') as r:body=await r.text()
-  csrf=re.search(r'name="csrf" value="([^"]+)"',body).group(1)
+  csrf=re.search(r'data-csrf="([^"]+)"',body).group(1)
   for path,want in [('/api/v1/stations/acceptance',200),('/api/v1/stations/upgrade-two',403),('/api/v1/stations/acceptance/library/tracks',200)]:
    async with s.get(base+path,headers={'Authorization':'Bearer '+key}) as r:assert r.status==want,(path,r.status)
   note('Actual API bearer authentication and station scope')

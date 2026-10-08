@@ -15,7 +15,7 @@ async def main():
   async with session.post(base+'/admin/login',data={'csrf':csrf,'email':'acceptance@example.test','password':'private native acceptance passphrase'}) as r:
    assert '/admin/login' not in str(r.url),await r.text()
   async with session.get(base+'/admin/stations/'+slug+'/live') as r:body=await r.text()
-  csrf=re.search(r'name="csrf" value="([^"]+)"',body).group(1)
+  csrf=re.search(r'data-csrf="([^"]+)"',body).group(1)
   token=''
   async def post(action,**data):
    async with session.post(base+'/admin/api/stations/'+slug+'/live-mic/'+action,data=dict(csrf=csrf,token=token,**data)) as r:
@@ -39,8 +39,8 @@ async def main():
      await post('heartbeat');await asyncio.sleep(.5)
    keeper=asyncio.create_task(keepalive())
    path=E/'mic-program.f32'
-   proc=await asyncio.create_subprocess_exec('ffmpeg','-nostdin','-v','error','-i','http://127.0.0.1:8001/'+slug,'-t','8','-ac','1','-ar','8000','-f','f32le','-y',str(path))
-   assert await asyncio.wait_for(proc.wait(),30)==0
+   proc=await asyncio.create_subprocess_exec('ffmpeg','-nostdin','-v','error','-i','http://127.0.0.1:8001/'+slug,'-t','20','-ac','1','-ar','8000','-f','f32le','-y',str(path))
+   assert await asyncio.wait_for(proc.wait(),45)==0
    keeper.cancel()
    try:await keeper
    except asyncio.CancelledError:pass
