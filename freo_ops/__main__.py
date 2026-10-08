@@ -45,7 +45,7 @@ def active_units(*, include_updater=False):
                         '--type=service', '--type=timer', 'freo*'])
     return [row['unit'] for row in json.loads(raw)
             if row['active'] not in ('inactive', 'failed')
-            and (include_updater or row['unit'] not in ('freo-updater.service', 'freo-updater.timer'))]
+            and (include_updater or row['unit'] != 'freo-updater.service')]
 
 
 def installed_version():

@@ -125,3 +125,38 @@ def provision(release, values, env):
         recovery.run([str(release / 'venv/bin/flask'), '--app', 'wsgi:app', 'station', 'render', slug],
                      cwd=release, env=env)
     recovery.run(['systemctl', 'daemon-reload'])
+
+
+def check_runtime(current, env):
+    # Read-only comparison using the matched source interpreter/model. Do not
+    # import either release into the updater process or rewrite operator edits.
+    program = """
+from pathlib import Path
+import json
+from app import create_app
+from app.models import Station
+from app.services.station_runtime import render_liquidsoap
+app=create_app()
+with app.app_context():
+    for station in Station.query.filter_by(deleted_at=None).all():
+        path=Path('/etc/freo/radio/stations')/(station.slug+'.liq')
+        if not path.exists():
+            continue
+        secret=Path('/etc/freo/secrets/stations')/(station.slug+'.json')
+        expected=render_liquidsoap(station,json.loads(secret.read_text())['source'])
+        if path.read_text()!=expected:
+            raise SystemExit('Customized station runtime requires review: '+station.slug)
+"""
+    recovery.run([str(current / 'venv/bin/python'), '-c', program], cwd=current, env=env)
+
+
+def verify_permanent_files(backup, passphrase, values):
+    permanent = [Path(values.get('FREO_MEDIA_ROOT') or '/var/lib/freo/media'),
+                 Path(values.get('FREO_UPLOAD_ROOT') or '/var/lib/freo/uploads')]
+    with recovery.unpack(backup, passphrase) as (_, manifest):
+        roots = list(map(Path, manifest['roots']))
+        for entry in manifest['entries']:
+            path = roots[entry['root']] / entry['path']
+            if entry['kind'] == 'file' and any(path.is_relative_to(root) for root in permanent):
+                if not path.is_file() or path.is_symlink() or recovery.digest(path) != entry['sha256']:
+                    raise recovery.RecoveryError('Permanent file preservation failed: '+str(path))
