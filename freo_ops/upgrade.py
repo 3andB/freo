@@ -432,7 +432,10 @@ def upgrade(artifact, signature, keyring, env_file, backup, passphrase, verifica
                 # Timers and long-lived processes must return; one-shot services may finish.
                 if unit.endswith('.timer') or unit in ('freo.service', 'freo-automation.service', 'freo-ingest.service',
                                                         'freo-stats.service', 'freo-central-api.service', 'freo-mic.service', 'freo-production.service') or unit.startswith('freo-playout'):
-                    recovery.run(['systemctl', 'is-active', '--quiet', unit])
+                    try:
+                        recovery.run(['systemctl', 'is-active', '--quiet', unit])
+                    except recovery.RecoveryError as error:
+                        raise recovery.RecoveryError('Upgraded service is not active: ' + unit) from error
                 if unit.startswith('freo-playout@'):
                     slug = unit.removeprefix('freo-playout@').removesuffix('.service')
                     import re

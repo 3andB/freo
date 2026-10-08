@@ -53,3 +53,22 @@ def test_failing_baseline_is_refused_before_maintenance(monkeypatch,active,sub):
         {'unit':'freo-ingest.service','active':active,'sub':sub}]).encode())
     with pytest.raises(recovery.RecoveryError,match='failing baseline service'):
         v1.check_services()
+
+
+def test_v1_provisions_bulletins_and_recordings_and_retains_mic_preference(tmp_path, monkeypatch):
+    actual_path = Path
+    monkeypatch.setattr(v1, 'Path', lambda p: tmp_path / str(p).lstrip('/') if str(p).startswith('/etc/') else actual_path(p))
+    calls = []
+    monkeypatch.setattr(recovery, 'run', lambda args, **kw: calls.append(args))
+    class Cursor:
+        def __enter__(self): return self
+        def __exit__(self, *args): pass
+        def execute(self, query): pass
+        def fetchall(self): return [('on-air', True), ('disabled', False)]
+        def fetchone(self): return [{'FREO_LIVE_MIC': True}]
+    monkeypatch.setattr(recovery, 'connect', lambda url: SimpleNamespace(cursor=Cursor, close=lambda: None))
+    assert v1.provision(tmp_path, {'DATABASE_URL':'fixture'}, {}) is True
+    assert ['install','-d','-o','freo-automation','-g','freo-playout','-m','2750','/var/lib/freo/bulletins'] in calls
+    assert len([c for c in calls if any('recording-storage.py' in x for x in c)]) == 2
+    renders = [c for c in calls if 'render' in c]
+    assert len(renders) == 1 and renders[0][-1] == 'on-air'

@@ -108,6 +108,8 @@ def configure_environment(values, destination):
 
 def provision(release, values, env):
     python = str(release / 'venv/bin/python')
+    recovery.run(['install', '-d', '-o', 'freo-automation', '-g', 'freo-playout', '-m', '2750',
+                  '/var/lib/freo/bulletins'])
     root = Path(values.get('FREO_UPLOAD_ROOT') or '/var/lib/freo/uploads') / 'production'
     if any(c in str(root) for c in '\n\r%"\\') or not root.is_absolute():
         raise recovery.RecoveryError('Production storage must be an absolute systemd-safe path')
