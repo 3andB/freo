@@ -96,10 +96,12 @@ def lock_wheels(directory):
     return '\n'.join(locked) + '\n'
 
 
-def build(root, destination, *, development=False, wheelhouse=None):
+def build(root, destination, *, development=False, wheelhouse=None, candidate=False):
     root, destination = Path(root).resolve(), Path(destination).absolute()
     if destination.exists():
         raise RecoveryError('Release output already exists')
+    if development and candidate:
+        raise RecoveryError("Candidate and development modes are mutually exclusive")
     version = version_at(root)
     commit = run(['git', '-C', str(root), 'rev-parse', 'HEAD']).decode().strip()
     if not development:
@@ -112,9 +114,10 @@ def build(root, destination, *, development=False, wheelhouse=None):
             raise RecoveryError('Select and commit a project LICENSE before building a public release')
         if run(['git', '-C', str(root), 'status', '--porcelain']).strip():
             raise RecoveryError('Public releases require a clean source checkout')
-        tag = run(['git', '-C', str(root), 'describe', '--exact-match', '--tags', 'HEAD']).decode().strip()
-        if tag != 'v' + version:
-            raise RecoveryError('Release tag must match app/version.py')
+        if not candidate:
+            tag = run(['git', '-C', str(root), 'describe', '--exact-match', '--tags', 'HEAD']).decode().strip()
+            if tag != 'v' + version:
+                raise RecoveryError('Release tag must match app/version.py')
     with tempfile.TemporaryDirectory(prefix='freo-release-build-') as name:
         work = Path(name)
         payload = work / 'payload'
@@ -154,6 +157,10 @@ def build(root, destination, *, development=False, wheelhouse=None):
                         schema_head=migration_head(root),
                         supported_source_revisions=['a71d25b609ef', 'd02f9a41c830', 'e83b9204c6af', 'f39c8210b7de', 'a64f09e2b731', 'b72e19d4c603', 'c83d4e5f9012'],
                         files={})
+        if candidate:
+            manifest['candidate'] = True
+        if manifest['schema_head'] not in manifest['supported_source_revisions']:
+            manifest['supported_source_revisions'].append(manifest['schema_head'])
         for path in sorted(payload.rglob('*')):
             if path.is_file():
                 manifest['files'][str(path.relative_to(payload))] = dict(
@@ -170,7 +177,7 @@ def build(root, destination, *, development=False, wheelhouse=None):
         return {'version': version, 'sha256': digest(destination), 'development': development}
 
 
-def extract_verified(archive_path, directory, *, signature, keyring):
+def extract_verified(archive_path, directory, *, signature, keyring, allow_candidate=False):
     """Verify a publisher signature before interpreting any archive content."""
     directory = Path(directory)
     if directory.exists():
@@ -183,10 +190,10 @@ def extract_verified(archive_path, directory, *, signature, keyring):
             shutil.copyfile(source, target)
         run(['gpgv', '--homedir', home, '--keyring', str(private_keyring),
              str(private_signature), str(private_archive)])
-        return _extract_trusted(private_archive, directory)
+        return _extract_trusted(private_archive, directory, allow_candidate=allow_candidate)
 
 
-def _extract_trusted(archive_path, directory):
+def _extract_trusted(archive_path, directory, *, allow_candidate=False):
     directory.mkdir(mode=0o755, parents=True)
     seen = set()
     with tarfile.open(archive_path, 'r:gz') as archive:
@@ -206,6 +213,8 @@ def _extract_trusted(archive_path, directory):
     manifest = json.loads((directory / 'release.json').read_text())
     if not isinstance(manifest, dict) or manifest.get('format') != 1 or manifest.get('development') is not False:
         raise RecoveryError('Only public release-format artifacts may be installed')
+    if manifest.get('candidate') and not allow_candidate:
+        raise RecoveryError('Private candidate requires explicit --allow-candidate')
     if not isinstance(manifest.get('files'), dict) or not isinstance(manifest.get('supported_source_revisions'), list):
         raise RecoveryError('Invalid release manifest')
     if seen != set(manifest['files']) | {'release.json'}:

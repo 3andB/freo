@@ -102,6 +102,7 @@ def main(argv=None):
     upgrade.add_argument('--verification-directory', required=True)
     upgrade.add_argument('--passphrase-file')
     upgrade.add_argument('--check', action='store_true')
+    upgrade.add_argument('--allow-candidate', action='store_true', help='Explicitly allow a privately signed test candidate')
     commands.add_parser('upgrade-status', help='Read the private upgrade journal without starting the application')
     args = parser.parse_args(argv)
     os.umask(0o077)
@@ -114,7 +115,7 @@ def main(argv=None):
             from .upgrade import upgrade as apply_upgrade
             result = apply_upgrade(args.artifact, args.signature, args.keyring, args.env_file,
                                    args.backup, b'' if args.check else passphrase(args.passphrase_file, confirm=True),
-                                   args.verification_env_file, args.verification_directory, check=args.check)
+                                   args.verification_env_file, args.verification_directory, check=args.check, allow_candidate=args.allow_candidate)
         elif args.command in ('inventory', 'backup'):
             values = configuration(args.env_file)
             roots = inventory(args.env_file, values)

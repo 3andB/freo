@@ -1,0 +1,459 @@
+diff --git a/app/services/station_audio.py b/app/services/station_audio.py
+index e95e4e4d..bf93d147 100644
+--- a/app/services/station_audio.py
++++ b/app/services/station_audio.py
+@@ -15,7 +15,7 @@ def validate_settings(value):
+         raise ValueError('Invalid audio settings')
+     bitrate = value.get('bitrate')
+     if type(bitrate) is not int or bitrate not in BITRATES:
+-        raise ValueError('Choose 64, 96 or 128 kbps')
++        raise ValueError('Choose 64, 96, 128 or 192 kbps')
+     result = dict(DEFAULT_PROCESSING, **value)
+     for key in ('agc', 'multiband', 'eq'):
+         if type(result[key]) is not bool:
+@@ -38,7 +38,7 @@ def from_form(form):
+             **{key: form.get(key) == 'yes' for key in ('agc', 'multiband', 'eq')},
+             **{key: float(form.get(key, '0')) for key in ('bass', 'mid', 'treble')}))
+     except (ValueError, TypeError) as error:
+-        raise ValueError('Choose 64, 96 or 128 kbps and EQ values between −6 and +6 dB') from error
++        raise ValueError('Choose 64, 96, 128 or 192 kbps and EQ values between −6 and +6 dB') from error
+ 
+ 
+ def queue_settings(station, values, revision, user):
+diff --git a/app/static/listener_requests.js b/app/static/listener_requests.js
+index 3ff1c884..41b9a319 100644
+--- a/app/static/listener_requests.js
++++ b/app/static/listener_requests.js
+@@ -19,7 +19,7 @@
+       for (const track of data.tracks) {
+         const li = document.createElement('li'), title = document.createElement('span'), button = document.createElement('button');
+         title.textContent = track.title + ' — ' + track.artist; button.textContent = 'Request'; button.type = 'button';
+-        const nonce = crypto.randomUUID();
++        const nonce = FreoUUID();
+         button.addEventListener('click', async () => {
+           button.disabled = true;
+           try {
+diff --git a/app/static/player_ads.js b/app/static/player_ads.js
+index 40f0ff3f..d5db5a6c 100644
+--- a/app/static/player_ads.js
++++ b/app/static/player_ads.js
+@@ -52,7 +52,7 @@
+         image.onerror = () => {if (attempt === generation) clear();};
+         image.src = variant.url;
+       } else if (config.source === 'iframe') {
+-        nonce = crypto.randomUUID();
++        nonce = FreoUUID();
+         const url = new URL(config.iframe);
+         url.searchParams.set('freo_placement', host.dataset.placement);
+         url.searchParams.set('freo_nonce', nonce);
+@@ -66,7 +66,7 @@
+         timer = setTimeout(() => {if (attempt === generation) clear();}, 10000);
+       } else if (config.source === 'google') {
+         loadGoogle();
+-        const target = document.createElement('div'); target.id = 'freo-ad-' + crypto.randomUUID();
++        const target = document.createElement('div'); target.id = 'freo-ad-' + FreoUUID();
+         // GPT's own collapse-before-fetch mechanism keeps the layout empty.
+         host.append(target);
+         timer = setTimeout(() => {if (attempt === generation) clear();}, 10000);
+diff --git a/app/static/production.js b/app/static/production.js
+index 1cfa7cf6..bc0cf4d4 100644
+--- a/app/static/production.js
++++ b/app/static/production.js
+@@ -34,7 +34,7 @@
+   function placementOptions(){const select=$('placement-playlist'), old=select.value;select.replaceChildren();playlists.forEach(p=>option(select,p.id,p.name));if(old)select.value=old;replacementOptions();}
+   function replacementOptions(){const select=$('placement-replace');select.replaceChildren();option(select,'0','Choose a track');const p=playlists.find(x=>String(x.id)===$('placement-playlist').value);(p?.items||[]).forEach(x=>option(select,x.id,x.title));}
+   async function refresh(){const data=await api(base+'/drafts');playlists=data.playlists;placementOptions();const list=$('production-list');list.replaceChildren();data.drafts.forEach(row=>{const button=document.createElement('button');button.type='button';button.textContent=row.title+' · '+row.state;button.onclick=()=>paint(row);list.append(button);});}
+-  async function action(name,values={},file){if(!current)return;const data=formData(values);data.set('request_id',crypto.randomUUID());data.set('revision',current.revision);if(file)data.set('audio',file,'voice-track'+(file.type.includes('webm')?'.webm':'.audio'));
++  async function action(name,values={},file){if(!current)return;const data=formData(values);data.set('request_id',FreoUUID());data.set('revision',current.revision);if(file)data.set('audio',file,'voice-track'+(file.type.includes('webm')?'.webm':'.audio'));
+     try{message('Submitting…');paint(await api(base+'/'+current.id+'/'+name,data));message('');await refresh();}catch(error){message(error.message);}}
+   $('production-create').addEventListener('submit',async event=>{event.preventDefault();try{const row=await api(base+'/drafts',formData(formValues(event.target)));paint(row);await refresh();if(row.mode==='ai')await loadModels();}catch(error){message(error.message);}});
+   root.querySelectorAll('[data-action]').forEach(form=>form.addEventListener('submit',event=>{event.preventDefault();action(form.dataset.action,formValues(form));}));
+diff --git a/app/static/workspace.js b/app/static/workspace.js
+index 95992240..51b0755b 100644
+--- a/app/static/workspace.js
++++ b/app/static/workspace.js
+@@ -1,16 +1,6 @@
+ /* Persistent listening and document navigation. Page scripts own disposable work. */
+ (() => {
+   if (window.FreoWorkspace) return;
+-  // randomUUID requires HTTPS (except localhost). getRandomValues also works
+-  // on the IP-only HTTP installation workflow, without weakening randomness.
+-  window.FreoUUID = () => {
+-    if (typeof crypto.randomUUID === 'function') return crypto.randomUUID();
+-    const bytes = crypto.getRandomValues(new Uint8Array(16));
+-    bytes[6] = (bytes[6] & 0x0f) | 0x40;
+-    bytes[8] = (bytes[8] & 0x3f) | 0x80;
+-    const hex = Array.from(bytes, value => value.toString(16).padStart(2, '0')).join('');
+-    return `${hex.slice(0,8)}-${hex.slice(8,12)}-${hex.slice(12,16)}-${hex.slice(16,20)}-${hex.slice(20)}`;
+-  };
+   const makeScope = () => {
+     const controller = new AbortController(), timers = new Set(), frames = new Set(), cleanups = [];
+     return {
+diff --git a/app/templates/admin/production.html b/app/templates/admin/production.html
+index 4c575e8e..a91e7d1f 100644
+--- a/app/templates/admin/production.html
++++ b/app/templates/admin/production.html
+@@ -35,4 +35,4 @@
+ <button type="button" id="production-delete">Delete this production</button><h3>Generation history</h3><div id="production-history"></div>
+ </section></div></div>
+ {% endblock %}
+-{% block scripts %}{{ super() }}<script defer src="{{ url_for('static',filename='production.js') }}"></script>{% endblock %}
++{% block scripts %}{{ super() }}<script defer src="{{ url_for('static',filename='production.js',v='v1-http') }}"></script>{% endblock %}
+diff --git a/app/templates/base.html b/app/templates/base.html
+index eb6e3611..44d90720 100644
+--- a/app/templates/base.html
++++ b/app/templates/base.html
+@@ -8,7 +8,8 @@
+   <script src="{{ url_for('static', filename='theme.js',v='forms-20260916') }}"></script>
+   <title>{% block title %}Freo{% endblock %}</title>
+   <link rel="stylesheet" href="{{ url_for('static', filename='freo.css',v='rc5') }}">
+-  <script defer src="{{ url_for('static', filename='workspace.js',v='phase9-boundaries') }}"></script>
++  <script defer src="{{ url_for('static', filename='uuid.js',v='v1-http') }}"></script>
++  <script defer src="{{ url_for('static', filename='workspace.js',v='v1-http') }}"></script>
+   {% block head %}{% endblock %}
+   <link rel="stylesheet" href="{{ url_for('static', filename='theme.css',v='forms-20260916') }}">
+   <link rel="stylesheet" href="{{ url_for('static', filename='forms.css',v='forms-20260916') }}">
+diff --git a/app/templates/listener_requests.html b/app/templates/listener_requests.html
+index 37282f31..d6c95157 100644
+--- a/app/templates/listener_requests.html
++++ b/app/templates/listener_requests.html
+@@ -1,3 +1,3 @@
+-<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Request a song · {{ station.name }}</title><link rel="stylesheet" href="{{ url_for('static', filename='listener_requests.css') }}"><script defer src="{{ url_for('static', filename='listener_requests.js') }}"></script></head>
++<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Request a song · {{ station.name }}</title><link rel="stylesheet" href="{{ url_for('static', filename='listener_requests.css') }}"><script defer src="{{ url_for('static', filename='uuid.js',v='v1-http') }}"></script><script defer src="{{ url_for('static', filename='listener_requests.js',v='v1-http') }}"></script></head>
+ <body><main id="requests" data-api="{{ url_for('listener_requests.public_api', slug=station.public_slug or station.slug) }}" data-enabled="{{ 'yes' if enabled else 'no' }}"><h1>Request a song</h1><p>{{ station.name }}</p>
+ {% if enabled %}<p>Choose a song for a future music slot. Programming and recent plays may mean a wait. Requests expire after 24 hours.</p><form id="search"><label for="query">Song or artist</label><div><input id="query" type="search" maxlength="100"><button>Search</button></div></form><p id="notice" role="status" aria-live="polite"></p><ul id="songs"></ul><nav aria-label="Search pages"><button id="previous" type="button" disabled>Previous</button><button id="next" type="button" disabled>Next</button></nav>{% else %}<p>Requests are currently disabled.</p>{% endif %}</main></body></html>
+diff --git a/app/templates/player.html b/app/templates/player.html
+index 9c6bad99..2489ffda 100644
+--- a/app/templates/player.html
++++ b/app/templates/player.html
+@@ -28,4 +28,4 @@
+ {{ ad('ad_bottom') }}
+ {% if cfg.voting_enabled %}<dialog id="feedback-dialog" class="radio-feedback-dialog" aria-labelledby="feedback-title"><form id="feedback-form"><button class="feedback-close" type="button" aria-label="Close feedback">×</button><p class="radio-kicker">YOUR TASTE MATTERS</p><h2 id="feedback-title">Song feedback</h2><p id="feedback-song"></p><div class="feedback-choice" role="group" aria-label="Your vote"><button type="button" data-vote="1" aria-pressed="false">↑ Love it</button><button type="button" data-vote="-1" aria-pressed="false">↓ Not for me</button><button type="button" data-vote="0" class="ui-danger">Remove vote</button></div>{% if cfg.comments_enabled %}<label>Add a private comment (optional)<textarea id="feedback-comment" maxlength="500" rows="3" placeholder="Tell the station what you think…"></textarea></label><small>Only the station admin sees your comment.</small><button type="submit" id="feedback-save" class="ui-primary">Save comment</button>{% endif %}<p id="feedback-status" role="status"></p><p id="feedback-totals"></p></form></dialog>{% endif %}
+ {% endblock %}
+-{% block scripts %}<script defer src="{{ url_for('static', filename='player_visuals.js',v='phase9') }}"></script><script defer src="{{ url_for('static', filename='player_ads.js',v='phase9') }}"></script><script defer src="{{ url_for('static', filename='player.js',v='phase9') }}"></script>{% endblock %}
++{% block scripts %}<script defer src="{{ url_for('static', filename='player_visuals.js',v='phase9') }}"></script><script defer src="{{ url_for('static', filename='player_ads.js',v='v1-http') }}"></script><script defer src="{{ url_for('static', filename='player.js',v='phase9') }}"></script>{% endblock %}
+diff --git a/tests/test_catalog_editor_browser.py b/tests/test_catalog_editor_browser.py
+index c89f7ceb..40b097f0 100644
+--- a/tests/test_catalog_editor_browser.py
++++ b/tests/test_catalog_editor_browser.py
+@@ -22,7 +22,7 @@ def test_import_and_edit_catalog(booth, request):
+     import tempfile,shutil
+     browser_tmp=Path('/tmp/snap-private-tmp/snap.chromium/tmp')
+     browser_binary = Path(os.environ.get('FREO_TEST_CHROME', '/usr/bin/chromium-browser'))
+-    snap_browser = browser_tmp.exists() and (str(browser_binary).startswith('/snap/') or browser_binary == Path('/usr/bin/chromium-browser'))
++    snap_browser = browser_tmp.exists() and browser_binary in (Path('/snap/bin/chromium'), Path('/usr/bin/chromium-browser'))
+     share=Path(tempfile.mkdtemp(prefix='freo-catalog-',dir=browser_tmp if snap_browser else tmp_path))
+     request.addfinalizer(lambda:shutil.rmtree(share))
+     shutil.copy(audio,share/audio.name);shutil.copy(image,share/image.name)
+diff --git a/tests/test_installation_settings_postgres.py b/tests/test_installation_settings_postgres.py
+index dfb6ac75..e7d140ab 100644
+--- a/tests/test_installation_settings_postgres.py
++++ b/tests/test_installation_settings_postgres.py
+@@ -47,15 +47,18 @@ def test_upgrade_and_restored_application_preserve_settings_identity_and_audio(p
+             (name,slug,description,enabled,desired_state,timezone,target_lufs,created_at,updated_at,freo_station_id)
+             VALUES ('Keep this station','preserved','',true,'stopped','Australia/Perth',-16,now(),now(),:uuid)
+             RETURNING id"""), {'uuid': station_uuid}).scalar_one()
+-        track = Track(station_id=station_id, uuid=str(uuid.uuid4()), title='Original audio', artist='Fixture',
+-                      original_filename='original.wav', storage_key=key, media_type='wav',
+-                      duration_ms=100, sample_rate_hz=8000, channels=1,
+-                      file_size_bytes=(originals / key).stat().st_size,
+-                      checksum_sha256=original_hash, enabled=False)
+-        db.session.add(track)
++        # Track also gains columns after this historical revision. Seed only
++        # its historical contract, then use the current ORM after migration.
++        track_uuid, public_id = str(uuid.uuid4()), 'FR-TEST-TEST'
++        db.session.execute(text("""INSERT INTO tracks
++            (station_id,uuid,freo_track_id,title,artist,album,original_filename,
++             storage_key,media_type,duration_ms,sample_rate_hz,channels,
++             file_size_bytes,checksum_sha256,enabled,ingest_status,created_at,updated_at)
++            VALUES (:station,:uuid,:public_id,'Original audio','Fixture','','original.wav',
++                    :key,'wav',100,8000,1,:size,:checksum,false,'accepted',now(),now())"""),
++            dict(station=station_id, uuid=track_uuid, public_id=public_id, key=key,
++                 size=(originals / key).stat().st_size, checksum=original_hash))
+         db.session.commit()
+-        track_uuid = track.uuid
+-        public_id = track.freo_track_id
+     # An old admin row must be preserved without silently granting root-upgrade access.
+     con = recovery.connect(source_url)
+     with con, con.cursor() as cursor:
+diff --git a/tests/test_listener_requests_browser.py b/tests/test_listener_requests_browser.py
+index f1be9ec5..4996148a 100644
+--- a/tests/test_listener_requests_browser.py
++++ b/tests/test_listener_requests_browser.py
+@@ -13,12 +13,18 @@ from tests.test_playlists import setup_playlist
+ 
+ def test_public_embed_without_third_party_cookies_and_mobile(booth):
+     app, driver, base, folder = booth
++    driver.execute_cdp_cmd('Page.addScriptToEvaluateOnNewDocument', {'source': 'crypto.randomUUID = undefined;'})
+     with app.app_context():
+         station = m.Station.query.filter_by(slug='test-station').one()
+         station.request_settings = dict(r.DEFAULTS, enabled=True)
+         db.session.commit()
+     driver.execute_cdp_cmd('Network.setCookieControls', dict(enableThirdPartyCookieRestriction=True,
+         disableThirdPartyCookieMetadata=True, disableThirdPartyCookieHeuristics=True))
++    # OOPIFs can have their own CDP target. Check HTTP-style API availability in
++    # the top-level widget too, before exercising its third-party embed.
++    driver.get(base + '/requests/test-station')
++    assert driver.execute_script('return typeof crypto.randomUUID') == 'undefined'
++    wait_text(driver, '#songs', 'Verified Test Track')
+     def outer(environ, start_response):
+         start_response('200 OK', [('Content-Type', 'text/html')])
+         return [f'<html><body><iframe title="Request" src="{base}/requests/test-station" width="350" height="700"></iframe></body></html>'.encode()]
+diff --git a/tests/test_live_browser.py b/tests/test_live_browser.py
+index ea645f12..8619aeaa 100644
+--- a/tests/test_live_browser.py
++++ b/tests/test_live_browser.py
+@@ -55,6 +55,8 @@ def booth(app_fixture, monkeypatch, tmp_path, request):
+     thread=threading.Thread(target=server.serve_forever,daemon=True);thread.start()
+     profile=tempfile.mkdtemp(prefix='freo-browser-',dir='/tmp')
+     options=Options();options.binary_location=os.environ.get('FREO_TEST_CHROME','/usr/bin/chromium-browser')
++    if 'eager_navigation' in request.fixturenames:
++        options.page_load_strategy = 'eager'
+     if 'native_prompts' in request.fixturenames:
+         # ChromeDriver otherwise auto-accepts beforeunload, even when the app
+         # correctly requests a warning. Explicitly exercise the actual dialog.
+@@ -199,7 +201,7 @@ def test_file_picker_and_drop_import_results(booth):
+     # Snap Chromium has a private /tmp namespace.
+     browser_tmp=Path('/tmp/snap-private-tmp/snap.chromium/tmp')
+     browser_binary = Path(os.environ.get('FREO_TEST_CHROME', '/usr/bin/chromium-browser'))
+-    snap_browser = browser_tmp.exists() and (str(browser_binary).startswith('/snap/') or browser_binary == Path('/usr/bin/chromium-browser'))
++    snap_browser = browser_tmp.exists() and browser_binary in (Path('/snap/bin/chromium'), Path('/usr/bin/chromium-browser'))
+     upload_dir=Path(tempfile.mkdtemp(prefix='freo-upload-',dir=browser_tmp if snap_browser else tmp_path))
+     audio=upload_dir/'picked.mp3';audio.write_bytes(b'fixture upload')
+     browser_audio=Path('/tmp')/upload_dir.name/audio.name if snap_browser else audio
+diff --git a/tests/test_login_session_migration.py b/tests/test_login_session_migration.py
+index 478ebb0f..bd419268 100644
+--- a/tests/test_login_session_migration.py
++++ b/tests/test_login_session_migration.py
+@@ -14,14 +14,14 @@ def test_existing_schema_gains_empty_revocation_table_without_account_changes(in
+     before = rows(source)
+     with app.app_context():
+         assert 'admin_login_sessions' not in inspect(db.engine).get_table_names()
+-    result = runner.invoke(args=['db', 'upgrade'])
++    result = runner.invoke(args=['db', 'upgrade', 'c83d4e5f9012'])
+     assert result.exit_code == 0, result.output
+     assert rows(source) == before
+     with app.app_context():
+         assert db.session.execute(text('SELECT version_num FROM alembic_version')).scalar() == 'c83d4e5f9012'
+         assert db.session.query(AdminLoginSession).count() == 0
+         assert 'ix_admin_login_sessions_expires_at' in {i['name'] for i in inspect(db.engine).get_indexes('admin_login_sessions')}
+-    assert runner.invoke(args=['db', 'upgrade']).exit_code == 0
++    assert runner.invoke(args=['db', 'upgrade', 'c83d4e5f9012']).exit_code == 0
+     assert rows(source) == before
+ 
+ 
+diff --git a/tests/test_music_delete.py b/tests/test_music_delete.py
+index 38a296df..6738155e 100644
+--- a/tests/test_music_delete.py
++++ b/tests/test_music_delete.py
+@@ -41,7 +41,10 @@ def exercise_references(application,tmp_path,monkeypatch):
+         execution=m.EventBlockExecution(station_id=other.id,event_block_id=block.id,source='MANUAL',state='QUEUED',items=[m.EventBlockItemExecution(position=1,item_type='TRACK',track_id=song.id,event_block_item_id=block.items[0].id,selection_decision_id=decision.id,failure_policy='ABORT_BLOCK',state='QUEUED')])
+         db.session.add_all([execution,m.LiveCartSlot(station_id=other.id,role='HOT',position=1,track_id=song.id,label='Song label'),m.BoothCue(station_id=other.id,entries=[{'id':'entry','track_id':song.id}],saved_order=[song.id]),m.SavedBoothCue(station_id=other.id,name='Set',tracks=[song.id,keep.id]),m.ChannelSchedule(station_id=other.id,calendar=[{'id':'a','source':{'kind':'song','id':song.id}}, {'id':'b','source':{'kind':'song','id':keep.id}}])])
+         db.session.commit()
+-        job=queue_delete(song,m.AdminUser.query.first(),other);job_id=job.id;db.session.commit()
++        with pytest.raises(ValueError, match='owning station'):
++            queue_delete(song,m.AdminUser.query.first(),other)
++        assert not song.deleted_at
++        job=queue_delete(song,m.AdminUser.query.first(),station);job_id=job.id;db.session.commit()
+         assert song.deleted_at and not song.enabled
+         assert m.TimedEvent.query.filter_by(track_id=identifier).count()==0
+         assert m.EventBlockItem.query.filter_by(track_id=identifier).count()==0
+diff --git a/tests/test_phase2_engine.py b/tests/test_phase2_engine.py
+index e40de576..f6971fac 100644
+--- a/tests/test_phase2_engine.py
++++ b/tests/test_phase2_engine.py
+@@ -96,7 +96,8 @@ def test_zero_envelope_is_sample_identical_to_existing_decode(tmp_path):
+     source=tmp_path/'source.wav'
+     subprocess.run(['ffmpeg','-v','error','-f','lavfi','-i','sine=frequency=880:duration=1','-y',str(source)],check=True)
+     template=Path('deploy/liquidsoap/station.liq.template').read_text()
+-    helper=template[template.index('def track_fades(s)'):template.index('music_a = source.on_end')]
++    start=template.index('def track_fades(s)')
++    helper=template[start:template.index('\nend\n',start)+len('\nend\n')]
+     script='settings.init.allow_root := true\n'+helper+f'''
+ raw = request.once(request.create("{source}"))
+ edited = track_fades(request.once(request.create("{source}")))
+@@ -116,7 +117,8 @@ def test_fade_overrides_do_not_leak_into_next_unedited_track(tmp_path):
+     source=tmp_path/'source.wav'
+     subprocess.run(['ffmpeg','-v','error','-f','lavfi','-i','sine=frequency=880:duration=1','-y',str(source)],check=True)
+     template=Path('deploy/liquidsoap/station.liq.template').read_text()
+-    helper=template[template.index('def track_fades(s)'):template.index('music_a = source.on_end')]
++    start=template.index('def track_fades(s)')
++    helper=template[start:template.index('\nend\n',start)+len('\nend\n')]
+     uri=f'annotate:liq_cue_in="0.000",liq_cue_out="1.000",freo_fade_in="0.200",freo_fade_out="0.200":{source}'
+     script='settings.init.allow_root := true\n'+helper+f'''
+ raw = request.queue(interactive=false, queue=[request.create("{source}"), request.create("{source}")])
+diff --git a/tests/test_phase3_postgres.py b/tests/test_phase3_postgres.py
+index 6bc8ff78..679b8592 100644
+--- a/tests/test_phase3_postgres.py
++++ b/tests/test_phase3_postgres.py
+@@ -53,7 +53,12 @@ def test_recording_manager_migration_preserves_existing_files_and_history(monkey
+     app=create_app('testing');runner=app.test_cli_runner()
+     result=runner.invoke(args=['db','upgrade','f306a1b2c3d4']);assert result.exit_code==0,result.output
+     with app.app_context():
+-        db.session.add(Station(id=1,name='Migration',slug='migration'));db.session.flush()
++        # Current Station includes Phase 5 fields absent from the Phase 3 schema.
++        db.session.execute(sa.text("""INSERT INTO stations
++            (id,name,slug,description,enabled,desired_state,timezone,target_lufs,
++             freo_station_id,created_at,updated_at)
++            VALUES (1,'Migration','migration','',true,'stopped','UTC',-16,
++                    '11111111-1111-4111-8111-111111111111',now(),now())"""))
+         db.session.execute(sa.text("INSERT INTO live_sessions(id,station_id,dj_name,created_at) VALUES(:id,1,'Original DJ',now())"),{'id':'a'*32})
+         db.session.execute(sa.text("INSERT INTO show_recordings(id,session_id,station_id,storage_key,status,duration_ms,file_size_bytes) VALUES(:id,:show,1,:key,'complete',5000,12345)"),{'id':'b'*32,'show':'a'*32,'key':'b'*32+'.mp3'})
+         db.session.commit()
+diff --git a/tests/test_platform_polish_browser.py b/tests/test_platform_polish_browser.py
+index 45ce5265..3e144250 100644
+--- a/tests/test_platform_polish_browser.py
++++ b/tests/test_platform_polish_browser.py
+@@ -7,6 +7,12 @@ from app.services import player
+ from tests.test_live_browser import booth, app_fixture, wait_text
+ from tests.test_station_settings_flags import png
+ import hashlib
++import pytest
++
++
++@pytest.fixture
++def eager_navigation():
++    """Inspect pending ad frames before navigation waits for their timeout."""
+ 
+ 
+ def seed_ads(app, source='image'):
+@@ -55,16 +61,19 @@ def test_images_visual_modes_reduced_motion_and_audio_failure_isolation(booth):
+     assert not driver.execute_script('return !!window.googletag')
+ 
+ 
+-def test_iframe_fill_contract_rejects_spoofed_messages_and_times_out(booth):
++def test_iframe_fill_contract_rejects_spoofed_messages_and_times_out(booth, eager_navigation):
+     app, driver, base, tmp = booth
++    driver.execute_cdp_cmd('Page.addScriptToEvaluateOnNewDocument', {'source': 'crypto.randomUUID = undefined;'})
+     seed_ads(app, 'iframe')
+     driver.execute_cdp_cmd('Network.enable', {})
+     driver.execute_cdp_cmd('Network.setBlockedURLs', {'urls':['https://example.test/*']})
+     driver.get(base+'/player/test-station')
+-    wait_text(driver,'#recent-history','Verified Test Track')
++    WebDriverWait(driver, 5).until(lambda d: d.find_elements(By.CSS_SELECTOR, '.phase9-ad iframe'))
+     assert not driver.find_element(By.CSS_SELECTOR,'.phase9-ad').is_displayed()
+     driver.execute_script("window.postMessage({type:'freo-ad-status',status:'filled',placement:'ad_top',nonce:'fake',width:728,height:90},'*')")
+     assert not driver.find_element(By.CSS_SELECTOR,'.phase9-ad').is_displayed()
++    assert driver.find_elements(By.CSS_SELECTOR, '.phase9-ad iframe')
++    wait_text(driver,'#recent-history','Verified Test Track')
+     driver.find_element(By.ID,'play-button').click()
+     WebDriverWait(driver, 8).until(lambda d: d.execute_script('return !document.getElementById("station-audio").paused'))
+     WebDriverWait(driver, 15).until(lambda d: not d.find_elements(By.CSS_SELECTOR,'.phase9-ad iframe'))
+@@ -74,6 +83,7 @@ def test_iframe_fill_contract_rejects_spoofed_messages_and_times_out(booth):
+ 
+ def test_google_adapter_fill_empty_and_public_document_boundary(booth):
+     app, driver, base, tmp = booth
++    driver.execute_cdp_cmd('Page.addScriptToEvaluateOnNewDocument', {'source': 'crypto.randomUUID = undefined;'})
+     seed_ads(app, 'google')
+     driver.execute_cdp_cmd('Network.enable', {})
+     driver.execute_cdp_cmd('Network.setBlockedURLs', {'urls':['https://securepubads.g.doubleclick.net/*']})
+diff --git a/tests/test_primary_admin_migration.py b/tests/test_primary_admin_migration.py
+index 54dadc2e..6b1e98f5 100644
+--- a/tests/test_primary_admin_migration.py
++++ b/tests/test_primary_admin_migration.py
+@@ -68,8 +68,8 @@ def rows(source):
+         con.close()
+ 
+ 
+-def migrate(app):
+-    result = app.test_cli_runner().invoke(args=['db', 'upgrade'])
++def migrate(app, revision='head'):
++    result = app.test_cli_runner().invoke(args=['db', 'upgrade', revision])
+     assert result.exit_code == 0, result.output
+ 
+ 
+@@ -85,9 +85,9 @@ def test_only_installer_primary_receives_grant_and_other_values_survive(installe
+     for row in expected:
+         if row['username'] == 'admin':
+             row['installation_admin'] = True
+-    migrate(app)
++    migrate(app, NEW_REVISION)
+     assert rows(source) == expected
+-    migrate(app)  # Alembic does not run the migration again.
++    migrate(app, NEW_REVISION)  # Alembic does not run the migration again.
+     assert rows(source) == expected
+     # The SQL itself is idempotent as well.
+     module = importlib.import_module('migrations.versions.a64f09e2b731_primary_installation_admin')
+@@ -97,6 +97,9 @@ def test_only_installer_primary_receives_grant_and_other_values_survive(installe
+     assert rows(source) == expected
+ 
+     if options.get('primary', True):
++        # Current login handlers require the later V1 columns. Keep their
++        # additions outside the historical account-preservation assertion.
++        migrate(app)
+         client = app.test_client()
+         client.get('/admin/login')
+         with client.session_transaction() as session:
+diff --git a/tests/test_production_browser.py b/tests/test_production_browser.py
+index cba8ebab..045a2929 100644
+--- a/tests/test_production_browser.py
++++ b/tests/test_production_browser.py
+@@ -14,6 +14,8 @@ BASE='/admin/stations/test-station/production'
+ 
+ def test_record_in_browser_preview_and_save_to_station(booth,monkeypatch):
+     app,driver,base,folder=booth
++    # IP-only HTTP installs lack randomUUID; retain real media APIs for recording.
++    driver.execute_cdp_cmd('Page.addScriptToEvaluateOnNewDocument', {'source': 'crypto.randomUUID = undefined;'})
+     root=folder/'production';root.mkdir();app.config['FREO_PRODUCTION_ROOT']=str(root)
+     monkeypatch.setattr('app.services.media.require_ingest_identity',lambda:None)
+     monkeypatch.setattr(os,'chown',lambda *args:None)
+diff --git a/tests/test_public_api_postgres.py b/tests/test_public_api_postgres.py
+index 70049a38..644efb3b 100644
+--- a/tests/test_public_api_postgres.py
++++ b/tests/test_public_api_postgres.py
+@@ -65,4 +65,5 @@ def test_migration_chain_phase5_data_and_revocation(monkeypatch):
+         assert m.ListenerRequest.query.one().reason == 'Preserved'
+         assert m.SelectionDecision.query.one().reason == 'Preserved history'
+         assert m.ApiCredential.query.count() == 0
+-        assert db.session.execute(sa.text('select version_num from alembic_version')).scalar() == 'f606a1b2c3d4'
++        from app.routes.health import release_schema_head
++        assert db.session.execute(sa.text('select version_num from alembic_version')).scalar() == release_schema_head()
+diff --git a/tests/test_station_location_migration.py b/tests/test_station_location_migration.py
+index f2631809..8c2584a7 100644
+--- a/tests/test_station_location_migration.py
++++ b/tests/test_station_location_migration.py
+@@ -32,13 +32,17 @@ def test_both_migrations_preserve_station_identity_and_restart_state(installed):
+                      'New York' if index == 0 else '', 'NY' if index == 0 else '', 'US' if index == 0 else ''))
+             cur.execute('SELECT row_to_json(s) FROM stations s ORDER BY id')
+             original = [row[0] for row in cur.fetchall()]
+-        migrate(app)
++        migrate(app, 'c83d4e5f9012')
+         with con.cursor() as cur:
+             cur.execute('SELECT version_num FROM alembic_version')
+             assert cur.fetchone()[0] == 'c83d4e5f9012'
+             cur.execute('SELECT row_to_json(s) FROM stations s ORDER BY id')
+             assert [r[0] for r in cur.fetchall()] == [dict(r, latitude=None, longitude=None) for r in original]
+         assert next(r for r in rows(source) if r['username'] == 'admin')['installation_admin']
++        # Release the historical SELECT's table lock before applying later
++        # schema additions required by current metadata and ORM checks.
++        con.commit()
++        migrate(app)
+         with app.app_context():
+             # Compare this migration's table. The historical full schema has an
+             # unrelated ix_event_due index absent from TimedEventOccurrence metadata.
+@@ -97,7 +101,7 @@ def test_upgrade_from_admin_migration_does_not_regrant_a_revoked_permission(inst
+         with con, con.cursor() as cur:
+             cur.execute("UPDATE admin_users SET installation_admin=false WHERE username='admin'")
+         before = rows(source)
+-        migrate(app)
++        migrate(app, 'c83d4e5f9012')
+         assert rows(source) == before
+     finally:
+         con.close()
+diff --git a/tests/test_statistics_sessions.py b/tests/test_statistics_sessions.py
+index 52351337..3f8fb50c 100644
+--- a/tests/test_statistics_sessions.py
++++ b/tests/test_statistics_sessions.py
+@@ -239,8 +239,11 @@ def test_migration_round_trip_preserves_legacy_data(app):
+         db.session.add(StatsBucket(scope=1, resolution='hour', at=0, listener_seconds=1234))
+         db.session.commit()
+     runner = app.test_cli_runner()
++    # This create_all fixture already includes later, unrelated V1 tables.
++    # Round-trip only the session migration; the full chain has its own harness.
+     for args in (['db', 'stamp', 'f406a1b2c3d4'], ['db', 'downgrade', 'f316a1b2c3d4'],
+-                 ['db', 'upgrade', 'f406a1b2c3d4'], ['db', 'downgrade', 'f316a1b2c3d4'], ['db', 'upgrade']):
++                 ['db', 'upgrade', 'f406a1b2c3d4'], ['db', 'downgrade', 'f316a1b2c3d4'],
++                 ['db', 'upgrade', 'f406a1b2c3d4']):
+         result = runner.invoke(args=args)
+         assert result.exit_code == 0, result.output
+     with app.app_context():

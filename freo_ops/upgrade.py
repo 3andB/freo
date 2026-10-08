@@ -197,7 +197,7 @@ def verify_preservation(source_url, restored_url):
         new.close()
 
 
-def upgrade(artifact, signature, keyring, env_file, backup, passphrase, verification_env_file, verification_directory, *, check=False):
+def upgrade(artifact, signature, keyring, env_file, backup, passphrase, verification_env_file, verification_directory, *, check=False, allow_candidate=False):
     from .__main__ import configuration, inventory, active_units
     if os.geteuid() != 0:
         raise recovery.RecoveryError('Upgrades require root; the web application cannot perform upgrades')
@@ -240,7 +240,7 @@ def upgrade(artifact, signature, keyring, env_file, backup, passphrase, verifica
         migrated = False
         stopped = False
         try:
-            manifest = releases.extract_verified(artifact, release, signature=signature, keyring=keyring)
+            manifest = releases.extract_verified(artifact, release, signature=signature, keyring=keyring, allow_candidate=allow_candidate)
             if manifest['platform'] != 'ubuntu-24.04-x86_64' or manifest['python'] != '3.12':
                 raise recovery.RecoveryError('Release platform is incompatible')
             connection = recovery.connect(values['DATABASE_URL'])
@@ -270,7 +270,14 @@ def upgrade(artifact, signature, keyring, env_file, backup, passphrase, verifica
                 raise recovery.RecoveryError('Downgrades require a separately reviewed recovery procedure')
             if old_version == manifest['version'] and revision != manifest['schema_head']:
                 raise recovery.RecoveryError('Installed code and schema do not form a matched baseline; recover/adopt explicitly before upgrading')
-            for directory in ('liquidsoap', 'icecast', 'nginx'):
+            from . import v1
+            adopting_v1 = v1.transition(current, release, revision, manifest['version'])
+            if adopting_v1:
+                v1.check_legacy_templates(current)
+                v1.check_space(values['DATABASE_URL'], roots, release, backup, verification_directory)
+                for override in Path('/etc/systemd/system/icecast2.service.d').glob('*.conf'):
+                    raise recovery.RecoveryError('Existing Icecast override requires review before V1 adoption')
+            for directory in (() if adopting_v1 else ('liquidsoap', 'icecast', 'nginx')):
                 for path in (release / 'deploy' / directory).rglob('*'):
                     if path.is_file():
                         old = current / path.relative_to(release)
@@ -328,6 +335,11 @@ def upgrade(artifact, signature, keyring, env_file, backup, passphrase, verifica
             verified = recovery.restore(backup, passphrase, target_values['DATABASE_URL'], verification_directory)
             journal['verification_database'] = verified['database']
             journal['verification_directory'] = str(verification_directory)
+            if adopting_v1:
+                journal['phase'] = 'dependencies'
+                atomic_json(journal_path, journal)
+                binary = v1.prepare_icecast(release, state)
+                journal['icecast_binary'] = str(binary)
             journal['phase'] = 'migration'
             atomic_json(journal_path, journal)
             migrated = True  # A killed/nontransactional migration must never be mistaken for no mutation.
@@ -356,11 +368,14 @@ def upgrade(artifact, signature, keyring, env_file, backup, passphrase, verifica
                 with stable_env.open('rb') as stream:
                     os.fsync(stream.fileno())
                 sync_directory(stable_env.parent)
+            if adopting_v1:
+                v1.configure_environment(values, stable_env)
+                env = release_environment(values, stable_env)
             # Keep the original unit bodies in the private journal for recovery.
             for path in (release / 'deploy/systemd').glob('freo*'):
                 target = Path('/etc/systemd/system') / path.name
-                if target.is_file():
-                    journal['previous_units'][str(target)] = base64.b64encode(target.read_bytes()).decode('ascii')
+                journal['previous_units'][str(target)] = (base64.b64encode(target.read_bytes()).decode('ascii')
+                                                          if target.is_file() else None)
             journal['phase'] = 'activation'
             atomic_json(journal_path, journal)
             for filename in journal['previous_units']:
@@ -374,6 +389,11 @@ def upgrade(artifact, signature, keyring, env_file, backup, passphrase, verifica
                     os.fsync(stream.fileno())
                 os.replace(pending, target)
                 sync_directory(target.parent)
+            if adopting_v1:
+                v1.activate_icecast(binary)
+                v1.provision(release, values, env)
+                recovery.run(['systemctl', 'enable', 'freo-production.service'])
+                journal['active_units'].append('freo-production.service')
             switch_pointer(root, release)
             recovery.run(['systemctl', 'daemon-reload'])
             journal['phase'] = 'starting'

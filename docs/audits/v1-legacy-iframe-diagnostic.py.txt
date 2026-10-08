@@ -1,0 +1,13 @@
+import time,json
+from tests.test_live_browser import booth,app_fixture
+from tests.test_platform_polish_browser import seed_ads
+
+def test_diagnostic(booth):
+ app,driver,base,tmp=booth
+ seed_ads(app,'iframe')
+ driver.execute_cdp_cmd('Network.enable',{})
+ driver.execute_cdp_cmd('Network.setBlockedURLs',{'urls':['https://example.test/*']})
+ driver.execute_cdp_cmd('Page.addScriptToEvaluateOnNewDocument',{'source':'''crypto.randomUUID=undefined;window.adDiagnostics=[];new MutationObserver(records=>{for(const r of records)for(const node of r.addedNodes)if(node.tagName==='IFRAME')adDiagnostics.push({event:'iframe-added',at:performance.now()});for(const r of records)for(const node of r.removedNodes)if(node.tagName==='IFRAME')adDiagnostics.push({event:'iframe-removed',at:performance.now()});}).observe(document,{subtree:true,childList:true});'''})
+ start=time.monotonic();driver.get(base+'/player/test-station')
+ print('navigation_seconds',round(time.monotonic()-start,2),flush=True)
+ print(driver.execute_script('return {events:adDiagnostics,uuid:typeof FreoUUID,native:typeof crypto.randomUUID,frames:document.querySelectorAll(".phase9-ad iframe").length}'),flush=True)
