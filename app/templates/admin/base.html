@@ -26,6 +26,7 @@
 {% endblock %}
 {% block scripts %}<script defer src="{{ url_for('static',filename='license_agreement.js',v='20260921') }}"></script><script defer src="{{ url_for('static',filename='music_availability.js',v='phase9-owner') }}"></script>{% if selected and page in ['live','media','sound-room'] %}<script defer src="{{ url_for('static',filename='song_flags.js') }}"></script>{% endif %}<script defer src="{{ url_for('static', filename='admin.js',v='v1-phase3') }}"></script><script defer src="{{ url_for('static',filename='schedule_status.js') }}"></script>{% if page in ['media','sound-room','tags','playlists'] %}<script defer src="{{ url_for('static',filename='music_preview.js',v='v1-phase2') }}"></script><script defer src="{{ url_for('static',filename='music_toggles.js',v='playlists-v1') }}"></script>{% endif %}{% endblock %}
 {% block content %}
+{% if hosting_summary %}{% include 'admin/_hosting.html' %}{% endif %}
 <div class="admin-layout">
   <aside class="admin-sidebar" aria-label="Admin navigation">
     <div class="admin-identity"><span class="admin-identity-mark">F</span><div><b>Freo control</b><small>Radio Station Operations</small></div></div>

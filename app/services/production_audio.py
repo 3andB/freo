@@ -1,4 +1,6 @@
 """Private draft audio, bounded decoding, and a three-input FFmpeg mix."""
+from freo_ops.hosting_storage import write as hosting_write
+
 import json
 import math
 import os
@@ -33,7 +35,7 @@ def path(key):
 def store(raw):
     key = uuid4().hex
     with os.fdopen(os.open(path(key), os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o640), 'wb') as stream:
-        stream.write(raw); stream.flush(); os.fsync(stream.fileno())
+        hosting_write(stream, raw); stream.flush(); os.fsync(stream.fileno())
     return key
 
 
@@ -46,7 +48,7 @@ def upload(file, limit):
                 size += len(chunk)
                 if size > limit:
                     raise ValueError('Recording exceeds the upload size limit.')
-                out.write(chunk)
+                hosting_write(out, chunk)
             if not size:
                 raise ValueError('Choose a nonempty audio file.')
         return key
@@ -115,9 +117,10 @@ def render(components, settings, maximum):
     key = uuid4().hex
     target = path(key)
     try:
-        subprocess.run(args + ['-filter_complex_threads','1','-filter_complex',';'.join(filters),'-map','[out]',
+        from freo_ops.hosting_storage import run_media
+        run_media(args + ['-filter_complex_threads','1','-filter_complex',';'.join(filters),'-map','[out]',
             '-map_metadata','-1','-t',str(maximum+.25),'-c:a','libmp3lame','-b:a','192k','-ar','44100','-threads','1','-f','mp3','-y',str(target)],
-            capture_output=True,check=True,timeout=180)
+            max_output_bytes=int((maximum+1)*24000+262144),capture_output=True,check=True,timeout=180)
         os.chmod(target,0o640)
         details = probe(target)
         if details['duration_ms'] > maximum*1000+100:

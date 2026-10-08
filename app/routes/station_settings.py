@@ -70,7 +70,7 @@ def decode_logo(upload, output_limit=None, accepted_sizes=None):
             (raw.startswith(b'RIFF') and raw[8:12] == b'WEBP')):
         raise ValueError('Choose a JPEG, PNG or WebP logo')
     try:
-        with tempfile.TemporaryDirectory(prefix='freo-logo-') as folder:
+        with __import__('freo_ops.hosting_storage',fromlist=['reserve']).reserve(32*1024*1024), tempfile.TemporaryDirectory(prefix='freo-logo-') as folder:
             source = Path(folder) / 'upload'
             source.write_bytes(raw)
             result = subprocess.run(['ffprobe','-v','error','-select_streams','v:0','-show_entries',
@@ -85,8 +85,8 @@ def decode_logo(upload, output_limit=None, accepted_sizes=None):
             original_scale=['-vf',f"scale=w='min({output_limit},iw)':h='min({output_limit},ih)':force_original_aspect_ratio=decrease"] if output_limit else []
             for name, scale in [('original',original_scale),('thumbnail',['-vf',"scale=w='min(512,iw)':h='min(512,ih)':force_original_aspect_ratio=decrease"])]:
                 target = Path(folder) / (name + '.png')
-                subprocess.run(['ffmpeg','-v','error','-threads','1','-i',str(source),'-frames:v','1',
-                    '-map_metadata','-1',*scale,'-threads','1',str(target)],capture_output=True,check=True,timeout=20)
+                __import__('freo_ops.hosting_storage',fromlist=['run_media']).run_media(['ffmpeg','-v','error','-threads','1','-i',str(source),'-frames:v','1',
+                    '-map_metadata','-1',*scale,'-threads','1',str(target)],max_output_bytes=32*1024*1024,capture_output=True,check=True,timeout=20)
                 images.append(target.read_bytes())
             return images
     except (subprocess.SubprocessError, KeyError, IndexError, json.JSONDecodeError) as error:

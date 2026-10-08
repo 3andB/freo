@@ -22,6 +22,9 @@ def effective_time(cache, now=None):
 
 
 def check_expansion():
+    from freo_ops.hosting import read
+    if read()['hosted']:
+        return
     # Distribution entitlements are local and perpetual. Registration and
     # remote cache/grace expiry must not gate the free three-station allowance.
     from app.services.software_license import unlimited

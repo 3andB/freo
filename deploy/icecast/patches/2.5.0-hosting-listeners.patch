@@ -1,0 +1,107 @@
+--- a/src/cfgfile.h
++++ b/src/cfgfile.h
+@@ -254,6 +254,7 @@
+     char *admin;
+ 
+     int client_limit;
++    int freo_listener_limit; /* -1: no commercial listener limit */
+     int source_limit;
+     int body_size_limit;
+     unsigned int queue_size_limit;
+--- a/src/cfgfile.c
++++ b/src/cfgfile.c
+@@ -1186,6 +1186,7 @@
+         ->admin = (char *) xmlCharStrdup(CONFIG_DEFAULT_ADMIN);
+     configuration
+         ->client_limit = CONFIG_DEFAULT_CLIENT_LIMIT;
++    configuration->freo_listener_limit = -1;
+     configuration
+         ->source_limit = CONFIG_DEFAULT_SOURCE_LIMIT;
+     configuration
+@@ -1537,6 +1538,8 @@
+ 
+         if (xmlStrcmp(node->name, XMLSTR("clients")) == 0) {
+             __read_int(configuration, doc, node, &configuration->client_limit, 1, CONFIG_MAX_CLIENT_LIMIT);
++        } else if (xmlStrcmp(node->name, XMLSTR("freo-listeners")) == 0) {
++            __read_int(configuration, doc, node, &configuration->freo_listener_limit, 0, CONFIG_MAX_CLIENT_LIMIT);
+         } else if (xmlStrcmp(node->name, XMLSTR("sources")) == 0) {
+             __read_int(configuration, doc, node, &configuration->source_limit, 1, CONFIG_MAX_SOURCE_LIMIT);
+         } else if (xmlStrcmp(node->name, XMLSTR("bodysize")) == 0) {
+--- a/src/client.h
++++ b/src/client.h
+@@ -63,6 +63,7 @@
+ struct _client_tag {
+     /* mode of operation for this client */
+     operation_mode mode;
++    int freo_listener_slot; /* owned until final client destruction; survives mount moves */
+ 
+     /* the client's connection */
+     connection_t *con;
+@@ -156,6 +157,7 @@
+ int client_create (client_t **c_ptr, connection_t *con, http_parser_t *parser);
+ void client_complete(client_t *client);
+ void client_destroy(client_t *client);
++int client_freo_admit_listener(client_t *client);
+ void client_send_error_by_id(client_t *client, icecast_error_id_t id);
+ void client_send_error_by_uuid(client_t *client, const char *uuid);
+ void client_send_101(client_t *client, reuse_t reuse);
+--- a/src/client.c
++++ b/src/client.c
+@@ -300,6 +300,32 @@
+     connection_queue(con);
+ }
+ 
++/* Slots are acquired before HTTP success or enqueue, under the global mutex.
++ * Source/statistics clients never acquire a slot. Mount moves keep their slot.
++ * Count even without a limit so enabling/reducing a limit needs no disconnect.
++ */
++static unsigned long freo_listeners = 0;
++int client_freo_admit_listener(client_t *client)
++{
++    ice_config_t *config;
++    int accepted = 0;
++    global_lock();
++    config = config_get_config();
++    if (client->freo_listener_slot || config->freo_listener_limit < 0 ||
++            freo_listeners < (unsigned long)config->freo_listener_limit) {
++        if (!client->freo_listener_slot) {
++            client->freo_listener_slot = 1;
++            freo_listeners++;
++        }
++        accepted = 1;
++    }
++    stats_event_args(NULL, "freo_listener_limit", "%d", config->freo_listener_limit);
++    stats_event_args(NULL, "freo_listeners", "%lu", freo_listeners);
++    config_release_config();
++    global_unlock();
++    return accepted;
++}
++
+ void client_destroy(client_t *client)
+ {
+     if (client == NULL) {
+@@ -349,6 +375,11 @@
+ 
+     global_lock();
+     global.clients--;
++    if (client->freo_listener_slot) {
++        client->freo_listener_slot = 0;
++        freo_listeners--;
++        stats_event_args(NULL, "freo_listeners", "%lu", freo_listeners);
++    }
+     stats_event_args(NULL, "clients", "%d", global.clients);
+     global_unlock();
+ 
+--- a/src/connection_handle.c
++++ b/src/connection_handle.c
+@@ -346,6 +346,10 @@
+         return;
+     } while (1);
+ 
++    if (!client_freo_admit_listener(client)) {
++        client_send_error_by_id(client, ICECAST_ERROR_SOURCE_MAX_LISTENERS);
++        return;
++    }
+     client->write_to_client = format_generic_write_to_client;
+     client->check_buffer = format_check_http_buffer;
+     client->refbuf->len = PER_CLIENT_REFBUF_SIZE;

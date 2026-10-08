@@ -336,6 +336,7 @@ for attempt in {1..30}; do
   sleep 2
 done
 fi
+python3 "$source_dir/scripts/install-hosting.py"
 bash "$source_dir/scripts/install-statistics.sh" "$source_dir"
 (cd "$install_dir" && bash "$source_dir/scripts/validate-install.sh")
 

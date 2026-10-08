@@ -19,6 +19,8 @@ def validate_settings(value):
     bitrate = value.get('bitrate')
     if type(bitrate) is not int or bitrate not in BITRATES:
         raise ValueError('Choose 64, 96, 128 or 192 kbps')
+    from freo_ops.hosting import check_bitrate
+    check_bitrate(bitrate)
     result = dict(DEFAULT_PROCESSING, codec='mp3', target=-16.0, ratio=1.5, **{'bitrate':bitrate})
     result.update(value)
     result.setdefault('preset', 'custom' if any(result[k] for k in ('agc','multiband','eq')) else 'off')
@@ -69,6 +71,9 @@ def processor_command(values):
 def queue_settings(station, values, revision, user):
     values = validate_settings(values)
     allocation_lock()
+    from freo_ops.hosting import check_bitrate, require_service
+    require_service()
+    check_bitrate(values['bitrate'])
     db.session.refresh(station)
     stream = station.stream
     db.session.refresh(stream)

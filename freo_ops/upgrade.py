@@ -234,6 +234,8 @@ def upgrade(artifact, signature, keyring, env_file, backup, passphrase, verifica
         if (root / 'current').exists() and not (root / 'current').is_symlink():
             raise recovery.RecoveryError('Release pointer is not a symlink; explicit adoption review required')
         current = (root / 'current').resolve() if (root / 'current').is_symlink() else root
+        from .hosting import read as hosting_policy
+        installed_hosting = hosting_policy()
         from .inventory import DIRECTORIES, FILES
         # Include the matched executable source and venv, never the new staged
         # release. Recovery must not depend on a later download being available.
@@ -414,6 +416,12 @@ def upgrade(artifact, signature, keyring, env_file, backup, passphrase, verifica
                 if microphone and journal['previous_units'].get('/etc/systemd/system/freo-mic.service') is None:
                     recovery.run(['systemctl', 'enable', 'freo-mic.service'])
                     journal['active_units'].append('freo-mic.service')
+            # Hosting entrypoint and standalone service guards follow the candidate.
+            hosting_installer = release / 'scripts/install-hosting.py'
+            if hosting_installer.exists():
+                recovery.run(['python3', str(hosting_installer)])
+            elif installed_hosting['hosted']:
+                raise recovery.RecoveryError('Hosted installations require a release with hosting enforcement')
             switch_pointer(root, release)
             recovery.run(['systemctl', 'daemon-reload'])
             journal['phase'] = 'starting'

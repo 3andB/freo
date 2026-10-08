@@ -3,6 +3,7 @@ Description=Freo Icecast streaming backend
 After=network.target
 
 [Service]
+ExecStartPre=/usr/bin/python3 /usr/local/lib/freo-hosting/guard.py
 Type=simple
 User=icecast2
 Group=icecast

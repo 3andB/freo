@@ -21,6 +21,7 @@ mkdir -p "$build"
 tar -xzf "$archive" --strip-components=1 -C "$build"
 cd "$build"
 patch --batch --fuzz=0 -p1 < "$repo/deploy/icecast/patches/2.5.0-listener-locks.patch"
+patch --batch --fuzz=0 -p1 < "$repo/deploy/icecast/patches/2.5.0-hosting-listeners.patch"
 ./configure --prefix=/usr --sysconfdir=/etc --localstatedir=/var CFLAGS='-O2 -g'
 make -j1
 ./src/icecast -V

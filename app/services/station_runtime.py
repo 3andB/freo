@@ -137,6 +137,14 @@ def render_liquidsoap(station, password, audio_settings=None):
         '__DESCRIPTION__': json.dumps(station.description or 'Generated station test audio'),
     }
     liquidsoap = (SOURCE / 'deploy/liquidsoap/station.liq.template').read_text()
+    from freo_ops.hosting import read
+    if read()['hosted']:
+        liquidsoap = liquidsoap.replace('record_output = output.file(', 'record_output = output.external(')
+        liquidsoap = liquidsoap.replace('  perm=0o640, dir_perm=0o750,\n', '')
+        import shlex
+        command = shlex.join([str(SOURCE / 'venv/bin/python'), str(SOURCE / 'scripts/hosting-recording.py'), slug]) + ' '
+        liquidsoap = liquidsoap.replace('{__RECORDING_DIR__ ^ "/" ^ record_key() ^ ".mp3"}',
+            '{' + json.dumps(command) + ' ^ record_key()}')
     for marker, value in values.items():
         liquidsoap = liquidsoap.replace(marker, value)
     return liquidsoap
@@ -200,6 +208,9 @@ def render(station):
 
 def service_action(slug, action):
     require_root()
+    if action in ('start', 'restart'):
+        from freo_ops.hosting import require_service
+        require_service()
     if action not in {'start', 'stop', 'restart', 'status'}:
         raise ValueError('Unsupported station action')
     unit = unit_name(slug)

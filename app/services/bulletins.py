@@ -1,4 +1,6 @@
 """External audio preparation and reconciliation inside the timed-event worker."""
+from freo_ops.hosting_storage import write as hosting_write
+
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
@@ -61,11 +63,12 @@ def fetch_file(url, networks, folder, identifier):
                 if not data: break
                 total += len(data)
                 if total > 100*1024*1024: raise ValueError('Bulletin exceeds 100 MB')
-                output.write(data)
+                hosting_write(output, data)
         # No network-capable demuxers: the downloader is the sole network boundary.
-        subprocess.run(['ffmpeg','-nostdin','-v','error','-protocol_whitelist','file,pipe',
+        from freo_ops.hosting_storage import run_media
+        run_media(['ffmpeg','-nostdin','-v','error','-protocol_whitelist','file,pipe',
             '-format_whitelist','mp3,aac,ogg,flac,wav,mov','-i',str(source),'-map','0:a:0','-vn','-t','601','-ac','2','-ar','44100','-c:a','pcm_s16le',
-            '-threads','1','-y',str(target)],check=True,capture_output=True,timeout=20)
+            '-threads','1','-y',str(target)],max_output_bytes=107_000_000,check=True,capture_output=True,timeout=20)
         from app.services.media_probe import probe
         duration = probe(target,timeout=5)['duration_ms']/1000
         if not 0 < duration <= 600: raise ValueError('Bulletin exceeds ten minutes')

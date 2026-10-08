@@ -1,0 +1,13 @@
+<aside class="notice" aria-label="Hosting usage">
+  <strong>{{ hosting_summary.plan|title }}</strong> · {{ hosting_summary.status|replace('_',' ')|title }} ·
+  {{ hosting_summary.stations_used }} of {{ hosting_summary.limits.stations }} Stations ·
+  {{ hosting_summary.listeners_used if hosting_summary.listeners_used is not none else 'Unavailable' }} / {{ hosting_summary.limits.listeners }} listeners ·
+  Up to {{ hosting_summary.limits.bitrate_kbps }} kbps
+  {% if hosting_summary.storage %}
+  <div>Media Storage — {{ '%.2f'|format(hosting_summary.storage.used_bytes / 1000000000) }} GB / {{ hosting_summary.limits.storage_gb }} GB
+    ({{ hosting_summary.storage.percent }}%; {{ '%.2f'|format(hosting_summary.storage.remaining_bytes / 1000000000) }} GB remaining)</div>
+  {% if hosting_summary.storage.remaining_bytes == 0 %}<p>Media storage is full. Delete media or increase storage capacity to upload more. Broadcasting continues.</p>
+  {% elif hosting_summary.storage.percent >= 80 %}<p>Your media storage is approaching its allowance.</p>{% endif %}
+  {% else %}<div>Storage usage is temporarily unavailable.</div>{% endif %}
+  {% if hosting_summary.status == 'past_due' %}<p>Your hosting account needs attention. Broadcasting remains active.</p>{% endif %}
+</aside>

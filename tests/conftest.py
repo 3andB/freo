@@ -43,3 +43,11 @@ def isolate_postgres(request, monkeypatch):
         with disposable_database() as url:
             monkeypatch.setenv('FREO_TEST_POSTGRES_URL', url)
             yield
+
+
+@pytest.fixture(autouse=True)
+def isolated_hosting_policy(tmp_path, monkeypatch):
+    """Unit/regression suites never inherit the test host's real commercial policy."""
+    from freo_ops import hosting
+    monkeypatch.setattr(hosting, 'CONFIG', tmp_path / 'absent-hosting.json')
+    monkeypatch.setattr(hosting, 'STATE', tmp_path / 'absent-hosting-authority')

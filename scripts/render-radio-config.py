@@ -63,6 +63,10 @@ def main():
     if '<!DOCTYPE' in icecast.upper() or '<!ENTITY' in icecast.upper():
         raise SystemExit('XML entities are not supported in radio configuration.')
     root = ET.fromstring(icecast, parser=ET.XMLParser(target=ET.TreeBuilder(insert_comments=True)))
+    import sys
+    sys.path.insert(0, str(SOURCE))
+    from freo_ops.hosting_admin import render_listener_limit
+    render_listener_limit(root)
     mounts = []
     station_secrets = SECRETS / 'stations'
     if station_secrets.exists():

@@ -29,16 +29,18 @@ def create_station(name, slug, description='', *, pending=False, timezone_name='
     from app.models import StationAlias
     if Station.query.filter(db.or_(Station.slug == slug, Station.public_slug == slug)).first() or db.session.get(StationAlias, slug):
         raise ValueError('Station slug already exists')
+    from freo_ops.hosting import check_stations
+    hosting = check_stations(active_stations().count(), adding=True)
     limit = get_setting('FREO_MAX_STATIONS')
     from app.services.software_license import unlimited
-    if unlimited():
+    if hosting['hosted'] or unlimited():
         limit = 0
     if limit and active_stations().count() >= limit:
         raise ValueError(f'This installation allows a maximum of {limit} stations')
     from app.services.central_api.licensing import check_expansion
     check_expansion()
     station = Station(timezone=timezone_name, lifecycle_state='pending_create' if pending else 'ready', name=name, slug=slug, description=description, enabled=True, desired_state='stopped')
-    station.stream = StreamMount(format='mp3', bitrate=192, enabled=True)
+    station.stream = StreamMount(format='mp3', bitrate=min(192, max(b for b in (64,96,128,192) if b <= hosting['limits']['bitrate_kbps'])) if hosting['hosted'] else 192, enabled=True)
     db.session.add(station)
     db.session.flush()
     from app.services.music_tags import seed_starter_tags

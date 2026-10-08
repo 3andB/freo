@@ -1,4 +1,6 @@
 """Worker preparation and bounded storage for the music review workspace."""
+from freo_ops.hosting_storage import write as hosting_write
+
 from app.services.installation_settings import get_setting
 from datetime import datetime, timedelta, timezone
 import hashlib
@@ -73,7 +75,7 @@ def stage(session, identifier, file, relative_path='', choices=None):
                 if sum(i.size_bytes for i in active) + total > MAX_SESSION_BYTES:
                     raise ValueError('This workspace has reached its 10 GB limit')
                 digest.update(chunk)
-                output.write(chunk)
+                hosting_write(output, chunk)
             output.flush()
             os.fsync(output.fileno())
         if not total:
@@ -122,9 +124,10 @@ def prepare_one():
             with tempfile.TemporaryDirectory(prefix='freo-import-art-') as directory:
                 target = Path(directory) / 'cover.jpg'
                 try:
-                    result = subprocess.run(['ffmpeg', '-nostdin', '-v', 'error', '-threads', '1', '-i', str(path),
+                    from freo_ops.hosting_storage import run_media
+                    result = run_media(['ffmpeg', '-nostdin', '-v', 'error', '-threads', '1', '-i', str(path),
                         '-map', '0:v:0', '-frames:v', '1', '-vf', 'scale=800:800:force_original_aspect_ratio=decrease',
-                        str(target)], capture_output=True, timeout=30)
+                        str(target)], max_output_bytes=2*1024*1024, capture_output=True, timeout=30)
                     if result.returncode == 0 and target.stat().st_size <= 2 * 1024 * 1024:
                         art = target.read_bytes()
                 except (OSError, subprocess.SubprocessError):

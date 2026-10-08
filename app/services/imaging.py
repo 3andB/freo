@@ -1,4 +1,6 @@
 """First-class station imaging built on Freo's trusted probe and storage rules."""
+from freo_ops.hosting_storage import write as hosting_write
+
 import hashlib
 import os
 from pathlib import Path
@@ -159,7 +161,7 @@ def ingest_imaging(slug, source, asset_type, name=None, cart_code=None, storage=
                 if total > MAX_MEDIA_FILE_BYTES:
                     raise MediaValidationError('File exceeds size limit')
                 checksum.update(chunk)
-                output.write(chunk)
+                hosting_write(output, chunk)
             output.flush()
             os.fsync(output.fileno())
         digest = checksum.hexdigest()

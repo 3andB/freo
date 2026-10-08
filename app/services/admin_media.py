@@ -1,4 +1,6 @@
 """Station-scoped browser media operations; filesystem writes stay in the ingest worker."""
+from freo_ops.hosting_storage import write as hosting_write
+
 from app.services.installation_settings import get_setting
 from app.services.availability import tracks_for
 import os
@@ -63,7 +65,7 @@ def stage_upload(station, user, file, *, kind='ingest', imaging_type=None, imagi
                 total += len(chunk)
                 if total > get_setting('MAX_MEDIA_UPLOAD_BYTES'):
                     raise MediaValidationError('File exceeds the web upload size limit')
-                output.write(chunk)
+                hosting_write(output, chunk)
             output.flush()
             os.fsync(output.fileno())
         if total == 0:

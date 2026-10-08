@@ -55,7 +55,8 @@ def _estimate_bpm(path,timeout):
 def extract_artwork(song, storage=None, timeout=30):
     storage=storage or LocalMediaStorage();source=storage.regular_file(song.station.slug,song.storage_key);key=uuid.uuid4().hex+'.jpg';target=storage.artwork_path(song.station.slug,key)
     try:
-        subprocess.run(['/usr/bin/ffmpeg','-nostdin','-hide_banner','-loglevel','error','-i',str(source),'-map','0:v:0','-frames:v','1','-vf','scale=800:800:force_original_aspect_ratio=decrease',str(target)],timeout=timeout,check=True)
+        from freo_ops.hosting_storage import run_media
+        run_media(['/usr/bin/ffmpeg','-nostdin','-hide_banner','-loglevel','error','-i',str(source),'-map','0:v:0','-frames:v','1','-vf','scale=800:800:force_original_aspect_ratio=decrease',str(target)],max_output_bytes=2*1024*1024,timeout=timeout,check=True)
         target.chmod(0o640);song.artwork_key=key
         if song.catalog_album and not song.catalog_album.artwork_key: song.catalog_album.artwork_key=key
     except (OSError,subprocess.SubprocessError): target.unlink(missing_ok=True)

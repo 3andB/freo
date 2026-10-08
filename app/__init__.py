@@ -61,6 +61,8 @@ def create_app(config_name=None):
         configs[name].init_app(app)
     app.logger.setLevel(getattr(logging, app.config["LOG_LEVEL"].upper(), logging.INFO))
     db.init_app(app)
+    from .services.hosting_web import install as install_hosting
+    install_hosting(app)
     from . import models  # noqa: F401 - register migration metadata
     migrate.init_app(app, db)
     from .routes.public_api import init_api

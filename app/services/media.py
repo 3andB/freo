@@ -1,4 +1,6 @@
 """Trusted station media ingestion and approved playlist generation."""
+from freo_ops.hosting_storage import write as hosting_write
+
 from app.services.availability import tracks_for
 import hashlib
 import os
@@ -80,6 +82,11 @@ def _prepare_dirs(storage, slug):
             os.chmod(path, mode)
         elif path.stat().st_uid != os.geteuid():
             raise PermissionError('Ingest directory is not owned by the ingest worker')
+    from freo_ops.hosting import read
+    if read()['hosted']:
+        import subprocess
+        for path in (station_dir, originals, imaging, staging, artwork, previews):
+            subprocess.run(['setfacl','-m','g:freo-storage:r-x,d:g:freo-storage:r-x','--',str(path)],check=True,capture_output=True)
     return originals, staging
 
 
@@ -109,7 +116,7 @@ def ingest(slug, source, title=None, artist=None, album=None, storage=None, *,
                 if total > MAX_MEDIA_FILE_BYTES:
                     raise MediaValidationError('File exceeds size limit')
                 checksum.update(chunk)
-                target.write(chunk)
+                hosting_write(target, chunk)
             target.flush()
             os.fsync(target.fileno())
         digest = checksum.hexdigest()
