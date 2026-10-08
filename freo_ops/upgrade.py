@@ -270,6 +270,8 @@ def upgrade(artifact, signature, keyring, env_file, backup, passphrase, verifica
                 raise recovery.RecoveryError('Downgrades require a separately reviewed recovery procedure')
             if old_version == manifest['version'] and revision != manifest['schema_head']:
                 raise recovery.RecoveryError('Installed code and schema do not form a matched baseline; recover/adopt explicitly before upgrading')
+            if releases.migration_head(current) != revision:
+                raise recovery.RecoveryError('Installed source and schema do not match; recover the baseline first')
             from . import v1
             adopting_v1 = v1.transition(current, release, revision, manifest['version'])
             if adopting_v1:
@@ -390,6 +392,7 @@ def upgrade(artifact, signature, keyring, env_file, backup, passphrase, verifica
                 os.replace(pending, target)
                 sync_directory(target.parent)
             if adopting_v1:
+                maintenance_guards(state)
                 v1.activate_icecast(binary)
                 v1.provision(release, values, env)
                 recovery.run(['systemctl', 'enable', 'freo-production.service'])
@@ -416,7 +419,7 @@ def upgrade(artifact, signature, keyring, env_file, backup, passphrase, verifica
             for unit in journal['active_units']:
                 # Timers and long-lived processes must return; one-shot services may finish.
                 if unit.endswith('.timer') or unit in ('freo.service', 'freo-automation.service', 'freo-ingest.service',
-                                                        'freo-stats.service', 'freo-central-api.service', 'freo-mic.service') or unit.startswith('freo-playout'):
+                                                        'freo-stats.service', 'freo-central-api.service', 'freo-mic.service', 'freo-production.service') or unit.startswith('freo-playout'):
                     recovery.run(['systemctl', 'is-active', '--quiet', unit])
                 if unit.startswith('freo-playout@'):
                     slug = unit.removeprefix('freo-playout@').removesuffix('.service')

@@ -19,6 +19,8 @@ def host(tmp_path, monkeypatch):
     for path in (root / 'app', state, config, units, root / 'deploy/systemd'):
         path.mkdir(parents=True, exist_ok=True)
     state.chmod(0o700)
+    (root / 'migrations/versions').mkdir(parents=True)
+    (root / 'migrations/versions/source.py').write_text("revision = 'a71d25b609ef'\ndown_revision = None\n")
     (root / 'app/version.py').write_text("VERSION = '0.1.0'\n")
     environment = config / 'freo.env'
     environment.write_text('DATABASE_URL=postgresql://test@localhost/source\nSECRET_KEY=fixture\n')

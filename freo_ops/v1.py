@@ -34,8 +34,7 @@ def check_space(url, roots, release, backup, verification):
         with connection.cursor() as cursor:
             cursor.execute('SELECT pg_database_size(current_database())')
             size += cursor.fetchone()[0]
-            cursor.execute('SHOW data_directory')
-            database_path = Path(cursor.fetchone()[0])
+            database_path = Path('/var/lib/postgresql')
     finally:
         connection.close()
     code = sum(p.stat().st_size for p in release.rglob('*') if p.is_file())
@@ -116,7 +115,7 @@ def provision(release, values, env):
     connection = recovery.connect(values['DATABASE_URL'])
     try:
         with connection.cursor() as cursor:
-            cursor.execute('SELECT s.slug FROM stations s JOIN streams t ON t.station_id=s.id WHERE s.enabled AND t.enabled ORDER BY s.id')
+            cursor.execute('SELECT s.slug FROM stations s JOIN stream_mounts t ON t.station_id=s.id WHERE s.enabled AND t.enabled ORDER BY s.id')
             slugs = [row[0] for row in cursor.fetchall()]
     finally:
         connection.close()
