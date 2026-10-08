@@ -1,0 +1,15 @@
+--- a/src/admin.c
++++ b/src/admin.c
+@@ -964,10 +964,12 @@
+         sock = listensocket_get_listener(con->listensocket_real)->id;
+         if (sock)
+             xmlNewTextChild(node, NULL, XMLSTR("listensocketreal"), XMLSTR(sock));
++        listensocket_release_listener(con->listensocket_real);
+ 
+         sock = listensocket_get_listener(con->listensocket_effective)->id;
+         if (sock)
+             xmlNewTextChild(node, NULL, XMLSTR("listensocketeffective"), XMLSTR(sock));
++        listensocket_release_listener(con->listensocket_effective);
+     }
+ 
+     do {

@@ -58,6 +58,8 @@ def test_bulletin_file_live_failure_and_processor_controls(app,tmp_path,monkeypa
                 for preset in ('light','standard','punchy','off'):
                     assert _command(station.slug,processor_command(dict(bitrate=64,preset=preset)))=='OK'
                     time.sleep(.3);assert program_rms(station.slug)>.01 and proc.poll() is None
+                assert _command(station.slug,processor_command(dict(bitrate=64,preset='custom',agc=True,multiband=True,eq=True,bass=2.0,mid=-1.0,treble=1.0,target=-17.0,ratio=1.7)))=='OK'
+                time.sleep(.3);assert program_rms(station.slug)>.01 and proc.poll() is None
                 with pytest.raises(RuntimeError):_command(station.slug,'freo_processor.apply 1.0 1.0 0.0 -99.0 1.0 0.0 0.0 0.0')
                 assert _command(station.slug,'freo_processor.state')=='READY'
                 def event(kind):
@@ -75,7 +77,7 @@ def test_bulletin_file_live_failure_and_processor_controls(app,tmp_path,monkeypa
                 music();_command(station.slug,'freo_queue.skip')
                 wait_for(lambda:'|BODY|' in _command(station.slug,'freo_bulletin.state'))
                 assert _command(station.slug,'freo_program.current')==''
-                assert bulletins.reconcile(station,reader)
+                assert bulletins.reconcile(station,reader), (live.state, live.failure_reason, _command(station.slug,'freo_bulletin.state'))
                 monkeypatch.setattr('app.services.broadcast_status.observation',lambda slug:(True,0))
                 from app.automation_worker import observe_queue
                 from app.models import LiveQueueSnapshot
@@ -121,7 +123,8 @@ def test_bulletin_file_live_failure_and_processor_controls(app,tmp_path,monkeypa
                 transport.close()
 
 
-def test_aac_and_mp3_real_icecast(tmp_path):
+@pytest.mark.parametrize('bitrate', [64, 96, 128, 192])
+def test_aac_and_mp3_real_icecast(tmp_path, bitrate):
     from urllib.request import build_opener,ProxyHandler
     import tempfile
     opener=build_opener(ProxyHandler({}))
@@ -137,10 +140,10 @@ def test_aac_and_mp3_real_icecast(tmp_path):
         from app.services.station_audio import encoder_liquidsoap
         lines=['settings.init.allow_root := true','settings.log.level := 2','radio = sine(amplitude=0.15,440.0)']
         for codec in ('mp3','aac'):
-            lines.append(f'output.icecast({encoder_liquidsoap(dict(bitrate=192,codec=codec))},host="127.0.0.1",port={port},password="isolated-pass",mount="/{codec}",radio)')
+            lines.append(f'output.icecast({encoder_liquidsoap(dict(bitrate=bitrate,codec=codec))},host="127.0.0.1",port={port},password="isolated-pass",mount="/{codec}",radio)')
         script.write_text('\n'.join(lines))
         with (root/'server.log').open('w') as log,(root/'encoder.log').open('w') as engine_log:
-            server=subprocess.Popen(['icecast2','-c',str(ice)],stdout=log,stderr=log,user='nobody',group='nogroup')
+            server=subprocess.Popen([os.environ.get('FREO_TEST_ICECAST','icecast2'),'-c',str(ice)],stdout=log,stderr=log,user='nobody',group='nogroup')
             engine=subprocess.Popen(['liquidsoap',str(script)],stdout=engine_log,stderr=engine_log)
             try:
                 def online():
@@ -154,6 +157,16 @@ def test_aac_and_mp3_real_icecast(tmp_path):
                         data=response.read(65536)
                     target=tmp_path/f'output.{codec}';target.write_bytes(data)
                     subprocess.run(['ffmpeg','-v','error','-i',str(target),'-f','null','-'],check=True,timeout=10)
+                    import json
+                    observed=json.loads(subprocess.check_output(['ffprobe','-v','error','-show_streams','-of','json',str(target)],text=True))['streams'][0]
+                    assert observed['codec_name']==codec
+                    assert observed['channels']==2
+                    if codec=='aac':
+                        assert observed['profile']=='LC'
+                        assert observed['sample_rate']=='44100'
+                    else:
+                        assert int(observed['bit_rate'])==bitrate*1000
+                    (tmp_path/f'{codec}-probe.json').write_text(json.dumps(dict(requested_kbps=bitrate,observed=observed),indent=2))
             finally:
                 for proc in (engine,server):
                     proc.terminate()
@@ -184,3 +197,70 @@ def test_file_download_permissions_match_installed_accounts(tmp_path):
             assert result.stdout==b'RIFF'
     finally:
         server.shutdown();server.server_close();thread.join(timeout=2)
+
+
+def test_listener_statistics_do_not_block_icecast_reload(tmp_path):
+    """Icecast 2.5.0 leaked two read locks per listed listener before our patch."""
+    import base64
+    import signal
+    import tempfile
+    from urllib.request import Request, build_opener, ProxyHandler
+    opener = build_opener(ProxyHandler({}))
+    with tempfile.TemporaryDirectory(prefix='freo-icecast-reload-') as folder:
+        root = Path(folder); root.chmod(0o755)
+        with socket.socket() as sock:
+            sock.bind(('127.0.0.1', 0)); port = sock.getsockname()[1]
+        config = Path('deploy/icecast/icecast.xml.template').read_text()
+        for key in ('SOURCE', 'ADMIN', 'RELAY'):
+            config = config.replace('__' + key + '_PASSWORD__', 'isolated-pass')
+        config = config.replace('<port>8001</port>', f'<port>{port}</port>').replace('/var/log/icecast2', str(root))
+        path = root/'icecast.xml'; path.write_text(config); path.chmod(0o644)
+        base = f'http://127.0.0.1:{port}'
+        source = listener = None
+        evidence = bytearray()
+        def status():
+            try:
+                with opener.open(base+'/status-json.xsl', timeout=2) as response:
+                    return response.status == 200
+            except OSError:
+                return False
+        with (tmp_path/'icecast-reload.log').open('w') as log:
+            server = subprocess.Popen([os.environ.get('FREO_TEST_ICECAST', 'icecast2'), '-c', str(path)],
+                stdout=log, stderr=log, user='nobody', group='nogroup')
+            try:
+                wait_for(status, 30)
+                source = subprocess.Popen(['ffmpeg', '-nostdin', '-v', 'error', '-re', '-f', 'lavfi',
+                    '-i', 'sine=frequency=440:duration=120', '-c:a', 'libmp3lame', '-b:a', '128k',
+                    '-content_type', 'audio/mpeg', '-f', 'mp3', f'icecast://source:isolated-pass@127.0.0.1:{port}/reload'],
+                    stdout=log, stderr=log)
+                def connect():
+                    nonlocal listener
+                    try:
+                        listener = opener.open(Request(base+'/reload', headers={'User-Agent':'Freo-Soak-Listener'}), timeout=5)
+                        evidence.extend(listener.read(4096))
+                        return bool(evidence)
+                    except OSError:
+                        return False
+                wait_for(connect, 30)
+                authorization = 'Basic ' + base64.b64encode(b'admin:isolated-pass').decode()
+                for index in range(5):
+                    request = Request(base+'/admin/listclients?mount=/reload',
+                        headers={'Authorization':authorization, 'Accept':'text/xml'})
+                    with opener.open(request, timeout=3) as response:
+                        clients = response.read()
+                    assert b'Freo-Soak-Listener' in clients, clients
+                    path.write_text(config.replace('</icecast>', f'<mount type="normal"><mount-name>/new-{index}</mount-name><public>0</public></mount></icecast>'))
+                    server.send_signal(signal.SIGHUP)
+                    time.sleep(2)
+                    assert status(), 'Icecast stopped answering after client statistics followed by reload'
+                    evidence.extend(listener.read(4096))
+                    assert source.poll() is None
+            finally:
+                if listener is not None: listener.close()
+                for process in (source, server):
+                    if process is not None and process.poll() is None:
+                        process.terminate()
+                        try: process.wait(timeout=3)
+                        except subprocess.TimeoutExpired: process.kill(); process.wait()
+        audio = tmp_path/'reload-stream.mp3'; audio.write_bytes(evidence)
+        subprocess.run(['ffmpeg', '-v', 'error', '-i', str(audio), '-f', 'null', '-'], check=True, timeout=10)

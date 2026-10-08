@@ -2286,3 +2286,28 @@ audio. An additional real-engine regression confirmed that repeated worker
 observations preserve a later DJ selection. These checks precede the requested
 four-hour soak and do not establish its completion. Production remains outside
 this test/deployment scope.
+
+### Staging soak preparation: Icecast 2.5.0 listener locks
+
+The disposable staging VM reproduced an Icecast 2.5.0 deadlock when a station
+configuration reload followed authenticated listener inventory polling. The
+upstream `__add_listener` path acquired real/effective listener configuration
+read locks without releasing them; reload then waited on the configuration
+write lock. The bundled two-line source patch releases both locks after copying
+their IDs into the XML response. It does not change credentials or configuration.
+
+`scripts/build-icecast-2.5.sh` builds a private patched executable from the official
+<https://downloads.xiph.org/releases/icecast/icecast-2.5.0.tar.gz> archive, SHA-256
+`d9aa07c7429aec19d950ff6fd425c371f77158cd34ff220fc191b2c186c67c7a`.
+It neither installs the binary nor restarts a service. Matching libigloo runtime
+and development headers (>= 0.9.4) are required. Deployments still using the
+unpatched 2.5.0 package need this dependency correction; this is not an upgrade
+bridge or a production rollout.
+
+The new real-source/listener regression fails against the stock binary and
+passes five reloads against the patched build. Expanded real Icecast tests decode
+MP3 and AAC-LC at configured 64/96/128/192 kbps, exercise all processor presets
+including Custom and invalid-command rollback, and cover bulletin disconnect
+and timeout fallback. The final focused run passed nine checks including service
+account permissions and the current migration head. These are preparation and
+regression results, not evidence of the four-hour soak.
