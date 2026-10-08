@@ -42,6 +42,6 @@
 {% endif %}
 <button type="submit">{{ 'Retry registration' if installation.registration_state == 'registration_uncertain' else 'Register installation' }}</button></form>
 {% else %}<p>The background reporter enrolls this installation automatically. If the API is unavailable it will retry with the same saved identity.</p><form method="post"><input type="hidden" name="csrf" value="{{ csrf_token() }}"><input type="hidden" name="action" value="retry_connection"><button type="submit">Retry connection</button></form>{% endif %}
-{% if not installation.installation_id %}<div id="installation-plan"><h2>Plan</h2><p>Three stations total per owner are free. Registration is optional; paid licenses work offline.</p></div>{% endif %}
+{% if not hosting_summary and not installation.installation_id %}<div id="installation-plan"><h2>Plan</h2><p>Three stations total per owner are free. Registration is optional; paid licenses work offline.</p></div>{% endif %}
 </section>
 {% endblock %}

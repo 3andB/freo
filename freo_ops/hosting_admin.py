@@ -92,6 +92,13 @@ def verify(policy=None):
         return dict(broadcasting=False, listeners=0, storage=storage)
     if not active('icecast2.service'):
         raise h.HostingError('verification_failed', 'Icecast is not active.')
+    from urllib.request import build_opener, ProxyHandler
+    try:
+        with build_opener(ProxyHandler({})).open('http://127.0.0.1:8000/ready',timeout=3) as response:
+            if response.status != 200:
+                raise OSError('not ready')
+    except Exception:
+        raise h.HostingError('verification_failed','The Freo application is not ready.') from None
     data = observations()
     # Attempt one admission to publish the native counter/limit, then close it.
     from app.models import Station
@@ -262,6 +269,7 @@ def apply(policy, operation):
                             runtime.render(station)
                     for unit in ('freo.service','freo-ingest.service','freo-automation.service','freo-production.service'):
                         if active(unit):run(['systemctl','restart',unit])
+                run(['systemctl','start','freo.service','freo-ingest.service','freo-automation.service','freo-production.service'])
                 run(['systemctl','start','icecast2.service'])
                 from app.services.live_mic import enabled
                 if enabled():run(['systemctl','start','freo-mic.service'])

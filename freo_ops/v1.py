@@ -132,10 +132,11 @@ with app.app_context():
         raise recovery.RecoveryError('Symlinked production storage requires review')
     recovery.run(['install', '-d', '-o', 'freo', '-g', 'freo', '-m', '2770', str(root)])
     override = Path('/etc/systemd/system/freo-production.service.d/storage.conf')
-    if override.exists() or override.is_symlink():
+    body = '[Service]\nReadWritePaths=\nReadWritePaths="' + str(root.parent) + '"\n'
+    if override.is_symlink() or (override.exists() and override.read_text() != body):
         raise recovery.RecoveryError('Custom production storage override requires review')
     override.parent.mkdir(mode=0o755, exist_ok=True)
-    override.write_text('[Service]\nReadWritePaths=\nReadWritePaths="' + str(root.parent) + '"\n')
+    override.write_text(body)
     override.chmod(0o644)
     connection = recovery.connect(values['DATABASE_URL'])
     try:

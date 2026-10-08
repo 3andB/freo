@@ -189,7 +189,10 @@ def render(station):
         snippet_tmp.unlink(missing_ok=True)
     # The root-owned renderer retains prior Icecast config and credentials.
     run_checked([sys.executable, str(SOURCE / 'scripts/render-radio-config.py')])
-    if (ROOT / 'radio/icecast.xml').read_bytes() != prior_icecast:
+    from freo_ops.hosting import read as hosting_policy
+    policy = hosting_policy()
+    hosted_offline = policy['hosted'] and policy['status'] in ('suspended', 'maintenance')
+    if (ROOT / 'radio/icecast.xml').read_bytes() != prior_icecast and not hosted_offline:
         try:
             run_checked(['/bin/systemctl', 'reload', 'icecast2.service'])
         except Exception:

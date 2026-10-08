@@ -115,12 +115,12 @@ def test_root_role_grant_is_explicit(app, monkeypatch):
     with app.app_context(): assert AdminUser.query.first().installation_admin
 
 
-def test_updater_excludes_its_own_units_and_uses_stable_environment(monkeypatch):
+def test_updater_excludes_its_running_service_and_stops_timer_for_backup(monkeypatch):
     from freo_ops.__main__ import active_units
     from freo_ops.upgrade import rewrite_unit
     rows = [{'unit': u, 'active': 'active'} for u in ['freo.service', 'freo-updater.service', 'freo-updater.timer']]
     monkeypatch.setattr('freo_ops.recovery.run', lambda *a, **k: json.dumps(rows).encode())
-    assert active_units() == ['freo.service']
+    assert active_units() == ['freo.service', 'freo-updater.timer']
     assert active_units(include_updater=True) == [row['unit'] for row in rows]
     from pathlib import Path
     body = rewrite_unit(Path('deploy/systemd/freo-updater.service').read_text())

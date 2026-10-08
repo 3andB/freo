@@ -73,3 +73,10 @@ def test_v1_provisions_bulletins_and_recordings_and_retains_mic_preference(tmp_p
     assert len([c for c in calls if any('recording-storage.py' in x for x in c)]) == 2
     renders = [c for c in calls if 'render' in c]
     assert len(renders) == 1 and renders[0][-1] == 'on-air'
+
+    # A subsequent reviewed V1 transition may retain the identical managed override.
+    assert v1.provision(tmp_path, {'DATABASE_URL':'fixture'}, {}) is True
+    override = tmp_path / 'etc/systemd/system/freo-production.service.d/storage.conf'
+    override.write_text('[Service]\nReadWritePaths=/customer/custom\n')
+    with pytest.raises(recovery.RecoveryError, match='Custom production storage'):
+        v1.provision(tmp_path, {'DATABASE_URL':'fixture'}, {})

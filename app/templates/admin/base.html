@@ -26,7 +26,6 @@
 {% endblock %}
 {% block scripts %}<script defer src="{{ url_for('static',filename='license_agreement.js',v='20260921') }}"></script><script defer src="{{ url_for('static',filename='music_availability.js',v='phase9-owner') }}"></script>{% if selected and page in ['live','media','sound-room'] %}<script defer src="{{ url_for('static',filename='song_flags.js') }}"></script>{% endif %}<script defer src="{{ url_for('static', filename='admin.js',v='v1-phase3') }}"></script><script defer src="{{ url_for('static',filename='schedule_status.js') }}"></script>{% if page in ['media','sound-room','tags','playlists'] %}<script defer src="{{ url_for('static',filename='music_preview.js',v='v1-phase2') }}"></script><script defer src="{{ url_for('static',filename='music_toggles.js',v='playlists-v1') }}"></script>{% endif %}{% endblock %}
 {% block content %}
-{% if hosting_summary %}{% include 'admin/_hosting.html' %}{% endif %}
 <div class="admin-layout">
   <aside class="admin-sidebar" aria-label="Admin navigation">
     <div class="admin-identity"><span class="admin-identity-mark">F</span><div><b>Freo control</b><small>Radio Station Operations</small></div></div>
@@ -71,7 +70,7 @@
       <a href="{{ url_for('player_experience.directory') }}" {% if page == 'player-directory' %}aria-current="page"{% endif %}>Player Settings</a>
       <a href="{{ url_for('player_experience.operations_inbox') }}" {% if page == 'operations-feedback' %}aria-current="page"{% endif %}>Listener Feedback</a>
       <a href="{{ url_for('central_api.settings') }}" {% if page == 'installation' %}aria-current="page"{% endif %}>Installation / freo.live</a>
-      {% if current_admin() and current_admin().installation_admin %}<a href="{{ url_for('distribution.page') }}" {% if page == 'software' %}aria-current="page"{% endif %}>Software and license</a>{% endif %}
+      {% if current_admin() and current_admin().installation_admin %}<a href="{{ url_for('distribution.page') }}" {% if page == 'software' %}aria-current="page"{% endif %}>{{ 'Software' if hosting_summary else 'Software and license' }}</a>{% endif %}
       {% if current_admin().installation_admin %}<a href="{{ url_for('production.settings') }}">AI provider settings</a>{% endif %}
       <a href="{{ url_for('dj.accounts') }}">DJ accounts and access</a>
       <a href="{{ url_for('api_credentials.page') }}" {% if page == 'api-credentials' %}aria-current="page"{% endif %}>API credentials</a>
@@ -85,6 +84,7 @@
       <div><span class="eyebrow">{{ selected.name if selected else 'Radio Station Ops' }} / {{ page|replace('-', ' ')|title }}</span><span class="toolbar-caption">{{ 'Individual station workspace' if selected else 'All stations · ' ~ stations|rejectattr('deleted_at')|list|length ~ ' managed' }}</span></div>
     </div>
     <div class="admin-content">
+      {% if hosting_summary %}{% include 'admin/_hosting.html' %}{% endif %}
       {% with messages = get_flashed_messages(with_categories=true) %}{% for category, message in messages %}<p class="admin-notice {{ 'error' if category == 'error' else 'success' }}" role="status">{{ message }}</p>{% endfor %}{% endwith %}
       {% if selected and page in ['calendar','events','blocks','traffic','clocks','rotations','schedule'] %}{% include 'admin/_scheduling_tabs.html' %}{% endif %}
       {% block admin_content %}{% endblock %}{% if selected and page in ['live','media','sound-room'] %}{% include 'admin/_song_flag_dialog.html' %}{% endif %}

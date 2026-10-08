@@ -1,4 +1,4 @@
-<aside class="notice" aria-label="Hosting usage">
+<aside class="admin-notice" aria-label="Hosting usage">
   <strong>{{ hosting_summary.plan|title }}</strong> · {{ hosting_summary.status|replace('_',' ')|title }} ·
   {{ hosting_summary.stations_used }} of {{ hosting_summary.limits.stations }} Stations ·
   {{ hosting_summary.listeners_used if hosting_summary.listeners_used is not none else 'Unavailable' }} / {{ hosting_summary.limits.listeners }} listeners ·

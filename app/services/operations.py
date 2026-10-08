@@ -49,14 +49,16 @@ def connection(stations, now):
     local_license = license_status()
     paid = local_license['edition'] == 'unlimited'
     local_limit = get_setting('FREO_MAX_STATIONS')
+    from freo_ops import hosting
+    policy = hosting.read()
     version = version_view(state, now, manual=manual)
     return dict(status=status, connected=connected, last_contact=last or 'Not yet observed',
                 **version,
                 check=check_status(now),
                 synced=f'{synced_count} / {len(stations)} stations up to date',
-                plan='Unlimited · perpetual' if paid else 'Free · three stations per owner',
-                entitlement_status=local_license.get('error') or 'Active · registration optional',
-                channel_limit='Unlimited' if paid else min(local_limit or 3, 3),
+                plan=policy['plan'].title() if policy['hosted'] else ('Unlimited · perpetual' if paid else 'Free · three stations per owner'),
+                entitlement_status=policy['status'].replace('_', ' ').title() if policy['hosted'] else (local_license.get('error') or 'Active · registration optional'),
+                channel_limit=policy['limits']['stations'] if policy['hosted'] else ('Unlimited' if paid else min(local_limit or 3, 3)),
                 error=row.last_error if row else '')
 
 
