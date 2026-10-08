@@ -276,7 +276,10 @@ class Track(db.Model):
     __mapper_args__ = {"batch": False}
     __tablename__ = 'tracks'
     __table_args__ = (
-        db.UniqueConstraint('station_id', 'checksum_sha256', name='uq_tracks_station_checksum'),
+        # A legacy Imaging identity can share bytes with music without changing it.
+        db.Index('uq_tracks_station_checksum', 'station_id', 'checksum_sha256', unique=True,
+                 postgresql_where=db.text('legacy_imaging_id IS NULL'),
+                 sqlite_where=db.text('legacy_imaging_id IS NULL')),
         db.Index('ix_tracks_title_id', 'title', 'id'),
         db.UniqueConstraint('freo_track_id', name='uq_tracks_freo_track_id'),
         db.CheckConstraint("ingest_status IN ('accepted','rejected')", name='ck_tracks_ingest_status'),

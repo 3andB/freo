@@ -82,7 +82,9 @@ try:
  if 'restart' in phase:
   wait.until(lambda d:len(d.find_elements(By.CSS_SELECTOR,'#booth-cue-list [data-cue-entry]'))==2)
   passed('server-owned Cue entries persisted across the full environment restart')
- if phase not in ('fresh','cue'):
+ # Official 0.3.2 has no mic gateway despite the saved enabled preference.
+ # Its mic leave hook blocks mode changes; recovery checks restored AUTO audio.
+ if phase not in ('fresh','cue') and not phase.startswith('recovery'):
   ready();click('.mode-button[data-mode="DJ_BOOTH"]')
   wait.until(lambda d:d.find_element(By.ID,'dj-booth').get_attribute('data-mode')=='DJ_BOOTH')
   click('.cue-picker-button[data-target="A"]')

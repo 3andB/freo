@@ -108,6 +108,19 @@ def configure_environment(values, destination):
 
 def provision(release, values, env):
     python = str(release / 'venv/bin/python')
+    # Existing offline converter retains original files/identities and translates
+    # Imaging references to V1 station audio. All writers are already guarded.
+    recovery.run([python, '-c', """
+from app import create_app
+from app.models import Station
+from app.services.imaging_migration import convert
+app=create_app()
+with app.app_context():
+    for station in Station.query.order_by(Station.id):
+        result=convert(station,maintenance=True)
+        if any(result['references'].values()):
+            raise RuntimeError('Legacy imaging references remain: '+station.slug)
+"""], cwd=release, env=env)
     recovery.run(['install', '-d', '-o', 'freo-automation', '-g', 'freo-playout', '-m', '2750',
                   '/var/lib/freo/bulletins'])
     root = Path(values.get('FREO_UPLOAD_ROOT') or '/var/lib/freo/uploads') / 'production'

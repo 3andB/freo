@@ -311,3 +311,37 @@ def test_occurrence_pages_and_cancel_are_station_scoped(app):
     assert client.post(f'/admin/stations/second-station/events/{identifier}/occurrences/{occurrence_id}/cancel',data={'csrf':'test-admin-csrf-token'}).status_code==404
     assert client.post(base+f'/occurrences/{occurrence_id}/cancel',data={'csrf':'test-admin-csrf-token'}).status_code==303
     assert b'cancelled_by_user' in client.get(base+'?view=history').data
+
+
+def test_guarded_upgrade_converts_duplicate_imaging_without_reclassifying_music(app,tmp_path,monkeypatch):
+    from app.services.media_storage import LocalMediaStorage
+    from app.services.imaging_migration import convert
+    monkeypatch.setattr('app.services.imaging_migration.grant_playout_read',lambda p:None)
+    with app.app_context():
+        station,music=station_audio();station.desired_state='running'
+        content=b'legacy imaging also present in music'
+        checksum=hashlib.sha256(content).hexdigest();music.checksum_sha256=checksum
+        original_music=(music.id,music.uuid,music.title,music.audio_kind,music.storage_key)
+        key='c'*32+'.mp3';directory=tmp_path/station.slug/'imaging';directory.mkdir(parents=True);(directory/key).write_bytes(content)
+        asset=m.ImagingAsset(station_id=station.id,uuid=str(uuid.uuid4()),name='Existing ID',asset_type='STATION_ID',original_filename='id.mp3',storage_key=key,media_type='mp3',duration_ms=1000,sample_rate_hz=44100,channels=2,file_size_bytes=len(content),checksum_sha256=checksum,enabled=True,ingest_status='accepted')
+        db.session.add(asset);db.session.flush()
+        cart=m.LiveCartSlot(station_id=station.id,role='HOT',position=1,imaging_asset_id=asset.id,label='Existing cart')
+        group=m.ImagingGroup(station_id=station.id,slug='existing-ids',name='Existing IDs',enabled=True)
+        group.assets.append(asset);db.session.add_all([cart,group]);db.session.commit()
+        with pytest.raises(ValueError,match='Stop this station'):
+            convert(station,LocalMediaStorage(tmp_path))
+        result=convert(station,LocalMediaStorage(tmp_path),maintenance=True)
+        assert result['converted']==1 and all(n==0 for n in result['references'].values())
+        db.session.refresh(music);db.session.refresh(cart)
+        assert (music.id,music.uuid,music.title,music.audio_kind,music.storage_key)==original_music
+        assert station.desired_state=='running'
+        audio=m.Track.query.filter_by(legacy_imaging_id=asset.id).one()
+        assert audio.id!=music.id and audio.checksum_sha256==checksum and audio.audio_kind=='STATION'
+        assert cart.track_id==audio.id and cart.imaging_asset_id is None
+        collection=m.Playlist.query.filter_by(legacy_imaging_group_id=group.id).one()
+        assert [row.track_id for row in collection.items]==[audio.id]
+        assert LocalMediaStorage(tmp_path).regular_file(station.slug,audio.storage_key).read_bytes()==content
+        assert (directory/key).read_bytes()==content
+        count=m.Track.query.count()
+        assert convert(station,LocalMediaStorage(tmp_path),maintenance=True)['converted']==1
+        assert m.Track.query.count()==count

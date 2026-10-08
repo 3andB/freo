@@ -11,7 +11,7 @@ def interrupted(args,**kwargs):
   os.kill(os.getpid(),signal.SIGKILL)
  return result
 recovery.run=interrupted
-main(['upgrade','/root/freo-v1-candidate-5.tar.gz','--signature','/root/freo-v1-candidate-5.tar.gz.sig',
+main(['upgrade','/root/freo-v1-candidate-6.tar.gz','--signature','/root/freo-v1-candidate-6.tar.gz.sig',
  '--keyring','/root/freo-upgrade-signing/test.gpg','--allow-candidate','--env-file','/opt/freo/.env',
  '--backup','/root/freo-upgrade-tests/pre-interruption.gpg','--verification-env-file','/root/freo-upgrade-preservation/verification.env',
  '--verification-directory','/root/freo-upgrade-tests/restore-interruption','--passphrase-file','/root/freo-upgrade-preservation/passphrase'])
