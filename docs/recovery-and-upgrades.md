@@ -2,8 +2,10 @@
 
 The management tools are implemented and tested with disposable PostgreSQL
 databases, real encrypted bundles and signatures, plus simulated service failures.
-The full Ubuntu/systemd installation and upgrade still require the independent
-[VM acceptance test](clean-install-test.md) before public support or deployment.
+The private 0.3.2 → V1 bridge has now exercised real Ubuntu/systemd installation,
+upgrade and recovery on the disposable VM; see the [verified procedure](../V1_UPGRADE_NOTES.md)
+and [test report](v1-upgrade-test-report-2026-10-08.md). Public distribution still
+requires the [VM acceptance test](clean-install-test.md) for the exact release artifact.
 This document describes the implemented commands, not the proposed interfaces in
 the original [design plan](upgrade-and-distribution-plan.md).
 
@@ -196,10 +198,12 @@ same verified release is a no-op. A different artifact cannot replace an
 already-installed version number. Frontend static URLs carry the release version
 to avoid combining cached assets from different releases.
 
-The updater supports the recorded 0.1.0, 0.2.0 and 0.3.0 candidate schemas. It
-refuses radio/proxy template changes, operating-system/platform changes and
-application downgrades. Radio engine and PostgreSQL major-version upgrades need
-separate tested procedures. Browser approval of root-prepared plans is described in [candidate installation](install-candidate.md).
+The updater supports the recorded legacy schemas, including the reviewed official
+0.3.2 → V1 transition. That bridge validates original generated templates, applies
+the pinned Icecast patch and converts legacy Imaging during guarded maintenance.
+Other radio/proxy template changes, operating-system/platform changes and
+application downgrades are refused. Other engine changes and PostgreSQL major
+upgrades need separate tested procedures. Browser approval of root-prepared plans is described in [candidate installation](install-candidate.md).
 There is no unattended upgrade, arbitrary web-triggered root shell, automatic
 data deletion or claim of uninterrupted broadcasting.
 

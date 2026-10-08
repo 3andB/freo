@@ -1,5 +1,123 @@
 # Freo V1 upgrade notes
 
+## Verified 0.3.2 → V1 bridge — 8 October 2026
+
+The explicit maintenance-window upgrade now supports the official **0.3.2
+source/schema pair (`83200e6`, `c83d4e5f9012`)** on Ubuntu 24.04 x86_64.
+The tested V1 candidate is `1.0.0-dev.1`, commit
+`e6b8b47af908ecf7ad0a72f56a86a471274cbbad`, schema `fc06a1b2c3d4`.
+This supersedes the earlier upgrade-deferral statements below. It does not
+publish V1: no tag, public release or bootstrap-channel change was made.
+See [the actual VM test report](docs/v1-upgrade-test-report-2026-10-08.md).
+
+### Before upgrading
+
+Use a maintenance window: web writes and broadcasting stop while the backup,
+restore verification, Icecast build and migration run. Keep a separately stored
+backup passphrase and copy the encrypted backup off the server before retiring
+any old state. Supply a protected verification environment containing a
+`DATABASE_URL` for a PostgreSQL role allowed to create isolated verification
+databases. Verification restores never replace the installed database.
+
+Run the tools from a separately extracted, signature-verified target artifact
+with its matched Python environment; do not replace the old application first.
+The existing [recovery guide](docs/recovery-and-upgrades.md) explains trusted
+extraction and `scripts/install-python.sh SOURCE TOOL_VENV --offline`.
+For the private test build, the release builder uses `--candidate` with a
+complete hashed wheelhouse; the archive must still have a detached signature
+from the explicitly trusted test key. `--development` artifacts cannot upgrade
+an installation. Public release artifacts use publisher signatures and do not
+need `--allow-candidate`.
+
+The updater checks the source/schema pair, supported OS/Python, baseline
+services, reviewed legacy templates and generated station scripts, signed
+artifact contents, locked dependencies, and free space for staging, backup and
+verification. The V1 bridge assumes the standard local PostgreSQL layout for
+its conservative space estimate; custom tablespaces require operator review.
+Pending legacy Imaging jobs must finish first.
+Changed execution overrides, hand-edited radio templates or an existing Icecast
+override require explicit review rather than silent replacement. Correct an
+unhealthy baseline before proceeding. Configured custom media/upload roots and
+non-execution service overrides are retained.
+
+### Execute
+
+Create protected backup/verification parent directories and use new paths per
+attempt. From the verified target tools directory, run (replace uppercase paths
+with reviewed local paths):
+
+```bash
+sudo /PRIVATE/upgrade-venv/bin/python -m freo_ops upgrade /DOWNLOADS/freo-v1.tar.gz \
+  --signature /DOWNLOADS/freo-v1.tar.gz.sig --keyring /PRIVATE/trusted.gpg \
+  --allow-candidate --env-file /opt/freo/.env \
+  --backup /BACKUPS/pre-v1.gpg \
+  --verification-env-file /PRIVATE/verification.env \
+  --verification-directory /RESTORES/pre-v1 \
+  --passphrase-file /PRIVATE/backup-passphrase --check
+```
+
+Then run the same command **without `--check`**. Preflight alone does not prove
+backup restoration, dependency installation or service startup. The real run:
+
+1. Stages immutable target code and an offline verified virtualenv.
+2. Installs persistent maintenance guards and stops all active Freo writers,
+   timers and playout instances, preserving the active/stopped station list.
+3. Creates an encrypted backup including the old matched executable source and
+   virtualenv, database, configuration, credentials and durable file roots;
+   restores it into a separate database/directory and verifies its contents.
+4. Builds the existing V1 Icecast 2.5 patch from checksum-pinned upstream source
+   using the existing build helper. It installs a private executable and service
+   override; the packaged Icecast binary stays available for recovery. This
+   step needs outbound access to the configured package repositories and Xiph.
+5. Applies migrations and compares every original table's original columns,
+   relationships and sequences against the restored backup. It preserves saved
+   settings and existing encryption keys, adding a provider key only if absent.
+6. Adopts `/etc/freo/freo.env`, installs versioned service paths, provisions V1
+   bulletin/production/recording storage, and renders supported station engines.
+   The existing offline Imaging converter translates legacy assets, groups,
+   carts and schedule/history references automatically while all writers are
+   stopped. Original imaging files and records remain. Identical music bytes
+   keep their original track identity and MUSIC classification: converted
+   legacy audio has its own checksum-verified STATION/COMMERCIALS identity.
+   The narrow checksum index exception applies only to converted legacy rows.
+   It adds production and, when previously enabled but missing, the mic service.
+   Original media/upload checksums are compared again before activation.
+7. Activates `/opt/freo/current`, starts the recorded services and required new
+   workers, and checks application readiness and audio from every formerly
+   active station. Intentionally stopped stations stay stopped.
+
+Inspect `python -m freo_ops upgrade-status` from the same tools directory and
+independently check original logins, station pages, scheduled audio, DJ access,
+media/artwork hashes and history. Use `/etc/freo/freo.env` for subsequent
+upgrades. Reapplying the identical signed artifact returns `already_installed`;
+a different artifact with the same installed version is refused. Finished
+journals are retained in `/var/lib/freo-updates/history`.
+
+### Tested recovery and repeatability
+
+An interrupted migration leaves a persistent maintenance marker and an unfinished
+journal. Do not remove these to force another upgrade: the next attempt refuses
+that state. Keep the failed database, host files and journal. Restore the
+pre-upgrade bundle into a new database and directory using the target recovery
+tools and the saved passphrase, then deliberately attach the matched old code,
+virtualenv, configuration, media and units after reviewing host paths and service
+identities. A database downgrade is not the recovery procedure.
+
+The exact disposable-host attachment procedure is recorded in
+[`tests/upgrade_acceptance/restore-baseline.py`](tests/upgrade_acceptance/restore-baseline.py).
+It verifies the backup, retains the current database under a different name,
+archives the current host tree, restores original roots and symlinks with
+ownership, removes only V1-added service activation, and starts the original
+units. It performs no manual row repairs and drops no database. This harness is
+restricted to the named trash server and known original paths/identities; do not
+run it unchanged on a customer host. General recovery remains an explicit
+operator procedure as described in [recovery and upgrades](docs/recovery-and-upgrades.md).
+
+## Historical development record
+
+The entries below record their scope at the time. Earlier statements deferring
+the 0.3.2 upgrade are superseded by the verified bridge above.
+
 ## V1 development source installation — 5 October 2026
 
 The development identifier is `1.0.0-dev.1`. This is an unpublished test build,
