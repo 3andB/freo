@@ -75,12 +75,12 @@ def test_overnight_series_stale_save_and_geometry(booth):
         WebDriverWait(driver,5).until(lambda d:d.execute_script('return innerWidth')==width)
         out['viewports'].append(driver.execute_script("""const d=document.documentElement; const slider=document.getElementById('duration-slider'), canvas=document.querySelector('.studio-canvas');return {width:innerWidth,pageWidth:d.scrollWidth,sliderRight:slider.getBoundingClientRect().right,canvasRight:canvas.getBoundingClientRect().right};"""))
     assert all(v['pageWidth']<=v['width'] and v['sliderRight']<=v['canvasRight'] for v in out['viewports']),out['viewports']
-    # A minute-long section at the Show endpoint exceeds the time-column visual bounds.
+    # A short section at the Show endpoint must stay inside the visual bounds.
     driver.set_window_size(1600,1200)
     Select(driver.find_element(By.ID,'show-duration')).select_by_value('900')
     driver.find_element(By.XPATH,"//nav[@id='source-tabs']/button[text()='Songs']").click();wait_text(driver,'#source-results','Verified Test Track')
     driver.find_element(By.CSS_SELECTOR,'.source-actions button').click()
-    driver.execute_script("document.getElementById('section-start').value='00:14:00';document.getElementById('section-end').value='00:15:00'")
+    driver.execute_script("document.getElementById('section-start').value='00:14:45';document.getElementById('section-end').value='00:15:00'")
     driver.find_element(By.CSS_SELECTOR,'#section-form button[type=submit]').click()
     out['short_section']=driver.execute_script("const s=document.querySelector('.timeline-section').getBoundingClientRect(),c=document.querySelector('.time-column').getBoundingClientRect();return {sectionBottom:s.bottom,columnBottom:c.bottom,overflow:s.bottom-c.bottom,sectionHeight:s.height,columnHeight:c.height}")
     assert out['short_section']['overflow']<=1

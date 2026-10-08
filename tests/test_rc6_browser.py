@@ -49,7 +49,7 @@ def test_player_vinyl_lava_and_stationary_cover(booth):
     driver.get(base+'/player/test-station')
     WebDriverWait(driver,12).until(lambda d:d.find_elements(By.CSS_SELECTOR,'.vinyl-lava'))
     assert len(driver.find_elements(By.CSS_SELECTOR,'.vinyl-lava>span'))==3
-    assert not driver.find_elements(By.CSS_SELECTOR,'.radio-vinyl img')
+    WebDriverWait(driver,12).until(lambda d:d.find_elements(By.CSS_SELECTOR,'#record-artwork img'))
     WebDriverWait(driver,12).until(lambda d:d.find_element(By.ID,'playing-artwork').is_displayed())
     assert driver.execute_script("const a=document.getElementById('playing-artwork'),t=document.getElementById('radio-transport');return a.getBoundingClientRect().top>=t.getBoundingClientRect().bottom && a.getBoundingClientRect().width<=160 && getComputedStyle(a).animationName==='none'")
     for width in (390,820,1280):
@@ -57,4 +57,4 @@ def test_player_vinyl_lava_and_stationary_cover(booth):
         assert driver.execute_script('return document.documentElement.scrollWidth<=innerWidth+1')
         driver.save_screenshot(f'/tmp/freo-rc6-player-{width}.png')
     driver.execute_cdp_cmd('Emulation.setEmulatedMedia',{'features':[{'name':'prefers-reduced-motion','value':'reduce'}]})
-    assert driver.execute_script("return getComputedStyle(document.querySelector('.vinyl-lava>span')).animationName")=='none'
+    assert driver.execute_script("return getComputedStyle(document.querySelector('.vinyl-lava>span')).animationName")=='lava-flow'

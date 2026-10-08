@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+from selenium.common.exceptions import StaleElementReferenceException
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from app.extensions import db
@@ -28,4 +29,4 @@ def test_relay_settings_status_and_safe_metadata(booth):
     driver.save_screenshot(str(folder/'relay-settings-mobile.png'))
     driver.find_element(By.NAME,'relay_enabled').click()
     driver.find_element(By.CSS_SELECTOR,'#relay-settings button').click()
-    WebDriverWait(driver,10).until(lambda d:'Disabled' in d.find_element(By.ID,'relay-status').text)
+    WebDriverWait(driver,10,ignored_exceptions=(StaleElementReferenceException,)).until(lambda d:'Disabled' in d.find_element(By.ID,'relay-status').text)

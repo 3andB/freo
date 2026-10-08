@@ -1,4 +1,5 @@
 """Show opt-in and DJ access in the existing booth UI."""
+from selenium.common.exceptions import StaleElementReferenceException
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from app.extensions import db
@@ -91,7 +92,7 @@ def test_create_fake_dj_login_and_manage_local_mp3(booth):
     driver.get(listing)
     field=driver.find_element(By.NAME,'name');field.clear();field.send_keys('Browser Friday')
     driver.find_element(By.CSS_SELECTOR,'form[action$="/rename"] button').click()
-    WebDriverWait(driver,10).until(lambda d:'Browser Friday.mp3' in d.find_element(By.TAG_NAME,'h2').text)
+    WebDriverWait(driver,10,ignored_exceptions=(StaleElementReferenceException,)).until(lambda d:'Browser Friday.mp3' in d.find_element(By.TAG_NAME,'h2').text)
     audio=driver.find_element(By.TAG_NAME,'audio')
     driver.execute_script('arguments[0].load()',audio)
     WebDriverWait(driver,10).until(lambda d:d.execute_script('return arguments[0].readyState',audio)>=2)

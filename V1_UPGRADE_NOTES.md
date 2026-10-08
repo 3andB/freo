@@ -2311,3 +2311,37 @@ including Custom and invalid-command rollback, and cover bulletin disconnect
 and timeout fallback. The final focused run passed nine checks including service
 account permissions and the current migration head. These are preparation and
 regression results, not evidence of the four-hour soak.
+
+### Staging acceptance regression follow-up (2026-10-08)
+
+The additional isolated real-engine batch passed 61 cases (one optional endurance
+case skipped). Focused DJ early-stop and cold-worker restart checks passed all ten
+cases. The cold worker fixture now adopts installation settings before spawning
+its production-configured process; previously it skipped mixer synchronization
+because those required settings were absent. The initial early-clear timing
+failure did not reproduce in the focused run and remains recorded in the test
+evidence rather than being attributed to a speculative product fix.
+
+Browser harness corrections make generated upload fixtures visible to Snap
+Chromium, tolerate DOM replacement at the two observed polling races, use a
+short-enough timeline section to exercise the existing compact-section control,
+and align an old RC6 assertion with the already implemented record artwork and
+retained animation behavior. No player design or feature behavior changed. All
+seven initially failing browser cases passed focused follow-up; the tag case also
+passed a separate unmodified reproduction. The isolated PostgreSQL migration and
+concurrency suite passed 49 cases.
+
+Installed staging workflows verified desktop/mobile Chromium live playback and
+all eight visualizers with nonzero real analyser samples and changing frames,
+stream pause/reconnect, scoped DJ access, two consecutive short MP3 recordings
+(8.046 and 7.811 seconds) and native browser playback. The first recording's hash
+remained unchanged after the second. A scripted recording-play attempt was
+correctly blocked by Chromium autoplay policy; a native play gesture succeeded.
+Actual CSV exports, API creation/scoping/revocation/quota, listener request
+cooldown/quota/cross-origin rejection and search were checked. Provider calls
+remain mocked: staging has no configured provider credential. Real Safari/iPhone
+hardware remains untested in this run.
+
+These checks precede the measured four-hour acceptance interval. Its duration,
+continuity and remaining limitations must be reported from the separate soak
+artifacts, not inferred from these regression counts.

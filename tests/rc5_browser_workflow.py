@@ -69,7 +69,16 @@ def first_station_workflow(app, driver, base, tmp_path):
                         f'sine=frequency={400+index}:duration=2', '-metadata',
                         f'title=First song {index}', '-metadata', 'artist=Test artist', '-y', str(audio)], check=True)
         if index == 1:
-            driver.find_element(By.ID, 'media-file').send_keys(str(audio))
+            # Snap Chromium has a private /tmp; copy only this generated fixture.
+            import shutil
+            from pathlib import Path
+            private = Path('/tmp/snap-private-tmp/snap.chromium/tmp')
+            visible = audio
+            if private.is_dir() and audio.is_relative_to('/tmp'):
+                target = private / audio.relative_to('/tmp')
+                target.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copyfile(audio, target)
+            driver.find_element(By.ID, 'media-file').send_keys(str(visible))
         else:
             driver.execute_script('''const bytes=Uint8Array.from(atob(arguments[0]),c=>c.charCodeAt(0));
               const data=new DataTransfer();data.items.add(new File([bytes],arguments[1],{type:'audio/mpeg'}));
