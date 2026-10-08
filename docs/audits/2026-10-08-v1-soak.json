@@ -1,0 +1,913 @@
+{
+  "verdict": "PASS WITH ISSUES",
+  "tested_commit": "4a3b55755ccf0db5753cb912887561e7e752363e",
+  "start": "2026-10-08T16:00:09.150497+00:00",
+  "end": "2026-10-08T20:00:13.200811+00:00",
+  "elapsed_seconds": 14404.05,
+  "monitor_samples": 2880,
+  "confirmed_starts": 79,
+  "methods": {
+    "visual_schedule": 71,
+    "timed_event": 8
+  },
+  "events": [
+    {
+      "id": 6,
+      "state": "COMPLETED",
+      "due": "2026-10-08 16:12:27+00:00",
+      "deadline": "2026-10-08 16:18:27+00:00",
+      "started": "2026-10-08 16:12:49.720000+00:00",
+      "completed": "2026-10-08 16:12:58.540000+00:00",
+      "error": null,
+      "decision_id": 793,
+      "offset_seconds": 22.72
+    },
+    {
+      "id": 7,
+      "state": "COMPLETED",
+      "due": "2026-10-08 16:42:27+00:00",
+      "deadline": "2026-10-08 16:48:27+00:00",
+      "started": "2026-10-08 16:42:42+00:00",
+      "completed": "2026-10-08 16:42:50.860000+00:00",
+      "error": null,
+      "decision_id": 809,
+      "offset_seconds": 15.0
+    },
+    {
+      "id": 8,
+      "state": "COMPLETED",
+      "due": "2026-10-08 17:12:27+00:00",
+      "deadline": "2026-10-08 17:18:27+00:00",
+      "started": "2026-10-08 17:15:32.760000+00:00",
+      "completed": "2026-10-08 17:15:41.470000+00:00",
+      "error": null,
+      "decision_id": 827,
+      "offset_seconds": 185.76
+    },
+    {
+      "id": 9,
+      "state": "COMPLETED",
+      "due": "2026-10-08 17:42:27+00:00",
+      "deadline": "2026-10-08 17:48:27+00:00",
+      "started": "2026-10-08 17:43:30.570000+00:00",
+      "completed": "2026-10-08 17:43:39.350000+00:00",
+      "error": null,
+      "decision_id": 844,
+      "offset_seconds": 63.57
+    },
+    {
+      "id": 10,
+      "state": "COMPLETED",
+      "due": "2026-10-08 18:12:27+00:00",
+      "deadline": "2026-10-08 18:18:27+00:00",
+      "started": "2026-10-08 18:14:25.840000+00:00",
+      "completed": "2026-10-08 18:14:34.590000+00:00",
+      "error": null,
+      "decision_id": 861,
+      "offset_seconds": 118.84
+    },
+    {
+      "id": 11,
+      "state": "COMPLETED",
+      "due": "2026-10-08 18:42:27+00:00",
+      "deadline": "2026-10-08 18:48:27+00:00",
+      "started": "2026-10-08 18:43:08.090000+00:00",
+      "completed": "2026-10-08 18:43:16.870000+00:00",
+      "error": null,
+      "decision_id": 877,
+      "offset_seconds": 41.09
+    },
+    {
+      "id": 12,
+      "state": "COMPLETED",
+      "due": "2026-10-08 19:12:27+00:00",
+      "deadline": "2026-10-08 19:18:27+00:00",
+      "started": "2026-10-08 19:13:50.240000+00:00",
+      "completed": "2026-10-08 19:13:58.990000+00:00",
+      "error": null,
+      "decision_id": 897,
+      "offset_seconds": 83.24
+    },
+    {
+      "id": 13,
+      "state": "COMPLETED",
+      "due": "2026-10-08 19:42:27+00:00",
+      "deadline": "2026-10-08 19:48:27+00:00",
+      "started": "2026-10-08 19:44:12.670000+00:00",
+      "completed": "2026-10-08 19:44:21.490000+00:00",
+      "error": null,
+      "decision_id": 913,
+      "offset_seconds": 105.67
+    }
+  ],
+  "requests": [
+    {
+      "id": 8,
+      "status": "played",
+      "reason": "Confirmed playback start",
+      "created": "2026-10-08 16:20:12.826829+00:00",
+      "played": "2026-10-08 16:31:32.400000+00:00",
+      "in_soak": true,
+      "confirmed_decisions": [
+        800
+      ],
+      "confirmed_music_before_play": 3
+    },
+    {
+      "id": 9,
+      "status": "played",
+      "reason": "Confirmed playback start",
+      "created": "2026-10-08 17:00:12.916200+00:00",
+      "played": "2026-10-08 17:11:25.610000+00:00",
+      "in_soak": true,
+      "confirmed_decisions": [
+        823
+      ],
+      "confirmed_music_before_play": 3
+    },
+    {
+      "id": 10,
+      "status": "played",
+      "reason": "Confirmed playback start",
+      "created": "2026-10-08 17:40:13.235386+00:00",
+      "played": "2026-10-08 17:50:26.710000+00:00",
+      "in_soak": true,
+      "confirmed_decisions": [
+        845
+      ],
+      "confirmed_music_before_play": 3
+    },
+    {
+      "id": 11,
+      "status": "played",
+      "reason": "Confirmed playback start",
+      "created": "2026-10-08 18:20:13.199651+00:00",
+      "played": "2026-10-08 18:35:40.210000+00:00",
+      "in_soak": true,
+      "confirmed_decisions": [
+        871
+      ],
+      "confirmed_music_before_play": 4
+    },
+    {
+      "id": 12,
+      "status": "played",
+      "reason": "Confirmed playback start",
+      "created": "2026-10-08 19:00:13.260975+00:00",
+      "played": "2026-10-08 19:11:01.390000+00:00",
+      "in_soak": true,
+      "confirmed_decisions": [
+        892
+      ],
+      "confirmed_music_before_play": 3
+    }
+  ],
+  "reports": {
+    "count": 79,
+    "unique_count": 79,
+    "ids_match": true,
+    "track_total_plays": 79,
+    "missing_audience": 0,
+    "metadata_sources": {
+      "confirmed snapshot": 79
+    }
+  },
+  "audience": {
+    "samples": 960,
+    "listener_counts": {
+      "1": 960
+    },
+    "offline_samples": 0,
+    "maximum_sample_gap": 16,
+    "aggregate_total": {
+      "observed_seconds": 14404.0,
+      "listener_seconds": 14381.583333333334,
+      "online_seconds": 14404.0,
+      "bytes_sent": 345531773.7166667,
+      "transfer_seconds": 14404.0,
+      "peak": 1,
+      "average": 0.9984437193372212,
+      "listener_hours": 3.9948842592592593,
+      "coverage": 100,
+      "transfer_coverage": 100,
+      "uptime": 100.0
+    }
+  },
+  "session_report": {
+    "since": 1791431665,
+    "available": true,
+    "start": 1791475200,
+    "end": 1791489645,
+    "resolution_seconds": 3600,
+    "coverage": 99.93769470404985,
+    "starts": 1,
+    "completed": 1,
+    "interrupted": 0,
+    "active": 0,
+    "average_seconds": 14386.0
+  },
+  "incidents": [],
+  "audio": {
+    "decoded_peak_dbfs": -0.242618,
+    "invalid_samples": {
+      "NaNs": 0,
+      "Infs": 0,
+      "denormals": 0
+    },
+    "quiet_intervals": {
+      "method": "Median observation UTC minus decoder progress. Approximate association, not a sample-accurate engine clock.",
+      "origin_utc": "2026-10-08T16:00:00.415787+00:00",
+      "origin_spread_seconds": 3.859977960586548,
+      "episodes": [
+        {
+          "audio_end_seconds": 87.8634,
+          "duration_seconds": 1.10374,
+          "approximate_end_utc": "2026-10-08T16:01:28.279187+00:00",
+          "nearest_start_delta_seconds": -0.899187,
+          "incoming": {
+            "id": 786,
+            "title": "It Starts Here",
+            "started_at": "2026-10-08 16:01:27.380000+00:00"
+          },
+          "outgoing": {
+            "id": 780,
+            "title": "Forget Me Loop",
+            "started_at": "2026-10-08 15:58:38.260000+00:00"
+          }
+        },
+        {
+          "audio_end_seconds": 2062.06,
+          "duration_seconds": 1.10376,
+          "approximate_end_utc": "2026-10-08T16:34:22.475787+00:00",
+          "nearest_start_delta_seconds": -0.895787,
+          "incoming": {
+            "id": 802,
+            "title": "Magnetic Petals",
+            "started_at": "2026-10-08 16:34:21.580000+00:00"
+          },
+          "outgoing": {
+            "id": 800,
+            "title": "Forget Me Loop",
+            "started_at": "2026-10-08 16:31:32.400000+00:00"
+          }
+        },
+        {
+          "audio_end_seconds": 2562.46,
+          "duration_seconds": 1.1037,
+          "approximate_end_utc": "2026-10-08T16:42:42.875787+00:00",
+          "nearest_start_delta_seconds": -0.875787,
+          "incoming": {
+            "id": 809,
+            "title": "STATION ID 1",
+            "started_at": "2026-10-08 16:42:42+00:00"
+          },
+          "outgoing": {
+            "id": 805,
+            "title": "Forget Me Loop",
+            "started_at": "2026-10-08 16:39:52.880000+00:00"
+          }
+        },
+        {
+          "audio_end_seconds": 4734.13,
+          "duration_seconds": 0.311519,
+          "approximate_end_utc": "2026-10-08T17:18:54.545787+00:00",
+          "nearest_start_delta_seconds": -1.075787,
+          "incoming": {
+            "id": 828,
+            "title": "We Ride On",
+            "started_at": "2026-10-08 17:18:53.470000+00:00"
+          },
+          "outgoing": {
+            "id": 825,
+            "title": "Still Learning",
+            "started_at": "2026-10-08 17:15:41.520000+00:00"
+          }
+        },
+        {
+          "audio_end_seconds": 5641.94,
+          "duration_seconds": 1.10374,
+          "approximate_end_utc": "2026-10-08T17:34:02.355787+00:00",
+          "nearest_start_delta_seconds": -0.815787,
+          "incoming": {
+            "id": 836,
+            "title": "It Starts Here",
+            "started_at": "2026-10-08 17:34:01.540000+00:00"
+          },
+          "outgoing": {
+            "id": 835,
+            "title": "Forget Me Loop",
+            "started_at": "2026-10-08 17:31:12.290000+00:00"
+          }
+        },
+        {
+          "audio_end_seconds": 6389.21,
+          "duration_seconds": 1.29011,
+          "approximate_end_utc": "2026-10-08T17:46:29.625787+00:00",
+          "nearest_start_delta_seconds": -0.205787,
+          "incoming": {
+            "id": 843,
+            "title": "We Ride On",
+            "started_at": "2026-10-08 17:46:29.420000+00:00"
+          },
+          "outgoing": {
+            "id": 841,
+            "title": "Forget Me Loop",
+            "started_at": "2026-10-08 17:43:39.440000+00:00"
+          }
+        },
+        {
+          "audio_end_seconds": 8244.26,
+          "duration_seconds": 1.10374,
+          "approximate_end_utc": "2026-10-08T18:17:24.675787+00:00",
+          "nearest_start_delta_seconds": -0.835787,
+          "incoming": {
+            "id": 862,
+            "title": "Slow Motion Season",
+            "started_at": "2026-10-08 18:17:23.840000+00:00"
+          },
+          "outgoing": {
+            "id": 860,
+            "title": "Forget Me Loop",
+            "started_at": "2026-10-08 18:14:34.620000+00:00"
+          }
+        },
+        {
+          "audio_end_seconds": 10871.1,
+          "duration_seconds": 0.513401,
+          "approximate_end_utc": "2026-10-08T19:01:11.515787+00:00",
+          "nearest_start_delta_seconds": -0.325787,
+          "incoming": {
+            "id": 888,
+            "title": "Midnight Review",
+            "started_at": "2026-10-08 19:01:11.190000+00:00"
+          },
+          "outgoing": {
+            "id": 884,
+            "title": "Forget Me Loop",
+            "started_at": "2026-10-08 18:58:22.050000+00:00"
+          }
+        },
+        {
+          "audio_end_seconds": 10871.7,
+          "duration_seconds": 0.590317,
+          "approximate_end_utc": "2026-10-08T19:01:12.115787+00:00",
+          "nearest_start_delta_seconds": -0.925787,
+          "incoming": {
+            "id": 888,
+            "title": "Midnight Review",
+            "started_at": "2026-10-08 19:01:11.190000+00:00"
+          },
+          "outgoing": {
+            "id": 884,
+            "title": "Forget Me Loop",
+            "started_at": "2026-10-08 18:58:22.050000+00:00"
+          }
+        },
+        {
+          "audio_end_seconds": 11630.1,
+          "duration_seconds": 0.513401,
+          "approximate_end_utc": "2026-10-08T19:13:50.515787+00:00",
+          "nearest_start_delta_seconds": -0.275787,
+          "incoming": {
+            "id": 897,
+            "title": "STATION ID 1",
+            "started_at": "2026-10-08 19:13:50.240000+00:00"
+          },
+          "outgoing": {
+            "id": 892,
+            "title": "Forget Me Loop",
+            "started_at": "2026-10-08 19:11:01.390000+00:00"
+          }
+        },
+        {
+          "audio_end_seconds": 11630.7,
+          "duration_seconds": 0.590272,
+          "approximate_end_utc": "2026-10-08T19:13:51.115787+00:00",
+          "nearest_start_delta_seconds": -0.875787,
+          "incoming": {
+            "id": 897,
+            "title": "STATION ID 1",
+            "started_at": "2026-10-08 19:13:50.240000+00:00"
+          },
+          "outgoing": {
+            "id": 892,
+            "title": "Forget Me Loop",
+            "started_at": "2026-10-08 19:11:01.390000+00:00"
+          }
+        },
+        {
+          "audio_end_seconds": 11823.9,
+          "duration_seconds": 0.396689,
+          "approximate_end_utc": "2026-10-08T19:17:04.315787+00:00",
+          "nearest_start_delta_seconds": -1.035787,
+          "incoming": {
+            "id": 896,
+            "title": "We Ride On",
+            "started_at": "2026-10-08 19:17:03.280000+00:00"
+          },
+          "outgoing": {
+            "id": 894,
+            "title": "Magnetic Petals",
+            "started_at": "2026-10-08 19:13:59.060000+00:00"
+          }
+        },
+        {
+          "audio_end_seconds": 13034.0,
+          "duration_seconds": 0.461565,
+          "approximate_end_utc": "2026-10-08T19:37:14.415787+00:00",
+          "nearest_start_delta_seconds": -0.895787,
+          "incoming": {
+            "id": 907,
+            "title": "Still Learning",
+            "started_at": "2026-10-08 19:37:13.520000+00:00"
+          },
+          "outgoing": {
+            "id": 905,
+            "title": "Magnetic Petals",
+            "started_at": "2026-10-08 19:34:09.320000+00:00"
+          }
+        }
+      ]
+    },
+    "source_edges": [
+      {
+        "id": 3,
+        "title": "It Starts Here",
+        "gain_db": -0.67,
+        "head_quiet_seconds": 0.0,
+        "tail_quiet_seconds": 0.0
+      },
+      {
+        "id": 4,
+        "title": "Midnight Review",
+        "gain_db": -2.57,
+        "head_quiet_seconds": 2.0833333333333333e-05,
+        "tail_quiet_seconds": 0.0
+      },
+      {
+        "id": 5,
+        "title": "Grind On",
+        "gain_db": -0.91,
+        "head_quiet_seconds": 2.0833333333333333e-05,
+        "tail_quiet_seconds": 0.0
+      },
+      {
+        "id": 15,
+        "title": "STATION ID 1",
+        "gain_db": 0.44,
+        "head_quiet_seconds": 0.0,
+        "tail_quiet_seconds": 0.0
+      },
+      {
+        "id": 6,
+        "title": "We Ride On",
+        "gain_db": -1.99,
+        "head_quiet_seconds": 0.18645833333333334,
+        "tail_quiet_seconds": 0.0
+      },
+      {
+        "id": 7,
+        "title": "Free the World",
+        "gain_db": -0.62,
+        "head_quiet_seconds": 0.0,
+        "tail_quiet_seconds": 0.0
+      },
+      {
+        "id": 8,
+        "title": "Lo-Fi Study",
+        "gain_db": -3.38,
+        "head_quiet_seconds": 0.0,
+        "tail_quiet_seconds": 0.008020833333333333
+      },
+      {
+        "id": 9,
+        "title": "Still Learning",
+        "gain_db": -3.38,
+        "head_quiet_seconds": 0.0,
+        "tail_quiet_seconds": 0.1090625
+      },
+      {
+        "id": 10,
+        "title": "Rooftop- 1",
+        "gain_db": -3.45,
+        "head_quiet_seconds": 0.0,
+        "tail_quiet_seconds": 0.017395833333333333
+      },
+      {
+        "id": 13,
+        "title": "Forget Me Loop",
+        "gain_db": -1.53,
+        "head_quiet_seconds": 0.0,
+        "tail_quiet_seconds": 1.0842291666666666
+      },
+      {
+        "id": 11,
+        "title": "Magnetic Petals",
+        "gain_db": -1.56,
+        "head_quiet_seconds": 2.0833333333333333e-05,
+        "tail_quiet_seconds": 0.4243125
+      },
+      {
+        "id": 12,
+        "title": "Steady (Parody)",
+        "gain_db": -4.55,
+        "head_quiet_seconds": 0.0,
+        "tail_quiet_seconds": 0.0003333333333333333
+      },
+      {
+        "id": 14,
+        "title": "Slow Motion Season",
+        "gain_db": -4.52,
+        "head_quiet_seconds": 0.0,
+        "tail_quiet_seconds": 0.0065625
+      }
+    ],
+    "review": [
+      {
+        "kind": "source_edges_explain_quiet",
+        "at": "2026-10-08T17:46:29Z",
+        "outgoing_track": "Forget Me Loop",
+        "incoming_track": "We Ride On",
+        "detected_quiet_seconds": 1.29011,
+        "usual_captured_tail_seconds": 1.10374,
+        "incoming_source_intro_seconds": 0.18645833333333334,
+        "apparent_excess_seconds": 0.18637,
+        "transport_disconnect": false,
+        "resolved": true,
+        "note": "The initially suspected extra quiet matches the measured incoming source intro within 0.00009 seconds. Nearby clock catch-up does not establish a causal playback gap. No scheduler or audio fix is justified."
+      },
+      {
+        "kind": "combined_short_source_edges",
+        "at": "2026-10-08T17:18:53Z",
+        "outgoing_track": "Still Learning",
+        "incoming_track": "We Ride On",
+        "detected_quiet_seconds": 0.311519,
+        "outgoing_source_tail_seconds": 0.1090625,
+        "incoming_source_intro_seconds": 0.18645833333333334,
+        "note": "Two individually sub-0.2-second source edges combine; broadcast interval is about 0.016 seconds longer than their sum, including processing/encoding boundary effects. No transport discontinuity observed."
+      }
+    ],
+    "maximum_decoder_clock_deficit_seconds": 3.129914419020075
+  },
+  "processor_changes": [
+    {
+      "stage": "initial",
+      "settings": {
+        "agc": true,
+        "multiband": true,
+        "eq": false,
+        "bass": 0.0,
+        "mid": 0.0,
+        "treble": 0.0,
+        "codec": "mp3",
+        "target": -18.0,
+        "ratio": 1.3,
+        "bitrate": 192,
+        "preset": "light"
+      },
+      "pid": "264531",
+      "at": "2026-10-08T16:00:12.261897+00:00"
+    },
+    {
+      "stage": "queued",
+      "due": 1800,
+      "preset": "standard",
+      "pid": "264531",
+      "at": "2026-10-08T16:30:17.537570+00:00"
+    },
+    {
+      "stage": "applied",
+      "due": 1800,
+      "elapsed": 1828.55,
+      "settings": {
+        "agc": true,
+        "multiband": true,
+        "eq": false,
+        "bass": 0.0,
+        "mid": 0.0,
+        "treble": 0.0,
+        "codec": "mp3",
+        "target": -16.0,
+        "ratio": 1.8,
+        "bitrate": 192,
+        "preset": "standard"
+      },
+      "pid": "264531",
+      "at": "2026-10-08T16:30:41.678376+00:00"
+    },
+    {
+      "stage": "queued",
+      "due": 5400,
+      "preset": "punchy",
+      "pid": "264531",
+      "at": "2026-10-08T17:30:17.181719+00:00"
+    },
+    {
+      "stage": "applied",
+      "due": 5400,
+      "elapsed": 5423.81,
+      "settings": {
+        "agc": true,
+        "multiband": true,
+        "eq": false,
+        "bass": 0.0,
+        "mid": 0.0,
+        "treble": 0.0,
+        "codec": "mp3",
+        "target": -14.0,
+        "ratio": 2.5,
+        "bitrate": 192,
+        "preset": "punchy"
+      },
+      "pid": "264531",
+      "at": "2026-10-08T17:30:35.309483+00:00"
+    },
+    {
+      "stage": "queued",
+      "due": 9000,
+      "preset": "custom",
+      "pid": "264531",
+      "at": "2026-10-08T18:30:15.785680+00:00"
+    },
+    {
+      "stage": "applied",
+      "due": 9000,
+      "elapsed": 9034.11,
+      "settings": {
+        "agc": true,
+        "multiband": true,
+        "eq": true,
+        "bass": 1.0,
+        "mid": -1.0,
+        "treble": 0.5,
+        "codec": "mp3",
+        "target": -16.0,
+        "ratio": 1.5,
+        "bitrate": 192,
+        "preset": "custom"
+      },
+      "pid": "264531",
+      "at": "2026-10-08T18:30:43.942159+00:00"
+    },
+    {
+      "stage": "queued",
+      "due": 12600,
+      "preset": "off",
+      "pid": "264531",
+      "at": "2026-10-08T19:30:14.425057+00:00"
+    },
+    {
+      "stage": "applied",
+      "due": 12600,
+      "elapsed": 12629.07,
+      "settings": {
+        "agc": false,
+        "multiband": false,
+        "eq": false,
+        "bass": 0.0,
+        "mid": 0.0,
+        "treble": 0.0,
+        "codec": "mp3",
+        "target": -16.0,
+        "ratio": 1.0,
+        "bitrate": 192,
+        "preset": "off"
+      },
+      "pid": "264531",
+      "at": "2026-10-08T19:30:38.532944+00:00"
+    }
+  ],
+  "resources": {
+    "cpu_busy_mean": 65.78904428389063,
+    "cpu_busy_max": 82.66699776508567,
+    "memory_available_start_kib": 839924,
+    "memory_available_end_kib": 820948,
+    "memory_available_min_kib": 600832,
+    "swap_used_start_kib": 569296,
+    "swap_used_end_kib": 647088,
+    "disk_growth_bytes": 268222464,
+    "service_memory_rss_kib": {
+      "freo.service": {
+        "start": 24612,
+        "end": 12732,
+        "maximum": 24612
+      },
+      "freo-automation.service": {
+        "start": 107184,
+        "end": 109332,
+        "maximum": 110324
+      },
+      "freo-ingest.service": {
+        "start": 26372,
+        "end": 29072,
+        "maximum": 29072
+      },
+      "freo-mic.service": {
+        "start": 16996,
+        "end": 16996,
+        "maximum": 16996
+      },
+      "freo-production.service": {
+        "start": 23188,
+        "end": 23224,
+        "maximum": 23224
+      },
+      "freo-stats.service": {
+        "start": 85676,
+        "end": 85640,
+        "maximum": 85680
+      },
+      "icecast2.service": {
+        "start": 11732,
+        "end": 11964,
+        "maximum": 11964
+      },
+      "freo-playout@soak-1008.service": {
+        "start": 114888,
+        "end": 117648,
+        "maximum": 117708
+      },
+      "freo-playout@v1-test-1.service": {
+        "start": 111384,
+        "end": 111292,
+        "maximum": 111776
+      }
+    }
+  },
+  "services": {
+    "freo.service": {
+      "pids": [
+        "299367"
+      ],
+      "states": [
+        "active"
+      ],
+      "restarts": [
+        "0"
+      ]
+    },
+    "freo-automation.service": {
+      "pids": [
+        "264520"
+      ],
+      "states": [
+        "active"
+      ],
+      "restarts": [
+        "0"
+      ]
+    },
+    "freo-ingest.service": {
+      "pids": [
+        "40438"
+      ],
+      "states": [
+        "active"
+      ],
+      "restarts": [
+        "0"
+      ]
+    },
+    "freo-mic.service": {
+      "pids": [
+        "264598"
+      ],
+      "states": [
+        "active"
+      ],
+      "restarts": [
+        "0"
+      ]
+    },
+    "freo-production.service": {
+      "pids": [
+        "1192"
+      ],
+      "states": [
+        "active"
+      ],
+      "restarts": [
+        "0"
+      ]
+    },
+    "freo-stats.service": {
+      "pids": [
+        "1193"
+      ],
+      "states": [
+        "active"
+      ],
+      "restarts": [
+        "0"
+      ]
+    },
+    "icecast2.service": {
+      "pids": [
+        "264509"
+      ],
+      "states": [
+        "active"
+      ],
+      "restarts": [
+        "0"
+      ]
+    },
+    "freo-playout@soak-1008.service": {
+      "pids": [
+        "264531"
+      ],
+      "states": [
+        "active"
+      ],
+      "restarts": [
+        "0"
+      ]
+    },
+    "freo-playout@v1-test-1.service": {
+      "pids": [
+        "264533"
+      ],
+      "states": [
+        "active"
+      ],
+      "restarts": [
+        "0"
+      ]
+    }
+  },
+  "worker_age_max_seconds": 6.012898,
+  "journal_failures": {
+    "tracebacks": 0,
+    "database_errors": 0,
+    "source_resets": 0,
+    "service_failures": 0,
+    "source_disconnects": 0,
+    "application_errors": 0
+  },
+  "input_http_clock_warnings": {
+    "test_station": {
+      "count": 250,
+      "maximum_seconds": 3.73
+    },
+    "original_station": {
+      "count": 8,
+      "maximum_seconds": 1.37
+    }
+  },
+  "presence": {
+    "count": 480,
+    "all_204": true,
+    "all_renewed": true
+  },
+  "preservation": {
+    "original_stations": [
+      {
+        "id": 1,
+        "unchanged": true,
+        "retained": true
+      }
+    ],
+    "original_users": [
+      {
+        "id": 1,
+        "unchanged": true
+      }
+    ],
+    "original_track_retained": true,
+    "env_unchanged": true,
+    "migration_head": "fb06a1b2c3d4",
+    "installed_commit": "4a3b55755ccf0db5753cb912887561e7e752363e",
+    "application_files_matched": 344,
+    "application_files_different": [],
+    "application_files_missing": []
+  },
+  "verification": {
+    "checks": {
+      "full_four_hours": true,
+      "no_monitor_alerts": true,
+      "unchanged_service_processes": true,
+      "all_four_live_processor_changes_applied": true,
+      "eight_completed_timed_ids": true,
+      "timed_ids_within_deadline": true,
+      "five_requests_confirmed_once": true,
+      "request_delay_respected": true,
+      "reports_match_confirmed_starts": true,
+      "audience_attached_to_all_reports": true,
+      "continuous_audience_observation": true,
+      "all_presence_heartbeats_renewed": true,
+      "no_journal_application_failure": true,
+      "no_invalid_audio_samples": true
+    },
+    "passed": 14,
+    "failed": [],
+    "note": "These checks accompany the documented source-edge quiet intervals, excluded capacity failures and hardware/provider limitations."
+  },
+  "limits": [
+    "Browser workflows and actual analyser tests were separate from the four-hour stream-only acceptance.",
+    "No physical Safari/iPhone test or live AI provider call.",
+    "Source-rate decoded sample peak is not a four-hour true-peak measurement.",
+    "Statistics/session bucket edges are approximate; exact confirmed report window is retained.",
+    "Patched Icecast deployment remains an explicit requirement; installer still selects stock package.",
+    "Earlier co-located browser attempts failed and contribute zero accepted time."
+  ]
+}

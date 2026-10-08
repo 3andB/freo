@@ -1,0 +1,951 @@
+{
+  "backend/results.xml": {
+    "totals": {
+      "passed": 1358,
+      "skipped": 27,
+      "failed": 1
+    },
+    "modules": {
+      "tests.test_admin_setup": {
+        "passed": 7
+      },
+      "tests.test_admin_validation": {
+        "passed": 12
+      },
+      "tests.test_admin_validation_nginx": {
+        "passed": 10
+      },
+      "tests.test_advertising": {
+        "passed": 29
+      },
+      "tests.test_airplay": {
+        "passed": 1
+      },
+      "tests.test_app": {
+        "passed": 7
+      },
+      "tests.test_appearance": {
+        "passed": 2
+      },
+      "tests.test_automation": {
+        "passed": 12
+      },
+      "tests.test_block_scheduling": {
+        "passed": 12
+      },
+      "tests.test_booth_cue": {
+        "passed": 17
+      },
+      "tests.test_booth_state": {
+        "passed": 4
+      },
+      "tests.test_broadcast_tools": {
+        "passed": 17
+      },
+      "tests.test_catalog_editor": {
+        "passed": 5
+      },
+      "tests.test_central_api": {
+        "passed": 57,
+        "skipped": 1
+      },
+      "tests.test_channel_availability": {
+        "passed": 14
+      },
+      "tests.test_connection_check": {
+        "passed": 20
+      },
+      "tests.test_copyright_dmca": {
+        "passed": 18
+      },
+      "tests.test_cue_migration": {
+        "passed": 1
+      },
+      "tests.test_deck_controls": {
+        "passed": 33
+      },
+      "tests.test_dependencies": {
+        "passed": 10
+      },
+      "tests.test_distribution": {
+        "passed": 16
+      },
+      "tests.test_dj_return": {
+        "passed": 34
+      },
+      "tests.test_event_blocks": {
+        "passed": 5
+      },
+      "tests.test_event_completion": {
+        "passed": 28
+      },
+      "tests.test_history_csv": {
+        "passed": 4
+      },
+      "tests.test_homepage": {
+        "passed": 9
+      },
+      "tests.test_imaging": {
+        "passed": 7
+      },
+      "tests.test_import_migrations": {
+        "passed": 1,
+        "skipped": 1
+      },
+      "tests.test_import_review": {
+        "passed": 12
+      },
+      "tests.test_import_sessions": {
+        "passed": 20
+      },
+      "tests.test_installation_settings": {
+        "passed": 8
+      },
+      "tests.test_installer_guard": {
+        "passed": 10
+      },
+      "tests.test_license_agreement": {
+        "passed": 3
+      },
+      "tests.test_listener_requests": {
+        "passed": 32
+      },
+      "tests.test_live_assist": {
+        "passed": 22
+      },
+      "tests.test_live_mic": {
+        "passed": 9,
+        "skipped": 3
+      },
+      "tests.test_live_stress_runner": {
+        "passed": 20
+      },
+      "tests.test_login_session_migration": {
+        "skipped": 2
+      },
+      "tests.test_logout_sessions": {
+        "passed": 10
+      },
+      "tests.test_master_broadcast": {
+        "passed": 10
+      },
+      "tests.test_media": {
+        "passed": 7
+      },
+      "tests.test_music_catalog": {
+        "passed": 5
+      },
+      "tests.test_music_delete": {
+        "passed": 4,
+        "skipped": 1
+      },
+      "tests.test_music_tags": {
+        "passed": 3
+      },
+      "tests.test_operations": {
+        "passed": 7
+      },
+      "tests.test_phase1_review": {
+        "passed": 20
+      },
+      "tests.test_phase1_scheduling": {
+        "passed": 48
+      },
+      "tests.test_phase2_preview": {
+        "passed": 1
+      },
+      "tests.test_phase2_soak": {
+        "skipped": 1
+      },
+      "tests.test_phase3_dj": {
+        "passed": 16
+      },
+      "tests.test_phase3_storage": {
+        "skipped": 1
+      },
+      "tests.test_platform_polish": {
+        "passed": 25
+      },
+      "tests.test_player_acceptance": {
+        "passed": 1
+      },
+      "tests.test_player_experience": {
+        "passed": 14
+      },
+      "tests.test_player_visual_math": {
+        "passed": 1
+      },
+      "tests.test_playlists": {
+        "passed": 12
+      },
+      "tests.test_playout_simulation": {
+        "passed": 13
+      },
+      "tests.test_primary_admin_migration": {
+        "skipped": 9,
+        "passed": 1
+      },
+      "tests.test_production": {
+        "passed": 19
+      },
+      "tests.test_programming_harmonization": {
+        "passed": 10
+      },
+      "tests.test_programming_refresh": {
+        "passed": 16
+      },
+      "tests.test_public_api": {
+        "passed": 52
+      },
+      "tests.test_radio_directories": {
+        "passed": 42
+      },
+      "tests.test_radio_health": {
+        "passed": 2
+      },
+      "tests.test_rc4": {
+        "passed": 8
+      },
+      "tests.test_rc6_settings": {
+        "passed": 6
+      },
+      "tests.test_recording_manager": {
+        "passed": 15
+      },
+      "tests.test_recovery": {
+        "passed": 9,
+        "skipped": 4
+      },
+      "tests.test_relay": {
+        "passed": 26
+      },
+      "tests.test_relay_transport": {
+        "passed": 3
+      },
+      "tests.test_release_bundles": {
+        "passed": 8
+      },
+      "tests.test_schedule": {
+        "passed": 7
+      },
+      "tests.test_schedule_autosave": {
+        "passed": 6
+      },
+      "tests.test_schedule_booth_integration": {
+        "passed": 23
+      },
+      "tests.test_schedule_editor": {
+        "passed": 3
+      },
+      "tests.test_schedule_regressions": {
+        "passed": 15
+      },
+      "tests.test_simple_blocks": {
+        "passed": 3
+      },
+      "tests.test_sound_room": {
+        "passed": 7
+      },
+      "tests.test_station_control": {
+        "passed": 4
+      },
+      "tests.test_station_domains": {
+        "passed": 40
+      },
+      "tests.test_station_events": {
+        "passed": 22
+      },
+      "tests.test_station_experience": {
+        "passed": 7
+      },
+      "tests.test_station_lifecycle": {
+        "passed": 15
+      },
+      "tests.test_station_location": {
+        "passed": 32
+      },
+      "tests.test_station_location_migration": {
+        "skipped": 2,
+        "passed": 1
+      },
+      "tests.test_station_runtime_permissions": {
+        "passed": 2
+      },
+      "tests.test_station_settings_flags": {
+        "passed": 17
+      },
+      "tests.test_station_streams": {
+        "skipped": 1
+      },
+      "tests.test_stations": {
+        "passed": 19
+      },
+      "tests.test_statistics": {
+        "passed": 15
+      },
+      "tests.test_statistics_accuracy": {
+        "passed": 6
+      },
+      "tests.test_statistics_sessions": {
+        "passed": 37
+      },
+      "tests.test_statistics_soak": {
+        "skipped": 1
+      },
+      "tests.test_timed_events": {
+        "passed": 9
+      },
+      "tests.test_traffic": {
+        "passed": 6
+      },
+      "tests.test_upgrade": {
+        "passed": 19
+      },
+      "tests.test_upload_proxy": {
+        "passed": 1
+      },
+      "tests.test_v1_installation": {
+        "passed": 5,
+        "failed": 1
+      },
+      "tests.test_versions": {
+        "passed": 64
+      },
+      "tests.test_visual_schedule": {
+        "passed": 21
+      },
+      "tests.test_web": {
+        "passed": 10
+      }
+    },
+    "failures": [
+      "tests.test_v1_installation::test_v1_migration_chain_has_one_complete_head"
+    ],
+    "skipped": [
+      {
+        "test": "tests.test_central_api::test_payloads_against_actual_server_validators",
+        "reason": "Optional pinned API source validation"
+      },
+      {
+        "test": "tests.test_import_migrations::test_import_migration_roundtrip[postgres]",
+        "reason": "Use scripts/test-import-postgres.sh for isolated PostgreSQL"
+      },
+      {
+        "test": "tests.test_live_mic::test_real_microphone_fade_return_and_disconnect",
+        "reason": "Explicit isolated Liquidsoap/WebRTC integration"
+      },
+      {
+        "test": "tests.test_live_mic::test_real_microphone_page_exit_restores_interrupted_feed[AUTO]",
+        "reason": "Explicit isolated Liquidsoap/WebRTC integration"
+      },
+      {
+        "test": "tests.test_live_mic::test_real_microphone_page_exit_restores_interrupted_feed[DJ_BOOTH]",
+        "reason": "Explicit isolated Liquidsoap/WebRTC integration"
+      },
+      {
+        "test": "tests.test_login_session_migration::test_existing_schema_gains_empty_revocation_table_without_account_changes",
+        "reason": "Run scripts/test-recovery-postgres.sh for an isolated cluster"
+      },
+      {
+        "test": "tests.test_login_session_migration::test_real_postgres_revocation_survives_inflight_response_and_restart",
+        "reason": "Run scripts/test-recovery-postgres.sh for an isolated cluster"
+      },
+      {
+        "test": "tests.test_music_delete::test_delete_all_references_postgres",
+        "reason": "Use scripts/test-import-postgres.sh"
+      },
+      {
+        "test": "tests.test_phase2_soak::test_edited_track_endurance",
+        "reason": "Opt-in isolated Phase 2 soak"
+      },
+      {
+        "test": "tests.test_phase3_storage::test_real_recording_acl_separates_web_playout_and_worker",
+        "reason": "Explicit isolated service-account ACL proof"
+      },
+      {
+        "test": "tests.test_primary_admin_migration::test_only_installer_primary_receives_grant_and_other_values_survive[options0]",
+        "reason": "Run scripts/test-recovery-postgres.sh for an isolated cluster"
+      },
+      {
+        "test": "tests.test_primary_admin_migration::test_only_installer_primary_receives_grant_and_other_values_survive[options1]",
+        "reason": "Run scripts/test-recovery-postgres.sh for an isolated cluster"
+      },
+      {
+        "test": "tests.test_primary_admin_migration::test_only_installer_primary_receives_grant_and_other_values_survive[options2]",
+        "reason": "Run scripts/test-recovery-postgres.sh for an isolated cluster"
+      },
+      {
+        "test": "tests.test_primary_admin_migration::test_only_installer_primary_receives_grant_and_other_values_survive[options3]",
+        "reason": "Run scripts/test-recovery-postgres.sh for an isolated cluster"
+      },
+      {
+        "test": "tests.test_primary_admin_migration::test_only_installer_primary_receives_grant_and_other_values_survive[options4]",
+        "reason": "Run scripts/test-recovery-postgres.sh for an isolated cluster"
+      },
+      {
+        "test": "tests.test_primary_admin_migration::test_empty_install_keeps_existing_bootstrap_behavior",
+        "reason": "Run scripts/test-recovery-postgres.sh for an isolated cluster"
+      },
+      {
+        "test": "tests.test_primary_admin_migration::test_completed_migration_does_not_regrant_on_later_upgrade",
+        "reason": "Run scripts/test-recovery-postgres.sh for an isolated cluster"
+      },
+      {
+        "test": "tests.test_primary_admin_migration::test_restored_backup_allows_only_exact_primary_grant[a64f09e2b731]",
+        "reason": "Run scripts/test-recovery-postgres.sh for an isolated cluster"
+      },
+      {
+        "test": "tests.test_primary_admin_migration::test_restored_backup_allows_only_exact_primary_grant[c83d4e5f9012]",
+        "reason": "Run scripts/test-recovery-postgres.sh for an isolated cluster"
+      },
+      {
+        "test": "tests.test_recovery::test_encrypted_backup_restore_preserves_database_files_and_metadata",
+        "reason": "Run scripts/test-recovery-postgres.sh for an isolated cluster"
+      },
+      {
+        "test": "tests.test_recovery::test_restore_retains_unicode_when_target_template_uses_different_encoding[False]",
+        "reason": "Run scripts/test-recovery-postgres.sh for an isolated cluster"
+      },
+      {
+        "test": "tests.test_recovery::test_restore_retains_unicode_when_target_template_uses_different_encoding[True]",
+        "reason": "Run scripts/test-recovery-postgres.sh for an isolated cluster"
+      },
+      {
+        "test": "tests.test_recovery::test_connected_clients_prevent_backup",
+        "reason": "Run scripts/test-recovery-postgres.sh for an isolated cluster"
+      },
+      {
+        "test": "tests.test_station_location_migration::test_both_migrations_preserve_station_identity_and_restart_state",
+        "reason": "Run scripts/test-recovery-postgres.sh for an isolated cluster"
+      },
+      {
+        "test": "tests.test_station_location_migration::test_upgrade_from_admin_migration_does_not_regrant_a_revoked_permission",
+        "reason": "Run scripts/test-recovery-postgres.sh for an isolated cluster"
+      },
+      {
+        "test": "tests.test_station_streams::test_stream_survives_other_station_creation_deletion_and_owner_removal",
+        "reason": "Explicit isolated Icecast/Liquidsoap integration"
+      },
+      {
+        "test": "tests.test_statistics_soak::test_statistics_wall_clock_soak",
+        "reason": "Opt-in real-time statistics soak"
+      }
+    ]
+  },
+  "browser-primary/results.xml": {
+    "totals": {
+      "failed": 4,
+      "passed": 57
+    },
+    "modules": {
+      "tests.test_first_login_browser": {
+        "failed": 2
+      },
+      "tests.test_rc4_browser": {
+        "passed": 1
+      },
+      "tests.test_rc5_browser": {
+        "passed": 1
+      },
+      "tests.test_rc6_browser": {
+        "passed": 1,
+        "failed": 1
+      },
+      "tests.test_statistics_browser": {
+        "passed": 4
+      },
+      "tests.test_import_flow_browser": {
+        "passed": 2
+      },
+      "tests.test_import_review_browser": {
+        "passed": 5
+      },
+      "tests.test_import_sessions_browser": {
+        "passed": 7
+      },
+      "tests.test_catalog_editor_browser": {
+        "passed": 2
+      },
+      "tests.test_sound_room_browser": {
+        "passed": 3
+      },
+      "tests.test_music_tags_browser": {
+        "failed": 1
+      },
+      "tests.test_playlists_browser": {
+        "passed": 4
+      },
+      "tests.test_homepage_browser": {
+        "passed": 3
+      },
+      "tests.test_player_experience_browser": {
+        "passed": 4
+      },
+      "tests.test_forms_browser": {
+        "passed": 2
+      },
+      "tests.test_appearance_browser": {
+        "passed": 3
+      },
+      "tests.test_audio_settings_browser": {
+        "passed": 2
+      },
+      "tests.test_operations_browser": {
+        "passed": 4
+      },
+      "tests.test_station_features_browser": {
+        "passed": 2
+      },
+      "tests.test_station_domains_browser": {
+        "passed": 1
+      },
+      "tests.test_central_api_browser": {
+        "passed": 2
+      },
+      "tests.test_copyright_browser": {
+        "passed": 2
+      },
+      "tests.test_license_agreement_browser": {
+        "passed": 2
+      }
+    },
+    "failures": [
+      "tests.test_first_login_browser::test_fresh_production_first_login_logout_and_restart[http]",
+      "tests.test_first_login_browser::test_fresh_production_first_login_logout_and_restart[https]",
+      "tests.test_rc6_browser::test_player_vinyl_lava_and_stationary_cover",
+      "tests.test_music_tags_browser::test_quick_toggles_management_and_album"
+    ],
+    "skipped": []
+  },
+  "browser-programming/results.xml": {
+    "totals": {
+      "passed": 123,
+      "failed": 3,
+      "skipped": 2
+    },
+    "modules": {
+      "tests.test_admin_workspaces_browser": {
+        "passed": 3
+      },
+      "tests.test_advertising_browser": {
+        "passed": 1
+      },
+      "tests.test_block_scheduler_browser": {
+        "passed": 4
+      },
+      "tests.test_booth_state_browser": {
+        "passed": 3
+      },
+      "tests.test_broadcast_browser": {
+        "passed": 1
+      },
+      "tests.test_cue_browser": {
+        "passed": 3
+      },
+      "tests.test_events_browser": {
+        "passed": 2
+      },
+      "tests.test_listener_requests_browser": {
+        "passed": 2
+      },
+      "tests.test_live_browser": {
+        "passed": 12
+      },
+      "tests.test_live_mic_browser": {
+        "passed": 11
+      },
+      "tests.test_master_broadcast_browser": {
+        "passed": 2
+      },
+      "tests.test_music_calendar_workflows_browser": {
+        "passed": 3
+      },
+      "tests.test_phase2_browser": {
+        "passed": 2
+      },
+      "tests.test_phase3_browser": {
+        "passed": 6,
+        "failed": 1
+      },
+      "tests.test_platform_polish_browser": {
+        "passed": 3
+      },
+      "tests.test_player_acceptance_browser": {
+        "passed": 9
+      },
+      "tests.test_player_diagnostics_browser": {
+        "passed": 3
+      },
+      "tests.test_player_stream_analysis_browser": {
+        "passed": 1
+      },
+      "tests.test_player_visualizer_browser": {
+        "passed": 16
+      },
+      "tests.test_production_browser": {
+        "passed": 2
+      },
+      "tests.test_public_api_browser": {
+        "passed": 1
+      },
+      "tests.test_relay_browser": {
+        "failed": 1
+      },
+      "tests.test_schedule_autosave_browser": {
+        "passed": 2
+      },
+      "tests.test_schedule_editor_browser": {
+        "failed": 1,
+        "passed": 4
+      },
+      "tests.test_schedule_studio_browser": {
+        "passed": 3
+      },
+      "tests.test_simple_blocks_browser": {
+        "passed": 1
+      },
+      "tests.test_station_control_browser": {
+        "passed": 2
+      },
+      "tests.test_station_lifecycle_browser": {
+        "passed": 2
+      },
+      "tests.test_station_location_browser": {
+        "passed": 1
+      },
+      "tests.test_workspace_browser": {
+        "passed": 9,
+        "skipped": 1
+      },
+      "tests.test_workspace_lifecycle_browser": {
+        "passed": 9,
+        "skipped": 1
+      }
+    },
+    "failures": [
+      "tests.test_phase3_browser::test_create_fake_dj_login_and_manage_local_mp3",
+      "tests.test_relay_browser::test_relay_settings_status_and_safe_metadata",
+      "tests.test_schedule_editor_browser::test_overnight_series_stale_save_and_geometry"
+    ],
+    "skipped": [
+      {
+        "test": "tests.test_workspace_browser::test_capture_demonstration_screens_when_requested",
+        "reason": "Product screenshots are captured explicitly from demonstration fixtures"
+      },
+      {
+        "test": "tests.test_workspace_lifecycle_browser::test_navigation_retained_resources",
+        "reason": "Opt-in navigation retention diagnostic"
+      }
+    ]
+  },
+  "audio/results.xml": {
+    "totals": {
+      "passed": 32,
+      "failed": 3
+    },
+    "modules": {
+      "tests.test_dj_return_audio": {
+        "passed": 28,
+        "failed": 3
+      },
+      "tests.test_booth_engine": {
+        "passed": 1
+      },
+      "tests.test_live_mic": {
+        "passed": 3
+      }
+    },
+    "failures": [
+      "tests.test_dj_return_audio::test_early_stop_loads_auto_during_grace[worker-stall-A-CLEAR-60]",
+      "tests.test_dj_return_audio::test_cold_worker_restart_before_old_preparation_window[A]",
+      "tests.test_dj_return_audio::test_cold_worker_restart_before_old_preparation_window[B]"
+    ],
+    "skipped": []
+  },
+  "dj-focused.xml": {
+    "totals": {
+      "passed": 10
+    },
+    "modules": {
+      "tests.test_dj_return_audio": {
+        "passed": 10
+      }
+    },
+    "failures": [],
+    "skipped": []
+  },
+  "browser-focused.xml": {
+    "totals": {
+      "passed": 6,
+      "failed": 1
+    },
+    "modules": {
+      "tests.test_first_login_browser": {
+        "passed": 2
+      },
+      "tests.test_rc6_browser": {
+        "failed": 1
+      },
+      "tests.test_phase3_browser": {
+        "passed": 1
+      },
+      "tests.test_relay_browser": {
+        "passed": 1
+      },
+      "tests.test_schedule_editor_browser": {
+        "passed": 1
+      },
+      "tests.test_music_tags_browser": {
+        "passed": 1
+      }
+    },
+    "failures": [
+      "tests.test_rc6_browser::test_player_vinyl_lava_and_stationary_cover"
+    ],
+    "skipped": []
+  },
+  "player-layout-final.xml": {
+    "totals": {
+      "passed": 1
+    },
+    "modules": {
+      "tests.test_rc6_browser": {
+        "passed": 1
+      }
+    },
+    "failures": [],
+    "skipped": []
+  },
+  "mic-engine.xml": {
+    "totals": {
+      "passed": 14
+    },
+    "modules": {
+      "tests.test_live_mic": {
+        "passed": 14
+      }
+    },
+    "failures": [],
+    "skipped": []
+  },
+  "broadcast-final.xml": {
+    "totals": {
+      "passed": 9
+    },
+    "modules": {
+      "tests.test_broadcast_engine": {
+        "passed": 8
+      },
+      "tests.test_v1_installation": {
+        "passed": 1
+      }
+    },
+    "failures": [],
+    "skipped": []
+  },
+  "engine-extra.xml": {
+    "totals": {
+      "passed": 61,
+      "skipped": 1
+    },
+    "modules": {
+      "tests.test_cue_engine": {
+        "passed": 2
+      },
+      "tests.test_deck_engine": {
+        "passed": 21
+      },
+      "tests.test_listener_requests_engine": {
+        "passed": 2
+      },
+      "tests.test_master_broadcast_engine": {
+        "passed": 2
+      },
+      "tests.test_phase1_engine": {
+        "passed": 2
+      },
+      "tests.test_phase2_engine": {
+        "passed": 8
+      },
+      "tests.test_phase3_engine": {
+        "passed": 4
+      },
+      "tests.test_radio_directories_engine": {
+        "passed": 2
+      },
+      "tests.test_relay_engine": {
+        "passed": 2
+      },
+      "tests.test_schedule_booth_engine": {
+        "passed": 2
+      },
+      "tests.test_schedule_engine": {
+        "passed": 12
+      },
+      "tests.test_system_playout": {
+        "passed": 2,
+        "skipped": 1
+      }
+    },
+    "failures": [],
+    "skipped": [
+      {
+        "test": "tests.test_system_playout::test_system_endurance",
+        "reason": "Endurance test requires FREO_SYSTEM_SOAK_SECONDS >= 120"
+      }
+    ]
+  },
+  "postgres.xml": {
+    "totals": {
+      "passed": 49
+    },
+    "modules": {
+      "tests.test_advertising_postgres": {
+        "passed": 1
+      },
+      "tests.test_broadcast_postgres": {
+        "passed": 1
+      },
+      "tests.test_central_api_postgres": {
+        "passed": 2
+      },
+      "tests.test_dmca_postgres": {
+        "passed": 2
+      },
+      "tests.test_events_postgres": {
+        "passed": 3
+      },
+      "tests.test_import_postgres": {
+        "passed": 5
+      },
+      "tests.test_installation_settings_postgres": {
+        "passed": 1
+      },
+      "tests.test_listener_requests_postgres": {
+        "passed": 2
+      },
+      "tests.test_phase1_postgres": {
+        "passed": 3
+      },
+      "tests.test_phase2_postgres": {
+        "passed": 2
+      },
+      "tests.test_phase3_postgres": {
+        "passed": 4
+      },
+      "tests.test_platform_polish_postgres": {
+        "passed": 1
+      },
+      "tests.test_production_postgres": {
+        "passed": 3
+      },
+      "tests.test_public_api_postgres": {
+        "passed": 3
+      },
+      "tests.test_relay_postgres": {
+        "passed": 3
+      },
+      "tests.test_schedule_postgres": {
+        "passed": 4
+      },
+      "tests.test_station_postgres": {
+        "passed": 5
+      },
+      "tests.test_statistics_postgres": {
+        "passed": 2
+      },
+      "tests.test_timed_event_concurrency_postgres": {
+        "passed": 2
+      }
+    },
+    "failures": [],
+    "skipped": []
+  },
+  "loudness.xml": {
+    "totals": {
+      "passed": 1
+    },
+    "modules": {
+      "tests.test_loudness_playout": {
+        "passed": 1
+      }
+    },
+    "failures": [],
+    "skipped": []
+  },
+  "remaining-postgres.xml": {
+    "totals": {
+      "passed": 35
+    },
+    "modules": {
+      "tests.test_recovery": {
+        "passed": 13
+      },
+      "tests.test_primary_admin_migration": {
+        "passed": 10
+      },
+      "tests.test_station_location_migration": {
+        "passed": 3
+      },
+      "tests.test_login_session_migration": {
+        "passed": 2
+      },
+      "tests.test_import_migrations": {
+        "passed": 2
+      },
+      "tests.test_music_delete": {
+        "passed": 5
+      }
+    },
+    "failures": [],
+    "skipped": []
+  },
+  "remaining-engine.xml": {
+    "totals": {
+      "passed": 2
+    },
+    "modules": {
+      "tests.test_station_streams": {
+        "passed": 1
+      },
+      "tests.test_phase3_storage": {
+        "passed": 1
+      }
+    },
+    "failures": [],
+    "skipped": []
+  },
+  "presence-before.xml": {
+    "totals": {
+      "failed": 2
+    },
+    "modules": {
+      "tests.test_statistics": {
+        "failed": 1
+      },
+      "tests.test_statistics_browser": {
+        "failed": 1
+      }
+    },
+    "failures": [
+      "tests.test_statistics::test_presence_renews_active_anonymous_session_past_one_hour",
+      "tests.test_statistics_browser::test_player_presence_recovers_after_anonymous_cookie_expires"
+    ],
+    "skipped": []
+  },
+  "presence-after.xml": {
+    "totals": {
+      "passed": 21
+    },
+    "modules": {
+      "tests.test_statistics": {
+        "passed": 16
+      },
+      "tests.test_statistics_browser": {
+        "passed": 5
+      }
+    },
+    "failures": [],
+    "skipped": []
+  }
+}

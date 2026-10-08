@@ -2360,4 +2360,55 @@ one on its next heartbeat without reloading the player. Existing CSRF checks,
 admin exclusion and cross-origin rejection remain in place. Two focused
 regressions reproduced the original failures, then the complete statistics
 backend/browser modules passed after the fix. The replacement acceptance run
-will also exercise real cookie renewal across the one-hour boundary.
+completed four hours with all 480 real anonymous heartbeats returning 204 and
+renewing the same session across every hourly boundary.
+
+
+### Completed four-hour V1 acceptance (2026-10-08)
+
+**PASS WITH ISSUES.** Application `4a3b55755ccf0db5753cb912887561e7e752363e`
+completed 14,404.050 uninterrupted seconds (4 h 00 m 04.050 s), from
+16:00:09.150497 to 20:00:13.200811 UTC. Setup, regressions and unsuccessful
+browser-load attempts are excluded. The actual HTTPS MP3 192 kbps listener had
+no reconnect enabled. No service restart, source reset, stale now-playing,
+backup-tone incident, database/application failure or stream disconnect was
+observed in the accepted interval.
+
+All eight soft-timed IDs completed within their configured deadlines; five
+requests each reached exactly one confirmed start after the configured minimum
+song delay. All 79 confirmed starts reconciled with 79 unique broadcast-report
+rows and their audience snapshots. There were 960 online listener samples,
+480 successful session-renewing presence heartbeats and no broadcast incidents.
+Light, Standard, Punchy, Custom and Off ran with all live changes retaining the
+same Liquidsoap process. Separate real-engine tests covered MP3/AAC-LC at each
+64/96/128/192 kbps setting and processor rollback.
+
+Source-rate decoded peak was -0.242618 dBFS with no non-finite samples. The 13
+quiet fragments (0.312–1.290 s) were mapped to source edges. The initially
+suspected extra 0.186 s matched the incoming track's measured quiet intro;
+no speculative scheduler/audio fix was made. This is not a full inter-sample
+true-peak or subjective audio certification. Input-HTTP clock catch-up warnings
+occurred (test-engine maximum 3.73 s), and sampled decoder lag briefly reached
+3.13 s before recovering.
+
+VM CPU averaged 65.79% with an 82.67% maximum minute sample. Major playout/worker
+RSS remained bounded; available memory ended at 801.71 MiB versus 820.24 MiB at
+start, while swap usage increased by 75.97 MiB. Disk growth was 255.80 MiB,
+including roughly 238 MiB of retained acceptance evidence. Earlier co-located
+Chromium workloads exhausted this small VM's headroom and failed; browser
+workflows and actual visualizer samples were therefore tested separately, not
+claimed as four-hour browser playback.
+
+Release-candidate readiness remains conditional on the documented patched
+Icecast deployment, real iPhone/Safari verification and capacity limits. Live
+AI provider calls remain mocked. The intermittent empty-recording/calendar-gap
+reports did not reproduce; initial tag/DJ-clear timing failures passed focused
+follow-up without proven intermittent causes. Four hours does not prove every
+feature bug-free. See the [complete test report](docs/v1-soak-2026-10-08.md),
+including coverage, remaining limits and sanitized evidence.
+
+The original staging station/account/media and `.env` were preserved; all 344
+checked application files matched the tested source. After auditing, only the
+isolated test station was stopped and test access disabled/revoked; its media,
+recordings and history remain. Production, main, tags and releases were untouched.
+No 0.3.2 → 1.0 upgrade bridge was implemented.
