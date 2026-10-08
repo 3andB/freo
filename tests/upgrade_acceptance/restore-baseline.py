@@ -12,6 +12,7 @@ from psycopg2 import sql
 os.umask(0o077)
 E=Path('/root/freo-upgrade-tests');P=Path('/root/freo-upgrade-preservation')
 name=sys.argv[1]
+bundle=Path(sys.argv[2]) if len(sys.argv)>2 else E/'baseline.gpg'
 assert name.isalnum()
 save=E/('preserved-'+name);save.mkdir(mode=0o700)
 report=json.loads((E/'baseline-verified.json').read_text())
@@ -24,10 +25,10 @@ def psql(statement):
  subprocess.run(['runuser','-u','postgres','--','psql','-v','ON_ERROR_STOP=1'],input=statement,text=True,check=True,stdout=subprocess.DEVNULL)
 psql('ALTER ROLE freo CREATEDB;')
 try:
- restored=recovery.restore(E/'baseline.gpg',(P/'passphrase').read_bytes(),values['DATABASE_URL'],E/('recovered-'+name),preserve_ownership=True)
+ restored=recovery.restore(bundle,(P/'passphrase').read_bytes(),values['DATABASE_URL'],E/('recovered-'+name),preserve_ownership=True)
 finally:psql('ALTER ROLE freo NOCREATEDB;')
 assert restored['status']=='verified'
-with recovery.unpack(E/'baseline.gpg',(P/'passphrase').read_bytes()) as (_,manifest):
+with recovery.unpack(bundle,(P/'passphrase').read_bytes()) as (_,manifest):
  entries=manifest['entries']
 # The existing production-style DB is preserved under a unique failure name.
 psql('ALTER DATABASE freo RENAME TO freo_preserved_'+name+'; ALTER DATABASE '+restored['database']+' RENAME TO freo;')
@@ -36,6 +37,8 @@ selected += list(Path('/etc/systemd/system').glob('freo*'))+[Path('/etc/systemd/
 for source in selected:
  if source.exists() or source.is_symlink():
   target=save/source.relative_to('/');target.parent.mkdir(parents=True,exist_ok=True);shutil.move(str(source),target)
+if '/opt/freo' not in restored['roots']:
+ Path('/opt/freo').mkdir(mode=0o755);Path('/opt/freo').chmod(0o755)
 activated=[]
 for index,namepath in enumerate(restored['roots']):
  original=Path(namepath)

@@ -229,6 +229,12 @@ def upgrade(artifact, signature, keyring, env_file, backup, passphrase, verifica
         if (root / 'current').exists() and not (root / 'current').is_symlink():
             raise recovery.RecoveryError('Release pointer is not a symlink; explicit adoption review required')
         current = (root / 'current').resolve() if (root / 'current').is_symlink() else root
+        from .inventory import DIRECTORIES, FILES
+        # Include the matched executable source and venv, never the new staged
+        # release. Recovery must not depend on a later download being available.
+        roots = recovery.normalize_roots(roots + [current / name for name in
+            (*DIRECTORIES, *FILES, 'venv', 'release.json') if (current / name).exists()]
+            + ([root / 'engines'] if (root / 'engines').exists() else []))
         operation = uuid.uuid4().hex
         release = root / 'releases' / operation
         release.parent.mkdir(mode=0o755, exist_ok=True)

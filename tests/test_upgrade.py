@@ -312,3 +312,16 @@ def test_mismatched_source_schema_is_refused_before_backup(host):
         host.execute()
     assert 'backup' not in host.calls
     assert host.active == ['freo.service', 'freo-automation.service']
+
+
+def test_recovery_bundle_captures_matched_source_without_candidate(host, monkeypatch):
+    original = recovery.create
+    captured = []
+    def create(url, roots, *args, **kwargs):
+        captured.extend(roots)
+        return original(url, roots, *args, **kwargs)
+    monkeypatch.setattr(recovery, 'create', create)
+    host.execute()
+    assert host.root / 'app' in captured
+    assert host.root / 'migrations' in captured
+    assert all(not path.is_relative_to(host.root / 'releases') for path in captured)
