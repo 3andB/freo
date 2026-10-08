@@ -45,3 +45,11 @@ def test_candidate_requires_explicit_opt_in(tmp_path, monkeypatch):
     monkeypatch.setattr(releases,'version_at',lambda p:'1.0.0-dev.1')
     monkeypatch.setattr(releases,'migration_head',lambda p:'head')
     assert releases._extract_trusted(archive,tmp_path/'allowed',allow_candidate=True)['candidate']
+
+
+@pytest.mark.parametrize('active,sub', [('failed','failed'),('activating','auto-restart')])
+def test_failing_baseline_is_refused_before_maintenance(monkeypatch,active,sub):
+    monkeypatch.setattr(recovery,'run',lambda *a,**k:json.dumps([
+        {'unit':'freo-ingest.service','active':active,'sub':sub}]).encode())
+    with pytest.raises(recovery.RecoveryError,match='failing baseline service'):
+        v1.check_services()

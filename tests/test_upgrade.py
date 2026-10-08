@@ -291,3 +291,24 @@ def test_upgrade_still_refuses_backup_when_a_guarded_unit_remains_active(host, m
     assert not any(isinstance(call, list) and call[-2:] == ['db', 'upgrade'] for call in host.calls)
     assert json.loads((host.state / 'journal.json').read_text())['phase'] == 'failed_before_migration'
     assert host.active == ['freo.service', 'freo-automation.service']
+
+
+def test_upgrade_installs_new_service_and_records_absence_for_recovery(host, monkeypatch):
+    original = updater.releases.extract_verified
+    def extract(*args, **kwargs):
+        result = original(*args, **kwargs)
+        (args[1] / 'deploy/systemd/freo-production.service').write_text(host.template)
+        return result
+    monkeypatch.setattr(updater.releases, 'extract_verified', extract)
+    assert host.execute()['status'] == 'complete'
+    assert '/opt/freo/current/' in (host.units / 'freo-production.service').read_text()
+    journal = json.loads((host.state / 'journal.json').read_text())
+    assert journal['previous_units'][str(host.units / 'freo-production.service')] is None
+
+
+def test_mismatched_source_schema_is_refused_before_backup(host):
+    (host.root / 'migrations/versions/source.py').write_text("revision = 'different'\ndown_revision = None\n")
+    with pytest.raises(recovery.RecoveryError, match='source and schema'):
+        host.execute()
+    assert 'backup' not in host.calls
+    assert host.active == ['freo.service', 'freo-automation.service']

@@ -275,6 +275,7 @@ def upgrade(artifact, signature, keyring, env_file, backup, passphrase, verifica
             from . import v1
             adopting_v1 = v1.transition(current, release, revision, manifest['version'])
             if adopting_v1:
+                v1.check_services()
                 v1.check_legacy_templates(current)
                 v1.check_runtime(current, release_environment(values, env_file))
                 v1.check_space(values['DATABASE_URL'], roots, release, backup, verification_directory)

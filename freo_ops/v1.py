@@ -160,3 +160,11 @@ def verify_permanent_files(backup, passphrase, values):
             if entry['kind'] == 'file' and any(path.is_relative_to(root) for root in permanent):
                 if not path.is_file() or path.is_symlink() or recovery.digest(path) != entry['sha256']:
                     raise recovery.RecoveryError('Permanent file preservation failed: '+str(path))
+
+
+def check_services():
+    rows = json.loads(recovery.run(['systemctl', 'list-units', '--all', '--no-pager', '--output=json',
+                                   '--type=service', 'freo*', 'icecast2.service']))
+    for row in rows:
+        if row['active'] == 'failed' or row['sub'] in ('auto-restart', 'failed'):
+            raise recovery.RecoveryError('Repair the failing baseline service before upgrading: ' + row['unit'])
