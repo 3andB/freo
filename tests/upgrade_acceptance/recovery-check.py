@@ -22,12 +22,12 @@ conn.close()
 for account,password in [('acceptance@example.test','private native acceptance passphrase'),('upgrade-dj@example.test','disposable upgrade DJ password')]:
  with requests.Session() as s:
   s.trust_env=False
-  body=s.get('http://127.0.0.1/admin/login',timeout=10).text
+  body=s.get('http://209.38.64.12/admin/login',timeout=10).text
   csrf=re.search(r'name="csrf" value="([^"]+)"',body).group(1)
-  r=s.post('http://127.0.0.1/admin/login',data={'csrf':csrf,'email':account,'password':password},timeout=10)
+  r=s.post('http://209.38.64.12/admin/login',data={'csrf':csrf,'email':account,'password':password},timeout=10)
   assert r.status_code==200 and '/admin/login' not in r.url,(account,r.status_code)
   for station in ('acceptance','upgrade-two','upgrade-stopped'):
-   assert s.get('http://127.0.0.1/admin/stations/'+station+'/media',timeout=10).status_code==200
+   assert s.get('http://209.38.64.12/admin/stations/'+station+'/media',timeout=10).status_code==200
 for slug in ('acceptance','upgrade-two'):
  subprocess.run(['ffmpeg','-v','error','-i','http://127.0.0.1:8001/'+slug,'-t','4','-f','null','-'],check=True,timeout=25)
 assert subprocess.run(['systemctl','is-active','--quiet','freo-playout@upgrade-stopped.service']).returncode!=0

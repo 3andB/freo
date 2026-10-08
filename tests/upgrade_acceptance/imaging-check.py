@@ -30,7 +30,7 @@ with app.app_context():
  target=m.Track.query.filter_by(station_id=second.id).filter(m.Track.legacy_imaging_id.isnot(None)).one().id
  since=m.SelectionDecision.query.order_by(m.SelectionDecision.id.desc()).first().id
 with requests.Session() as s:
- s.trust_env=False;base='http://127.0.0.1'
+ s.trust_env=False;base='http://209.38.64.12'
  body=s.get(base+'/admin/login',timeout=10).text
  csrf=re.search(r'name="csrf" value="([^"]+)"',body).group(1)
  r=s.post(base+'/admin/login',data={'csrf':csrf,'email':'acceptance@example.test','password':'private native acceptance passphrase'},timeout=10);assert '/admin/login' not in r.url
