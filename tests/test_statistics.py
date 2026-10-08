@@ -247,3 +247,19 @@ def test_feedback_transitions_preserve_retry_change_and_clear(app):
     with app.app_context():
         changes=FeedbackTransition.query.order_by(FeedbackTransition.id).all()
         assert [(r.old_value,r.new_value) for r in changes]==[(0,1),(1,-1),(-1,0)]
+
+
+def test_presence_renews_active_anonymous_session_past_one_hour(app, monkeypatch):
+    from itsdangerous import TimestampSigner
+    stamp = [int(time.time())]
+    monkeypatch.setattr(TimestampSigner, 'get_timestamp', lambda self: stamp[0])
+    client = app.test_client()
+    path = '/api/stations/test-station/presence'
+    token = client.get(path).json['csrf']
+    stamp[0] += 3590
+    assert client.post(path, headers={'X-Presence-CSRF': token}).status_code == 204
+    stamp[0] += 20
+    assert client.post(path, headers={'X-Presence-CSRF': token}).status_code == 204
+    with app.app_context():
+        assert AudiencePresence.query.filter_by(source='website').count() == 1
+        assert GeoReach.query.one().sessions == 1

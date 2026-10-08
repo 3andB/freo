@@ -183,3 +183,28 @@ def test_stream_pin_and_chart_refresh_arrival_and_departure(booth, monkeypatch):
     driver.execute_script("FreoWorkspace.navigate('/admin/stations/test-station/stats?range=live')")
     wait.until(lambda d:'/admin/stations/test-station/stats?range=live' in d.current_url and d.find_element(By.ID,'statistics').get_attribute('data-map-ready')=='true')
     assert driver.find_elements(By.CSS_SELECTOR,'#audience-chart svg polyline')
+
+
+def test_player_presence_recovers_after_anonymous_cookie_expires(booth):
+    app, driver, base, _ = booth
+    driver.delete_all_cookies()
+    driver.execute_cdp_cmd('Page.addScriptToEvaluateOnNewDocument', {'source': """
+      window.presenceResponses=[];
+      const originalFetch=window.fetch;
+      window.fetch=async function(input,options){
+        const response=await originalFetch.call(this,input,options);
+        if(String(input).endsWith('/presence'))presenceResponses.push(response.status);
+        return response;
+      };
+    """})
+    driver.get(base+'/player/test-station')
+    wait=WebDriverWait(driver,15)
+    wait.until(lambda d: d.execute_script('return presenceResponses.includes(204)'))
+    driver.execute_script('window.presenceDocument=document;presenceResponses=[]')
+    driver.delete_cookie(app.config['SESSION_COOKIE_NAME'])
+    driver.execute_script('document.dispatchEvent(new Event("visibilitychange"))')
+    wait.until(lambda d: d.execute_script('return presenceResponses.includes(400)'))
+    driver.execute_script('document.dispatchEvent(new Event("visibilitychange"))')
+    wait.until(lambda d: d.execute_script('return presenceResponses.includes(204)'))
+    assert driver.execute_script('return presenceResponses') == [400,200,204]
+    assert driver.execute_script('return presenceDocument===document')

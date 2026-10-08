@@ -186,6 +186,9 @@ def visitor_presence(slug):
     except SQLAlchemyError:
         db.session.rollback()
         return jsonify(error='Presence temporarily unavailable'), 503
+    # Keep the anonymous presence identity valid while this page is active.
+    # Reading a non-permanent session alone does not renew its signed timestamp.
+    session.modified = True
     return Response(status=204)
 
 

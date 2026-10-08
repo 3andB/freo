@@ -2345,3 +2345,19 @@ hardware remains untested in this run.
 These checks precede the measured four-hour acceptance interval. Its duration,
 continuity and remaining limitations must be reported from the separate soak
 artifacts, not inferred from these regression counts.
+
+### Long-running anonymous player presence (2026-10-08)
+
+The staging soak exposed website-presence heartbeats returning HTTP 400 after
+approximately one hour. Successful heartbeats read the anonymous session but did
+not renew its signed timestamp; the open player retained the old CSRF token after
+that session expired. Stream listener accounting is collected separately from
+Icecast, but website-presence accounting stopped updating.
+
+Successful anonymous heartbeats now renew that session. If a cookie has already
+expired or been removed, the player clears the rejected token and obtains a new
+one on its next heartbeat without reloading the player. Existing CSRF checks,
+admin exclusion and cross-origin rejection remain in place. Two focused
+regressions reproduced the original failures, then the complete statistics
+backend/browser modules passed after the fix. The replacement acceptance run
+will also exercise real cookie renewal across the one-hour boundary.
