@@ -161,10 +161,12 @@ def check_runtime(current, env):
 from pathlib import Path
 import json
 from app import create_app
-from app.models import Station
+from app.models import Station, MediaIngestJob
 from app.services.station_runtime import render_liquidsoap
 app=create_app()
 with app.app_context():
+    if MediaIngestJob.query.filter(MediaIngestJob.kind.in_(('imaging','img_verify','img_enable')), MediaIngestJob.status.in_(('pending','processing'))).first():
+        raise SystemExit('Finish pending Imaging jobs before upgrading')
     for station in Station.query.filter_by(deleted_at=None).all():
         path=Path('/etc/freo/radio/stations')/(station.slug+'.liq')
         if not path.exists():
