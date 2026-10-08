@@ -27,10 +27,18 @@ async def main():
    async with s.post(base+'/admin/login',data={'csrf':csrf,'email':email,'password':password}) as r:assert '/admin/login' not in str(r.url)
    note('Original account authenticates',account=email)
   for slug in ('acceptance','upgrade-two','upgrade-stopped'):
-   for suffix in ('media','playlists','schedule-studio/control','history.csv'):
+   for suffix in ('media','playlists','schedule-studio/control','history.csv','stats/export.csv'):
     async with s.get(base+'/admin/stations/'+slug+'/'+suffix) as r:
      assert r.status==200,(slug,suffix,r.status)
    note('Original station pages, playlists, schedule and history accessible',station=slug)
+  with app.app_context():
+   covers=[(a.station.slug,a.id) for a in m.Album.query.filter(m.Album.artwork_key.isnot(None)).all()]
+  assert len(covers)==3
+  for slug,identifier in covers:
+   async with s.get(base+f'/admin/stations/{slug}/media/albums/{identifier}/artwork') as r:
+    assert r.status==200 and r.headers['Content-Type'].startswith('image/')
+    assert len(await r.read())>100
+  note('All original album artwork served through authenticated application')
   async with s.get(base+'/admin/stations/acceptance/production') as r:body=await r.text()
   csrf=re.search(r'data-csrf="([^"]+)"',body).group(1)
   for path,want in [('/api/v1/stations/acceptance',200),('/api/v1/stations/upgrade-two',403),('/api/v1/stations/acceptance/library/tracks',200)]:
