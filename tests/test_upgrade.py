@@ -163,8 +163,10 @@ def test_preflight_does_not_stop_services_or_migrate(host):
 
 def test_repeating_the_same_release_does_not_migrate_or_restart(host):
     host.execute()
+    first = json.loads((host.state / 'journal.json').read_text())
     host.calls.clear()
     assert host.execute()['status'] == 'already_installed'
+    assert json.loads((host.state / 'history' / (first['operation'] + '.json')).read_text()) == first
     assert host.calls == ['verify-release']
 
 

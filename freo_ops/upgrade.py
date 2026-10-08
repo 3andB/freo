@@ -222,6 +222,11 @@ def upgrade(artifact, signature, keyring, env_file, backup, passphrase, verifica
             previous = json.loads(journal_path.read_text())
             if previous['phase'] not in ('complete', 'preflight_failed', 'preflight_passed', 'failed_before_migration'):
                 raise recovery.RecoveryError('Previous upgrade is unfinished; inspect the journal and recovery guide before proceeding')
+            history = state / 'history'
+            history.mkdir(mode=0o700, exist_ok=True)
+            require_root_directory(history, private=True)
+            identifier = uuid.UUID(previous['operation']).hex
+            atomic_json(history / (identifier + '.json'), previous)
         values = configuration(env_file)
         target_values = configuration(verification_env_file)
         roots = inventory(env_file, values)
