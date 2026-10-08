@@ -48,9 +48,25 @@ def sync_live_mic(station):
         except ValueError:
             session = {}
         if phase == 'FAILED':
+            from hashlib import sha256
+            from app.extensions import db
+            from app.models import AuditEvent
+            from app.services.admin_media import audit
             from app.services.live_assist import return_to_schedule
-            if station.automation.operator_mode != 'AUTO':
-                return_to_schedule(station, reason='Microphone disconnected. Returning to Auto.')
+            # FAILED remains latched in the engine until a new mic session.
+            # Persist its acknowledgement with the fallback so a later DJ
+            # session survives repeated polls and automation worker restarts.
+            failure_id = sha256(token.encode()).hexdigest()
+            handled = AuditEvent.query.filter_by(station_id=station.id,
+                action='live_mic_failure_handled', target_id=failure_id).first()
+            if handled is None:
+                audit('live_mic_failure_handled', station_id=station.id,
+                      target_type='mic_session', target_id=failure_id,
+                      summary='Disconnected microphone session returned to Auto.')
+                if station.automation.operator_mode != 'AUTO':
+                    return_to_schedule(station, reason='Microphone disconnected. Returning to Auto.')
+                else:
+                    db.session.commit()
             if not session or session.get('token') == token:
                 return False
         if not session:

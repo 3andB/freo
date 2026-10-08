@@ -289,6 +289,26 @@ async def gateway_roundtrip(engine_dir=None, station=None, graceful=False, feed_
             await asyncio.sleep(.1)
         assert fields[1] == 'FAILED'
         assert (await command('freo_mixer.state')).startswith('AUTO|')
+        # Poll the real failed engine, then choose a new DJ session. The old
+        # microphone failure must not override that later operator intent.
+        from app.extensions import db
+        from app.services import playout_queue, live_mic
+        (engine_dir / station.slug).symlink_to(engine_dir, target_is_directory=True)
+        with pytest.MonkeyPatch.context() as patch:
+            patch.setattr(playout_queue, 'SOCKET_ROOT', engine_dir)
+            patch.setattr(live_mic, 'gateway', lambda *args, **kwargs: {})
+            station.automation.operator_mode = 'DJ_BOOTH'
+            db.session.commit()
+            assert live_mic.sync_live_mic(station) is False
+            assert station.automation.operator_mode == 'AUTO'
+            station.automation.operator_mode = 'DJ_BOOTH'
+            db.session.commit()
+            for _ in range(3):
+                assert live_mic.sync_live_mic(station) is False
+                playout_queue.sync_mixer(station)
+                assert station.automation.operator_mode == 'DJ_BOOTH'
+                assert (await command('freo_mixer.state')).startswith('DJ_BOOTH|')
+                await asyncio.sleep(.2)
     finally:
         await pc.close()
         if proc and proc.returncode is None:
@@ -381,7 +401,7 @@ def test_mic_commands_reject_injected_tokens_and_invalid_fades():
             _command('test-station', command)
 
 
-def test_failed_session_can_only_be_replaced_by_new_token(monkeypatch):
+def test_failed_session_can_only_be_replaced_by_new_token(app, monkeypatch):
     from app.services.live_mic import sync_live_mic
     monkeypatch.setenv('FREO_LIVE_MIC', '1')
     calls=[]
@@ -391,13 +411,14 @@ def test_failed_session_can_only_be_replaced_by_new_token(monkeypatch):
     monkeypatch.setattr('app.services.playout_queue._command', command)
     session=dict(token='a'*32,desired='LIVE',healthy=True,fade=0)
     monkeypatch.setattr('app.services.live_mic.gateway',lambda *a,**k:session)
-    station=SimpleNamespace(slug='test-station',automation=SimpleNamespace(operator_mode='AUTO'))
-    assert sync_live_mic(station) is False
-    assert calls == ['freo_mic.state']
-    session['token']='b'*32
-    assert sync_live_mic(station) is False
-    assert calls[-1]=='freo_mic.prepare '+'b'*32
-
+    from app.models import Station
+    with app.app_context():
+        station=Station.query.filter_by(slug='test-station').one()
+        assert sync_live_mic(station) is False
+        assert calls == ['freo_mic.state']
+        session['token']='b'*32
+        assert sync_live_mic(station) is False
+        assert calls[-1]=='freo_mic.prepare '+'b'*32
 
 def test_live_mic_blocks_transport_but_failed_session_releases_it(app, monkeypatch):
     client=app.test_client(); operator(client)
@@ -416,3 +437,35 @@ def test_live_mic_blocks_transport_but_failed_session_releases_it(app, monkeypat
     state['phase']='FAILED'
     response=client.post(url,data={'csrf':'mic-csrf','mode':'DJ_BOOTH'},headers={'Accept':'application/json'})
     assert response.status_code == 200
+
+
+@pytest.mark.parametrize('initial_mode', ['AUTO', 'DJ_BOOTH'])
+def test_failed_microphone_is_reconciled_once_across_worker_sessions(app, monkeypatch, initial_mode):
+    from app.extensions import db
+    from app.models import Station, AuditEvent
+    from app.services.live_mic import sync_live_mic
+    monkeypatch.setenv('FREO_LIVE_MIC', '1')
+    token = ['a' * 32]
+    monkeypatch.setattr('app.services.playout_queue._command',
+        lambda slug, command: token[0] + '|FAILED|false')
+    monkeypatch.setattr('app.services.live_mic.gateway', lambda *args, **kwargs: {})
+    with app.app_context():
+        station = Station.query.filter_by(slug='test-station').one()
+        station.automation.operator_mode = initial_mode
+        db.session.commit()
+        assert sync_live_mic(station) is False
+        assert station.automation.operator_mode == 'AUTO'
+        station.automation.operator_mode = 'DJ_BOOTH'
+        db.session.commit()
+    # A fresh database session models a restarted worker; no process-local
+    # memory may be required to preserve the later operator selection.
+    with app.app_context():
+        station = Station.query.filter_by(slug='test-station').one()
+        for _ in range(3):
+            assert sync_live_mic(station) is False
+            assert station.automation.operator_mode == 'DJ_BOOTH'
+        assert AuditEvent.query.filter_by(action='live_mic_failure_handled').count() == 1
+        token[0] = 'b' * 32
+        assert sync_live_mic(station) is False
+        assert station.automation.operator_mode == 'AUTO'
+        assert AuditEvent.query.filter_by(action='live_mic_failure_handled').count() == 2

@@ -2267,3 +2267,22 @@ Validation: normal, disabled-debug and CORS-only URLs omit diagnostic markup and
 scripts; the debug URL restores both. The existing media-source diagnostic
 browser regression passed, including retry, reconnect and clipboard behavior.
 JavaScript syntax and whitespace checks passed.
+
+### 2026-10-08 — Microphone disconnect recovery during V1 acceptance
+
+A fresh regression reproduced the staging handoff issue: Liquidsoap retains the
+failed microphone token and `FAILED` phase, so every automation poll could force
+a subsequently selected DJ session back to Auto. The worker now records one
+acknowledgement per failed token in the existing station audit table, committing
+it with the initial fallback. Repeated observations and worker restarts retain
+that acknowledgement; a different failed token still triggers recovery. Tokens
+are hashed in the acknowledgement. No schema, public API or engine change is
+required.
+
+Validation on the disposable V1 VM: the original regression failed before the
+fix; five focused checks passed afterward. The complete microphone module
+passed 14 tests, including real WebRTC/Liquidsoap disconnect and graceful-return
+audio. An additional real-engine regression confirmed that repeated worker
+observations preserve a later DJ selection. These checks precede the requested
+four-hour soak and do not establish its completion. Production remains outside
+this test/deployment scope.
