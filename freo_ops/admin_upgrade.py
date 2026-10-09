@@ -1,6 +1,7 @@
 """Approved staged versions, executed exclusively by the existing updater."""
 from pathlib import Path
 import re
+import shutil
 import uuid
 from datetime import datetime, timezone
 from . import admin as a, admin_backup as backups, hosting as h, recovery, releases
@@ -71,6 +72,14 @@ def dispatch(args):
                     preflight=upgrade(artifact,signature,keyring,env,a.STATE/('preflight-'+uuid.uuid4().hex+'.gpg'),b'',env,
                         a.STATE/('preflight-'+uuid.uuid4().hex),check=True,allow_candidate=candidate_allowed())
                     result['preflight']=preflight['status']
+                    # The existing updater stages a fresh copy even for check.
+                    # Repeated monitoring must not retain these disposable copies.
+                    journal=a.read_json(a.UPDATES/'journal.json')
+                    copied=Path(journal['release'])
+                    if (copied.parent==Path('/opt/freo/releases') and copied.name==journal['operation']
+                            and re.fullmatch('[a-f0-9]{32}',copied.name) and copied!=a.source()
+                            and journal['phase'] in ('complete','preflight_passed')):
+                        shutil.rmtree(copied)
                 else:
                     result['preflight']='incompatible'
                 candidates.append(result)
