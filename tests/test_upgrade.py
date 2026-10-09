@@ -1,12 +1,13 @@
 """Failure injection for upgrade orchestration; no real services or live paths."""
 import json
+from contextlib import nullcontext
 from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 
 from freo_ops import upgrade as updater
-from freo_ops import recovery
+from freo_ops import recovery, hosting
 from freo_ops import __main__ as management
 
 
@@ -34,6 +35,9 @@ def host(tmp_path, monkeypatch):
     monkeypatch.setattr(updater.os, 'geteuid', lambda: 0)
     # Host paths/ownership are simulated; these tests also run as an unprivileged CI user.
     monkeypatch.setattr(updater, 'require_root_directory', lambda *args, **kwargs: None)
+    # The orchestration fixture simulates root and filesystem ownership. Real
+    # authority locking/permissions are exercised separately by test_hosting.
+    monkeypatch.setattr(hosting, 'administrative_lock', nullcontext)
     monkeypatch.setattr(updater.platform, 'freedesktop_os_release', lambda: {'ID': 'ubuntu', 'VERSION_ID': '24.04'})
     monkeypatch.setattr(updater.platform, 'machine', lambda: 'x86_64')
     active = ['freo.service', 'freo-automation.service']

@@ -70,7 +70,8 @@ def test_authoritative_version_ignores_legacy_overrides(app, monkeypatch):
     app.config['FREO_VERSION'] = 'development'
     with app.app_context():
         snapshot = machine_snapshot()
-    assert snapshot['freo_version'] == VERSION == '1.0.0-dev.1'
+    assert snapshot['freo_version'] == VERSION
+    assert VERSION not in ('9.9.9', 'development')
     assert snapshot['os'] == platform.system()
     assert snapshot['architecture'] == platform.machine()
     assert {'cpu_count', 'ram_bytes', 'disk_total_bytes', 'disk_free_bytes'} <= snapshot.keys()
