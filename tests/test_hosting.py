@@ -224,6 +224,9 @@ def test_standalone_guard_is_readable_after_private_umask_install(tmp_path,monke
     source=Path(__file__).resolve().parents[1]/'scripts/install-hosting.py'
     (tmp_path/'usr/local/sbin').mkdir(parents=True)
     (tmp_path/'etc').mkdir()
+    from freo_ops import hosting_recovery
+    actual_path=Path
+    monkeypatch.setattr(hosting_recovery,'Path',lambda name: tmp_path/str(name).lstrip('/') if str(name).startswith('/etc/') else actual_path(name))
     monkeypatch.setattr(h,'CONFIG',tmp_path/'etc/freo/hosting.json')
     monkeypatch.setattr(h,'STATE',tmp_path/'authority')
     monkeypatch.setattr(os,'geteuid',lambda:0)
@@ -240,6 +243,9 @@ def test_standalone_guard_is_readable_after_private_umask_install(tmp_path,monke
     for name in ('guard.py','freo_ops/hosting.py','freo_ops/__init__.py'):
         assert (guard/name).stat().st_mode & 0o004
     assert json.loads(h.CONFIG.read_text())=={'hosted':False}
+    for unit in ('icecast2.service','freo-playout@.service','freo-mic.service','freo.service'):
+        override=tmp_path/'etc/systemd/system'/(unit+'.d')/'hosting-authority.conf'
+        assert 'ExecCondition=/usr/bin/python3 /usr/local/lib/freo-hosting/guard.py' in override.read_text()
 
 
 @pytest.mark.skipif(os.geteuid()!=0, reason="Root-owned filesystem acceptance requires root")

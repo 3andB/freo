@@ -6,6 +6,9 @@ assert socket.gethostname()=='Freo-v1-Test-1'
 os.chdir('/opt/freo/current');sys.path.insert(0,str(Path.cwd()));os.environ['FREO_ENV_FILE']='/etc/freo/freo.env'
 from freo_ops import hosting,hosting_storage
 assert hosting.read()=={'hosted':False}
+for unit in ('icecast2.service','freo.service','freo-mic.service','freo-playout@acceptance.service'):
+    condition=subprocess.check_output(['systemctl','show',unit,'--property=ExecCondition','--value'],text=True)
+    assert '/usr/local/lib/freo-hosting/guard.py' in condition,unit
 assert not (hosting.STATE/'enabled').exists()
 E=Path('/root/freo-phase-b');session=requests.Session();session.trust_env=False;base='http://209.38.64.12'
 credentials=json.loads((E/'admin-credentials.json').read_text())

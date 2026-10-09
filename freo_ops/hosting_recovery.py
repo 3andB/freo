@@ -47,14 +47,17 @@ def restore_authority():
     for filename,value in saved.items():
         target=Path(filename);target.parent.mkdir(parents=True,exist_ok=True)
         h.atomic(target,value)
-    # Standalone enforcement survives attaching older application code.
-    for unit in ('icecast2.service','freo-playout.service','freo-playout@.service','freo-mic.service'):
-        directory=Path('/etc/systemd/system')/(unit+'.d');directory.mkdir(exist_ok=True)
-        (directory/'hosting-authority.conf').write_text('[Service]\nExecCondition=/usr/bin/python3 /usr/local/lib/freo-hosting/guard.py\n')
-    web=Path('/etc/systemd/system/freo.service.d');web.mkdir(exist_ok=True)
-    (web/'hosting-authority.conf').write_text('[Service]\nExecCondition=/usr/bin/python3 /usr/local/lib/freo-hosting/guard.py --web\n')
+    install_service_guards()
     protect_request_spooling()
     subprocess.run(['systemctl','daemon-reload'],check=True)
+
+
+def install_service_guards():
+    """Guard existing vendor/legacy units as well as fresh Freo templates."""
+    for unit in ('icecast2.service','freo-playout.service','freo-playout@.service','freo-mic.service','freo.service'):
+        directory=Path('/etc/systemd/system')/(unit+'.d');directory.mkdir(parents=True,exist_ok=True)
+        suffix=' --web' if unit=='freo.service' else ''
+        (directory/'hosting-authority.conf').write_text('[Service]\nExecCondition=/usr/bin/python3 /usr/local/lib/freo-hosting/guard.py'+suffix+'\n')
 
 
 def protect_request_spooling():

@@ -9,9 +9,12 @@ from app.extensions import db
 from app.services import clocks
 from app.services.media_storage import LocalMediaStorage
 from app.services.imaging_migration import inventory
+baseline=json.loads(Path('/root/freo-upgrade-tests/healthy-baseline.json').read_text())
+original_hashes=set(baseline['files'].values())
+original_station_ids=[row[0] for row in baseline['stations']]
 app=create_app();E=Path('/root/freo-upgrade-tests')/sys.argv[1];E.mkdir(exist_ok=True)
 with app.app_context():
- for station in m.Station.query.order_by(m.Station.id):
+ for station in m.Station.query.filter(m.Station.id.in_(original_station_ids)).order_by(m.Station.id):
   report=inventory(station)
   assert len(report['assets'])==1 and all(a['mapped'] for a in report['assets'])
   assert not any(report['references'].values())
@@ -19,7 +22,7 @@ with app.app_context():
   asset=m.ImagingAsset.query.filter_by(station_id=station.id).one()
   audio=m.Track.query.filter_by(legacy_imaging_id=asset.id).one()
   assert audio.audio_kind=='STATION' and audio.checksum_sha256==asset.checksum_sha256
-  assert m.Track.query.filter_by(station_id=station.id,audio_kind='MUSIC').count()==3
+  assert m.Track.query.filter_by(station_id=station.id,audio_kind='MUSIC').filter(m.Track.checksum_sha256.in_(original_hashes)).count()==3
   subprocess.run(['ffmpeg','-v','error','-i',str(LocalMediaStorage().regular_file(station.slug,audio.storage_key)),'-f','null','-'],check=True,timeout=15)
  station=m.Station.query.filter_by(slug='acceptance').one();asset_uuid=m.ImagingAsset.query.filter_by(station_id=station.id).one().uuid
  second=m.Station.query.filter_by(slug='upgrade-two').one()

@@ -28,3 +28,7 @@ shutil.copy2(source/'scripts/hosting-admin-launcher.py',guard/'admin.py')
 launcher=Path('/usr/local/sbin/freo-admin')
 launcher.write_text('#!/bin/sh\nexec /usr/bin/python3 -I /usr/local/lib/freo-hosting/admin.py "$@"\n')
 launcher.chmod(0o755)
+
+# The updater retains the existing Icecast base unit. Guard it explicitly too.
+from freo_ops.hosting_recovery import install_service_guards
+install_service_guards()
