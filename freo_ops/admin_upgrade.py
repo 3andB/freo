@@ -64,12 +64,15 @@ def dispatch(args):
         for directory in sorted((a.UPDATES/'staged').glob('*')):
             if directory.is_dir():
                 result=verify_staged(directory.name)
-                from .upgrade import upgrade
-                artifact,signature,keyring=staged(directory.name)
-                env,_=a.settings()
-                preflight=upgrade(artifact,signature,keyring,env,a.STATE/('preflight-'+uuid.uuid4().hex+'.gpg'),b'',env,
-                    a.STATE/('preflight-'+uuid.uuid4().hex),check=True,allow_candidate=candidate_allowed())
-                result['preflight']=preflight['status']
+                if result['compatible']:
+                    from .upgrade import upgrade
+                    artifact,signature,keyring=staged(directory.name)
+                    env,_=a.settings()
+                    preflight=upgrade(artifact,signature,keyring,env,a.STATE/('preflight-'+uuid.uuid4().hex+'.gpg'),b'',env,
+                        a.STATE/('preflight-'+uuid.uuid4().hex),check=True,allow_candidate=candidate_allowed())
+                    result['preflight']=preflight['status']
+                else:
+                    result['preflight']='incompatible'
                 candidates.append(result)
         journal=a.read_json(a.UPDATES/'journal.json') if (a.UPDATES/'journal.json').exists() else None
         return dict(releases=candidates,upgrade={k:journal[k] for k in ('operation','phase') if k in journal} if journal else None,

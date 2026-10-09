@@ -21,8 +21,9 @@ if sys.argv[1:2]==['child']:
     admin_backup.pg=pg
     raise SystemExit(admin.main(['backup','restore','--id',sys.argv[2],'--confirm-installation',sys.argv[3]]))
 result=json.loads(subprocess.check_output(['freo-admin','backup','list']))
-backup=next(row['id'] for row in reversed(result['backups']) if row['role']=='backup' and row['status'].startswith('integrity_verified'))
-identity=json.loads(subprocess.check_output(['freo-admin','status']))['installation_id']
+status=json.loads(subprocess.check_output(['freo-admin','status']))
+backup=max((row for row in result['backups'] if row['role']=='backup' and row.get('version')==status['version'] and row['status'].startswith('integrity_verified')),key=lambda row:row['created_at'])['id']
+identity=status['installation_id']
 subprocess.run(['freo-admin','hosting','suspend','--reason','restore-interruption'],check=True,capture_output=True)
 p=subprocess.run([str(source/'venv/bin/python'),'-I',__file__,'child',backup,identity],capture_output=True,text=True)
 assert p.returncode==-signal.SIGKILL,(p.returncode,p.stdout)

@@ -89,7 +89,7 @@ def freeze(operation):
     a.checkpoint(operation,phase='frozen')
 
 
-def thaw(operation):
+def thaw(operation, *, reconcile=False):
     policy=h.read()
     restricted=policy.get('hosted') and (policy['status'] in ('suspended','maintenance') or operation.get('was_inhibited'))
     if policy.get('hosted') and not restricted:
@@ -102,6 +102,17 @@ def thaw(operation):
         if not re.fullmatch(r'(freo[a-z0-9@_.-]*|icecast2)\.(service|timer)',unit):
             raise h.HostingError('invalid_configuration','Unexpected recorded service.')
         selected.append(unit)
+    if reconcile:
+        selected.extend(a.CORE)
+        for unit in ('freo-central-api.service', *a.GROUPS['scheduled-workers']):
+            if subprocess.run(['systemctl','is-enabled','--quiet',unit],capture_output=True,timeout=5).returncode==0:
+                selected.append(unit)
+        if not restricted:
+            selected.append('icecast2.service')
+            selected.extend('freo-playout@'+s['slug']+'.service' for s in a.station_rows() if s['enabled'] and s['desired_state']=='running')
+            if subprocess.run(['systemctl','is-enabled','--quiet','freo-mic.service'],capture_output=True,timeout=5).returncode==0:
+                selected.append('freo-mic.service')
+        selected=list(dict.fromkeys(selected))
     a.checkpoint(operation,phase='starting')
     a.run(['systemctl','daemon-reload'])
     if selected:a.run(['systemctl','start',*selected])
@@ -260,7 +271,7 @@ def adopt_restored_release(metadata,release):
     sync_directory(destination.parent)
 
 
-def restore_live(operation):
+def restore_live(operation, *, reconcile=False):
     metadata,bundle=record(operation['restore_id'])
     work=a.private_directory(a.STATE/'restores'/operation['operation_id'])
     # Reentrant authority context and journal survive even a kill between roots.
@@ -363,22 +374,22 @@ def restore_live(operation):
             a.write(history/(journal['operation']+'-recovered.json'),dict(journal,recovered_by=operation['operation_id']))
             (a.UPDATES/'journal.json').unlink()
     a.checkpoint(operation,phase='attached')
-    verification=thaw(operation)
+    verification=thaw(operation,reconcile=reconcile)
     return dict(operation_id=operation['operation_id'],backup_id=metadata['id'],recovery_point=operation['recovery_point'],
                 preserved_database=operation['preserved_database'],verification=verification)
 
 
 def resume(operation):
-    if operation['operation']=='backup.restore':return restore_live(operation)
+    if operation['operation']=='backup.restore':return restore_live(operation,reconcile=True)
     if operation['operation']=='backup.create':
         if not operation.get('backup_id'):
-            return dict(operation_id=operation['operation_id'],verification=thaw(operation),backup_created=False)
+            return dict(operation_id=operation['operation_id'],verification=thaw(operation,reconcile=True),backup_created=False)
         try: verified=verify(operation['backup_id'])
         except Exception:
             # No attachment/migration occurred: return the old services, report failure.
-            thaw(operation)
+            thaw(operation,reconcile=True)
             raise
-        return dict(backup=verified,verification=thaw(operation))
+        return dict(backup=verified,verification=thaw(operation,reconcile=True))
     if operation['operation']=='upgrade.apply':
         from .admin_upgrade import register_backup
         if operation.get('backup_id'):register_backup(operation['backup_id'])
@@ -395,12 +406,12 @@ def resume(operation):
             finally:connection.close()
             if journal.get('source_revision',revision)==revision:
                 a.checkpoint(operation,active_units=journal.get('active_units',[]),was_inhibited=False)
-                verification=thaw(operation)
+                verification=thaw(operation,reconcile=True)
                 a.write(a.private_directory(a.UPDATES/'history')/(journal['operation']+'-aborted.json'),dict(journal,recovered_by=operation['operation_id']))
                 (a.UPDATES/'journal.json').unlink()
                 return dict(operation_id=operation['operation_id'],verification=verification,upgrade_outcome='aborted_before_migration')
         raise h.HostingError('recovery_required','Inspect the upgrade journal; restore its recovery point explicitly.',backup_id=operation.get('backup_id'))
-    return dict(verification=thaw(operation))
+    return dict(verification=thaw(operation,reconcile=True))
 
 
 def dispatch(args):

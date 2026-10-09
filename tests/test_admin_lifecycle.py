@@ -186,3 +186,11 @@ def test_direct_installation_restores_to_canonical_deployment(state,monkeypatch)
     assert 'WorkingDirectory=/opt/freo/current' in unit.read_text()
     assert 'EnvironmentFile=/etc/freo/freo.env' in unit.read_text()
     assert 'ExecStart=/opt/freo/current/venv/bin/gunicorn' in unit.read_text()
+
+
+def test_upgrade_check_reports_cached_older_versions_without_running_downgrade(state,monkeypatch):
+    staged=a.UPDATES/'staged'/'0.3.2';staged.mkdir(parents=True)
+    monkeypatch.setattr(u,'verify_staged',lambda version:dict(version=version,compatible=False))
+    monkeypatch.setattr(u,'staged',lambda version:pytest.fail('incompatible version must not run updater'))
+    result=u.dispatch(SimpleNamespace(action='check'))
+    assert result['releases']==[dict(version='0.3.2',compatible=False,preflight='incompatible')]
