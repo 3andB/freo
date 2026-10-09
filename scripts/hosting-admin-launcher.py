@@ -21,6 +21,13 @@ def main():
             return 0
         print(json.dumps(dict(schema_version=1,success=False,error='incompatible_release',message='Restore a hosted-capable Freo release before managing this installation.',state=state)))
         return 6
+    if sys.argv[1:2] != ['hosting'] and not (source/'freo_ops/admin.py').is_file():
+        runtime=Path('/var/lib/freo-admin/runtime')
+        if runtime.is_symlink() and (runtime.resolve()/'freo_ops/admin.py').is_file():
+            source=runtime.resolve()
+        else:
+            print(json.dumps(dict(schema_version=1,success=False,error='incompatible_release',state=hosting.read())))
+            return 6
     os.chdir(source)
     os.environ['PATH']='/usr/sbin:/usr/bin:/sbin:/bin'
     executable=str(source/'venv/bin/python')

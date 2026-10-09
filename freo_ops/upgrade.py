@@ -197,7 +197,7 @@ def verify_preservation(source_url, restored_url):
         new.close()
 
 
-def upgrade(artifact, signature, keyring, env_file, backup, passphrase, verification_env_file, verification_directory, *, check=False, allow_candidate=False):
+def _upgrade(artifact, signature, keyring, env_file, backup, passphrase, verification_env_file, verification_directory, *, check=False, allow_candidate=False, verification_create_database=None):
     from .__main__ import configuration, inventory, active_units
     if os.geteuid() != 0:
         raise recovery.RecoveryError('Upgrades require root; the web application cannot perform upgrades')
@@ -356,7 +356,7 @@ def upgrade(artifact, signature, keyring, env_file, backup, passphrase, verifica
                             media_root=values.get('FREO_MEDIA_ROOT') or '/var/lib/freo/media',
                             upload_root=values.get('FREO_UPLOAD_ROOT') or '/var/lib/freo/uploads')
             # Verification restores never point at the current DB and never drop a DB.
-            verified = recovery.restore(backup, passphrase, target_values['DATABASE_URL'], verification_directory)
+            verified = recovery.restore(backup, passphrase, target_values['DATABASE_URL'], verification_directory, create_database=verification_create_database)
             journal['verification_database'] = verified['database']
             journal['verification_directory'] = str(verification_directory)
             if adopting_v1 or adopting_hosting:
@@ -502,3 +502,10 @@ def upgrade(artifact, signature, keyring, env_file, backup, passphrase, verifica
             raise
     finally:
         lock.close()
+
+
+def upgrade(*args, **kwargs):
+    """Serialize every entrypoint with hosting and lifecycle administration."""
+    from .hosting import administrative_lock
+    with administrative_lock():
+        return _upgrade(*args, **kwargs)

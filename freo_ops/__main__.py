@@ -29,6 +29,8 @@ def inventory(env_file, values):
     roots = [Path(env_file).absolute(), Path('/var/lib/freo'), Path('/etc/freo'),
              Path(values.get('FREO_MEDIA_ROOT') or '/var/lib/freo/media'),
              Path(values.get('FREO_UPLOAD_ROOT') or '/var/lib/freo/uploads')]
+    roots.extend([Path(values.get('FREO_PRODUCTION_ROOT') or str(roots[4]/'production')),
+                  Path(values.get('FREO_BULLETIN_ROOT') or '/var/lib/freo/bulletins')])
     for key in ('FREO_API_STATE_DIR', 'FREO_STATS_STATE_DIR', 'FREO_GEOIP_DATABASE'):
         if values.get(key):
             roots.append(Path(values[key]))

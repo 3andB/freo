@@ -1,5 +1,6 @@
 """Root-controlled hosting policy. Standard library only; never uses customer settings."""
 from contextlib import contextmanager
+from contextvars import ContextVar
 import fcntl
 import json
 import os
@@ -126,10 +127,16 @@ def atomic(path, value, mode=0o644):
         Path(name).unlink(missing_ok=True)
 
 
+_admin_locked = ContextVar("freo_admin_locked", default=False)
+
+
 @contextmanager
 def administrative_lock():
     if os.geteuid() != 0:
         raise HostingError('unauthorized', 'Root authorization is required.')
+    if _admin_locked.get():
+        yield
+        return
     STATE.mkdir(mode=0o755, parents=True, exist_ok=True)
     info = STATE.lstat()
     if not stat.S_ISDIR(info.st_mode) or info.st_uid != 0 or info.st_mode & 0o022:
@@ -138,7 +145,14 @@ def administrative_lock():
     STATE.chmod(0o755)
     fd = os.open(STATE / 'admin.lock', os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600)
     try:
-        fcntl.flock(fd, fcntl.LOCK_EX)
-        yield
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            raise HostingError('operation_busy', 'Another administrative operation is running.') from None
+        token = _admin_locked.set(True)
+        try:
+            yield
+        finally:
+            _admin_locked.reset(token)
     finally:
         os.close(fd)

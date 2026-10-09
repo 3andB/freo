@@ -3,5 +3,5 @@
 from pathlib import Path
 import sys
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
-from freo_ops.hosting_admin import main
+from freo_ops.admin import main
 raise SystemExit(main())

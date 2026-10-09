@@ -32,3 +32,11 @@ launcher.chmod(0o755)
 # The updater retains the existing Icecast base unit. Guard it explicitly too.
 from freo_ops.hosting_recovery import install_service_guards
 install_service_guards()
+
+# Lifecycle identity is local and never enrolls or enables hosted mode.
+from freo_ops.admin_identity import initialize, STATE
+initialize()
+# Retain a trusted executable runtime for recovery from older application code.
+runtime=STATE/'runtime'
+if runtime.exists() or runtime.is_symlink():runtime.unlink()
+runtime.symlink_to(source)
