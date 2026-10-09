@@ -1,0 +1,224 @@
+{
+  "backend": {
+    "tests": 1493,
+    "passed": 1463,
+    "failed": [
+      "tests.test_versions::test_authoritative_version_ignores_legacy_overrides"
+    ],
+    "skipped": 29,
+    "resolution": "Stale version expectation fixed; 87 affected upgrade/version tests passed in an independent unprivileged rerun.",
+    "skip_reasons": {
+      "Optional pinned API source validation": 1,
+      "Use scripts/test-import-postgres.sh for isolated PostgreSQL": 1,
+      "could not import 'aiortc': No module named 'aiortc'": 2,
+      "Explicit isolated Liquidsoap/WebRTC integration": 3,
+      "Run scripts/test-recovery-postgres.sh for an isolated cluster": 17,
+      "Use scripts/test-import-postgres.sh": 1,
+      "Opt-in isolated Phase 2 soak": 1,
+      "Explicit isolated service-account ACL proof": 1,
+      "Explicit isolated Icecast/Liquidsoap integration": 1,
+      "Opt-in real-time statistics soak": 1
+    },
+    "warnings": 49
+  },
+  "ci": {
+    "commit": "392235e9ab242f759d7aa490624691a57866eef1",
+    "recovery_run": "https://github.com/3andB/freo/actions/runs/37933346306",
+    "python_install_run": "https://github.com/3andB/freo/actions/runs/37932059102",
+    "conclusion": "success",
+    "suites": {
+      "browser-tests": {
+        "tests": 53,
+        "passed": 53,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "v1-install-tests": {
+        "tests": 98,
+        "passed": 98,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "settings-tests": {
+        "tests": 406,
+        "passed": 397,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 9
+      }
+    }
+  },
+  "focused-tests": {
+    "focused": {
+      "tests": 159,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "nginx": {
+      "tests": 10,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "suspension_and_harness": {
+      "tests": 17,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "unprivileged_upgrade_and_version": {
+      "tests": 87,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "installer_final": {
+      "tests": 20,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    }
+  },
+  "installed": {
+    "hostname": "Freo-v1-Test-1",
+    "os_scope": "Fresh Freo state on reused Ubuntu 24.04.5 x86_64; no provider OS rebuild",
+    "version": "1.0.0-rc.1",
+    "commit": "6b1d31a2de7ecfa6e5278fea6f36244b2fc4d7e7",
+    "fresh": {
+      "success": true,
+      "phase": "fresh",
+      "checks": [
+        "bootstrap_setup",
+        "bootstrap_password_revoked",
+        "authenticated_after_restart",
+        "station_creation",
+        "direct_and_nginx_audio",
+        "self_hosted_health"
+      ]
+    },
+    "hosted": {
+      "success": true,
+      "phase": "hosted",
+      "checks": [
+        "bootstrap_setup",
+        "bootstrap_password_revoked",
+        "authenticated_after_restart",
+        "station_creation",
+        "direct_and_nginx_audio",
+        "self_hosted_health",
+        "station_limit",
+        "bitrate_limit",
+        "actual_128kbps",
+        "storage_quota",
+        "aggregate_listener_limit",
+        "past_due_audio",
+        "suspension",
+        "maintenance",
+        "restart_inhibition",
+        "explicit_reactivation"
+      ]
+    },
+    "reboots": {
+      "active": {
+        "success": true,
+        "state": "active",
+        "boot_changed": true,
+        "identity_preserved": true,
+        "version": "1.0.0-rc.1",
+        "health": "healthy",
+        "streams_verified": 2,
+        "installation_validation": true
+      },
+      "suspended": {
+        "success": true,
+        "state": "suspended",
+        "boot_changed": true,
+        "identity_preserved": true,
+        "version": "1.0.0-rc.1",
+        "health": "intentionally_suspended",
+        "streams_verified": 2,
+        "installation_validation": true
+      }
+    },
+    "authenticated_after_reboots": true,
+    "bootstrap_password_still_revoked": true,
+    "unprivileged_admin_refused": true,
+    "customer_policy_write_refused": true,
+    "unapproved_service_refused": true,
+    "staging_independent": true,
+    "health": "healthy",
+    "stream_count": 2,
+    "microphone_service": "active"
+  },
+  "integrity": {
+    "version": "1.0.0-rc.1",
+    "commit": "6b1d31a2de7ecfa6e5278fea6f36244b2fc4d7e7",
+    "candidate": true,
+    "schema_head": "fc06a1b2c3d4",
+    "verified_file_count": 580,
+    "signature": true,
+    "manifest": true,
+    "tampering_rejected_before_extraction": true
+  },
+  "package-postgres": {
+    "status": "passed",
+    "scope": "Disposable database and package startup; fresh VM pending",
+    "checks": [
+      {
+        "scheme": "postgresql",
+        "schema": "fc06a1b2c3d4 (head)",
+        "migration": "passed",
+        "public_origin": "http://198.51.100.24:33099",
+        "local_nginx_login": "passed",
+        "tls_sni": "not applicable",
+        "gunicorn_start_and_restart": "passed",
+        "health": "passed",
+        "readiness": "passed",
+        "admin_login": "passed",
+        "version": "1.0.0-rc.1",
+        "bootstrap": "passed",
+        "empty_station_library": true
+      },
+      {
+        "scheme": "postgresql+psycopg",
+        "schema": "fc06a1b2c3d4 (head)",
+        "migration": "passed",
+        "public_origin": "http://freo-validation.invalid:45307",
+        "local_nginx_login": "passed",
+        "tls_sni": "not applicable",
+        "gunicorn_start_and_restart": "passed",
+        "health": "passed",
+        "readiness": "passed",
+        "admin_login": "passed",
+        "version": "1.0.0-rc.1",
+        "bootstrap": "passed",
+        "empty_station_library": true
+      },
+      {
+        "scheme": "postgresql+psycopg2",
+        "schema": "fc06a1b2c3d4 (head)",
+        "migration": "passed",
+        "public_origin": "https://freo-validation.invalid:37871",
+        "local_nginx_login": "passed",
+        "tls_sni": "passed",
+        "gunicorn_start_and_restart": "passed",
+        "health": "passed",
+        "readiness": "passed",
+        "admin_login": "passed",
+        "version": "1.0.0-rc.1",
+        "bootstrap": "passed",
+        "empty_station_library": true
+      }
+    ]
+  },
+  "recovery-postgres": {
+    "tests": 29,
+    "passed": 29,
+    "failed": 0,
+    "skipped": 0,
+    "scope": "Isolated PostgreSQL encrypted backup/recovery and installation/admin/session migrations"
+  }
+}
