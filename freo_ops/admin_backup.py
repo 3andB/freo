@@ -67,6 +67,8 @@ def freeze(operation):
             raise h.HostingError('operation_busy','An updater is running; do not interrupt it for a backup.')
         a.checkpoint(operation, active_units=active, was_inhibited=(h.STATE/'inhibit').exists(), phase='stopping')
     a.private_directory(a.UPDATES)
+    from .admin_identity import install_maintenance_guards
+    install_maintenance_guards()
     maintenance_guards(a.UPDATES)
     # Icecast is independent of Freo units and also needs reboot protection.
     directory=Path('/etc/systemd/system/icecast2.service.d');directory.mkdir(exist_ok=True)
@@ -103,7 +105,7 @@ def thaw(operation, *, reconcile=False):
             raise h.HostingError('invalid_configuration','Unexpected recorded service.')
         selected.append(unit)
     if reconcile:
-        selected.extend(a.CORE)
+        selected.extend(a.required_core())
         for unit in ('freo-central-api.service', *a.GROUPS['scheduled-workers']):
             if subprocess.run(['systemctl','is-enabled','--quiet',unit],capture_output=True,timeout=5).returncode==0:
                 selected.append(unit)
@@ -197,6 +199,55 @@ def isolated_restore(metadata,bundle,directory):
         if not re.fullmatch('[A-Za-z0-9_-]{1,32}',encoding):raise ValueError('encoding')
         pg('CREATE DATABASE '+quote(name)+' OWNER '+quote(role)+" TEMPLATE template0 ENCODING '"+encoding+"';")
     return recovery.restore(bundle,a.key(),url,directory,preserve_ownership=True,create_database=create)
+
+
+def restored_path(restored,directory,wanted):
+    wanted=Path(wanted)
+    for index,root in enumerate(map(Path,restored['roots'])):
+        if wanted==root or wanted.is_relative_to(root):
+            return directory/f'root-{index}'/wanted.relative_to(root)
+    raise h.HostingError('incompatible_backup','The backup lacks required installation files.')
+
+
+def validate_restored_code(metadata,restored,directory):
+    from .releases import migration_head,version_at
+    with tempfile.TemporaryDirectory(prefix='code-check-',dir=directory.parent) as name:
+        projection=Path(name)
+        for part in ('app','migrations'):
+            (projection/part).symlink_to(restored_path(restored,directory,Path(metadata['source'])/part))
+        if migration_head(projection)!=restored['schema_revision'] or version_at(projection)!=metadata['version']:
+            raise h.HostingError('incompatible_backup','Recovery code and database schema do not match.')
+        if h.read()['hosted'] and not (projection/'app/services/hosting_web.py').exists():
+            raise h.HostingError('incompatible_backup','Hosted recovery requires hosting-capable code.')
+
+
+def retain_newer_units(operation,restored):
+    """Retain, rather than run, services absent from the matched older backup."""
+    base=Path('/etc/systemd/system')
+    expected=set(restored['roots'])
+    for path in sorted(base.glob('freo*')):
+        if '.freo-' in path.name or str(path) in expected:continue
+        name=path.name.removesuffix('.d')
+        if not re.fullmatch(r'freo[a-z0-9@_.-]*\.(service|timer)',name):continue
+        if path.is_symlink():continue
+        if not path.is_file() and not (path.is_dir() and path.name.endswith('.d')):continue
+        # Global /usr/local guards remain present throughout these renames.
+        if path.is_file():
+            a.run(['systemctl','disable',name])
+        retained=base/('.freo-retained-'+operation['operation_id']+'-'+path.name)
+        if retained.exists():
+            raise h.HostingError('recovery_required','An unexpected retained service already exists.')
+        os.rename(path,retained)
+        a.checkpoint(operation,retained_units=[*operation.get('retained_units',[]),name])
+
+
+def restored_service_selection(metadata):
+    selected=[u for u in metadata['active_units'] if not u.startswith('freo-playout') and u not in ('icecast2.service','freo-mic.service')]
+    selected.extend(a.required_core())
+    selected.append('icecast2.service')
+    selected.extend('freo-playout@'+s['slug']+'.service' for s in a.station_rows() if s['enabled'] and s['desired_state']=='running')
+    if 'freo-mic.service' in metadata['active_units']:selected.append('freo-mic.service')
+    return list(dict.fromkeys(selected))
 
 
 def validate_backup_database(metadata,restored,directory):
@@ -328,6 +379,7 @@ def restore_live(operation, *, reconcile=False):
         try:
             backup_space(metadata)
             restored=isolated_restore(metadata,bundle,directory)
+            validate_restored_code(metadata,restored,directory)
             validate_backup_database(metadata,restored,directory)
             validate_restored_capacity(restored)
         except Exception:
@@ -347,6 +399,7 @@ def restore_live(operation, *, reconcile=False):
     release.chmod(0o755)
     with administrative_authority(operation), preserve_authority():
         a.checkpoint(operation,authority_saved=True,phase='attaching')
+        retain_newer_units(operation,restored)
         skipped=('/etc/postgresql','/etc/letsencrypt')
         completed=operation.setdefault('attached',[])
         ordered=sorted(enumerate(restored['roots']),key=lambda item:not Path(item[1]).is_relative_to(metadata['source']))
@@ -414,8 +467,9 @@ def restore_live(operation, *, reconcile=False):
         adopt_restored_release(metadata,release)
         switch_pointer(Path('/opt/freo'),release)
     # Use retained administration with the restored release's models/dependencies.
-    helper=(a.STATE/'runtime').resolve()
-    a.run([str(release/'venv/bin/python'),'-I',str(helper/'scripts/admin-maintenance.py'),'storage'],timeout=180)
+    if (release/'freo_ops/hosting.py').exists():
+        helper=(a.STATE/'runtime').resolve()
+        a.run([str(release/'venv/bin/python'),'-I',str(helper/'scripts/admin-maintenance.py'),'storage'],timeout=180)
     a.run(['nginx','-t'])
     a.run(['systemctl','reload','nginx'])
     if operation.get('interrupted_upgrade'):
@@ -424,7 +478,7 @@ def restore_live(operation, *, reconcile=False):
             history=a.private_directory(a.UPDATES/'history')
             a.write(history/(journal['operation']+'-recovered.json'),dict(journal,recovered_by=operation['operation_id']))
             (a.UPDATES/'journal.json').unlink()
-    a.checkpoint(operation,phase='attached')
+    a.checkpoint(operation,phase='attached',active_units=restored_service_selection(metadata))
     verification=thaw(operation,reconcile=reconcile)
     return dict(operation_id=operation['operation_id'],backup_id=metadata['id'],recovery_point=operation['recovery_point'],
                 preserved_database=operation['preserved_database'],verification=verification)

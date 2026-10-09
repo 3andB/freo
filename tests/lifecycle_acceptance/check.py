@@ -56,10 +56,11 @@ try:
         connection.request('GET','/'+('acceptance' if index%2 else 'upgrade-two'))
         response=connection.getresponse()
         if response.status==200:
-            assert response.read(512);connections.append(connection)
+            assert response.read(512);connections.append((connection,response))
         else:connection.close()
     assert len(connections)==5,len(connections)
 finally:
-    for connection in connections:connection.close()
+    for connection,response in connections:
+        response.close();connection.close()
 cli('hosting','configure','--plan','starter')
 print('Lifecycle sequence passed',flush=True)

@@ -202,6 +202,11 @@ def status():
                 operation={k:operation[k] for k in ('operation_id','operation','phase')} if operation else None)
 
 
+def required_core():
+    # A matched 0.3.2 recovery predates the optional production worker.
+    return [unit for unit in CORE if unit=='freo.service' or (source()/'deploy/systemd'/unit).is_file()]
+
+
 def health():
     policy = policy_state()
     restricted = inhibited(policy)
@@ -219,7 +224,7 @@ def health():
         results['database'] = dict(success=False, error='database_unavailable')
         problems.append('database')
     available = units()
-    expected = list(CORE)
+    expected = required_core()
     # Optional components are required when installed and enabled, not guessed.
     for unit in ('freo-central-api.service','freo-mic.service', *GROUPS['scheduled-workers']):
         enabled = subprocess.run(['systemctl','is-enabled','--quiet',unit], capture_output=True, timeout=5).returncode == 0
@@ -356,7 +361,7 @@ def service_action(args):
             if inhibited() and (args.service in ('icecast','playout','microphone')):
                 raise h.HostingError('service_inhibited', 'Hosting authority prohibits restarting broadcasting.')
         else:
-            chosen = list(CORE)+list(GROUPS['scheduled-workers'])
+            chosen = required_core()+list(GROUPS['scheduled-workers'])
             if subprocess.run(['systemctl','is-enabled','--quiet','freo-central-api.service'],capture_output=True).returncode==0:
                 chosen.append('freo-central-api.service')
             if not inhibited():

@@ -282,3 +282,31 @@ def test_hosting_change_is_blocked_before_app_start_during_restore(state,monkeyp
     monkeypatch.setattr(hosting_admin,'Path',lambda value:journal if str(value)=='/var/lib/freo-admin/operation.json' else original(value))
     assert hosting_admin.main(['hosting','activate'])==6
     assert json.loads(capsys.readouterr().out)['error']=='recovery_required'
+
+
+def test_restored_service_selection_uses_restored_station_desired_state(state,monkeypatch):
+    monkeypatch.setattr(a,'required_core',lambda:['freo.service'])
+    monkeypatch.setattr(a,'station_rows',lambda:[dict(slug='stopped',enabled=True,desired_state='stopped'),dict(slug='running',enabled=True,desired_state='running')])
+    selected=b.restored_service_selection(dict(active_units=['freo.service','freo-playout@stopped.service']))
+    assert 'freo-playout@stopped.service' not in selected
+    assert 'freo-playout@running.service' in selected
+
+
+def test_legacy_recovery_requires_only_workers_shipped_in_that_release(state,monkeypatch):
+    root=state/'source';(root/'deploy/systemd').mkdir(parents=True)
+    for unit in ('freo.service','freo-ingest.service','freo-automation.service','freo-stats.service'):
+        (root/'deploy/systemd'/unit).touch()
+    monkeypatch.setattr(a,'source',lambda:root)
+    assert 'freo-production.service' not in a.required_core()
+    assert 'freo-ingest.service' in a.required_core()
+
+
+def test_hosted_restore_rejects_unaware_code_before_attachment(state,monkeypatch):
+    directory=state/'payload';directory.mkdir()
+    app=directory/'root-0';app.mkdir();(app/'version.py').write_text("VERSION='0.3.2'\n")
+    migrations=directory/'root-1';(migrations/'versions').mkdir(parents=True)
+    (migrations/'versions/initial.py').write_text("revision='original'\ndown_revision=None\n")
+    monkeypatch.setattr(h,'read',lambda:dict(hosted=True))
+    with pytest.raises(h.HostingError) as error:
+        b.validate_restored_code(dict(source='/opt/freo',version='0.3.2'),dict(roots=['/opt/freo/app','/opt/freo/migrations'],schema_revision='original'),directory)
+    assert error.value.code=='incompatible_backup'

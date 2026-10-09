@@ -93,6 +93,8 @@ def dispatch(args):
     artifact,signature,keyring=staged(args.version)
     backups.disk_check(backups.roots());a.key()
     operation=a.begin('upgrade.apply',version=args.version)
+    from .admin_identity import install_maintenance_guards
+    install_maintenance_guards()
     value=uuid.uuid4().hex
     directory=a.private_directory(backups.catalog()/value)
     env,values=a.settings()

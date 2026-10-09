@@ -51,6 +51,8 @@ def main():
             if not station.stream or not station.stream.enabled:continue
             password=runtime.credential(station.slug)
             target=runtime.CONFIGS/(station.slug+'.liq')
+            # Pending stations are rendered by the existing provisioner on resume.
+            if not target.exists():continue
             desired=recording_configuration(target.read_text(),runtime.render_liquidsoap(station,password))
             staged=runtime.atomic_install(target,desired,0o640,'root','freo-playout')
             try:

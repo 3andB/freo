@@ -40,3 +40,6 @@ initialize()
 runtime=STATE/'runtime'
 if runtime.exists() or runtime.is_symlink():runtime.unlink()
 runtime.symlink_to(source)
+
+from freo_ops.admin_identity import install_maintenance_guards
+install_maintenance_guards()
