@@ -39,7 +39,7 @@ def roots():
     from .inventory import DIRECTORIES, FILES
     env, values = a.settings()
     current = a.source()
-    paths = inventory(env,values)+list(map(Path,a.media_roots(values)))
+    paths = inventory(env,values)+[p for p in map(Path,a.media_roots(values)) if p.exists()]
     paths += [current/name for name in (*DIRECTORIES,*FILES,'venv','release.json','wheels','requirements.lock') if (current/name).exists()]
     if Path('/opt/freo/engines').exists(): paths.append(Path('/opt/freo/engines'))
     return recovery.normalize_roots(paths)

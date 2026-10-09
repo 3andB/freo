@@ -310,3 +310,15 @@ def test_hosted_restore_rejects_unaware_code_before_attachment(state,monkeypatch
     with pytest.raises(h.HostingError) as error:
         b.validate_restored_code(dict(source='/opt/freo',version='0.3.2'),dict(roots=['/opt/freo/app','/opt/freo/migrations'],schema_revision='original'),directory)
     assert error.value.code=='incompatible_backup'
+
+
+def test_legacy_inventory_allows_absent_v1_storage(state,monkeypatch):
+    from freo_ops import __main__ as ops
+    actual=Path
+    for name in ('var/lib/freo/media','var/lib/freo/uploads','etc/freo','etc/systemd/system'):
+        (state/name).mkdir(parents=True,exist_ok=True)
+    (state/'etc/freo/freo.env').touch()
+    monkeypatch.setattr(ops,'Path',lambda value:state/str(value).lstrip('/') if str(value).startswith('/') else actual(value))
+    roots=ops.inventory('/etc/freo/freo.env',{})
+    assert state/'var/lib/freo' in roots
+    assert not (state/'var/lib/freo/uploads/production').exists()

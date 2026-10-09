@@ -224,7 +224,10 @@ def test_standalone_guard_is_readable_after_private_umask_install(tmp_path,monke
     source=Path(__file__).resolve().parents[1]/'scripts/install-hosting.py'
     (tmp_path/'usr/local/sbin').mkdir(parents=True)
     (tmp_path/'etc').mkdir()
-    from freo_ops import hosting_recovery
+    from freo_ops import hosting_recovery, admin_identity
+    monkeypatch.setattr(admin_identity, "STATE", tmp_path/"admin")
+    monkeypatch.setattr(admin_identity, "initialize", lambda: (tmp_path/"admin").mkdir())
+    monkeypatch.setattr(admin_identity, "install_maintenance_guards", lambda: None)
     actual_path=Path
     monkeypatch.setattr(hosting_recovery,'Path',lambda name: tmp_path/str(name).lstrip('/') if str(name).startswith('/etc/') else actual_path(name))
     monkeypatch.setattr(h,'CONFIG',tmp_path/'etc/freo/hosting.json')

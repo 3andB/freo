@@ -58,7 +58,7 @@ def test_failing_baseline_is_refused_before_maintenance(monkeypatch,active,sub):
 def test_v1_provisions_bulletins_and_recordings_and_retains_mic_preference(tmp_path, monkeypatch):
     actual_path = Path
     (tmp_path / 'etc/systemd/system').mkdir(parents=True)
-    monkeypatch.setattr(v1, 'Path', lambda p: tmp_path / str(p).lstrip('/') if str(p).startswith('/etc/') else actual_path(p))
+    monkeypatch.setattr(v1, 'Path', lambda p: tmp_path / str(p).lstrip('/') if str(p).startswith(('/etc/','/var/lib/')) else actual_path(p))
     calls = []
     monkeypatch.setattr(recovery, 'run', lambda args, **kw: calls.append(args))
     class Cursor:
