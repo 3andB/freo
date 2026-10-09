@@ -148,8 +148,8 @@ for unit in postgresql nginx freo.service icecast2.service freo-automation.servi
   systemctl is-enabled --quiet "$unit"
 done
 if grep -qx 'FREO_LIVE_MIC=1' "$install_dir/.env"; then systemctl is-enabled --quiet freo-mic.service; fi
-freo-admin health
-freo-admin hosting verify
+/usr/local/sbin/freo-admin health
+/usr/local/sbin/freo-admin hosting verify
 printf 'Freo installation verification passed. Station creation and first-use password replacement require the explicit fresh acceptance test.\n'
 if [[ ${FREO_ENABLE_DIAGNOSTIC:-0} == 1 && $restricted == 0 ]]; then
   printf 'Diagnostic MP3 stream bytes also verified.\n'

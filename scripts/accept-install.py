@@ -31,7 +31,7 @@ def run(*args, code=0, timeout=120):
 
 
 def admin(*args, code=0):
-    result = json.loads(run('freo-admin', *args, code=code, timeout=1800))
+    result = json.loads(run('/usr/local/sbin/freo-admin', *args, code=code, timeout=1800))
     require(result['success'] == (code == 0), 'Administrative result contradicts exit status')
     return result
 
@@ -55,12 +55,23 @@ def login_tools():
     return module
 
 
-def form(client, base, path, values):
+def form(client, base, path, values, *, rejected=False):
     module = login_tools()
     _, body = module.fetch(client, base+path, 'Acceptance form')
-    token = re.search(r'name="csrf" value="([^"]+)"', body)
+    # The page header also contains a logout form with a different CSRF token.
+    target = re.search(r'<form class="login-card"[^>]*>(.*?)</form>', body, re.S)
+    token = re.search(r'name="csrf" value="([^"]+)"', target.group(1)) if target else None
     require(token is not None, 'Missing CSRF form token')
-    return module.fetch(client, Request(base+path, data=urlencode(dict(values, csrf=token.group(1))).encode()), 'Acceptance submission')
+    request = Request(base+path, data=urlencode(dict(values, csrf=token.group(1))).encode())
+    if rejected:
+        from urllib.error import HTTPError
+        try:
+            with client.open(request, timeout=15):
+                raise RuntimeError('Revoked bootstrap password was accepted')
+        except HTTPError as error:
+            require(error.code == 401, 'Expected authentication rejection')
+            return error.url, ''
+    return module.fetch(client, request, 'Acceptance submission')
 
 
 def stream(base, slug, direct=False):
@@ -99,7 +110,7 @@ def fresh(app):
     url, _ = form(client, base, '/admin/setup', dict(email='rc1-acceptance@example.test', password=password, confirmation=password))
     require(urlsplit(url).path == '/admin', 'First-use setup failed')
     client, _ = module.client_for(base, local=True)
-    url, _ = form(client, base, '/admin/login', dict(email='admin', password='IAmOnTheAir'))
+    url, _ = form(client, base, '/admin/login', dict(email='admin', password='IAmOnTheAir'), rejected=True)
     require(urlsplit(url).path == '/admin/login', 'Bootstrap password still works')
     url, _ = form(client, base, '/admin/login', dict(email='admin', password=password))
     require(urlsplit(url).path == '/admin', 'Replacement password did not authenticate')
