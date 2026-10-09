@@ -9,7 +9,7 @@ this report is marked accepted.
 - Accepted Phase B branch checkpoint: `af7bedbb6f3725c651dc211a53c68abf80e8c0a5`.
 - Initial Phase C candidate: `d9cfcf4982933cf11ae8066d8a6eaba9955f9bf6`, private `1.0.0-dev.3`.
 - Corrected complete lifecycle run: `4546609f` (full hash recorded in Git), private `1.0.0-dev.4`.
-- Final runtime: private `1.0.0-dev.10`, commit `90cf97d7fad11409e59d5dd76f30c5f09cf59005`; artifact SHA-256 `efa46ca9d167d356e257f65295d404d6885aadc2d2294fc064fc24bbdf54a171`.
+- Final runtime: private `1.0.0-dev.11`, commit `9d12917bdf037688512d816812458b85dd894d8f`; artifact SHA-256 `d02891bdb0535049f97d2333e961f920ed1cbcb5a5515228a0073d6b6e9bba92`.
 - Disposable server: `Freo-v1-Test-1`, `209.38.64.12`, Ubuntu 24.04.5 x86_64,
   Python 3.12, systemd, local PostgreSQL, actual patched Icecast and Liquidsoap.
 - Development: `/opt/freo-v1`, `develop/v1`. Production `/opt/freo` on the
@@ -24,13 +24,13 @@ key is included in this report or Git.
 ```sh
 python scripts/build-release.py --candidate \
   --wheelhouse /root/freo-032-kit/source/wheels \
-  --output /root/freo-phase-c/candidate-dev10.tar.gz
+  --output /root/freo-phase-c/candidate-dev11.tar.gz
 
 gpg --homedir /root/freo-upgrade-signing --batch --yes --detach-sign \
-  /root/freo-phase-c/candidate-dev10.tar.gz
+  /root/freo-phase-c/candidate-dev11.tar.gz
 
 freo-admin upgrade check
-freo-admin upgrade apply --version 1.0.0-dev.10
+freo-admin upgrade apply --version 1.0.0-dev.11
 freo-admin status
 freo-admin health
 freo-admin resources
@@ -109,6 +109,13 @@ readiness and stream checks.
   inhibition; `services recover` resumed to healthy 0.3.2 without repairs.
   Service operations now allow 240 seconds so systemd's stop/start deadlines can
   finish. A focused regression checks this bound; final-code repetition follows.
+
+- The subsequent real upgrade caught an assumption that the application user
+  could reread `/etc/freo/freo.env`. Recovery intentionally retained root-only
+  credentials. The updater now supplies its already-parsed explicit values and
+  sets `FREO_ENV_FILE=/dev/null` for child commands, preserving file permissions.
+  The failed migration was recovered through its CLI backup without repairs.
+  The final-code interruption/recovery test passed before the final upgrade.
 
 ## Remaining verification
 

@@ -340,6 +340,32 @@ Structured failures include `error` and `message`, with relevant safe details:
 }
 ```
 
+### Lifecycle result fields
+
+The following fields supplement the common envelope. Treat identifiers as opaque
+strings; retain the returned backup ID rather than constructing a filename.
+
+| Operation | Result fields |
+| --- | --- |
+| `status` | `installation_id`, `version` (or `null`), `application_ready`, `hosting`, `os` (`ID`, `VERSION_ID`, `PRETTY_NAME`), `uptime_seconds`, `operation` (`operation_id`, `operation`, `phase`, or `null`). |
+| `health` | `health`, `checks` keyed by component/unit, `streams` array with `station_id`, `listeners`, `problems`. Probes include `success`, HTTP status and bytes read when available. |
+| `resources` | `cpu_percent`, `sample_seconds`, `ram` (`total_bytes`, `available_bytes`, `used_bytes`), `disks` (path/device/total/used/free bytes), `media`, `listeners`, `services`. Service counters are `MemoryCurrent`, `CPUUsageNSec`, `MainPID`. |
+| `backup create` | `operation_id`, `backup` (`id`, `version`, `status`), `encryption` (`key_id`, `escrow_required`), `verification` (full health result). |
+| `backup list` | `backups` array: ID, creation timestamp, version when recorded, role, status. Incomplete entries are not usable recovery points. |
+| `backup verify` | `backup` (`id`, `version`, `status`). No health restart is implied. |
+| `backup restore` | `operation_id`, `backup_id`, `recovery_point` (pre-restore backup ID), `preserved_database`, `verification`. |
+| `upgrade check` | `releases` (version, signature verification, compatibility, commit, platform, schema head, preflight result), `upgrade` (journal operation/phase or `null`), `source: "root_staged"`, `recovery_key_present`. |
+| `upgrade apply` | `operation_id`, `upgrade` (existing updater result), `backup_id`, `verification`. |
+| `services status` | `services` keyed by unit name, containing observed `LoadState`, `ActiveState`, `SubState`, `Result`, and systemd counters as strings. |
+| `services restart` | `operation_id`, `verification`. |
+| `services recover` | Result of the resumed operation. Upgrade reconciliation adds `upgrade_outcome`: `complete`, `aborted_before_migration`, or `aborted_before_changes`; ambiguous migration outcomes fail with `recovery_required`. |
+
+A successful `status` means reporting completed; inspect `application_ready` and
+use `health` to assess operational health. Missing optional measurements are
+reported as `null`. Backup catalog status records creation/integrity verification;
+actual restore verification is returned and audited separately. Failed commands
+never imply that earlier steps were reversed: inspect the actual state and journal.
+
 ### Backup encryption and recovery
 
 Root-owned `/var/lib/freo-admin` stores identity, operation/audit journals, backup

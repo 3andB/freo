@@ -4,6 +4,7 @@ import multiprocessing
 import os
 from pathlib import Path
 import subprocess
+from types import SimpleNamespace
 import pytest
 from freo_ops import hosting as h, hosting_storage as storage
 
@@ -70,6 +71,8 @@ def quota(policy,tmp_path,monkeypatch):
     monkeypatch.setattr(storage,'ROOT',root)
     monkeypatch.setattr(storage,'inventory',lambda:dict(roots=[str(media)]))
     monkeypatch.setattr(storage,'blob_usage',lambda config:0)
+    # Quota unit tests control their disk budget; installed tests use real disks.
+    monkeypatch.setattr(storage.shutil,'disk_usage',lambda path:SimpleNamespace(total=20_000_000_000,free=10_000_000_000,used=10_000_000_000))
     data=h.read();data['limits']['storage_gb']=1;h.atomic(policy,data)
     return media
 
@@ -291,3 +294,11 @@ def test_verification_rejects_readonly_running_worker(monkeypatch):
     with pytest.raises(h.HostingError) as error:admin.verify_storage_access('freo-production.service','freo-ingest')
     assert error.value.code=='verification_failed'
     assert error.value.details['unit']=='freo-production.service'
+
+
+def test_system_disk_reserve_blocks_growth_without_leaking_reservations(quota,monkeypatch):
+    monkeypatch.setattr(storage.shutil,'disk_usage',lambda path:SimpleNamespace(total=20_000_000_000,free=900_000_000,used=19_100_000_000))
+    with pytest.raises(h.HostingError) as error:
+        with storage.reserve(1):pytest.fail('Low-disk write was admitted')
+    assert error.value.code=='disk_reserve'
+    assert storage.usage()['reserved_bytes']==0
