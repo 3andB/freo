@@ -393,7 +393,7 @@ def main(argv=None):
         print(json.dumps(dict(schema_version=1,**result),sort_keys=True));return 0
     except h.HostingError as error:
         result=error.response()
-        code={'invalid_arguments':2,'unauthorized':3,'station_limit_exceeded':4,'bitrate_limit_exceeded':4,'not_hosted':4,'invalid_configuration':5}.get(error.code,6)
+        code={'invalid_arguments':2,'unauthorized':3,'operation_busy':4,'station_limit_exceeded':4,'bitrate_limit_exceeded':4,'not_hosted':4,'invalid_configuration':5}.get(error.code,6)
     except Exception:
         result=dict(success=False,error='operation_failed',message='Operation failed. Check the private administrator journal; no success recorded.')
         code=6

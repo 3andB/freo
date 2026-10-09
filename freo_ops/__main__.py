@@ -38,7 +38,7 @@ def inventory(env_file, values):
         if Path(path).exists():
             roots.append(Path(path))
     for pattern in ('freo*', 'icecast2.service', 'icecast2.service.d'):
-        roots.extend(p for p in Path('/etc/systemd/system').glob(pattern) if not p.is_symlink())
+        roots.extend(p for p in Path('/etc/systemd/system').glob(pattern) if not p.is_symlink() and '.freo-retained-' not in p.name and '.freo-restoring-' not in p.name)
     return recovery.normalize_roots(roots)
 
 

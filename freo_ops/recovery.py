@@ -29,6 +29,7 @@ class RecoveryError(Exception):
 
 def run(args, **kwargs):
     """Do not surface database URLs, credentials or dump contents in errors."""
+    kwargs.setdefault('timeout', 3600)
     result = subprocess.run(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                             **kwargs)
     if result.returncode:

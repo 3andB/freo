@@ -83,7 +83,10 @@ def test_unfinished_upgrade_blocks_service_start(state):
     with pytest.raises(h.HostingError):a.begin('services.recover')
 
 
-def test_service_recovery_cannot_restore_database_implicitly(state):
+def test_service_recovery_cannot_restore_database_implicitly(state,monkeypatch):
+    a.UPDATES.mkdir()
+    a.write(a.UPDATES/'journal.json',dict(phase='migration'))
+    monkeypatch.setattr(u,'register_backup',lambda value:None)
     with pytest.raises(h.HostingError) as error:b.resume(dict(operation='upgrade.apply',backup_id='a'*32))
     assert error.value.code=='recovery_required'
     assert error.value.details['backup_id']=='a'*32
@@ -128,3 +131,41 @@ def test_restore_dispatch_resumes_only_matching_authorization(state,monkeypatch)
     with pytest.raises(h.HostingError) as error:
         b.restore_start(SimpleNamespace(confirm_installation='0919533f-7811-45f2-ba08-5648daa930c9',id='c'*32))
     assert error.value.code=='recovery_required'
+
+
+def test_destination_trust_and_selfhost_policy_survive_attachment(state,monkeypatch):
+    config=state/'etc';config.mkdir()
+    original_path=Path
+    def mapped(value):
+        value=str(value)
+        return config/original_path(value).name if value.startswith('/etc/freo/') else original_path(value)
+    monkeypatch.setattr(b,'Path',mapped)
+    (config/'hosting.json').write_text('{"hosted":false}')
+    (config/'publisher.gpg').write_bytes(b'trusted publisher')
+    operation={}
+    with b.administrative_authority(operation):
+        (config/'hosting.json').write_text('{"hosted":true}')
+        (config/'publisher.gpg').write_bytes(b'old backup publisher')
+        (config/'admin-upgrades.json').write_text('{"allow_candidate":true}')
+    assert json.loads((config/'hosting.json').read_text())=={'hosted':False}
+    assert (config/'publisher.gpg').read_bytes()==b'trusted publisher'
+    assert not (config/'admin-upgrades.json').exists()
+    # A repeated recovery uses the original write-ahead authority, not damaged files.
+    (config/'hosting.json').write_text('{"hosted":true}')
+    with b.administrative_authority(operation):
+        assert json.loads((config/'hosting.json').read_text())=={'hosted':False}
+
+
+def test_database_attachment_preflight_closes_its_own_session(monkeypatch):
+    class Connection:
+        closed=False
+        def cursor(self):return self
+        def __enter__(self):return self
+        def __exit__(self,*args):pass
+        def execute(self,*args):pass
+        def fetchone(self):return (0,)
+        def close(self):self.closed=True
+    connection=Connection()
+    monkeypatch.setattr(b.recovery,'connect',lambda url:connection)
+    b.ensure_no_clients('private fixture')
+    assert connection.closed

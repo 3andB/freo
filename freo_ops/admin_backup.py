@@ -1,5 +1,8 @@
 """Lifecycle coordination around Phase A's encrypted recovery engine."""
 from datetime import datetime, timezone
+from contextlib import contextmanager
+import base64
+import tempfile
 import json
 import os
 from pathlib import Path
@@ -154,6 +157,17 @@ def local_database():
     return values['DATABASE_URL'],params['dbname'],params['user']
 
 
+def ensure_no_clients(url):
+    connection=recovery.connect(url)
+    try:
+        with connection.cursor() as cur:
+            cur.execute("SELECT count(*) FROM pg_stat_activity WHERE datname=current_database() AND pid<>pg_backend_pid() AND backend_type='client backend'")
+            if cur.fetchone()[0]:raise h.HostingError('operation_busy','Database clients remain connected.')
+    finally:
+        # A psycopg2 connection context commits but does NOT close the session.
+        connection.close()
+
+
 def isolated_restore(metadata,bundle,directory):
     url,_,role=local_database()
     def create(name,encoding):
@@ -191,6 +205,42 @@ def restore_start(args):
     return restore_live(operation)
 
 
+@contextmanager
+def administrative_authority(operation):
+    """Destination trust and policy survive customer configuration attachment."""
+    names=('/etc/freo/hosting.json','/etc/freo/hosting-storage.json',
+           '/etc/freo/publisher.gpg','/etc/freo/admin-upgrades.json')
+    if 'authority_files' not in operation:
+        saved={}
+        for name in names:
+            path=Path(name)
+            if path.exists():
+                h.trusted(path)
+                saved[name]=dict(data=base64.b64encode(path.read_bytes()).decode(),mode=path.stat().st_mode & 0o777)
+            else:saved[name]=None
+        a.checkpoint(operation,authority_files=saved)
+    def restore():
+        if set(operation['authority_files'])!=set(names):
+            raise h.HostingError('invalid_configuration','Administrative authority journal is invalid.')
+        for name,entry in operation['authority_files'].items():
+            path=Path(name);path.parent.mkdir(parents=True,exist_ok=True)
+            if entry is None:
+                path.unlink(missing_ok=True)
+            else:
+                fd,temporary=tempfile.mkstemp(prefix='.freo-authority-',dir=path.parent)
+                try:
+                    os.fchmod(fd,entry['mode'])
+                    with os.fdopen(fd,'wb') as stream:
+                        stream.write(base64.b64decode(entry['data']));stream.flush();os.fsync(stream.fileno())
+                    os.replace(temporary,path)
+                    from .upgrade import sync_directory
+                    sync_directory(path.parent)
+                finally:Path(temporary).unlink(missing_ok=True)
+    restore()
+    try:yield
+    finally:restore()
+
+
 def restore_live(operation):
     metadata,bundle=record(operation['restore_id'])
     work=a.private_directory(a.STATE/'restores'/operation['operation_id'])
@@ -213,7 +263,7 @@ def restore_live(operation):
     release=Path('/opt/freo/releases')/('recovered-'+operation['operation_id'])
     release.mkdir(parents=True,exist_ok=True)
     release.chmod(0o755)
-    with preserve_authority():
+    with administrative_authority(operation), preserve_authority():
         a.checkpoint(operation,authority_saved=True,phase='attaching')
         skipped=('/etc/postgresql','/etc/letsencrypt')
         completed=operation.setdefault('attached',[])
@@ -235,8 +285,8 @@ def restore_live(operation):
                 target=original
             if target==Path('/') or target.is_relative_to(a.STATE) or target.is_relative_to(h.STATE) or target.is_relative_to(a.UPDATES):
                 raise h.HostingError('incompatible_backup','Backup contains an administrative authority root.')
-            retained=target.parent/(target.name+'.freo-retained-'+operation['operation_id'])
-            staged=target.parent/(target.name+'.freo-restoring-'+operation['operation_id'])
+            retained=target.parent/('.freo-retained-'+operation['operation_id']+'-'+target.name)
+            staged=target.parent/('.freo-restoring-'+operation['operation_id']+'-'+target.name)
             target.parent.mkdir(parents=True,exist_ok=True)
             # Write-ahead attachment state; repeat safely after either rename.
             if operation.get('attaching_index')!=index:
@@ -272,10 +322,7 @@ def restore_live(operation):
         names=set(pg('SELECT datname FROM pg_database;').splitlines())
         if preserved not in names:
             # Refuse external writers rather than terminating unrelated sessions.
-            with recovery.connect(url) as connection:
-                with connection.cursor() as cur:
-                    cur.execute("SELECT count(*) FROM pg_stat_activity WHERE datname=current_database() AND pid<>pg_backend_pid() AND backend_type='client backend'")
-                    if cur.fetchone()[0]:raise h.HostingError('operation_busy','Database clients remain connected.')
+            ensure_no_clients(url)
             pg('ALTER DATABASE '+quote(dbname)+' RENAME TO '+quote(preserved)+';')
         names=set(pg('SELECT datname FROM pg_database;').splitlines())
         if restored['database'] in names:
@@ -285,7 +332,8 @@ def restore_live(operation):
         switch_pointer(Path('/opt/freo'),release)
     # Recreate grants and root-derived inventories without changing hosting status.
     if h.read()['hosted']:
-        a.run([str(release/'venv/bin/python'),'-I',str(release/'scripts/admin-maintenance.py'),'storage'],timeout=120)
+        helper=release if (release/'scripts/admin-maintenance.py').exists() else (a.STATE/'runtime').resolve()
+        a.run([str(helper/'venv/bin/python'),'-I',str(helper/'scripts/admin-maintenance.py'),'storage'],timeout=120)
     a.run(['nginx','-t'])
     a.run(['systemctl','reload','nginx'])
     if operation.get('interrupted_upgrade'):
@@ -312,6 +360,25 @@ def resume(operation):
             raise
         return dict(backup=verified,verification=thaw(operation))
     if operation['operation']=='upgrade.apply':
+        from .admin_upgrade import register_backup
+        if operation.get('backup_id'):register_backup(operation['backup_id'])
+        journal=a.read_json(a.UPDATES/'journal.json')
+        if journal['phase']=='complete':
+            verification=a.verified_health()
+            a.checkpoint(operation,phase='complete')
+            return dict(operation_id=operation['operation_id'],verification=verification,upgrade_outcome='complete')
+        safe=('preflight','preflight_failed','preflight_passed','stopping','backup','dependencies','failed_before_migration')
+        if journal['phase'] in safe and str(a.source())==journal.get('previous_release'):
+            _,values=a.settings()
+            connection=recovery.connect(values['DATABASE_URL'])
+            try:revision=recovery.schema_revision(connection)
+            finally:connection.close()
+            if journal.get('source_revision',revision)==revision:
+                a.checkpoint(operation,active_units=journal.get('active_units',[]),was_inhibited=False)
+                verification=thaw(operation)
+                a.write(a.private_directory(a.UPDATES/'history')/(journal['operation']+'-aborted.json'),dict(journal,recovered_by=operation['operation_id']))
+                (a.UPDATES/'journal.json').unlink()
+                return dict(operation_id=operation['operation_id'],verification=verification,upgrade_outcome='aborted_before_migration')
         raise h.HostingError('recovery_required','Inspect the upgrade journal; restore its recovery point explicitly.',backup_id=operation.get('backup_id'))
     return dict(verification=thaw(operation))
 

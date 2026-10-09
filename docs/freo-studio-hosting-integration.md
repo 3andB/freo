@@ -244,3 +244,188 @@ Verified acceptance and commands are recorded in
 [v1-hosting-test-report-2026-10-09.md](v1-hosting-test-report-2026-10-09.md).
 The disposable reproduction scripts are in
 [tests/hosting_acceptance](../tests/hosting_acceptance/README.md).
+
+## Phase C: local administrative lifecycle
+
+These commands ship in the same distribution and require root in both modes.
+They add no customer UI, remote API, monitoring agent, or Studio dependency.
+The existing `freo-admin hosting ...` interface remains available unchanged.
+
+### Commands
+
+| Command | Behavior |
+| --- | --- |
+| `freo-admin status` | Installation ID, installed version, readiness, OS, uptime, hosting state, current administrative operation. |
+| `freo-admin health` | Actual database/readiness, expected workers and playout, Icecast sources, bounded direct and Nginx stream reads. |
+| `freo-admin resources` | One-second CPU sample, RAM, filesystem byte counts, persistent customer media, aggregate listeners, systemd process resources. |
+| `freo-admin backup create` | Maintenance window: stop writers, create and integrity-verify an encrypted full backup, restore permitted services and verify health. |
+| `freo-admin backup list` | Approved backup IDs, timestamps, versions, purpose, and verification state. |
+| `freo-admin backup verify --id BACKUP_ID` | Verify encrypted bundle contents and recorded checksum. Does not claim a restore was tested. |
+| `freo-admin backup restore --id BACKUP_ID --confirm-installation INSTALLATION_ID` | Explicitly authorized live recovery; first retain a recovery point, restore into isolated locations, verify, attach, retain displaced data, verify permitted services. |
+| `freo-admin upgrade check` | Inspect root-staged signed releases using the existing updater's preflight; report compatibility and current upgrade journal. |
+| `freo-admin upgrade apply --version VERSION` | Run the existing signed-artifact updater, verified recovery point, migrations, activation, and operational checks. |
+| `freo-admin services status` | Observed systemd states and resource properties for installed Freo/Icecast units. |
+| `freo-admin services restart --service SERVICE` | Restart an approved logical service and verify actual health. |
+| `freo-admin services recover` | Resume authorized backup/restore recovery or reconcile required services; never silently restore an old database after a migration. |
+
+`SERVICE` is one of `application`, `icecast`, `playout`, `microphone`, `ingest`,
+`automation`, `production`, `statistics`, or `scheduled-workers`. `playout`
+selects enabled stations whose saved desired state is running. Arbitrary unit
+names, PostgreSQL control, shell commands, executable paths, and URLs are rejected.
+
+Backup IDs contain exactly 32 lowercase hexadecimal characters. Restore accepts
+only approved backups belonging to the destination installation. The confirmation
+value must exactly match `status.installation_id`; Studio must obtain explicit
+administrative authorization before including it. Do not derive authorization
+from an AI conversation's unconfirmed inference. Freo itself implements no new
+identity provider or approval service.
+
+### Results, errors, and health
+
+Every lifecycle invocation produces one JSON document on stdout. All responses
+contain `schema_version: 1`, `success`, and actual hosting `state`. Mutations
+return `operation_id` and `verification` when completed. `success` means completed
+and verified, not queued. Diagnostics work without Flask startup.
+
+Example successful health response, abbreviated:
+
+```json
+{
+  "schema_version": 1,
+  "success": true,
+  "health": "healthy",
+  "state": {"hosted": false},
+  "checks": {
+    "database": {"success": true},
+    "freo.service": {"success": true, "expected": "active", "observed": "active", "intentionally_suspended": false}
+  },
+  "streams": [],
+  "listeners": 0,
+  "problems": []
+}
+```
+
+Health classifications are `healthy`, `degraded`, `intentionally_suspended`, and
+`failed`. Intentional suspension is healthy only when the required administrative
+application/workers work and broadcasting is actually unavailable. A database or
+application readiness failure remains a failure during suspension. Individually
+stopped stations are not expected to broadcast. A native listener-cap rejection
+is distinguished from an unavailable source; probes do not disconnect existing
+listeners to obtain a slot.
+
+Resources use bytes, percentages, and seconds. Per-service `CPUUsageNSec` is a
+cumulative systemd counter, not an instantaneous percentage. Unavailable counters
+are `null`. Self-hosted media reporting has `limit_bytes: null` and installs no
+quota policy. Live measurements are observations, not reserved capacities.
+
+| Exit | Meaning |
+| --- | --- |
+| 0 | Operation completed successfully; health may be intentionally suspended. |
+| 2 | Invalid command, argument, identifier, or unsupported service selector. |
+| 3 | Root authorization missing. |
+| 4 | Operation rejected, including wrong restore confirmation, unavailable backup/version, inhibited broadcast restart, or another administrator holding the lock. |
+| 5 | Invalid or unsafe administrative configuration. |
+| 6 | Operational, integrity, compatibility, health-verification, or recovery-required failure. |
+
+Structured failures include `error` and `message`, with relevant safe details:
+
+```json
+{
+  "schema_version": 1,
+  "success": false,
+  "error": "recovery_required",
+  "message": "Inspect the upgrade journal; restore its recovery point explicitly.",
+  "backup_id": "0123456789abcdef0123456789abcdef",
+  "state": {"hosted": false}
+}
+```
+
+### Backup encryption and recovery
+
+Root-owned `/var/lib/freo-admin` stores identity, operation/audit journals, backup
+metadata, encrypted bundles, isolated recoveries, and the retained administrative
+runtime pointer. It is separate from customer backup roots. Backup bundles use
+Phase A's existing format and include database records, media, configuration,
+and matched executable code. There is no automatic retention deletion.
+
+On first backup use Freo generates `/var/lib/freo-admin/backup.key` with mode
+`0600`. The key never appears in JSON, arguments, logs, or the encrypted bundle.
+Studio or the administrator must copy it separately into protected off-server
+escrow, alongside encrypted backup copies. Losing both the host key and its
+escrow prevents recovery. Existing key metadata prevents silent regeneration of
+a missing or replaced key. JSON identifies the key without disclosing it.
+
+Backups require downtime because the existing engine verifies that all writers
+are stopped. Space preflight budgets full staging/encryption/restore copies;
+this is not incremental backup. `verify` checks integrity only; live restore
+also verifies a new database, row signatures, sequences, schema and restored file
+hashes before attaching them.
+
+Live attachment preserves displaced databases and files rather than deleting
+them. Destination installation identity, hosting policy, suspension, publisher
+trust, upgrade policy, encryption key, and administrative journals remain
+independent of restored customer configuration. Destination PostgreSQL and TLS
+configuration are not blindly replaced. The supported attachment profile is the
+existing local PostgreSQL installation with matching service ownership and paths.
+Cross-server migration and external PostgreSQL require a separately reviewed
+recovery procedure.
+
+A persistent maintenance guard protects an interrupted operation across reboot.
+`services recover` resumes an already authorized restore from its journal.
+Repeating restore with the same backup and confirmation also resumes it; choosing
+a different backup during attachment is rejected. Suspended or maintenance
+hosting remains inhibited. Application reactivation still requires the existing
+explicit `hosting activate` command.
+
+An interrupted migration is not permission to overwrite new writes. Freo reports
+`recovery_required`; Studio must inspect the result and obtain authorization for
+the explicit backup restore. It retains the failed installation and upgrade
+journal for diagnosis. Generic service restart cannot clear an unfinished
+upgrade's maintenance guard.
+
+### Root-staged upgrade contract
+
+Studio transfers artifacts through its privileged deployment channel before
+invoking lifecycle commands. It must create root-owned mode-`0700` directories:
+
+```text
+/var/lib/freo-updates/staged/VERSION/release.tar.gz
+/var/lib/freo-updates/staged/VERSION/release.tar.gz.asc
+```
+
+Both files are root-owned and private. Provision the trusted publisher public
+keyring independently at `/etc/freo/publisher.gpg`; never accept a trust key merely
+because it accompanies an artifact. The signature and signed manifest version
+must match the requested version. There is no command accepting a URL or path.
+
+By default private candidates are rejected. Disposable acceptance installations
+may explicitly set root-controlled `/etc/freo/admin-upgrades.json` to
+`{"allow_candidate":true}`. This does not bypass signature verification.
+Do not enable candidate admission for ordinary hosted customers.
+
+`check` uses existing updater preflight and can stage files/write its private
+journal; it does not stop services or migrate. `apply` repeats authenticity and
+compatibility checks, creates and actually restores a recovery point, then uses
+the existing upgrade workflow. An installed version cannot be replaced by a
+different artifact with the same version. No automatic download, release
+publication, rollback-over-new-writes, or PostgreSQL major upgrade is implied.
+
+### SSH, concurrency, and interruption
+
+Use the existing restricted-SSH model: an audited forced-command dispatcher
+allowlists these operations and their argument grammar. No interactive root shell,
+unrestricted sudo, port forwarding, or arbitrary AI-generated shell strings.
+Studio owns SSH authorization, scheduling maintenance windows, user confirmation,
+remote orchestration, monitoring, notifications, and key escrow.
+
+Mutations serialize with hosting changes and all updater entrypoints. Concurrent
+mutations return a structured busy result; diagnostics remain readable. Audit
+records include timestamps, operation, resulting state, operation IDs, and local
+operator identity when available. Private diagnostics can contain sensitive
+underlying error output and must not be returned to customers or AI prompts.
+
+Commands run synchronously; do not interpret an SSH disconnect or timeout as
+success. Reconnect, inspect `status`, `health`, and the recorded operation, then
+recover according to its phase. Never blindly repeat a consequential restore with
+a different backup. Subprocess probes are bounded; full backups and upgrades may
+take substantially longer than ordinary status checks.

@@ -2,6 +2,7 @@
 from pathlib import Path
 import re
 import uuid
+from datetime import datetime, timezone
 from . import admin as a, admin_backup as backups, hosting as h, recovery, releases
 
 
@@ -61,7 +62,15 @@ def dispatch(args):
     if args.action=='check':
         candidates=[]
         for directory in sorted((a.UPDATES/'staged').glob('*')):
-            if directory.is_dir():candidates.append(verify_staged(directory.name))
+            if directory.is_dir():
+                result=verify_staged(directory.name)
+                from .upgrade import upgrade
+                artifact,signature,keyring=staged(directory.name)
+                env,_=a.settings()
+                preflight=upgrade(artifact,signature,keyring,env,a.STATE/('preflight-'+uuid.uuid4().hex+'.gpg'),b'',env,
+                    a.STATE/('preflight-'+uuid.uuid4().hex),check=True,allow_candidate=candidate_allowed())
+                result['preflight']=preflight['status']
+                candidates.append(result)
         journal=a.read_json(a.UPDATES/'journal.json') if (a.UPDATES/'journal.json').exists() else None
         return dict(releases=candidates,upgrade={k:journal[k] for k in ('operation','phase') if k in journal} if journal else None,
                     source='root_staged',recovery_key_present=(a.STATE/'backup.key').exists())
@@ -75,7 +84,7 @@ def dispatch(args):
     directory=a.private_directory(backups.catalog()/value)
     env,values=a.settings()
     a.write(directory/'metadata.json',dict(id=value,installation_id=a.read_json(a.STATE/'identity.json')['installation_id'],
-        created_at=__import__('datetime').datetime.now(__import__('datetime').timezone.utc).isoformat(),
+        created_at=datetime.now(timezone.utc).isoformat(),
         source=str(a.source()),env_file=str(env),active_units=[unit for unit,row in a.units().items() if row['active'] not in ('inactive','failed')],
         role='before_upgrade',status='creating'))
     a.checkpoint(operation,backup_id=value,phase='upgrading')

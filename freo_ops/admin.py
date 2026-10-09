@@ -173,7 +173,10 @@ def probe(url, *, audio=False, headers=None):
     try:
         with build_opener(ProxyHandler({})).open(Request(url, headers=headers or {}), timeout=4) as response:
             data = response.read(1024) if audio else response.read(4096)
-            return dict(success=response.status == 200 and bool(data), http_status=response.status, bytes_read=len(data))
+            content_type=response.headers.get('Content-Type','').split(';',1)[0]
+            audio_type=content_type.startswith('audio/') or content_type=='application/ogg'
+            return dict(success=response.status == 200 and bool(data) and (not audio or audio_type),
+                        http_status=response.status, bytes_read=len(data),content_type=content_type)
     except HTTPError as error:
         return dict(success=False, http_status=error.code)
     except Exception:
@@ -432,6 +435,9 @@ def main(argv=None):
         result=error.response()
         code={'invalid_arguments':2,'unauthorized':3,'service_inhibited':4,'confirmation_required':4,
               'backup_not_found':4,'release_not_found':4,'operation_busy':4,'incompatible_backup':4,'invalid_configuration':5}.get(error.code,6)
+    except subprocess.TimeoutExpired:
+        result=dict(success=False,error='operation_timed_out',message='Operation timed out; inspect status and recover its recorded phase before retrying.')
+        code=6
     except Exception:
         result=dict(success=False,error='operation_failed',message='Operation failed; inspect the private administrative journal. No success recorded.')
         code=6
