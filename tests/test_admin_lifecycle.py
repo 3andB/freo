@@ -322,3 +322,15 @@ def test_legacy_inventory_allows_absent_v1_storage(state,monkeypatch):
     roots=ops.inventory('/etc/freo/freo.env',{})
     assert state/'var/lib/freo' in roots
     assert not (state/'var/lib/freo/uploads/production').exists()
+
+
+def test_recovery_before_updater_created_journal(state,monkeypatch):
+    monkeypatch.setattr(a,'verified_health',lambda:dict(health='healthy'))
+    operation=dict(operation_id='a'*32,operation='upgrade.apply',phase='upgrading')
+    result=b.resume(operation)
+    assert result['upgrade_outcome']=='aborted_before_changes'
+    assert operation['phase']=='complete'
+    (a.UPDATES/'maintenance').parent.mkdir(parents=True,exist_ok=True)
+    (a.UPDATES/'maintenance').touch()
+    with pytest.raises(h.HostingError) as error:b.resume(operation)
+    assert error.value.code=='recovery_required'

@@ -498,6 +498,12 @@ def resume(operation):
     if operation['operation']=='upgrade.apply':
         from .admin_upgrade import register_backup
         if operation.get('backup_id'):register_backup(operation['backup_id'])
+        if not (a.UPDATES/'journal.json').exists():
+            if (a.UPDATES/'maintenance').exists():
+                raise h.HostingError('recovery_required','Maintenance is active without an upgrade journal; review the recovery point.')
+            verification=a.verified_health()
+            a.checkpoint(operation,phase='complete')
+            return dict(operation_id=operation['operation_id'],verification=verification,upgrade_outcome='aborted_before_changes')
         journal=a.read_json(a.UPDATES/'journal.json')
         if journal['phase']=='complete':
             verification=a.verified_health()

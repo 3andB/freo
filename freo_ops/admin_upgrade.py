@@ -91,6 +91,7 @@ def dispatch(args):
     if not approved['compatible']:
         raise h.HostingError('incompatible_release','The staged version is not a compatible upgrade.')
     artifact,signature,keyring=staged(args.version)
+    a.private_directory(a.UPDATES)
     backups.disk_check(backups.roots());a.key()
     operation=a.begin('upgrade.apply',version=args.version)
     from .admin_identity import install_maintenance_guards
