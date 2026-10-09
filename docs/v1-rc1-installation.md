@@ -117,7 +117,8 @@ fields. Require both exit 0 and `success:true`. Exit 2 means invalid arguments,
 or verification failure. Lifecycle commands additionally use the documented
 errors in [the existing command contract](freo-studio-hosting-integration.md).
 `health: intentionally_suspended` is successful only when policy requires stopped
-audio and verification confirms it. Full listener capacity and draining sessions
+audio and verification confirms it. During suspension, sign-in page/cookies are
+checked; setup and operational API routes remain intentionally unavailable. Full listener capacity and draining sessions
 are represented explicitly; neither authorizes bypassing limits.
 
 After signed upgrades, use `/opt/freo/current/scripts/validate-install.sh` when

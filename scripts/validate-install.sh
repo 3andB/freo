@@ -68,6 +68,7 @@ if [[ $current != "$heads" ]]; then
 fi
 curl --fail --silent --show-error http://127.0.0.1:8000/health >/dev/null
 curl --fail --silent --show-error http://127.0.0.1:8000/ready >/dev/null
+if [[ $restricted == 0 ]]; then
 for attempt in {1..10}; do
   if curl --fail --silent --max-time 3 http://127.0.0.1:8000/health/automation >/dev/null; then
     break
@@ -79,6 +80,10 @@ for attempt in {1..10}; do
   sleep 2
 done
 curl --fail --silent --show-error http://127.0.0.1:8000/api/stations >/dev/null
+else
+  # The hosted request guard deliberately blocks these operational routes.
+  test "$(curl --silent --show-error --max-time 5 --output /dev/null --write-out '%{http_code}' http://127.0.0.1:8000/api/stations)" = 503
+fi
 if [[ $restricted == 0 ]]; then
 curl --fail --silent --show-error http://127.0.0.1:8000/health/icecast >/dev/null
 python3 - <<'PY'

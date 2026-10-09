@@ -124,3 +124,27 @@ def test_real_external_probe_succeeds_without_sending_credentials():
         server.shutdown()
         server.server_close()
         thread.join(timeout=5)
+
+
+def test_suspended_unclaimed_setup_validates_login_without_bypassing_guard(tmp_path, monkeypatch):
+    import runpy
+    from freo_ops import hosting
+    monkeypatch.setenv('FREO_ENV_FILE', '/dev/null')
+    monkeypatch.setenv('FLASK_ENV', 'production')
+    monkeypatch.setenv('DATABASE_URL', 'sqlite:///' + str(tmp_path / 'suspended.sqlite'))
+    monkeypatch.setenv('SECRET_KEY', 'private-suspended-fixture')
+    app = create_app('production')
+    server = make_server('127.0.0.1', 0, app, threaded=True)
+    app.config['PUBLIC_BASE_URL'] = f'http://127.0.0.1:{server.server_port}'
+    with app.app_context():
+        db.create_all(); import_environment(); bootstrap()
+    monkeypatch.setattr(hosting, 'read', lambda: dict(hosted=True, plan='starter', status='suspended', limits=hosting.PLANS['starter']))
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        validator = runpy.run_path('scripts/validate-admin-login.py')
+        assert validator['validate']() == (app.config['PUBLIC_BASE_URL'], True)
+        with app.app_context():
+            assert AdminUser.query.one().setup_required
+    finally:
+        server.shutdown(); server.server_close(); thread.join(timeout=5)
