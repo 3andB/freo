@@ -327,3 +327,13 @@ def test_recovery_bundle_captures_matched_source_without_candidate(host, monkeyp
     assert host.root / 'app' in captured
     assert host.root / 'migrations' in captured
     assert all(not path.is_relative_to(host.root / 'releases') for path in captured)
+
+
+def test_unprivileged_upgrade_environment_does_not_reopen_root_only_secrets(tmp_path,monkeypatch):
+    secret=tmp_path/'freo.env';secret.write_text('DATABASE_URL=fixture\n');secret.chmod(0o600)
+    monkeypatch.setenv('FREO_ENV_FILE','/unapproved/path')
+    monkeypatch.setenv('DATABASE_URL','unapproved')
+    env=updater.release_environment({'DATABASE_URL':'fixture','SECRET_KEY':'preserved'},secret)
+    assert env['FREO_ENV_FILE']=='/dev/null'
+    assert env['DATABASE_URL']=='fixture' and env['SECRET_KEY']=='preserved'
+    assert secret.stat().st_mode & 0o777 == 0o600

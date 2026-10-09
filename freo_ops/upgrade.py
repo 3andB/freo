@@ -78,7 +78,9 @@ def release_environment(values, env_file):
            if not key.startswith(('FREO_', 'FLASK_', 'PG', 'MAX_MEDIA_'))
            and key not in ('DATABASE_URL', 'SECRET_KEY', 'PUBLIC_BASE_URL', 'LOG_LEVEL', 'PYTHONPATH', 'PYTHONHOME')}
     env.update({key: value for key, value in values.items() if value is not None})
-    env.update(FREO_ENV_FILE=str(env_file), FLASK_ENV='production', PYTHONNOUSERSITE='1')
+    # Root has already parsed the explicit file without ambient interpolation.
+    # Unprivileged migration/runtime probes must not reopen root-only secrets.
+    env.update(FREO_ENV_FILE='/dev/null', FLASK_ENV='production', PYTHONNOUSERSITE='1')
     return env
 
 
