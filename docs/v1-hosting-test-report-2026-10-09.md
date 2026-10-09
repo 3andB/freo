@@ -1,8 +1,8 @@
 # Freo V1 Phase B installed acceptance — 8–9 October 2026
 
-**Acceptance: final installed retest in progress.** This report is completed only
-when the final candidate's installed checks finish. No production services or
-databases, main branch, public release, or tag were changed.
+**Acceptance: PASSED.** The final candidate passed the complete installed sequence,
+including suspension across an actual reboot and verified reactivation. No production
+services or databases, main branch, public release, or tag were changed.
 
 ## Source and environment
 
@@ -12,9 +12,9 @@ databases, main branch, public release, or tag were changed.
 - Official 0.3.2 source: `83200e6508654bea13f404e9d5699a8ad3eae19d`,
   schema `c83d4e5f9012`. The original official-kit installation and matched
   fixtures are documented in [Phase A acceptance](v1-upgrade-test-report-2026-10-08.md).
-- Final Phase B runtime: `e90265dddd32eecd1d58484d4489eda114b1dc09`,
+- Final Phase B runtime: `f306ab814b8da9193179769617a88e5c179a66e2`,
   private candidate `1.0.0-dev.2`, schema `fc06a1b2c3d4`.
-  Subsequent changes are acceptance scripts, evidence, and documentation.
+  The final clean upgrade includes the production-sandbox and retained-Icecast startup-guard corrections. Artifact SHA-256: `b9d21eeac470be230d662d73ed2ab7a8799d2d7c8f5e8d5091a4e27da58b8525`. All installed acceptance checks passed.
 - Authorized trash server: `209.38.64.12`, `Freo-v1-Test-1`, Ubuntu 24.04.5
   x86_64, 2 vCPU, approximately 2 GB RAM plus swap, 58 GB disk. This is a
   disposable application/database installation on a reused VM, not an OS reimage.
@@ -31,16 +31,16 @@ wheelhouse and signed with the existing private test key:
 ```sh
 python scripts/build-release.py --candidate \
   --wheelhouse /root/freo-032-kit/source/wheels \
-  --output /root/freo-phase-b-final2.tar.gz
+  --output /root/freo-phase-b-final4.tar.gz
 gpg --homedir /root/freo-upgrade-signing --batch --yes --detach-sign \
-  --output /root/freo-phase-b-final2.tar.gz.sig /root/freo-phase-b-final2.tar.gz
+  --output /root/freo-phase-b-final4.tar.gz.sig /root/freo-phase-b-final4.tar.gz
 
-python -m freo_ops upgrade /root/freo-phase-b-final2.tar.gz \
-  --signature /root/freo-phase-b-final2.tar.gz.sig \
+python -m freo_ops upgrade /root/freo-phase-b-final4.tar.gz \
+  --signature /root/freo-phase-b-final4.tar.gz.sig \
   --keyring /root/freo-upgrade-signing/test.gpg --allow-candidate \
-  --env-file /opt/freo/.env --backup /root/freo-phase-b/pre-final032-2.gpg \
+  --env-file /opt/freo/.env --backup /root/freo-phase-b/pre-final032-4.gpg \
   --verification-env-file /root/freo-upgrade-preservation/verification.env \
-  --verification-directory /root/freo-phase-b/verify-final032-2 \
+  --verification-directory /root/freo-phase-b/verify-final032-4 \
   --passphrase-file /root/freo-upgrade-preservation/passphrase
 
 freo-admin hosting configure --plan starter
@@ -84,14 +84,34 @@ No database row repairs or ignored migration failures are part of the procedure.
 | Authority | Application identities could not write policy; non-root CLI exited 3, invalid arguments 2, missing policy 5. Missing policy blocked audio. Repair remained in maintenance until explicit activation. |
 | Backup restoration | Actual attachment of the older pre-hosting Phase A backup retained destination suspension. Old web/audio services were blocked, and activation returned incompatible-release exit 6. Signed upgrade to compatible code retained suspension; activation reconciled accounting access and restored audio. |
 | Phase A preservation | Original station IDs 1–3, two original accounts, all 18 media/artwork checksums, nine original environment keys, five station/engine secret files, custom media root, custom ingest override, settings, and historical records remained. The originally stopped station remained stopped. |
-| Automated regressions | 133 policy/UI/installer/station/audio/upgrade checks and 63 media/import/production/artwork checks passed (196 total). |
+| Automated regressions | 135 policy/UI/installer/station/audio/upgrade checks and 63 media/import/production/artwork checks passed (198 total). |
 
-The final candidate also passed installed self-hosted UI checks, actual 192 kbps
+The final candidate passed installed self-hosted UI checks, actual 192 kbps
 output, and 116 simultaneous listeners after ordinary Icecast transport tuning.
 Hosting controls were absent and commercial suspension was refused. First hosted
-enablement under root umask 077 passed with healthy audio. Two clean 0.3.2 upgrades
-completed, the second using the final runtime. The remaining final hosted and
-feature retests are still running.
+enablement under root umask 077 passed with healthy audio. The final reboot kept
+Icecast, playout, and live ingress stopped; explicit activation restored audio.
+The server was left healthy with Starter active.
+
+Four additional clean 0.3.2 upgrades completed during Phase B: targets `76ee9af`,
+`e90265d`, `88a131e`, and final runtime `f306ab8`. Each preserved all 18 original
+media/artwork checksums and completed verified backup restoration and migrations.
+The final runtime passed the complete installed acceptance sequence after the last
+implementation change. The older Phase A backup attachment and suspended signed
+upgrade were demonstrated at checkpoint `aa08632`; this separate recovery scenario
+is identified in the evidence rather than attributed to the final runtime.
+
+The sanitized evidence contains original and final table counts. Growth reflects
+seven retired capacity-test station records, the scoped test DJ, uploaded and
+produced tracks, imaging conversion, system playlists, and new playback history.
+Original station IDs, original music checksums, configuration, credentials, and
+relationships were checked separately; equal total counts are not the criterion.
+
+All 573 manifest-listed installed files matched the final signed candidate.
+The encrypted pre-final-upgrade backup was copied off the trash server and its
+SHA-256 matched (`c81833cdd572e2dcb41bcd17923ee8955610fd2d56349a1d52e505984743a7eb`).
+Development commits are on GitHub and a complete-history Git bundle was verified
+in the protected off-server archive. No credentials or backup keys are committed.
 
 ## Corrections made during testing
 
@@ -111,6 +131,16 @@ feature retests are still running.
   reviewed bridge; customer-customized overrides still require review. Suspended
   rendering avoids reloading stopped Icecast. Activation re-establishes accounting
   grants after database restoration and verifies application readiness.
+- Actual production rendering exposed a later managed `storage.conf` reset that
+  removed quota-ledger write access from the worker sandbox. The hosting drop-in
+  now follows that reset, changed workers are restarted, and verification checks
+  write access inside each running worker's mount namespace. The real production
+  render/ingest retest passed before starting another clean upgrade.
+- A clean-upgrade reboot exposed a retained legacy Icecast unit without the new
+  startup guard. Native inhibition still blocked audio, but strict verification
+  correctly rejected the running service. The installer now explicitly guards
+  retained Icecast units; an installer regression and installed unit assertions
+  cover this path.
 - Under concurrent compiler/browser/regression load, one activation exceeded its
   health deadline and correctly retained maintenance. A subsequent verified
   activation passed. Workloads were separated on this small test VM.
@@ -120,6 +150,12 @@ feature retests are still running.
   and duplicate-input mistakes were corrected; these were not product failures.
 
 ## Operational limits
+
+Acceptance covers the documented Ubuntu/local PostgreSQL deployment, synthetic
+audio through the real browser and streaming services, and sparse files for large
+quota boundaries. It is not a maximum-library I/O soak or a physical microphone,
+NAT, and TURN compatibility certification. The regression run emitted 12 existing
+Flask-SQLAlchemy deprecation warnings.
 
 Hosted mode targets Freo's supported local PostgreSQL/systemd installation. It
 rejects symlinked or unreadable media roots. Quota accounting includes temporary
@@ -134,5 +170,6 @@ receive administrator authority before customer data is attached; customer backu
 are never authoritative for hosting status. Restricted SSH provisioning belongs
 to Studio. No billing, provider provisioning, AI chat, Phase C, or Phase D was built.
 
-Sanitized acceptance evidence will be attached when the final installed run completes.
+Sanitized [acceptance evidence](audits/v1-hosting-2026-10-09.json) records the
+observed results, before/after counts, manifest verification, and final health.
 Integration: [Freo Studio command contract](freo-studio-hosting-integration.md).

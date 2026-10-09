@@ -132,6 +132,7 @@ state where readable. Do not infer success from process launch or a timeout.
 `status` reports policy and inhibition. `storage` reports `used_bytes`,
 `file_bytes`, `database_media_bytes`, `reserved_bytes`, `limit_bytes`,
 `remaining_bytes`, `percent`, and `over_quota`. `verify` checks storage accounting,
+write access to the reservation ledger inside running worker mount namespaces,
 application readiness, broadcast service state, expected mounts, and the native listener limit. Its
 `draining` flag identifies preserved sessions above a reduced allowance.
 After attachment of older code, the standalone dispatcher still answers `status`
@@ -161,7 +162,8 @@ blocked while occupancy is at or above the new allowance. Studio must treat
 Active and past-due service continue broadcasting normally. Suspension and
 maintenance create a persistent inhibit marker, disconnect public audio, and stop
 Icecast, station playout, and live microphone ingress. Icecast itself observes the
-marker; startup guards prevent service restarts from bypassing it. Station desired
+marker; startup guards prevent service restarts from bypassing it. The installer
+adds guards to retained legacy Icecast units as well as new Freo units. Station desired
 states and customer data are retained. Reactivation restores intended running
 stations and verifies their sources before reporting success. A failed transition
 retains a restricted state and reports failure.

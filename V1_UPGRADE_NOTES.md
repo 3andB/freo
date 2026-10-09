@@ -3,8 +3,8 @@
 ## Phase B hosted-capable distribution — 9 October 2026
 
 The same signed-artifact procedure below now installs private candidate
-`1.0.0-dev.2`, runtime commit `e90265dddd32eecd1d58484d4489eda114b1dc09`,
-schema `fc06a1b2c3d4`. Two additional clean 0.3.2 upgrades completed during
+`1.0.0-dev.2`, runtime commit `f306ab814b8da9193179769617a88e5c179a66e2`,
+schema `fc06a1b2c3d4`. Four additional clean 0.3.2 upgrades completed during
 Phase B, including one with this final runtime. Original station IDs, credentials,
 settings, history, and all 18 fixture media/artwork checksums were preserved.
 No release or tag was created.

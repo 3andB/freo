@@ -1,0 +1,629 @@
+{
+  "status": "accepted",
+  "source_commit": "83200e6508654bea13f404e9d5699a8ad3eae19d",
+  "phase_a_commit": "946348bf49ab6c95ddaa03c4e237e4231fb600ba",
+  "target_runtime_commit": "f306ab814b8da9193179769617a88e5c179a66e2",
+  "version": "1.0.0-dev.2",
+  "schema": "fc06a1b2c3d4",
+  "platform": "ubuntu-24.04-x86_64",
+  "artifact_sha256": "b9d21eeac470be230d662d73ed2ab7a8799d2d7c8f5e8d5091a4e27da58b8525",
+  "installed_manifest_files_verified": 573,
+  "original_media_checksums_verified": 18,
+  "original_stations": [
+    [
+      1,
+      "acceptance",
+      "Upgrade Acceptance",
+      "UTC",
+      "running"
+    ],
+    [
+      2,
+      "upgrade-two",
+      "upgrade-two",
+      "Europe/London",
+      "running"
+    ],
+    [
+      3,
+      "upgrade-stopped",
+      "upgrade-stopped",
+      "Europe/London",
+      "stopped"
+    ]
+  ],
+  "original_installation_settings_preserved": true,
+  "table_counts": {
+    "stations": {
+      "before": 3,
+      "after": 10
+    },
+    "admin_users": {
+      "before": 2,
+      "after": 3
+    },
+    "tracks": {
+      "before": 9,
+      "after": 14
+    },
+    "playlists": {
+      "before": 12,
+      "after": 43
+    },
+    "playlist_items": {
+      "before": 9,
+      "after": 16
+    },
+    "rotations": {
+      "before": 3,
+      "after": 3
+    },
+    "rotation_slots": {
+      "before": 3,
+      "after": 3
+    },
+    "clocks": {
+      "before": 3,
+      "after": 3
+    },
+    "clock_slots": {
+      "before": 3,
+      "after": 4
+    },
+    "schedule_assignments": {
+      "before": 21,
+      "after": 21
+    },
+    "imaging_assets": {
+      "before": 3,
+      "after": 3
+    },
+    "imaging_groups": {
+      "before": 3,
+      "after": 3
+    },
+    "imaging_group_assets": {
+      "before": 3,
+      "after": 3
+    },
+    "selection_decisions": {
+      "before": 33,
+      "after": 137
+    }
+  },
+  "automated_tests": {
+    "core": 135,
+    "media": 63,
+    "total": 198
+  },
+  "installed": {
+    "selfhost": {
+      "hosted": false,
+      "hosting_ui_absent": true,
+      "hosting_endpoint_404": true,
+      "commercial_suspend_refused": true,
+      "no_hosting_storage_or_station_cap": true,
+      "actual_192kbps": true,
+      "actual_aggregate_listeners": 116,
+      "original_transport_configuration_restored": true
+    },
+    "plan": {
+      "starter_defaults": true,
+      "pro_defaults": true,
+      "concurrent_attempts": 10,
+      "created": 7,
+      "rejected": 3,
+      "downgrade_refused_without_state_change": true,
+      "created_test_stations_retired": true,
+      "custom_plan": true
+    },
+    "listener": {
+      "simultaneous_attempts": 16,
+      "accepted": 5,
+      "rejected": 11,
+      "across_two_mounts": true,
+      "public_and_direct": true,
+      "stats_at_capacity": true,
+      "reduction_preserved_five_sessions": true,
+      "reconnect_after_drain": true
+    },
+    "full-listener": [
+      {
+        "plan": "starter",
+        "attempts": 116,
+        "accepted": 100,
+        "rejected": 16
+      },
+      {
+        "plan": "pro",
+        "attempts": 266,
+        "accepted": 250,
+        "rejected": 16
+      }
+    ],
+    "storage": {
+      "concurrent_writers": [
+        1,
+        0
+      ],
+      "recording_exit": 0,
+      "recording_bytes": 65536,
+      "partial_recording_decodes": true,
+      "over_quota_blocks_growth": true,
+      "actual_quota_reduction_preserved_files": true,
+      "broadcast_continues": true
+    },
+    "upload": {
+      "concurrent_http_reservation": true,
+      "second_upload_rejected": true,
+      "aborted_upload_released": true,
+      "actual_mp3_ingested": true,
+      "database_artwork_bytes": 15000,
+      "over_quota_blob_rejected": true,
+      "deletion_allowed": true
+    },
+    "bitrate": {
+      "actual_stream": {
+        "codec_name": "mp3",
+        "bit_rate": "128000"
+      },
+      "invalid_downgrade_rejected": true
+    },
+    "status": [
+      "past_due_broadcasts",
+      "suspend_disconnects_listeners",
+      "suspend_idempotent",
+      "direct_service_restart_refused",
+      "reactivation_audio",
+      "maintenance_stops_audio",
+      "maintenance_reactivation_audio"
+    ],
+    "authority": {
+      "nonroot_exit": 3,
+      "invalid_arguments_exit": 2,
+      "missing_configuration_exit": 5,
+      "policy_not_customer_writable": true,
+      "missing_policy_blocks_public_audio": true,
+      "repair_retains_maintenance": true,
+      "explicit_reactivation_verified": true
+    },
+    "interruption": {
+      "suspend_process_killed": true,
+      "exit_code": -9,
+      "native_engine_disconnected_listeners": true,
+      "new_listeners_refused_while_engine_running": true,
+      "repeated_suspend_reconciled": true,
+      "boot_before": "87e057b1-e202-466b-a46d-15435caf55a3",
+      "reboot_preserved_suspension": true,
+      "customer_notice": true,
+      "reactivated_after_reboot": true
+    },
+    "older_backup_attachment": {
+      "status": "passed",
+      "restored_version": "1.0.0-dev.1",
+      "policy_preserved": true,
+      "older_code_blocked": true,
+      "activation_refused": true,
+      "suspended": true,
+      "preserved_database": "freo_preserved_phaseb1",
+      "preserved_host": "/root/freo-phase-b/preserved-phaseb1",
+      "compatible_upgrade_test_commit": "aa08632b4e231df580a2c7c8e955f5096b744a6a"
+    },
+    "suspended_after_signed_upgrade": {
+      "inhibited": true,
+      "schema_version": 1,
+      "state": {
+        "hosted": true,
+        "limits": {
+          "bitrate_kbps": 192,
+          "listeners": 3,
+          "stations": 3,
+          "storage_gb": 1
+        },
+        "plan": "custom",
+        "reason": "recovery-test",
+        "status": "suspended"
+      },
+      "success": true
+    },
+    "reactivation_after_signed_upgrade": {
+      "schema_version": 1,
+      "state": {
+        "hosted": true,
+        "limits": {
+          "bitrate_kbps": 192,
+          "listeners": 3,
+          "stations": 3,
+          "storage_gb": 1
+        },
+        "plan": "custom",
+        "status": "active"
+      },
+      "success": true,
+      "verification": {
+        "broadcasting": true,
+        "draining": false,
+        "listeners": 1,
+        "storage": {
+          "database_media_bytes": 0,
+          "file_bytes": 5823072,
+          "limit_bytes": 1000000000,
+          "over_quota": false,
+          "percent": 0.58,
+          "remaining_bytes": 994176928,
+          "reserved_bytes": 0,
+          "used_bytes": 5823072
+        }
+      }
+    },
+    "phaseb-final032-1": {
+      "status": "passed",
+      "stations": [
+        [
+          1,
+          "acceptance",
+          "Upgrade Acceptance",
+          "UTC",
+          "running"
+        ],
+        [
+          2,
+          "upgrade-two",
+          "upgrade-two",
+          "Europe/London",
+          "running"
+        ],
+        [
+          3,
+          "upgrade-stopped",
+          "upgrade-stopped",
+          "Europe/London",
+          "stopped"
+        ]
+      ],
+      "original_accounts": 2,
+      "original_media_files": 18,
+      "original_environment_keys": 9,
+      "station_secret_files_checked": 5,
+      "historical_starts_before": 16,
+      "historical_starts_after": 27,
+      "custom_media_root_preserved": true,
+      "custom_ingest_override_preserved": true,
+      "stopped_station_preserved": true
+    },
+    "phaseb-final032-2": {
+      "status": "passed",
+      "stations": [
+        [
+          1,
+          "acceptance",
+          "Upgrade Acceptance",
+          "UTC",
+          "running"
+        ],
+        [
+          2,
+          "upgrade-two",
+          "upgrade-two",
+          "Europe/London",
+          "running"
+        ],
+        [
+          3,
+          "upgrade-stopped",
+          "upgrade-stopped",
+          "Europe/London",
+          "stopped"
+        ]
+      ],
+      "original_accounts": 2,
+      "original_media_files": 18,
+      "original_environment_keys": 9,
+      "station_secret_files_checked": 5,
+      "historical_starts_before": 16,
+      "historical_starts_after": 28,
+      "custom_media_root_preserved": true,
+      "custom_ingest_override_preserved": true,
+      "stopped_station_preserved": true
+    },
+    "phaseb-final032-3": {
+      "status": "passed",
+      "stations": [
+        [
+          1,
+          "acceptance",
+          "Upgrade Acceptance",
+          "UTC",
+          "running"
+        ],
+        [
+          2,
+          "upgrade-two",
+          "upgrade-two",
+          "Europe/London",
+          "running"
+        ],
+        [
+          3,
+          "upgrade-stopped",
+          "upgrade-stopped",
+          "Europe/London",
+          "stopped"
+        ]
+      ],
+      "original_accounts": 2,
+      "original_media_files": 18,
+      "original_environment_keys": 9,
+      "station_secret_files_checked": 5,
+      "historical_starts_before": 16,
+      "historical_starts_after": 30,
+      "custom_media_root_preserved": true,
+      "custom_ingest_override_preserved": true,
+      "stopped_station_preserved": true
+    },
+    "phaseb-final032-4": {
+      "status": "passed",
+      "stations": [
+        [
+          1,
+          "acceptance",
+          "Upgrade Acceptance",
+          "UTC",
+          "running"
+        ],
+        [
+          2,
+          "upgrade-two",
+          "upgrade-two",
+          "Europe/London",
+          "running"
+        ],
+        [
+          3,
+          "upgrade-stopped",
+          "upgrade-stopped",
+          "Europe/London",
+          "stopped"
+        ]
+      ],
+      "original_accounts": 2,
+      "original_media_files": 18,
+      "original_environment_keys": 9,
+      "station_secret_files_checked": 5,
+      "historical_starts_before": 16,
+      "historical_starts_after": 25,
+      "custom_media_root_preserved": true,
+      "custom_ingest_override_preserved": true,
+      "stopped_station_preserved": true
+    },
+    "phaseb-upgrade1": {
+      "status": "passed",
+      "stations": [
+        [
+          1,
+          "acceptance",
+          "Upgrade Acceptance",
+          "UTC",
+          "running"
+        ],
+        [
+          2,
+          "upgrade-two",
+          "upgrade-two",
+          "Europe/London",
+          "running"
+        ],
+        [
+          3,
+          "upgrade-stopped",
+          "upgrade-stopped",
+          "Europe/London",
+          "stopped"
+        ]
+      ],
+      "original_accounts": 2,
+      "original_media_files": 18,
+      "original_environment_keys": 9,
+      "station_secret_files_checked": 5,
+      "historical_starts_before": 16,
+      "historical_starts_after": 478,
+      "custom_media_root_preserved": true,
+      "custom_ingest_override_preserved": true,
+      "stopped_station_preserved": true
+    },
+    "dj": [
+      {
+        "test": "Created scoped DJ through browser"
+      },
+      {
+        "test": "Administrator logout"
+      },
+      {
+        "test": "DJ login"
+      },
+      {
+        "test": "DJ route authority",
+        "path": "/admin/stations/acceptance/live",
+        "status": 200
+      },
+      {
+        "test": "DJ route authority",
+        "path": "/admin/stations/upgrade-two/live",
+        "status": 403
+      },
+      {
+        "test": "DJ route authority",
+        "path": "/admin/stations/upgrade-two/recordings",
+        "status": 403
+      },
+      {
+        "test": "DJ route authority",
+        "path": "/admin/djs",
+        "status": 403
+      },
+      {
+        "test": "DJ route authority",
+        "path": "/admin/api-credentials",
+        "status": 403
+      },
+      {
+        "test": "DJ route authority",
+        "path": "/admin/stations/acceptance/media/upload",
+        "status": 403
+      },
+      {
+        "test": "Quota stopped actual Liquidsoap recording while DJ broadcast continued",
+        "id": "89d32168f0354e2e9a31361aaba264c2",
+        "status": "partial",
+        "size": 131072,
+        "duration": 5461,
+        "key": "89d32168f0354e2e9a31361aaba264c2.mp3",
+        "error": "Recording stopped: hosting storage allowance or disk reserve reached.",
+        "show_ended": false
+      },
+      {
+        "test": "Consecutive short recording decoded",
+        "turn": 0,
+        "id": "89d32168f0354e2e9a31361aaba264c2",
+        "status": "partial",
+        "size": 131072,
+        "duration": 5461,
+        "key": "89d32168f0354e2e9a31361aaba264c2.mp3",
+        "error": "Recording stopped: hosting storage allowance or disk reserve reached.",
+        "show_ended": true
+      },
+      {
+        "test": "Consecutive short recording decoded",
+        "turn": 1,
+        "id": "429c53d1703b4a61a51081527e2624e9",
+        "status": "complete",
+        "size": 236355,
+        "duration": 9848,
+        "key": "429c53d1703b4a61a51081527e2624e9.mp3",
+        "error": null,
+        "show_ended": true
+      },
+      {
+        "test": "Recorded show actually plays in browser"
+      },
+      {
+        "test": "DJ logout"
+      }
+    ],
+    "features": [
+      {
+        "check": "Original account authenticates"
+      },
+      {
+        "check": "Original account authenticates"
+      },
+      {
+        "check": "Original station pages, playlists, schedule and history accessible",
+        "station": "acceptance"
+      },
+      {
+        "check": "Original station pages, playlists, schedule and history accessible",
+        "station": "upgrade-two"
+      },
+      {
+        "check": "Original station pages, playlists, schedule and history accessible",
+        "station": "upgrade-stopped"
+      },
+      {
+        "check": "All original album artwork served through authenticated application"
+      },
+      {
+        "check": "Actual API bearer authentication and station scope"
+      },
+      {
+        "check": "Listener request submitted over installed HTTP API"
+      },
+      {
+        "check": "Installed production and ingest workers created decoded voice track",
+        "track_id": 14
+      },
+      {
+        "check": "Revoked API credential rejected"
+      }
+    ],
+    "imaging": {
+      "status": "passed",
+      "legacy_assets_converted": 3,
+      "original_music_unchanged": 9,
+      "decoded_converted_files": 3,
+      "legacy_cart_played": 123,
+      "clock_group_played": 125
+    },
+    "mic": {
+      "status": "passed",
+      "transport": "real installed WebRTC gateway, Liquidsoap and Icecast",
+      "source": "generated 1000 Hz microphone",
+      "decoded_rms": 0.12302261718119963,
+      "decoded_frequency_hz": 999.6666666666666,
+      "disconnect_return": "AUTO"
+    },
+    "final032-upgrade": {
+      "phase": "complete",
+      "version": "1.0.0-dev.2",
+      "source_revision": "c83d4e5f9012",
+      "target_revision": "fc06a1b2c3d4",
+      "verification_database": "freo_restore_661f02598d6347bb8c2ace5d15cab0e9",
+      "target_runtime_commit": "76ee9af7b0563026bd477f7389b300729ee980b3"
+    },
+    "final032-2-upgrade": {
+      "phase": "complete",
+      "version": "1.0.0-dev.2",
+      "source_revision": "c83d4e5f9012",
+      "target_revision": "fc06a1b2c3d4",
+      "verification_database": "freo_restore_24cfc94314074819922b8c42ef5a0b36",
+      "target_runtime_commit": "e90265dddd32eecd1d58484d4489eda114b1dc09"
+    },
+    "final032-3-upgrade": {
+      "phase": "complete",
+      "version": "1.0.0-dev.2",
+      "source_revision": "c83d4e5f9012",
+      "target_revision": "fc06a1b2c3d4",
+      "verification_database": "freo_restore_d677478e63494f308109d6890338427f",
+      "target_runtime_commit": "88a131e40bbff965ceb68fc64222ebeb6195967a"
+    },
+    "final032-4-upgrade": {
+      "phase": "complete",
+      "version": "1.0.0-dev.2",
+      "source_revision": "c83d4e5f9012",
+      "target_revision": "fc06a1b2c3d4",
+      "verification_database": "freo_restore_ae265c37ff6f4949a45bb2b838d9839e",
+      "target_runtime_commit": "f306ab814b8da9193179769617a88e5c179a66e2"
+    }
+  },
+  "final_verification": {
+    "schema_version": 1,
+    "state": {
+      "hosted": true,
+      "limits": {
+        "bitrate_kbps": 128,
+        "listeners": 100,
+        "stations": 3,
+        "storage_gb": 25
+      },
+      "plan": "starter",
+      "status": "active"
+    },
+    "success": true,
+    "verification": {
+      "broadcasting": true,
+      "draining": false,
+      "listeners": 0,
+      "storage": {
+        "database_media_bytes": 0,
+        "file_bytes": 6458560,
+        "limit_bytes": 25000000000,
+        "over_quota": false,
+        "percent": 0.03,
+        "remaining_bytes": 24993541440,
+        "reserved_bytes": 0,
+        "used_bytes": 6458560
+      }
+    }
+  },
+  "off_server_backup_sha256": "c81833cdd572e2dcb41bcd17923ee8955610fd2d56349a1d52e505984743a7eb"
+}
