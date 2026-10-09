@@ -47,6 +47,8 @@ elif name == 'runuser':
     if args[1] != 'postgres':
         command = args[args.index('--') + 1:]
         os.execvp(command[0], command)
+elif name in ('python', 'python3') and args[0] == '-c':
+    print('1.0.0-rc.1')
 elif name in ('python', 'python3') and args[0] == '-':
     os.execv(os.environ['INSTALL_TEST_PYTHON'], ['python', *args])
 elif name == 'bash' and Path(args[0]).name == 'install-python.sh':
@@ -107,6 +109,8 @@ def test_fresh_source_install_contains_v1_and_optional_microphone(installer, mic
     if microphone == '1':
         assert ['python', '-B', '-m', 'freo_ops.dependencies', '--live-mic'] in calls
     assert calls.index(['flask', '--app', 'wsgi:app', 'db', 'upgrade']) < calls.index(['systemctl', 'enable', '--now', 'freo-production.service'])
+    assert ['python3', str(installed / 'scripts/install-hosting.py')] in calls
+    assert (root / 'etc/freo/release').read_text().strip() == '1.0.0-rc.1'
     assert (installed / 'scripts/recording-storage.py').is_file()
     assert (installed / 'V1_UPGRADE_NOTES.md').read_bytes() == (ROOT / 'V1_UPGRADE_NOTES.md').read_bytes()
     assert (installed / 'docs/public-api-v1.md').read_bytes() == (ROOT / 'docs/public-api-v1.md').read_bytes()
@@ -157,3 +161,11 @@ def test_v1_migration_chain_has_one_complete_head():
     chain = {revision.revision for revision in scripts.walk_revisions()}
     assert {f'f{phase}06a1b2c3d4' for phase in range(1, 10)} <= chain
     assert 'f316a1b2c3d4' in chain  # Recording-manager permission/history migration.
+
+
+def test_acceptance_requires_explicit_disposable_host_before_any_state_change():
+    result = subprocess.run([sys.executable, str(ROOT / 'scripts/accept-install.py'),
+                             'fresh', '--confirm-hostname', 'not-the-current-host.invalid'],
+                            text=True, capture_output=True)
+    assert result.returncode == 2
+    assert 'exact disposable hostname' in result.stderr

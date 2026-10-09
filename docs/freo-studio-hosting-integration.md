@@ -1,5 +1,10 @@
 # Freo Studio hosting integration
 
+Fresh-server bootstrap and the minimal independent SSH contract are documented
+in [V1 RC1 installation](v1-rc1-installation.md). Studio owns provisioning, SSH
+dispatch, authentication and orchestration; its implementation is not assumed
+to exist or be compatible.
+
 Freo enforces local capacity and service policy. Studio makes commercial decisions
 and invokes approved local commands over restricted SSH. There is one open-source
 Freo distribution and installer. No Studio connection, billing provider, licensing

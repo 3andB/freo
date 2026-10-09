@@ -10,7 +10,7 @@ if [[ $install_dir != /opt/freo ]]; then
 fi
 # Installation and upgrade are separate operations. Refuse before apt, file
 # replacement, role creation or any service changes on an existing installation.
-if [[ -e "$install_dir/.env" || -L "$install_dir/.env" || -e "$install_dir/current" || -L "$install_dir/current" || -e /etc/freo/freo.env || -L /etc/freo/freo.env || -d /var/lib/freo/media ]]; then
+if [[ -e "$install_dir/.env" || -L "$install_dir/.env" || -e "$install_dir/current" || -L "$install_dir/current" || -e /etc/freo/freo.env || -L /etc/freo/freo.env || -d /var/lib/freo/media || -e /etc/freo/hosting.json || -L /etc/freo/hosting.json || -e /var/lib/freo-admin || -L /var/lib/freo-admin || -e /var/lib/freo-hosting || -L /var/lib/freo-hosting ]]; then
   echo 'Existing Freo state detected. Installer will not overwrite this installation.' >&2
   echo 'Use the verified upgrade/recovery workflow in docs/recovery-and-upgrades.md.' >&2
   exit 1
@@ -228,7 +228,7 @@ if [[ -f "$install_dir/migrations/env.py" ]]; then
 fi
 (cd "$install_dir" && env FREO_ENV_FILE="$install_dir/.env" "$install_dir/venv/bin/flask" --app wsgi:app admin bootstrap)
 unit_src=$source_dir/deploy/systemd/freo.service
-python3 "$source_dir/scripts/install-hosting.py"
+python3 "$install_dir/scripts/install-hosting.py"
 unit_dst=/etc/systemd/system/freo.service
 if [[ -f $unit_dst ]] && ! cmp -s "$unit_src" "$unit_dst"; then
   cp -a "$unit_dst" "$unit_dst.backup.$(date +%Y%m%d%H%M%S)"
@@ -258,7 +258,7 @@ if [[ ${FREO_LIVE_MIC:-0} == 1 ]]; then
 fi
 install -d -o root -g root -m 0755 /etc/freo
 install -d -o root -g root -m 0755 /etc/freo/radio /etc/freo/radio/stations
-freo_release=$(git -C "$source_dir" rev-parse --short HEAD 2>/dev/null || printf '%s' "${FREO_VERSION:-development}")
+freo_release=$(cd "$install_dir" && "$install_dir/venv/bin/python" -c 'from app.version import VERSION; print(VERSION)')
 printf '%s\n' "$freo_release" > /etc/freo/release
 chmod 0644 /etc/freo/release
 systemctl enable freo-central-api.service

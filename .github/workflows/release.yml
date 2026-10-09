@@ -4,6 +4,11 @@ on:
   push:
     tags: ['v*']
   workflow_dispatch:
+    inputs:
+      candidate:
+        description: Build a private candidate from develop/v1 (no tag or release index)
+        type: boolean
+        default: true
 
 permissions:
   contents: read
@@ -32,11 +37,23 @@ jobs:
       - name: Build complete release with hashed wheels
         run: |
           mkdir -p "$RUNNER_TEMP/freo-release"
-          venv/bin/python scripts/build-release.py --output "$RUNNER_TEMP/freo-release/freo-${GITHUB_REF_NAME}.tar.gz"
+          if [[ "${{ github.event_name }}" == workflow_dispatch && "${{ inputs.candidate }}" == true ]]; then
+            [[ "$GITHUB_REF" == refs/heads/develop/v1 ]] || { echo 'Candidates require develop/v1'; exit 1; }
+            version=$(venv/bin/python -c 'from app.version import VERSION; print(VERSION)')
+            [[ "$version" =~ ^1\.0\.0-rc\.[0-9]+$ ]] || exit 1
+            artifact="freo-v${version}.tar.gz"
+            venv/bin/python scripts/build-release.py --candidate --output "$RUNNER_TEMP/freo-release/$artifact"
+            echo 'FREO_PRIVATE_CANDIDATE=1' >> "$GITHUB_ENV"
+          else
+            [[ "$GITHUB_REF" == refs/tags/v* ]] || { echo 'Release builds require a version tag'; exit 1; }
+            artifact="freo-${GITHUB_REF_NAME}.tar.gz"
+            venv/bin/python scripts/build-release.py --output "$RUNNER_TEMP/freo-release/$artifact"
+          fi
+          echo "FREO_ARTIFACT=$artifact" >> "$GITHUB_ENV"
       - name: Test the actual archive offline before signing
         run: |
           mkdir "$RUNNER_TEMP/packaged-source"
-          tar -xzf "$RUNNER_TEMP/freo-release/freo-${GITHUB_REF_NAME}.tar.gz" -C "$RUNNER_TEMP/packaged-source"
+          tar -xzf "$RUNNER_TEMP/freo-release/$FREO_ARTIFACT" -C "$RUNNER_TEMP/packaged-source"
           bash "$RUNNER_TEMP/packaged-source/scripts/install-python.sh" "$RUNNER_TEMP/packaged-source" "$RUNNER_TEMP/packaged-venv" --offline
           sudo python3 scripts/test-install-postgres.py "$RUNNER_TEMP/packaged-source" "$RUNNER_TEMP/packaged-venv" "$RUNNER_TEMP/package-install-evidence"
       - name: Sign candidate and generate common website/API index
@@ -52,12 +69,15 @@ jobs:
           trap 'gpgconf --homedir "$freo_gpg_home" --kill gpg-agent; rm -rf -- "$freo_gpg_home"' EXIT
           chmod 700 "$freo_gpg_home"
           printf '%s' "$FREO_RELEASE_SIGNING_KEY" | gpg --homedir "$freo_gpg_home" --batch --import
-          freo_artifact="$RUNNER_TEMP/freo-release/freo-${GITHUB_REF_NAME}.tar.gz"
+          freo_artifact="$RUNNER_TEMP/freo-release/$FREO_ARTIFACT"
           printf '%s\n' "$FREO_RELEASE_SIGNING_PASSPHRASE" | gpg --homedir "$freo_gpg_home" --batch --pinentry-mode loopback --passphrase-fd 0 --local-user "$FREO_RELEASE_SIGNING_FINGERPRINT" --armor --detach-sign --output "${freo_artifact}.asc" "$freo_artifact"
           gpg --homedir "$freo_gpg_home" --batch --export "$FREO_RELEASE_SIGNING_FINGERPRINT" > "$RUNNER_TEMP/freo-release/publisher.gpg"
-          venv/bin/python scripts/release-index.py "$freo_artifact" --download-url "https://github.com/${GITHUB_REPOSITORY}/releases/download/${GITHUB_REF_NAME}/freo-${GITHUB_REF_NAME}.tar.gz" --output "$RUNNER_TEMP/freo-release/latest.json"
+          if [[ "${FREO_PRIVATE_CANDIDATE:-0}" != 1 ]]; then
+            venv/bin/python scripts/release-index.py "$freo_artifact" --download-url "https://github.com/${GITHUB_REPOSITORY}/releases/download/${GITHUB_REF_NAME}/$FREO_ARTIFACT" --output "$RUNNER_TEMP/freo-release/latest.json"
+          fi
+          gpgv --keyring "$RUNNER_TEMP/freo-release/publisher.gpg" "${freo_artifact}.asc" "$freo_artifact"
           cd "$RUNNER_TEMP/freo-release"
-          sha256sum "freo-${GITHUB_REF_NAME}.tar.gz" > SHA256SUMS
+          sha256sum "$FREO_ARTIFACT" > SHA256SUMS
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: freo-signed-release-candidate

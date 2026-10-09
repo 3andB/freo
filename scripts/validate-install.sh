@@ -2,6 +2,19 @@
 set -euo pipefail
 
 install_dir=${FREO_INSTALL_DIR:-/opt/freo}
+# Resolve the active release after an upgrade as well as the fresh layout.
+if [[ -d "$install_dir/current" ]]; then install_dir="$install_dir/current"; fi
+cd "$install_dir"
+export FREO_ENV_FILE="$install_dir/.env"
+# Policy errors must fail verification, never be interpreted as self-hosted.
+restricted=$("$install_dir/venv/bin/python" - <<'PYTHON'
+from freo_ops import hosting
+state = hosting.read()
+if state.get('restricted'):
+    raise SystemExit('Invalid authoritative hosting policy')
+print(int(state['hosted'] and (state['status'] in ('suspended', 'maintenance') or (hosting.STATE / 'inhibit').exists())))
+PYTHON
+)
 test -x "$install_dir/venv/bin/python"
 (cd "$install_dir" && "$install_dir/venv/bin/python" -m pip check && "$install_dir/venv/bin/python" -m freo_ops.dependencies)
 "$install_dir/venv/bin/python" -c 'from zoneinfo import ZoneInfo; ZoneInfo("UTC"); ZoneInfo("America/Denver"); import app.services.schedule, app.services.clocks' >/dev/null
@@ -38,11 +51,12 @@ if id -nG freo-ingest | tr ' ' '\n' | grep -qx freo-playout; then
 fi
 test -x "$install_dir/scripts/validate-station-instance.py"
 test "$(stat -c %a "$install_dir/.env")" = 640
-systemctl is-active --quiet postgresql nginx freo.service icecast2.service freo-automation.service freo-ingest.service freo-production.service
+systemctl is-active --quiet postgresql nginx freo.service freo-automation.service freo-ingest.service freo-production.service
+if [[ $restricted == 0 ]]; then systemctl is-active --quiet icecast2.service; fi
 # Read the persisted choice; re-running validation need not export installer flags.
 if grep -qx 'FREO_LIVE_MIC=1' "$install_dir/.env"; then
   (cd "$install_dir" && "$install_dir/venv/bin/python" -m freo_ops.dependencies --live-mic)
-  systemctl is-active --quiet freo-mic.service
+  if [[ $restricted == 0 ]]; then systemctl is-active --quiet freo-mic.service; fi
 fi
 nginx -t >/dev/null
 pg_isready -q
@@ -65,6 +79,7 @@ for attempt in {1..10}; do
   sleep 2
 done
 curl --fail --silent --show-error http://127.0.0.1:8000/api/stations >/dev/null
+if [[ $restricted == 0 ]]; then
 curl --fail --silent --show-error http://127.0.0.1:8000/health/icecast >/dev/null
 python3 - <<'PY'
 import json
@@ -74,6 +89,7 @@ with build_opener(ProxyHandler({})).open('http://127.0.0.1:8001/status-json.xsl'
 if not version.startswith('Icecast 2.5.'):
     raise SystemExit('The running Icecast service must use the supported 2.5 series.')
 PY
+fi
 systemctl is-active --quiet freo-provision.timer
 for station_config in /etc/freo/radio/stations/*.liq; do
   if [[ -f $station_config ]]; then
@@ -83,7 +99,7 @@ for station_config in /etc/freo/radio/stations/*.liq; do
     fi
   fi
 done
-if [[ ${FREO_ENABLE_DIAGNOSTIC:-0} == 1 ]]; then
+if [[ ${FREO_ENABLE_DIAGNOSTIC:-0} == 1 && $restricted == 0 ]]; then
 for endpoint in icecast playout stream; do
   curl --fail --silent --show-error "http://127.0.0.1:8000/health/$endpoint" >/dev/null
 done
@@ -100,8 +116,8 @@ for station_socket in /run/freo/playout/*/control.sock; do
   fi
 done
 ss -ltn | grep -q '127.0.0.1:8000 '
-ss -ltn | grep -q '127.0.0.1:8001 '
-if [[ ${FREO_ENABLE_DIAGNOSTIC:-0} == 1 ]]; then
+if [[ $restricted == 0 ]]; then ss -ltn | grep -q '127.0.0.1:8001 '; fi
+if [[ ${FREO_ENABLE_DIAGNOSTIC:-0} == 1 && $restricted == 0 ]]; then
 python3 - <<'PY'
 import urllib.request
 with urllib.request.urlopen('http://127.0.0.1:8001/freo-test', timeout=5) as response:
@@ -126,7 +142,15 @@ if [[ $(stat -c %U:%G:%a /var/lib/freo/uploads) != freo:freo-ingest:2770 ]]; the
   exit 1
 fi
 (cd "$install_dir" && env FREO_ENV_FILE="$install_dir/.env" "$install_dir/venv/bin/python" "$install_dir/scripts/validate-admin-login.py" --external)
-printf 'Freo service and database checks passed.\n'
-if [[ ${FREO_ENABLE_DIAGNOSTIC:-0} == 1 ]]; then
+# Enabled units and timers survive boot; station instances are reconciled by
+# freo-provision.timer from their persisted desired state.
+for unit in postgresql nginx freo.service icecast2.service freo-automation.service freo-ingest.service freo-production.service freo-central-api.service freo-stats.service freo-provision.timer freo-public-schedules.timer freo-updater.timer freo-stats-inventory.timer freo-geoip.timer; do
+  systemctl is-enabled --quiet "$unit"
+done
+if grep -qx 'FREO_LIVE_MIC=1' "$install_dir/.env"; then systemctl is-enabled --quiet freo-mic.service; fi
+freo-admin health
+freo-admin hosting verify
+printf 'Freo installation verification passed. Station creation and first-use password replacement require the explicit fresh acceptance test.\n'
+if [[ ${FREO_ENABLE_DIAGNOSTIC:-0} == 1 && $restricted == 0 ]]; then
   printf 'Diagnostic MP3 stream bytes also verified.\n'
 fi

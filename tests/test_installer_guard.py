@@ -5,7 +5,7 @@ import subprocess
 import pytest
 
 
-@pytest.mark.parametrize('existing', ['.env', 'current', 'stable-env', 'media'])
+@pytest.mark.parametrize('existing', ['.env', 'current', 'stable-env', 'media', 'hosting-policy', 'admin-state', 'hosting-state'])
 def test_existing_state_refuses_before_any_provisioning(tmp_path, existing):
     root = tmp_path / 'install'
     root.mkdir()
@@ -15,10 +15,12 @@ def test_existing_state_refuses_before_any_provisioning(tmp_path, existing):
         (root / existing).write_text('existing')
     elif existing == 'stable-env':
         stable.write_text('existing')
-    else:
+    elif existing == 'media':
         media.mkdir()
+    else:
+        (tmp_path / existing).mkdir()
     source = Path('scripts/provision.sh').read_text().split('. /etc/os-release', 1)[0]
-    source = source.replace('/opt/freo', str(root)).replace('/etc/freo/freo.env', str(stable)).replace('/var/lib/freo/media', str(media))
+    source = source.replace('/opt/freo', str(root)).replace('/etc/freo/freo.env', str(stable)).replace('/var/lib/freo/media', str(media)).replace('/etc/freo/hosting.json', str(tmp_path / 'hosting-policy')).replace('/var/lib/freo-admin', str(tmp_path / 'admin-state')).replace('/var/lib/freo-hosting', str(tmp_path / 'hosting-state'))
     script = tmp_path / 'preflight.sh'
     script.write_text(source + '\nexit 97\n')
     result = subprocess.run(['bash', str(script), str(tmp_path)], capture_output=True, text=True)
@@ -41,7 +43,7 @@ def test_https_preflight_saves_correct_scheme_and_rejects_incomplete_options(tmp
     root, stable, media = tmp_path / 'install', tmp_path / 'stable.env', tmp_path / 'media'
     # Execute the real early preflight, stopping before its first package action.
     source = Path('scripts/provision.sh').read_text().split("printf '%s\\n' 'Freo automatically reports", 1)[0]
-    source = source.replace('/opt/freo', str(root)).replace('/etc/freo/freo.env', str(stable)).replace('/var/lib/freo/media', str(media))
+    source = source.replace('/opt/freo', str(root)).replace('/etc/freo/freo.env', str(stable)).replace('/var/lib/freo/media', str(media)).replace('/etc/freo/hosting.json', str(tmp_path / 'hosting-policy')).replace('/var/lib/freo-admin', str(tmp_path / 'admin-state')).replace('/var/lib/freo-hosting', str(tmp_path / 'hosting-state'))
     script = tmp_path / 'https-preflight.sh'
     script.write_text(source + '\nprintf "%s\\n" "$public_base"\n')
     environment = {key: value for key, value in os.environ.items() if not key.startswith('FREO_')}
