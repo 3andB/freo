@@ -42,13 +42,17 @@ try:
  assert (Path('/run/freo/playout/acceptance')/('recording-'+key+'.error')).read_text()=='storage_limit_exceeded'
  subprocess.run(['ffmpeg','-v','error','-i',str(record),'-f','null','-'],check=True,capture_output=True)
  assert storage.usage()['used_bytes']<=1_000_000_000
- # Reduced quota may be below usage; cleanup remains possible and audio continues.
+ # Change the actual assigned quota below existing usage; retain every byte.
+ command=['freo-admin','hosting','configure','--plan','custom','--stations','3','--listeners','3','--bitrate','192','--storage-gb']
+ assert subprocess.run(command+['2'],capture_output=True).returncode==0
  with fixture.open('r+b') as output:output.truncate(1_000_000_001)
+ assert subprocess.run(command+['1'],capture_output=True).returncode==0
+ assert fixture.stat().st_size==1_000_000_001
  assert storage.usage()['over_quota']
  assert write(2)!=0
  from urllib.request import urlopen
  with urlopen('http://127.0.0.1:8001/acceptance',timeout=5) as response:assert response.read(8192)
- report=dict(concurrent_writers=results,recording_exit=result.returncode,recording_bytes=record.stat().st_size,partial_recording_decodes=True,over_quota_blocks_growth=True,broadcast_continues=True)
+ report=dict(concurrent_writers=results,recording_exit=result.returncode,recording_bytes=record.stat().st_size,partial_recording_decodes=True,over_quota_blocks_growth=True,actual_quota_reduction_preserved_files=True,broadcast_continues=True)
  (E/'storage-results.json').write_text(json.dumps(report,indent=2));print(json.dumps(report))
 finally:
  fixture.unlink(missing_ok=True)

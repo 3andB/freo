@@ -132,7 +132,7 @@ state where readable. Do not infer success from process launch or a timeout.
 `status` reports policy and inhibition. `storage` reports `used_bytes`,
 `file_bytes`, `database_media_bytes`, `reserved_bytes`, `limit_bytes`,
 `remaining_bytes`, `percent`, and `over_quota`. `verify` checks storage accounting,
-broadcast service state, expected mounts, and the native listener limit. Its
+application readiness, broadcast service state, expected mounts, and the native listener limit. Its
 `draining` flag identifies preserved sessions above a reduced allowance.
 
 ## Enforcement and transitions
@@ -213,7 +213,11 @@ live policy. Explicit root-run attachment tools must wrap replacement in
 `freo_ops.hosting_recovery.preserve_authority()`. It journals destination authority,
 inhibits audio, and restores policy and standalone guards after attachment.
 `restore_authority()` resumes that protection after an interrupted attachment.
-Neither function activates service.
+Neither function activates service. These files are destination administrator
+state: back up `/var/lib/freo-hosting` and the root-owned hosting configuration
+separately from customer archives. On replacement infrastructure, restore or assign
+administrator authority before attaching customer data or starting services.
+A customer archive is never the authority for the destination's plan or status.
 
 Older code without hosted enforcement must remain inhibited. Restore or upgrade to
 compatible code before attempting activation. Activation reconciles storage access
@@ -227,3 +231,9 @@ listeners; reboot while suspended; and recovery of an older customer backup.
 Use `hosting verify` after changes and review the installed acceptance report.
 Do not interpret mocked tests or a successful JSON configuration write as proof of
 streaming enforcement.
+
+
+Verified acceptance and commands are recorded in
+[v1-hosting-test-report-2026-10-09.md](v1-hosting-test-report-2026-10-09.md).
+The disposable reproduction scripts are in
+[tests/hosting_acceptance](../tests/hosting_acceptance/README.md).

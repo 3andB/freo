@@ -18,7 +18,7 @@ for user in ('freo','freo-ingest','freo-automation','freo-playout'):
     assert check.returncode!=0,user
 assert admin('status')['state']==policy
 # Root-only fault injection: missing policy cannot mean unrestricted operation.
-saved=E/'missing-policy-original.json';assert not saved.exists()
+saved=E/('missing-policy-original-'+str(time.time_ns())+'.json');assert not saved.exists()
 os.replace(config,saved)
 try:
     assert admin('status',code=5)['state']=={'restricted':True}

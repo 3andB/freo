@@ -1,5 +1,47 @@
 # Freo V1 upgrade notes
 
+## Phase B hosted-capable distribution — 9 October 2026
+
+The same signed-artifact procedure below now installs private candidate
+`1.0.0-dev.2`, runtime commit `e90265dddd32eecd1d58484d4489eda114b1dc09`,
+schema `fc06a1b2c3d4`. Two additional clean 0.3.2 upgrades completed during
+Phase B, including one with this final runtime. Original station IDs, credentials,
+settings, history, and all 18 fixture media/artwork checksums were preserved.
+No release or tag was created.
+
+A reviewed bridge also supports the accepted Phase A `1.0.0-dev.1` templates.
+It verifies the exact source templates and runtime, restores the pre-upgrade
+backup for verification, installs the patched native Icecast engine, and renders
+compatible services. Customer-customized execution/template overrides still stop
+preflight for review; the identical managed production-storage override is retained.
+
+**Self-hosted behavior is the default.** The installer creates root-controlled
+`/etc/freo/hosting.json` containing only `{"hosted": false}`. No hosting UI,
+commercial suspension, assigned capacity, or Studio connection is enabled.
+Existing self-hosted licensing behavior remains unchanged. Never run hosting
+configuration commands merely to upgrade a self-hosted customer.
+
+For a deliberately hosted installation, a privileged administrator can run
+`freo-admin hosting configure --plan starter`, `--plan pro`, or assign all four
+Custom limits. Enabling hosting validates existing capacity first and performs a
+controlled broadcast restart. Limits, JSON responses, exit codes, storage
+accounting, and restricted SSH expectations are specified in the
+[Studio integration contract](docs/freo-studio-hosting-integration.md).
+
+Hosting authority is outside customer data at `/var/lib/freo-hosting`, with
+root-owned configuration under `/etc/freo`. Customer backup attachment must use
+`freo_ops.hosting_recovery.preserve_authority()` around replacement of customer
+roots and database. Interrupted attachment can resume with `restore_authority()`.
+Neither activates service. Older restored code is blocked by standalone guards;
+upgrade to compatible code, then use `freo-admin hosting activate` and
+`freo-admin hosting verify`. Suspended status survived an actual older-backup
+attachment and signed upgrade. Keep administrator authority backups separate from
+customer archives, and restore authority first on replacement infrastructure.
+
+See the [Phase B test report](docs/v1-hosting-test-report-2026-10-09.md) for the
+installed acceptance status, exact source/target commits, commands and evidence.
+
+
 ## Verified 0.3.2 → V1 bridge — 8 October 2026
 
 The explicit maintenance-window upgrade now supports the official **0.3.2
