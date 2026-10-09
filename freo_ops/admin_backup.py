@@ -13,6 +13,8 @@ import uuid
 from . import admin as a, hosting as h, recovery
 from .upgrade import maintenance_guards, set_maintenance, switch_pointer
 
+AUTHORITY_FILES = ('hosting.json', 'hosting-storage.json', 'publisher.gpg', 'admin-upgrades.json')
+
 
 def identifier(value):
     if not isinstance(value,str) or not re.fullmatch('[a-f0-9]{32}',value):
@@ -315,8 +317,7 @@ def restore_start(args):
 @contextmanager
 def administrative_authority(operation):
     """Destination trust and policy survive customer configuration attachment."""
-    names=('/etc/freo/hosting.json','/etc/freo/hosting-storage.json',
-           '/etc/freo/publisher.gpg','/etc/freo/admin-upgrades.json')
+    names=tuple('/etc/freo/'+name for name in AUTHORITY_FILES)
     if 'authority_files' not in operation:
         saved={}
         for name in names:
@@ -365,6 +366,42 @@ def adopt_restored_release(metadata,release):
         if body!=rewritten:
             target.write_text(rewritten);target.chmod(0o644)
     sync_directory(destination.parent)
+
+
+
+def restore_customer_configuration(operation, source, destination):
+    """Keep administrative files in place, even if killed between attachments."""
+    destination.mkdir(parents=True,exist_ok=True)
+    names={path.name for path in source.iterdir() if path.name not in AUTHORITY_FILES}
+    done=operation.setdefault('configuration_attached',[])
+    prefix='.freo-retained-'+operation['operation_id']+'-freo-'
+    # Retain newer customer configuration absent from this matched backup.
+    for path in sorted(destination.iterdir()):
+        if path.name in AUTHORITY_FILES or path.name in names:continue
+        retained=destination.parent/(prefix+path.name)
+        if retained.exists() or retained.is_symlink():
+            raise h.HostingError('recovery_required','An unexpected retained configuration already exists.')
+        os.rename(path,retained)
+    for name in sorted(names):
+        if name in done:continue
+        target=destination/name
+        retained=destination.parent/(prefix+name)
+        staged=destination.parent/('.freo-restoring-'+operation['operation_id']+'-freo-'+name)
+        if operation.get('configuration_attaching')!=name:
+            a.checkpoint(operation,configuration_attaching=name,
+                         configuration_had_target=target.exists() or target.is_symlink())
+        if operation['configuration_had_target'] and not retained.exists() and not retained.is_symlink():
+            os.rename(target,retained)
+        if not target.exists() and not target.is_symlink():
+            if staged.exists() or staged.is_symlink():
+                if staged.is_dir() and not staged.is_symlink():shutil.rmtree(staged)
+                else:staged.unlink()
+            a.run(['cp','-a','--',str(source/name),str(staged)],timeout=3600)
+            os.rename(staged,target)
+        from .upgrade import sync_directory
+        sync_directory(destination);sync_directory(destination.parent)
+        done.append(name)
+        a.checkpoint(operation,configuration_attached=done)
 
 
 def restore_live(operation, *, reconcile=False):
@@ -420,6 +457,11 @@ def restore_live(operation, *, reconcile=False):
                 target=original
             if target==Path('/') or target.is_relative_to(a.STATE) or target.is_relative_to(h.STATE) or target.is_relative_to(a.UPDATES):
                 raise h.HostingError('incompatible_backup','Backup contains an administrative authority root.')
+            if original==Path('/etc/freo'):
+                restore_customer_configuration(operation,Path(operation['restore_directory'])/f'root-{index}',target)
+                completed.append(index)
+                a.checkpoint(operation,attached=completed)
+                continue
             retained=target.parent/('.freo-retained-'+operation['operation_id']+'-'+target.name)
             staged=target.parent/('.freo-restoring-'+operation['operation_id']+'-'+target.name)
             target.parent.mkdir(parents=True,exist_ok=True)
@@ -441,6 +483,8 @@ def restore_live(operation, *, reconcile=False):
             for entry in manifest['entries']:
                 if entry['kind']!='symlink' or entry['root'] not in completed:continue
                 original=Path(restored['roots'][entry['root']])
+                configuration_path=original/entry['path']
+                if configuration_path.parent==Path('/etc/freo') and configuration_path.name in AUTHORITY_FILES:continue
                 target=(release/original.relative_to(metadata['source']) if original.is_relative_to(metadata['source']) else original)/entry['path']
                 link=entry['target']
                 if Path(link).is_absolute() and Path(link).is_relative_to(metadata['source']):link=str(release/Path(link).relative_to(metadata['source']))

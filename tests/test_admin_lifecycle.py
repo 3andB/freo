@@ -342,3 +342,43 @@ def test_service_restart_allows_systemd_stop_and_start_deadlines(state,monkeypat
     monkeypatch.setattr(a,'verified_health',lambda:dict(health='healthy'))
     a.service_action(SimpleNamespace(action='restart',service='icecast'))
     assert calls[0][1]['timeout'] > 2*90
+
+
+@pytest.mark.parametrize('policy',[b'{"hosted":false}',b'{"hosted":true,"status":"suspended"}'])
+def test_configuration_attachment_never_replaces_authority_even_when_interrupted(state,monkeypatch,policy):
+    source=state/'payload';source.mkdir()
+    destination=state/'etc/freo';destination.mkdir(parents=True)
+    (source/'hosting.json').write_bytes(b'{"hosted":true,"status":"active"}')
+    (source/'publisher.gpg').symlink_to('/unapproved/trust')
+    (source/'admin-upgrades.json').write_text('{"allow_candidate":true}')
+    (source/'freo.env').write_text('restored customer settings')
+    (source/'radio').mkdir();(source/'radio/config').write_text('restored radio')
+    (destination/'hosting.json').write_bytes(policy)
+    (destination/'publisher.gpg').write_bytes(b'current publisher')
+    (destination/'freo.env').write_text('previous customer settings')
+    (destination/'newer.conf').write_text('retained newer settings')
+    authority={name:((destination/name).read_bytes(),(destination/name).stat().st_ino)
+               for name in ('hosting.json','publisher.gpg')}
+    directory_inode=destination.stat().st_ino
+    operation=dict(operation_id='f'*32)
+    actual=b.os.rename
+    class Interrupted(BaseException):pass
+    def interrupt_after_retaining(original,retained):
+        actual(original,retained)
+        if original==destination/'freo.env':raise Interrupted()
+    monkeypatch.setattr(b.os,'rename',interrupt_after_retaining)
+    with pytest.raises(Interrupted):b.restore_customer_configuration(operation,source,destination)
+    for name,(data,inode) in authority.items():
+        assert (destination/name).read_bytes()==data and (destination/name).stat().st_ino==inode
+    assert not (destination/'admin-upgrades.json').exists()
+    monkeypatch.setattr(b.os,'rename',actual)
+    b.restore_customer_configuration(operation,source,destination)
+    b.restore_customer_configuration(operation,source,destination)
+    assert destination.stat().st_ino==directory_inode
+    assert (destination/'freo.env').read_text()=='restored customer settings'
+    assert (destination/'radio/config').read_text()=='restored radio'
+    for name,(data,inode) in authority.items():
+        assert (destination/name).read_bytes()==data and (destination/name).stat().st_ino==inode
+    assert not (destination/'admin-upgrades.json').exists()
+    retained=destination.parent/('.freo-retained-'+operation['operation_id']+'-freo-newer.conf')
+    assert retained.read_text()=='retained newer settings'
