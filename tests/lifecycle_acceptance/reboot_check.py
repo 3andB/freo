@@ -17,6 +17,8 @@ else:
     assert boot != before['boot_id'] and policy == before['policy']
     assert Path('/var/lib/freo-updates/maintenance').exists()
     assert Path('/var/lib/freo-hosting/inhibit').exists()
+    activation = subprocess.run(['freo-admin','hosting','activate'], capture_output=True, text=True)
+    assert activation.returncode == 6 and json.loads(activation.stdout)['error'] == 'recovery_required'
     units = ['icecast2.service', 'freo-mic.service', 'freo-playout@acceptance.service', 'freo-playout@upgrade-two.service']
     subprocess.run(['systemctl', 'start', *units], check=True, capture_output=True)
     for unit in units:
@@ -29,6 +31,6 @@ else:
         assert stream.connect_ex(('127.0.0.1',8001)) != 0
     result = dict(reboot_verified=True, destination_policy_preserved=True,
                   explicit_service_starts_inhibited=True, persistent_guards_loaded=True,
-                  public_icecast_port_closed=True)
+                  public_icecast_port_closed=True, premature_activation_refused=True)
     (root/'final-reboot-inhibition.json').write_text(json.dumps(result, indent=2))
     print(json.dumps(result))
