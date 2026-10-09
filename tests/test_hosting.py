@@ -218,3 +218,25 @@ def test_encoder_retains_reservation_after_parent_is_killed(quota):
         assert storage.usage()['reserved_bytes']==0
     finally:
         if process.is_alive():process.kill();process.join(5)
+
+
+def test_standalone_guard_is_readable_after_private_umask_install(tmp_path,monkeypatch):
+    source=Path(__file__).resolve().parents[1]/'scripts/install-hosting.py'
+    (tmp_path/'usr/local/sbin').mkdir(parents=True)
+    (tmp_path/'etc').mkdir()
+    monkeypatch.setattr(h,'CONFIG',tmp_path/'etc/freo/hosting.json')
+    monkeypatch.setattr(h,'STATE',tmp_path/'authority')
+    monkeypatch.setattr(os,'geteuid',lambda:0)
+    program=source.read_text()
+    for name in ('/etc/freo','/usr/local/lib/freo-hosting','/usr/local/sbin/freo-admin'):
+        program=program.replace(repr(name),repr(str(tmp_path/name.lstrip('/'))))
+    previous=os.umask(0o077)
+    try:exec(compile(program,str(source),'exec'),{'__file__':str(source),'__name__':'__main__'})
+    finally:os.umask(previous)
+    assert (tmp_path/'etc/freo').stat().st_mode & 0o777 == 0o755
+    guard=tmp_path/'usr/local/lib/freo-hosting'
+    assert guard.stat().st_mode & 0o777 == 0o755
+    assert (guard/'freo_ops').stat().st_mode & 0o777 == 0o755
+    for name in ('guard.py','freo_ops/hosting.py','freo_ops/__init__.py'):
+        assert (guard/name).stat().st_mode & 0o004
+    assert json.loads(h.CONFIG.read_text())=={'hosted':False}
