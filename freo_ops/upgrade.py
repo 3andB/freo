@@ -335,6 +335,10 @@ def _upgrade(artifact, signature, keyring, env_file, backup, passphrase, verific
             recovery.run(['bash', str(release / 'scripts/install-python.sh'),
                           str(release), str(release / 'venv'), '--offline'], umask=0o022)
             sync_release(release)
+            # Keep verified administrative tooling available even if the first
+            # 0.3.2 adoption is interrupted before application activation.
+            if (release / 'freo_ops/admin.py').is_file():
+                recovery.run(['python3', str(release / 'scripts/install-hosting.py')])
             # Preserve the precise active unit list; stopped stations remain stopped.
             journal['active_units'] = active_units()
             journal['phase'] = 'stopping'
