@@ -80,3 +80,16 @@ def test_v1_provisions_bulletins_and_recordings_and_retains_mic_preference(tmp_p
     override.write_text('[Service]\nReadWritePaths=/customer/custom\n')
     with pytest.raises(recovery.RecoveryError, match='Custom production storage'):
         v1.provision(tmp_path, {'DATABASE_URL':'fixture'}, {})
+
+
+def test_legacy_readoption_accepts_only_exact_administrative_guards(tmp_path):
+    guard=tmp_path/'00-freo-upgrade-guard.conf'
+    guard.write_text('[Unit]\nConditionPathExists=!/var/lib/freo-updates/maintenance\n')
+    authority=tmp_path/'hosting-authority.conf'
+    authority.write_text('[Service]\nExecCondition=/usr/bin/python3 /usr/local/lib/freo-hosting/guard.py\n')
+    v1.check_icecast_overrides(tmp_path)
+    guard.write_text(guard.read_text()+'ConditionPathExists=/unmanaged\n')
+    with pytest.raises(recovery.RecoveryError):v1.check_icecast_overrides(tmp_path)
+    guard.unlink()
+    guard.symlink_to(authority)
+    with pytest.raises(recovery.RecoveryError):v1.check_icecast_overrides(tmp_path)

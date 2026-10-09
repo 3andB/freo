@@ -21,6 +21,18 @@ def check_legacy_templates(current):
             raise recovery.RecoveryError('Customized legacy template requires review: ' + name)
 
 
+def check_icecast_overrides(directory):
+    """Accept only our immutable inhibition guards when re-adopting 0.3.2."""
+    managed = {
+        '00-freo-upgrade-guard.conf': '[Unit]\nConditionPathExists=!/var/lib/freo-updates/maintenance\n',
+        'hosting-authority.conf': '[Service]\nExecCondition=/usr/bin/python3 /usr/local/lib/freo-hosting/guard.py\n',
+    }
+    for path in directory.glob('*.conf'):
+        if (path.is_symlink() or path.stat().st_uid != 0 or path.stat().st_mode & 0o022
+                or path.read_text() != managed.get(path.name)):
+            raise recovery.RecoveryError('Existing Icecast override requires review before V1 adoption')
+
+
 def check_space(url, roots, release, backup, verification):
     """Conservative full-copy budget, summed when destinations share a device."""
     size = 0

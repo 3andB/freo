@@ -15,7 +15,7 @@ assert socket.gethostname()=='Freo-v1-Test-1'
 SOURCE=Path('/root/freo-v1-source')
 E=Path('/root/freo-phase-c')
 sys.path.insert(0,str(SOURCE))
-version=os.environ.get('FREO_TEST_VERSION','1.0.0-dev.8')
+version=os.environ.get('FREO_TEST_VERSION','1.0.0-dev.9')
 selfhost=os.environ.get('FREO_TEST_SELFHOST')=='1'
 if sys.argv[1:] == ['child']:
     from freo_ops import admin,recovery

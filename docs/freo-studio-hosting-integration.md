@@ -370,7 +370,11 @@ existing local PostgreSQL installation with matching service ownership and paths
 Cross-server migration and external PostgreSQL require a separately reviewed
 recovery procedure.
 
-A persistent maintenance guard protects an interrupted operation across reboot.
+Persistent maintenance guards in `/usr/local/lib/systemd/system` protect an
+interrupted operation across reboot, independently of restored `/etc` service
+files. The verified candidate installs retained administrative tooling before
+the first migration, allowing the same CLI to recover even a 0.3.2 source.
+Services absent from an older matched backup are retained and disabled.
 `services recover` resumes an already authorized restore from its journal.
 Repeating restore with the same backup and confirmation also resumes it; choosing
 a different backup during attachment is rejected. Suspended or maintenance
@@ -386,7 +390,8 @@ upgrade's maintenance guard.
 ### Root-staged upgrade contract
 
 Studio transfers artifacts through its privileged deployment channel before
-invoking lifecycle commands. It must create root-owned mode-`0700` directories:
+invoking lifecycle commands. It must create `/var/lib/freo-updates`, its `staged`
+subdirectory, and each version directory root-owned with mode `0700`:
 
 ```text
 /var/lib/freo-updates/staged/VERSION/release.tar.gz

@@ -299,8 +299,7 @@ def _upgrade(artifact, signature, keyring, env_file, backup, passphrase, verific
                 v1.check_legacy_templates(current)
                 v1.check_runtime(current, release_environment(values, env_file))
                 v1.check_space(values['DATABASE_URL'], roots, release, backup, verification_directory)
-                for override in Path('/etc/systemd/system/icecast2.service.d').glob('*.conf'):
-                    raise recovery.RecoveryError('Existing Icecast override requires review before V1 adoption')
+                v1.check_icecast_overrides(Path('/etc/systemd/system/icecast2.service.d'))
             for directory in (() if adopting_v1 or adopting_hosting else ('liquidsoap', 'icecast', 'nginx')):
                 for path in (release / 'deploy' / directory).rglob('*'):
                     if path.is_file():
