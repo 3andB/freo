@@ -224,7 +224,7 @@ def main():
     try:
         with app.app_context():
             result = fresh(app) if args.phase == 'fresh' else hosted(app, json.loads((STATE/'fresh.json').read_text()))
-        report.update(result, success=True)
+        report.update(result, success=True, phase=args.phase)
     except Exception as error:
         report['error'] = type(error).__name__
         # Raw subprocess/HTTP/DB diagnostics can contain credentials. Retain a
