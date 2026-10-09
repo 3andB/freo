@@ -14,8 +14,12 @@ or recovery processes. They refuse other hostnames. Do not remove that guard.
   case. Uses verified candidate tooling for the initial upgrade, then requires
   recovery through the installed stable CLI.
 - `restore_interrupt.py`: SIGKILL immediately after the old database is retained.
-  Reboot the disposable host, verify broadcasting is inhibited, invoke
-  `freo-admin services recover`, and verify suspension before explicit activation.
+  Run `reboot_check.py before`, reboot the disposable host, then run
+  `reboot_check.py after`. These assertions compare boot IDs and exact destination
+  policy, attempt direct service starts, check the persistent guards and closed
+  Icecast port, and reject premature activation. Then invoke
+  `freo-admin services recover`; require `intentionally_suspended` before explicit
+  `freo-admin hosting activate` and a healthy `freo-admin health` result.
 
 Evidence is written under root-private `/root/freo-phase-c`. Publish only sanitized
 JSON, never backup keys, credentials, private journals, or subprocess diagnostics.

@@ -383,13 +383,20 @@ a missing or replaced key. JSON identifies the key without disclosing it.
 
 Backups require downtime because the existing engine verifies that all writers
 are stopped. Space preflight budgets full staging/encryption/restore copies;
-this is not incremental backup. `verify` checks integrity only; live restore
-also verifies a new database, row signatures, sequences, schema and restored file
+this is not incremental backup. The current conservative preflight budgets
+six times the current inventory plus 1 GB; live restore also includes the selected
+backup's uncompressed size in that multiplier. Provision recovery capacity
+separately from the customer media allowance and manage retention externally.
+`verify` checks integrity only; live restore also verifies a new database, row signatures, sequences, schema and restored file
 hashes before attaching them.
 
 Live attachment preserves displaced databases and files rather than deleting
-them. Destination installation identity, hosting policy, suspension, publisher
-trust, upgrade policy, encryption key, and administrative journals remain
+them. Customer configuration is restored entry by entry while the
+`/etc/freo` directory and its administrative policy/trust files stay in place.
+An interruption cannot temporarily install an older hosting status or publisher
+key from the customer backup. Destination installation identity, hosting policy,
+suspension, publisher trust, upgrade policy, encryption key, and administrative
+journals remain
 independent of restored customer configuration. Destination PostgreSQL and TLS
 configuration are not blindly replaced. The supported attachment profile is the
 existing local PostgreSQL installation with matching service ownership and paths.
