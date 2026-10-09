@@ -35,6 +35,12 @@ jobs:
       - name: V1 installer and local administration boundaries
         run: |
           sudo env FREO_ENV_FILE=/dev/null FLASK_ENV=testing DATABASE_URL=sqlite:// PYTHONDONTWRITEBYTECODE=1 venv/bin/pytest -q --junitxml="$RUNNER_TEMP/v1-install-tests.xml" tests/test_v1_installation.py tests/test_rc1_acceptance.py tests/test_hosting.py tests/test_hosting_ui.py tests/test_admin_lifecycle.py
+      - name: Make root-run fixture evidence readable by the uploader
+        if: always()
+        run: |
+          if [ -f "$RUNNER_TEMP/v1-install-tests.xml" ]; then
+            sudo chown "$(id -u):$(id -g)" "$RUNNER_TEMP/v1-install-tests.xml"
+          fi
       - name: Summarize settings and regression checks
         if: always()
         run: python3 scripts/summarize-tests.py "$RUNNER_TEMP/settings-tests.xml"

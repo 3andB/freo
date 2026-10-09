@@ -56,13 +56,13 @@ elif name == 'bash' and Path(args[0]).name == 'install-python.sh':
 elif name == 'git':
     print('test-source')
 elif name not in ('apt-get', 'systemctl', 'id', 'useradd', 'usermod', 'chown',
-                  'nginx', 'certbot', 'flask', 'bash', 'python', 'python3'):
+                  'nginx', 'certbot', 'flask', 'bash', 'python', 'python3', 'dpkg-query'):
     raise SystemExit('Unexpected host command: ' + name)
 ''')
     stub.chmod(0o755)
     for command in ('apt-get', 'systemctl', 'id', 'useradd', 'usermod', 'chown',
                     'nginx', 'certbot', 'bash', 'python3', 'runuser', 'install',
-                    'openssl', 'git'):
+                    'openssl', 'git', 'dpkg-query'):
         (commands / command).symlink_to(stub)
     for command in ('python', 'flask'):
         (installed / 'venv/bin' / command).symlink_to(stub)
