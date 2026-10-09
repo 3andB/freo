@@ -45,7 +45,7 @@ def roots():
     return recovery.normalize_roots(paths)
 
 
-def disk_check(paths):
+def disk_check(paths, *, extra_bytes=0):
     # Phase A uses full copies for encrypt/decrypt/restore. Budget conservatively.
     total = sum(path.stat().st_size for root in paths for path in ([root] if root.is_file() else root.rglob('*')) if path.is_file() and not path.is_symlink())
     _, values = a.settings()
@@ -54,7 +54,7 @@ def disk_check(paths):
         with connection.cursor() as cur:
             cur.execute('SELECT pg_database_size(current_database())');total+=cur.fetchone()[0]
     finally: connection.close()
-    required = total*6+1_000_000_000
+    required = (total+extra_bytes)*6+1_000_000_000
     for path in (a.STATE,Path('/tmp')):
         if shutil.disk_usage(path).free < required:
             raise h.HostingError('insufficient_space','Insufficient free space for full backup/recovery staging.',required_bytes=required)
@@ -135,9 +135,20 @@ def create_frozen(operation, *, role='backup'):
     result=recovery.create(values['DATABASE_URL'],list(map(Path,metadata['roots'])),directory/'bundle.gpg',a.key(),
         version=metadata['version'],media_root=values.get('FREO_MEDIA_ROOT') or '/var/lib/freo/media',
         upload_root=values.get('FREO_UPLOAD_ROOT') or '/var/lib/freo/uploads')
-    metadata.update(status='integrity_verified_restore_not_tested',bundle_id=result['backup_id'],sha256=recovery.digest(directory/'bundle.gpg'))
+    metadata.update(status='integrity_verified_restore_not_tested',bundle_id=result['backup_id'],uncompressed_bytes=result['uncompressed_bytes'],sha256=recovery.digest(directory/'bundle.gpg'))
     a.write(directory/'metadata.json',metadata)
     return metadata
+
+
+def backup_space(metadata):
+    size=metadata.get('uncompressed_bytes')
+    if type(size) is not int or size<0:
+        raise h.HostingError('invalid_configuration','Backup lacks verified expansion-size metadata; use reviewed offline recovery.')
+    required=size*6+1_000_000_000
+    for path in (a.STATE,Path('/tmp')):
+        if shutil.disk_usage(path).free<required:
+            raise h.HostingError('insufficient_space','Insufficient space to expand the selected backup.',required_bytes=required)
+    return size
 
 
 def verify(value):
@@ -145,6 +156,7 @@ def verify(value):
     h.trusted(bundle)
     if metadata.get('sha256') != recovery.digest(bundle):
         raise h.HostingError('backup_integrity_failed','Backup checksum does not match.')
+    backup_space(metadata)
     with recovery.unpack(bundle,a.key()) as (_,manifest):
         if manifest['backup_id']!=metadata['bundle_id'] or manifest['roots']!=metadata['roots']:
             raise h.HostingError('backup_integrity_failed','Backup manifest does not match its approved inventory.')
@@ -187,6 +199,39 @@ def isolated_restore(metadata,bundle,directory):
     return recovery.restore(bundle,a.key(),url,directory,preserve_ownership=True,create_database=create)
 
 
+def validate_backup_database(metadata,restored,directory):
+    from .__main__ import configuration
+    wanted=Path(metadata['env_file'])
+    for index,root in enumerate(map(Path,restored['roots'])):
+        if wanted==root or wanted.is_relative_to(root):
+            saved=configuration(directory/f'root-{index}'/wanted.relative_to(root))
+            _,current=a.settings()
+            if saved['DATABASE_URL']!=current['DATABASE_URL']:
+                raise h.HostingError('incompatible_backup','Database connection mapping changed; use reviewed offline recovery.')
+            return
+    raise h.HostingError('incompatible_backup','The approved backup lacks its application configuration.')
+
+
+def validate_restored_capacity(restored):
+    policy=h.read()
+    if not policy['hosted']:return
+    from psycopg2.extensions import parse_dsn,make_dsn
+    url,_,_=local_database()
+    values=parse_dsn(url);values['dbname']=restored['database']
+    connection=recovery.connect(make_dsn(**values))
+    try:
+        with connection.cursor() as cur:
+            cur.execute('SELECT count(*) FROM stations WHERE deleted_at IS NULL')
+            count=cur.fetchone()[0]
+            if count>policy['limits']['stations']:
+                raise h.HostingError('incompatible_backup','Backup stations exceed destination capacity.',current_stations=count,requested_limit=policy['limits']['stations'])
+            cur.execute('SELECT s.id,m.bitrate,m.pending_audio FROM stations s JOIN stream_mounts m ON m.station_id=s.id WHERE s.deleted_at IS NULL')
+            for station,bitrate,pending in cur.fetchall():
+                if max(bitrate,(pending or {}).get('bitrate',0))>policy['limits']['bitrate_kbps']:
+                    raise h.HostingError('incompatible_backup','Backup bitrate exceeds destination capacity.',station_id=station,requested_limit=policy['limits']['bitrate_kbps'])
+    finally:connection.close()
+
+
 def restore_start(args):
     expected=a.read_json(a.STATE/'identity.json')['installation_id']
     if args.confirm_installation != expected:
@@ -196,7 +241,7 @@ def restore_start(args):
         raise h.HostingError('incompatible_backup','Only this installation’s approved backups can be attached.')
     verify(args.id)
     local_database()
-    disk_check(roots())
+    disk_check(roots(),extra_bytes=backup_space(metadata))
     # Explicit restore authorization permits superseding an unfinished upgrade.
     old=a.current_operation()
     if old and old['phase'] not in a.TERMINAL:
@@ -278,14 +323,21 @@ def restore_live(operation, *, reconcile=False):
     from .hosting_recovery import preserve_authority,restore_authority
     if (h.STATE/'recovery-authority.json').exists() and operation.get('authority_saved'):
         restore_authority()
+    if not operation.get('restored'):
+        directory=work/('payload-'+uuid.uuid4().hex)
+        try:
+            backup_space(metadata)
+            restored=isolated_restore(metadata,bundle,directory)
+            validate_backup_database(metadata,restored,directory)
+            validate_restored_capacity(restored)
+        except Exception:
+            a.checkpoint(operation,phase='failed_before_changes')
+            raise
+        a.checkpoint(operation,restored=restored,restore_directory=str(directory),phase='verified_restore')
     freeze(operation)
     if not operation.get('recovery_point'):
         saved=create_frozen(operation,role='before_restore')
         a.checkpoint(operation,recovery_point=saved['id'])
-    if not operation.get('restored'):
-        directory=work/('payload-'+uuid.uuid4().hex)
-        restored=isolated_restore(metadata,bundle,directory)
-        a.checkpoint(operation,restored=restored,restore_directory=str(directory),phase='verified_restore')
     restored=operation['restored']
     # Only trusted own inventory can map live destinations. Never accept paths from argv.
     if restored['roots']!=metadata['roots']:
@@ -361,10 +413,9 @@ def restore_live(operation, *, reconcile=False):
         a.checkpoint(operation,preserved_database=preserved)
         adopt_restored_release(metadata,release)
         switch_pointer(Path('/opt/freo'),release)
-    # Recreate grants and root-derived inventories without changing hosting status.
-    if h.read()['hosted']:
-        helper=release if (release/'scripts/admin-maintenance.py').exists() else (a.STATE/'runtime').resolve()
-        a.run([str(helper/'venv/bin/python'),'-I',str(helper/'scripts/admin-maintenance.py'),'storage'],timeout=120)
+    # Use retained administration with the restored release's models/dependencies.
+    helper=(a.STATE/'runtime').resolve()
+    a.run([str(release/'venv/bin/python'),'-I',str(helper/'scripts/admin-maintenance.py'),'storage'],timeout=180)
     a.run(['nginx','-t'])
     a.run(['systemctl','reload','nginx'])
     if operation.get('interrupted_upgrade'):

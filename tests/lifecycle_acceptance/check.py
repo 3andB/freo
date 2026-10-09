@@ -35,6 +35,8 @@ cli('services','restart','--service','icecast')
 backup=cli('backup','create')['backup']['id']
 cli('backup','verify','--id',backup)
 assert backup in [b['id'] for b in cli('backup','list')['backups']]
+# An older backup must never replace current listener/storage authority.
+cli('hosting','configure','--plan','custom','--stations','3','--listeners','5','--bitrate','128','--storage-gb','1')
 policy=cli('hosting','suspend','--reason','lifecycle-test')['state']
 assert cli('health')['health']=='intentionally_suspended'
 cli('services','restart','--service','icecast',code=4)
@@ -45,4 +47,19 @@ assert result['state']==policy
 assert cli('health')['health']=='intentionally_suspended'
 cli('hosting','activate')
 assert cli('health')['health']=='healthy'
+verified=cli('hosting','verify');assert verified['state']['limits']['listeners']==5
+import http.client
+connections=[]
+try:
+    for index in range(8):
+        connection=http.client.HTTPConnection('127.0.0.1',8001,timeout=5)
+        connection.request('GET','/'+('acceptance' if index%2 else 'upgrade-two'))
+        response=connection.getresponse()
+        if response.status==200:
+            assert response.read(512);connections.append(connection)
+        else:connection.close()
+    assert len(connections)==5,len(connections)
+finally:
+    for connection in connections:connection.close()
+cli('hosting','configure','--plan','starter')
 print('Lifecycle sequence passed',flush=True)

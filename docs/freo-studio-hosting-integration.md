@@ -429,3 +429,19 @@ success. Reconnect, inspect `status`, `health`, and the recorded operation, then
 recover according to its phase. Never blindly repeat a consequential restore with
 a different backup. Subprocess probes are bounded; full backups and upgrades may
 take substantially longer than ordinary status checks.
+
+Recovery also reapplies the destination's native Icecast listener allowance and
+managed DJ recording sink before starting audio. Other restored audio settings
+are retained; customized recording callbacks/encoders require review instead of
+being silently replaced. Health checks verify the actual native listener limit.
+Backups whose stations or bitrates exceed destination capacity are rejected before
+stopping the current installation. Storage may remain over quota as in Phase B.
+Hosting mutations are refused while a lifecycle recovery is unfinished, so a
+saved authority journal cannot overwrite a later CLI policy change.
+
+CLI-managed backups record their uncompressed size for expansion-space preflight.
+Older unregistered/offline bundles or incomplete preview metadata require the
+reviewed Phase A offline recovery procedure. Live attachment rejects a changed
+PostgreSQL connection mapping before stopping services; database relocation or
+credential remapping must use a reviewed recovery procedure. It never guesses
+which differently configured database should be displaced.

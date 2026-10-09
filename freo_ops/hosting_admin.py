@@ -337,6 +337,14 @@ class Parser(argparse.ArgumentParser):
         raise h.HostingError('invalid_arguments',message)
 
 
+def require_lifecycle_idle():
+    lifecycle=Path('/var/lib/freo-admin/operation.json')
+    if lifecycle.exists():
+        h.trusted(lifecycle)
+        if json.loads(lifecycle.read_text()).get('phase') not in ('complete','failed_before_changes'):
+            raise h.HostingError('recovery_required','Finish the interrupted lifecycle operation before changing hosting authority.')
+
+
 def main(argv=None):
     result=None
     try:
@@ -352,6 +360,7 @@ def main(argv=None):
         for flag in ('stations','listeners','bitrate','storage-gb'):
             configure.add_argument('--'+flag,type=int)
         args=parser.parse_args(argv)
+        if args.command not in ('status','storage','verify'):require_lifecycle_idle()
         from dotenv import dotenv_values
         env=Path('/etc/freo/freo.env')
         if not env.exists():env=Path('/opt/freo/.env')
@@ -373,6 +382,7 @@ def main(argv=None):
             elif args.command=='verify':
                 result=dict(success=True,state=policy,verification=verify(policy))
             else:
+                require_lifecycle_idle()
                 if args.command=='configure':
                     limits=dict(h.PLANS.get(args.plan,{}))
                     for flag,key in [('stations','stations'),('listeners','listeners'),('bitrate','bitrate_kbps'),('storage_gb','storage_gb')]:

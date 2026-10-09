@@ -339,6 +339,7 @@ def create(url, roots, destination, passphrase, *, version, media_root=None, upl
             connection.commit()
             if tables != database_inventory(connection) or sequences != sequence_inventory(connection):
                 raise RecoveryError('Database changed during backup; stop all writers and retry')
+            manifest['uncompressed_bytes'] = sum(e['size'] for e in entries if e['kind']=='file') + (payload/'database.dump').stat().st_size
             (payload / 'manifest.json').write_text(json.dumps(manifest, sort_keys=True))
             archive_path = work / 'bundle.tar'
             with tarfile.open(archive_path, 'w') as archive:
@@ -359,7 +360,7 @@ def create(url, roots, destination, passphrase, *, version, media_root=None, upl
                     os.fsync(fd)
                 finally:
                     os.close(fd)
-            return {k: manifest[k] for k in ('backup_id', 'version', 'schema_revision')}
+            return {k: manifest[k] for k in ('backup_id', 'version', 'schema_revision', 'uncompressed_bytes')}
     finally:
         connection.close()
 

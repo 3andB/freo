@@ -54,6 +54,7 @@ def register_backup(value):
     if not bundle.exists():return None
     with recovery.unpack(bundle,a.key()) as (_,manifest):
         metadata.update(bundle_id=manifest['backup_id'],roots=manifest['roots'],version=manifest['version'],
+                        uncompressed_bytes=manifest['uncompressed_bytes'],
                         sha256=recovery.digest(bundle),status='integrity_verified_restore_not_tested')
     a.write(path,metadata)
     return metadata

@@ -126,7 +126,8 @@ def test_restore_dispatch_resumes_only_matching_authorization(state,monkeypatch)
     monkeypatch.setattr(b,'record',lambda value:({'installation_id':'0919533f-7811-45f2-ba08-5648daa930c9'},Path('/bundle')))
     monkeypatch.setattr(b,'verify',lambda value:None)
     monkeypatch.setattr(b,'local_database',lambda:None)
-    monkeypatch.setattr(b,'disk_check',lambda paths:None)
+    monkeypatch.setattr(b,'disk_check',lambda paths,**kwargs:None)
+    monkeypatch.setattr(b,'backup_space',lambda metadata:0)
     monkeypatch.setattr(b,'roots',lambda:[])
     with pytest.raises(h.HostingError) as error:
         b.restore_start(SimpleNamespace(confirm_installation='0919533f-7811-45f2-ba08-5648daa930c9',id='c'*32))
@@ -194,3 +195,90 @@ def test_upgrade_check_reports_cached_older_versions_without_running_downgrade(s
     monkeypatch.setattr(u,'staged',lambda version:pytest.fail('incompatible version must not run updater'))
     result=u.dispatch(SimpleNamespace(action='check'))
     assert result['releases']==[dict(version='0.3.2',compatible=False,preflight='incompatible')]
+
+
+@pytest.mark.parametrize('current',[False,True])
+def test_upgrade_check_cleanup_never_removes_current_release(state,monkeypatch,current):
+    from freo_ops import upgrade
+    directory=a.UPDATES/'staged'/'1.0.0';directory.mkdir(parents=True)
+    releases=state/'releases';releases.mkdir()
+    installed=releases/('a'*32);installed.mkdir();(installed/'keep').touch()
+    copied=installed if current else releases/('b'*32)
+    copied.mkdir(exist_ok=True)
+    (copied/'release.json').write_text('{}')
+    original=Path
+    monkeypatch.setattr(u,'Path',lambda value:releases if str(value)=='/opt/freo/releases' else original(value))
+    monkeypatch.setattr(a,'source',lambda:installed)
+    monkeypatch.setattr(a,'settings',lambda:(state/'env',{}))
+    monkeypatch.setattr(u,'verify_staged',lambda version:dict(version=version,compatible=True))
+    monkeypatch.setattr(u,'staged',lambda version:('artifact','signature','keyring'))
+    monkeypatch.setattr(u,'candidate_allowed',lambda:False)
+    def checked(*args,**kwargs):
+        assert kwargs['check'] is True
+        a.write(a.UPDATES/'journal.json',dict(release=str(copied),operation=copied.name,phase='preflight_passed'))
+        return dict(status='preflight_passed')
+    monkeypatch.setattr(upgrade,'upgrade',checked)
+    u.dispatch(SimpleNamespace(action='check'))
+    assert installed.is_dir() and (installed/'keep').exists()
+    assert copied.exists()==current
+
+
+def test_backup_expansion_budget_uses_recorded_uncompressed_size(state,monkeypatch):
+    monkeypatch.setattr(b.shutil,'disk_usage',lambda path:SimpleNamespace(free=2_000_000_000))
+    with pytest.raises(h.HostingError) as error:b.backup_space(dict(uncompressed_bytes=10_000_000_000))
+    assert error.value.code=='insufficient_space'
+    with pytest.raises(h.HostingError):b.backup_space({})
+
+
+@pytest.mark.parametrize('count,bitrate',[ (4,128),(3,192) ])
+def test_restored_data_cannot_exceed_destination_capacity(state,monkeypatch,count,bitrate):
+    monkeypatch.setattr(h,'read',lambda:dict(hosted=True,limits=dict(h.PLANS['starter'])))
+    monkeypatch.setattr(b,'local_database',lambda:('postgresql://fixture@localhost/freo','freo','fixture'))
+    class Connection:
+        closed=False
+        def cursor(self):return self
+        def __enter__(self):return self
+        def __exit__(self,*args):pass
+        def execute(self,*args):pass
+        def fetchone(self):return (count,)
+        def fetchall(self):return [(1,bitrate,None)]
+        def close(self):self.closed=True
+    connection=Connection()
+    monkeypatch.setattr(b.recovery,'connect',lambda url:connection)
+    with pytest.raises(h.HostingError) as error:b.validate_restored_capacity(dict(database='isolated'))
+    assert error.value.code=='incompatible_backup' and connection.closed
+
+
+def test_recording_reconciliation_preserves_custom_audio_and_enforces_sink():
+    import runpy
+    reconcile=runpy.run_path('scripts/admin-maintenance.py')['recording_configuration']
+    template=Path('deploy/liquidsoap/station.liq.template').read_text()
+    rendered=template.replace('output.file(id="freo_show_file"','output.external(id="freo_show_file"').replace('  perm=0o640, dir_perm=0o750,\n','')
+    rendered=rendered.replace('{__RECORDING_DIR__ ^ "/" ^ record_key() ^ ".mp3"}','{"bounded-recorder " ^ record_key()}')
+    existing=template+'\n# administrator custom audio configuration\n'
+    updated=reconcile(existing,rendered)
+    assert 'output.external(id="freo_show_file"' in updated
+    assert updated.endswith('# administrator custom audio configuration\n')
+    assert 'bounded-recorder' in updated
+    with pytest.raises(ValueError):
+        reconcile(existing.replace('%mp3(bitrate=192), {__RECORDING_DIR__','%mp3(bitrate=256), {__RECORDING_DIR__'),rendered)
+
+
+def test_changed_database_mapping_is_rejected_before_attachment(state,monkeypatch):
+    directory=state/'restored';directory.mkdir()
+    (directory/'root-0').write_text('DATABASE_URL=postgresql://old-destination/db\n')
+    monkeypatch.setattr(a,'settings',lambda:(state/'env',dict(DATABASE_URL='postgresql://current-destination/db')))
+    with pytest.raises(h.HostingError) as error:
+        b.validate_backup_database(dict(env_file='/etc/freo/freo.env'),dict(roots=['/etc/freo/freo.env']),directory)
+    assert error.value.code=='incompatible_backup'
+    assert 'old-destination' not in str(error.value)
+
+
+def test_hosting_change_is_blocked_before_app_start_during_restore(state,monkeypatch,capsys):
+    from freo_ops import hosting_admin
+    original=Path
+    journal=state/'operation.json'
+    a.write(journal,dict(phase='attaching',operation='backup.restore'))
+    monkeypatch.setattr(hosting_admin,'Path',lambda value:journal if str(value)=='/var/lib/freo-admin/operation.json' else original(value))
+    assert hosting_admin.main(['hosting','activate'])==6
+    assert json.loads(capsys.readouterr().out)['error']=='recovery_required'

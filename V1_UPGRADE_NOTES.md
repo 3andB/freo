@@ -2580,3 +2580,47 @@ checked application files matched the tested source. After auditing, only the
 isolated test station was stopped and test access disabled/revoked; its media,
 recordings and history remain. Production, main, tags and releases were untouched.
 No 0.3.2 → 1.0 upgrade bridge was implemented.
+
+## Phase C administrative lifecycle
+
+The standard distribution now exposes root-only lifecycle operations through the
+same `freo-admin` launcher. Self-hosted customers receive no commercial UI or
+restrictions; their local server administrator can use the lifecycle commands.
+
+Use `freo-admin status`, `health`, and `resources` to inspect actual installation
+state. Use `services restart --service application` (or another approved logical
+service) and `services recover` for verified service operations. Hosting suspension
+and maintenance remain authoritative.
+
+`backup create` coordinates a maintenance window around the existing encrypted
+backup engine. `backup list` returns approved IDs; `backup verify --id ID` verifies
+integrity. To explicitly authorize live attachment:
+
+```sh
+freo-admin backup restore --id BACKUP_ID --confirm-installation INSTALLATION_ID
+```
+
+Read the installation ID from `status`. Restoration creates a recovery point,
+verifies an isolated restore, retains displaced files/databases, and preserves
+destination administrative authority. It does not reactivate suspended hosting.
+An interrupted authorized restore is resumed with `services recover`.
+
+Escrow `/var/lib/freo-admin/backup.key` separately from encrypted bundles. The CLI
+generates this root-only key on first use, never displays it, and refuses silent
+replacement if it goes missing. Backups and recovery staging require significant
+free space; there is no automatic retention deletion.
+
+Stage independently signed artifacts using the root-controlled layout in the
+[Studio integration contract](docs/freo-studio-hosting-integration.md), then use:
+
+```sh
+freo-admin upgrade check
+freo-admin upgrade apply --version VERSION
+```
+
+These commands invoke the existing signed-artifact updater. They do not accept
+URLs or executable paths. An interrupted migration requires explicit recovery
+review and confirmed restore; generic service recovery cannot guess permission
+to overwrite a database. Diagnostics distinguish suspension from unexpected
+service failure. See the [Phase C test report](docs/v1-lifecycle-test-report-2026-10-09.md)
+for exact tested commits, commands, and evidence.

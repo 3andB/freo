@@ -137,7 +137,7 @@ def begin(name, **details):
     if (UPDATES/'maintenance').exists():
         raise h.HostingError('recovery_required', 'An existing maintenance guard requires recovery.')
     operation = dict(operation_id=uuid.uuid4().hex, operation=name, phase='preparing',
-                     previous_state=policy_state(), **details)
+                     previous_state=h.read(), **details)
     checkpoint(operation)
     audit(name, dict(event='started', **operation))
     return operation
@@ -261,6 +261,15 @@ def health():
         streams.append(dict(station_id=station['id'], direct=direct, public=public_result,
                             source_present=source_present, capacity_limited=full, success=ok))
         if not ok: problems.append('stream:'+slug)
+    if policy.get('hosted') and not restricted and streams:
+        time.sleep(.15)
+        try:
+            from .hosting_admin import observations
+            assigned=int(observations().findtext('freo_listener_limit'))
+        except Exception:assigned=None
+        correct=assigned==policy['limits']['listeners']
+        results['listener_enforcement']=dict(success=correct,expected=policy['limits']['listeners'],observed=assigned)
+        if not correct:problems.append('listener_enforcement')
     if policy.get('restricted'): problems.append('hosting_configuration')
     overall = ('failed' if not results['database']['success'] or not ready['success'] else 'degraded') if problems else ('intentionally_suspended' if restricted else 'healthy')
     return dict(health=overall, checks=results, streams=streams, listeners=listeners, problems=problems)
