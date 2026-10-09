@@ -99,6 +99,9 @@ def verify(policy=None):
                 raise OSError('not ready')
     except Exception:
         raise h.HostingError('verification_failed','The Freo application is not ready.') from None
+    for unit, user in (('freo.service','freo'),('freo-ingest.service','freo-ingest'),
+                       ('freo-automation.service','freo-automation'),('freo-production.service','freo-ingest')):
+        verify_storage_access(unit,user)
     data = observations()
     # Attempt one admission to publish the native counter/limit, then close it.
     from app.models import Station
@@ -108,6 +111,7 @@ def verify(policy=None):
     for station in expected:
         if not active('freo-playout@' + station.slug + '.service'):
             raise h.HostingError('verification_failed', 'A requested station is not running.', station_id=station.id)
+        verify_storage_access('freo-playout@' + station.slug + '.service','freo-playout')
         if not any(node.get('mount') == '/' + station.slug for node in data.findall('source')):
             raise h.HostingError('verification_failed', 'A requested station has no Icecast source.', station_id=station.id)
         try:
@@ -137,6 +141,30 @@ def constraints(policy):
         if stream and max(stream.bitrate, (stream.pending_audio or {}).get('bitrate',0)) > policy['limits']['bitrate_kbps']:
             raise h.HostingError('bitrate_limit_exceeded','Existing or queued streaming settings exceed the requested maximum.',station_id=station.id,requested_limit=policy['limits']['bitrate_kbps'])
     return stations
+
+
+def install_storage_access():
+    """Apply after the existing managed storage.conf resets service paths."""
+    from .hosting_storage import ROOT
+    changed = set()
+    for unit in ('freo.service','freo-ingest.service','freo-automation.service','freo-production.service','freo-playout@.service'):
+        directory=Path('/etc/systemd/system')/(unit+'.d');directory.mkdir(exist_ok=True)
+        target=directory/'zz-freo-hosting-storage.conf'
+        body='[Service]\nSupplementaryGroups=freo-storage\nReadWritePaths='+str(ROOT)+'\n'
+        if not target.exists() or target.read_text()!=body:
+            target.write_text(body)
+            changed.add(unit)
+    run(['systemctl','daemon-reload'])
+    return changed
+
+
+def verify_storage_access(unit, user):
+    """Check the running sandbox, not just the unit's future configuration."""
+    from .hosting_storage import ROOT
+    pid=int(run(['systemctl','show',unit,'--property=MainPID','--value']).strip())
+    if pid<=0 or subprocess.run(['nsenter','--target',str(pid),'--mount','--',
+            'runuser','-u',user,'--','test','-w',str(ROOT)],capture_output=True).returncode:
+        raise h.HostingError('verification_failed','A media worker cannot reserve storage in its running sandbox.',unit=unit)
 
 
 def provision_storage():
@@ -193,11 +221,7 @@ def provision_storage():
     h.atomic(storage.INVENTORY,dict(roots=roots,media_root=media,database=url.database,socket='/var/run/postgresql',blobs=blobs))
     from .hosting_recovery import protect_request_spooling
     protect_request_spooling()
-    # Startup groups and write permissions apply equally to all existing workers.
-    for unit in ('freo.service','freo-ingest.service','freo-automation.service','freo-production.service','freo-playout@.service'):
-        directory=Path('/etc/systemd/system')/(unit+'.d');directory.mkdir(exist_ok=True)
-        (directory/'hosting-storage.conf').write_text('[Service]\nSupplementaryGroups=freo-storage\nReadWritePaths='+str(storage.ROOT)+'\n')
-    run(['systemctl','daemon-reload'])
+    return install_storage_access()
 
 
 def audit(operation, previous, requested, result):
@@ -231,6 +255,7 @@ def apply(policy, operation):
         try:
             stations = constraints(requested)
             first = not previous['hosted']
+            storage_changes = set()
             if first:
                 binary = run(['systemctl','show','icecast2.service','--property=ExecStart','--value'])
                 match = re.search(r'path=([^ ;]+)',binary)
@@ -240,9 +265,9 @@ def apply(policy, operation):
                     build_state=Path(tempfile.mkdtemp(prefix='hosting-engine-',dir=h.STATE))
                     engine=prepare_icecast(runtime.SOURCE,build_state)
                     activate_icecast(engine, replacing=True)
-                provision_storage()
+                storage_changes = provision_storage()
             elif operation == 'activate':
-                provision_storage()
+                storage_changes = provision_storage()
             h.atomic(h.STATE/'transaction.json',dict(previous=previous,requested=requested,phase='applying'))
             changed = True
             blocked = requested['status'] in ('suspended','maintenance')
@@ -269,13 +294,17 @@ def apply(policy, operation):
                             runtime.render(station)
                     for unit in ('freo.service','freo-ingest.service','freo-automation.service','freo-production.service'):
                         if active(unit):run(['systemctl','restart',unit])
+                if not first:
+                    for unit in sorted(storage_changes):
+                        if unit != 'freo-playout@.service' and active(unit):
+                            run(['systemctl','restart',unit])
                 run(['systemctl','start','freo.service','freo-ingest.service','freo-automation.service','freo-production.service'])
                 run(['systemctl','start','icecast2.service'])
                 from app.services.live_mic import enabled
                 if enabled():run(['systemctl','start','freo-mic.service'])
                 for station in stations:
                     if station.enabled and station.desired_state == 'running':
-                        run(['systemctl','restart' if first else 'start',runtime.unit_name(station.slug)])
+                        run(['systemctl','restart' if first or 'freo-playout@.service' in storage_changes else 'start',runtime.unit_name(station.slug)])
                 deadline=time.monotonic()+45
                 while True:
                     try:

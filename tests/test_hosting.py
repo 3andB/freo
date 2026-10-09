@@ -252,3 +252,33 @@ def test_authority_markers_remain_visible_under_private_root_umask(tmp_path,monk
     finally:os.umask(previous)
     assert state.stat().st_mode & 0o777 == 0o755
     assert (state/'inhibit').stat().st_mode & 0o777 == 0o644
+
+
+def test_quota_access_survives_managed_production_path_reset(tmp_path,monkeypatch):
+    from freo_ops import hosting_admin as admin
+    actual=Path
+    monkeypatch.setattr(admin,'Path',lambda name: tmp_path/str(name).lstrip('/') if str(name).startswith('/etc/') else actual(name))
+    monkeypatch.setattr(admin,'run',lambda *args,**kwargs:'')
+    root=tmp_path/'etc/systemd/system';root.mkdir(parents=True)
+    directory=root/'freo-production.service.d';directory.mkdir()
+    (directory/'storage.conf').write_text('[Service]\nReadWritePaths=\nReadWritePaths=/customer/uploads\n')
+    assert 'freo-production.service' in admin.install_storage_access()
+    paths=[]
+    for path in sorted(directory.glob('*.conf')):
+        for line in path.read_text().splitlines():
+            if line.startswith('ReadWritePaths='):
+                value=line.split('=',1)[1]
+                if not value:paths=[]
+                else:paths.extend(value.split())
+    assert '/customer/uploads' in paths and str(storage.ROOT) in paths
+    assert not admin.install_storage_access(), 'repeated activation must not restart unchanged workers'
+
+
+def test_verification_rejects_readonly_running_worker(monkeypatch):
+    from freo_ops import hosting_admin as admin
+    from types import SimpleNamespace
+    monkeypatch.setattr(admin,'run',lambda *args,**kwargs:'123')
+    monkeypatch.setattr(admin.subprocess,'run',lambda *args,**kwargs:SimpleNamespace(returncode=1))
+    with pytest.raises(h.HostingError) as error:admin.verify_storage_access('freo-production.service','freo-ingest')
+    assert error.value.code=='verification_failed'
+    assert error.value.details['unit']=='freo-production.service'

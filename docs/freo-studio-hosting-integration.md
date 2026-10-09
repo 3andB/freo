@@ -134,6 +134,11 @@ state where readable. Do not infer success from process launch or a timeout.
 `remaining_bytes`, `percent`, and `over_quota`. `verify` checks storage accounting,
 application readiness, broadcast service state, expected mounts, and the native listener limit. Its
 `draining` flag identifies preserved sessions above a reduced allowance.
+After attachment of older code, the standalone dispatcher still answers `status`
+with `compatible_release: false` and the authoritative policy/inhibition. Other
+commands return `error: "incompatible_release"`, exit 6, until compatible code is
+restored. An error response may contain `state: {"restricted": true}` when policy
+cannot be read safely.
 
 ## Enforcement and transitions
 
