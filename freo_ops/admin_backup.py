@@ -241,6 +241,25 @@ def administrative_authority(operation):
     finally:restore()
 
 
+def adopt_restored_release(metadata,release):
+    """Use Phase A's canonical deployment paths for a restored direct installation."""
+    if metadata['source']!='/opt/freo':return
+    from .upgrade import rewrite_unit,sync_directory
+    environment=Path(metadata['env_file'])
+    recovered_env=release/environment.relative_to('/opt/freo') if environment.is_relative_to('/opt/freo') else environment
+    destination=Path('/etc/freo/freo.env')
+    if recovered_env!=destination:
+        shutil.copy2(recovered_env,destination)
+        destination.chmod(0o600)
+    for target in Path('/etc/systemd/system').glob('freo*.service'):
+        if not target.is_file() or target.is_symlink():continue
+        body=target.read_text()
+        rewritten=rewrite_unit(body)
+        if body!=rewritten:
+            target.write_text(rewritten);target.chmod(0o644)
+    sync_directory(destination.parent)
+
+
 def restore_live(operation):
     metadata,bundle=record(operation['restore_id'])
     work=a.private_directory(a.STATE/'restores'/operation['operation_id'])
@@ -329,6 +348,7 @@ def restore_live(operation):
             if dbname in names:raise h.HostingError('recovery_required','Database attachment is ambiguous.')
             pg('ALTER DATABASE '+quote(restored['database'])+' RENAME TO '+quote(dbname)+';')
         a.checkpoint(operation,preserved_database=preserved)
+        adopt_restored_release(metadata,release)
         switch_pointer(Path('/opt/freo'),release)
     # Recreate grants and root-derived inventories without changing hosting status.
     if h.read()['hosted']:

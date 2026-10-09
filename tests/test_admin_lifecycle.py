@@ -169,3 +169,20 @@ def test_database_attachment_preflight_closes_its_own_session(monkeypatch):
     monkeypatch.setattr(b.recovery,'connect',lambda url:connection)
     b.ensure_no_clients('private fixture')
     assert connection.closed
+
+
+def test_direct_installation_restores_to_canonical_deployment(state,monkeypatch):
+    etc=state/'etc';etc.mkdir()
+    units=state/'systemd';units.mkdir()
+    release=state/'release';release.mkdir()
+    (release/'.env').write_text('DATABASE_URL=private-fixture')
+    unit=units/'freo.service'
+    unit.write_text('[Service]\nWorkingDirectory=/opt/freo\nEnvironmentFile=/opt/freo/.env\nExecStart=/opt/freo/venv/bin/gunicorn wsgi:app\n')
+    original=Path
+    mapped={'/etc/freo/freo.env':etc/'freo.env','/etc/systemd/system':units}
+    monkeypatch.setattr(b,'Path',lambda value:mapped.get(str(value),original(value)))
+    b.adopt_restored_release(dict(source='/opt/freo',env_file='/opt/freo/.env'),release)
+    assert (etc/'freo.env').read_text()=='DATABASE_URL=private-fixture'
+    assert 'WorkingDirectory=/opt/freo/current' in unit.read_text()
+    assert 'EnvironmentFile=/etc/freo/freo.env' in unit.read_text()
+    assert 'ExecStart=/opt/freo/current/venv/bin/gunicorn' in unit.read_text()
