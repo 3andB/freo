@@ -240,3 +240,15 @@ def test_standalone_guard_is_readable_after_private_umask_install(tmp_path,monke
     for name in ('guard.py','freo_ops/hosting.py','freo_ops/__init__.py'):
         assert (guard/name).stat().st_mode & 0o004
     assert json.loads(h.CONFIG.read_text())=={'hosted':False}
+
+
+@pytest.mark.skipif(os.geteuid()!=0, reason="Root-owned filesystem acceptance requires root")
+def test_authority_markers_remain_visible_under_private_root_umask(tmp_path,monkeypatch):
+    state=tmp_path/'authority'
+    monkeypatch.setattr(h,'STATE',state)
+    previous=os.umask(0o077)
+    try:
+        with h.administrative_lock():h.atomic(state/'inhibit',True)
+    finally:os.umask(previous)
+    assert state.stat().st_mode & 0o777 == 0o755
+    assert (state/'inhibit').stat().st_mode & 0o777 == 0o644

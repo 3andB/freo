@@ -19,7 +19,9 @@ assert '/admin/login' not in response.url
 page=session.get(base+'/admin/stations/acceptance/media/upload',timeout=10)
 assert page.status_code==200 and '/media/upload' in page.url
 token=re.search(r'data-csrf="([^"]+)"',page.text).group(1)
-audio=Path('/root/freo-upgrade-tests/native-tone-1.mp3').read_bytes()
+audio=subprocess.run(['ffmpeg','-v','error','-f','lavfi','-i','sine=frequency=997:duration=7',
+    '-metadata','title=Hosting upload '+uuid.uuid4().hex,'-c:a','libmp3lame','-b:a','128k',
+    '-f','mp3','pipe:1'],capture_output=True,check=True).stdout
 path='/admin/stations/acceptance/media/upload'
 def request():
     return session.prepare_request(requests.Request('POST',base+path,data={'csrf':token},

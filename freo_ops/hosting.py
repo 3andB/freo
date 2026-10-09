@@ -131,6 +131,11 @@ def administrative_lock():
     if os.geteuid() != 0:
         raise HostingError('unauthorized', 'Root authorization is required.')
     STATE.mkdir(mode=0o755, parents=True, exist_ok=True)
+    info = STATE.lstat()
+    if not stat.S_ISDIR(info.st_mode) or info.st_uid != 0 or info.st_mode & 0o022:
+        raise HostingError('invalid_configuration', 'Hosting authority directory permissions are unsafe.')
+    # Services must observe the durable markers even under a private root umask.
+    STATE.chmod(0o755)
     fd = os.open(STATE / 'admin.lock', os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600)
     try:
         fcntl.flock(fd, fcntl.LOCK_EX)
