@@ -334,3 +334,11 @@ def test_recovery_before_updater_created_journal(state,monkeypatch):
     (a.UPDATES/'maintenance').touch()
     with pytest.raises(h.HostingError) as error:b.resume(operation)
     assert error.value.code=='recovery_required'
+
+
+def test_service_restart_allows_systemd_stop_and_start_deadlines(state,monkeypatch):
+    calls=[]
+    monkeypatch.setattr(a,'run',lambda args,**kwargs:calls.append((args,kwargs)))
+    monkeypatch.setattr(a,'verified_health',lambda:dict(health='healthy'))
+    a.service_action(SimpleNamespace(action='restart',service='icecast'))
+    assert calls[0][1]['timeout'] > 2*90

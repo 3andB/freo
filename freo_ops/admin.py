@@ -30,6 +30,8 @@ GROUPS = {
     'scheduled-workers': ('freo-provision.timer', 'freo-public-schedules.timer', 'freo-stats-inventory.timer', 'freo-geoip.timer'),
 }
 TERMINAL = ('complete', 'failed_before_changes')
+# Allow systemd's normal 90-second stop/start deadlines to finish first.
+SERVICE_TIMEOUT = 240
 
 
 def run(args, *, timeout=90, **kwargs):
@@ -370,7 +372,7 @@ def service_action(args):
                 if subprocess.run(['systemctl','is-enabled','--quiet','freo-mic.service'],capture_output=True).returncode==0:
                     chosen.append('freo-mic.service')
         checkpoint(operation, phase='services', units=chosen)
-        if chosen: run(['systemctl','restart' if args.action=='restart' else 'start',*chosen])
+        if chosen: run(['systemctl','restart' if args.action=='restart' else 'start',*chosen],timeout=SERVICE_TIMEOUT)
         verification = verified_health()
         checkpoint(operation, phase='complete')
         return dict(operation_id=operation['operation_id'], verification=verification)

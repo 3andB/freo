@@ -83,9 +83,9 @@ def freeze(operation):
     # Timers first so a stop cannot race a new worker start.
     active=a.units()
     timers=[unit for unit in active if unit.endswith('.timer')]
-    if timers:a.run(['systemctl','stop',*timers])
+    if timers:a.run(['systemctl','stop',*timers],timeout=a.SERVICE_TIMEOUT)
     services=[unit for unit in a.units() if unit!='freo-updater.service' and unit.endswith('.service')]
-    if services:a.run(['systemctl','stop',*services])
+    if services:a.run(['systemctl','stop',*services],timeout=a.SERVICE_TIMEOUT)
     if any(row['active'] not in ('inactive','failed') for row in a.units().values()):
         raise h.HostingError('verification_failed','Writers did not stop.')
     a.checkpoint(operation,phase='frozen')
@@ -117,7 +117,7 @@ def thaw(operation, *, reconcile=False):
         selected=list(dict.fromkeys(selected))
     a.checkpoint(operation,phase='starting')
     a.run(['systemctl','daemon-reload'])
-    if selected:a.run(['systemctl','start',*selected])
+    if selected:a.run(['systemctl','start',*selected],timeout=a.SERVICE_TIMEOUT)
     verification=a.verified_health()
     a.checkpoint(operation,phase='complete')
     return verification

@@ -7,7 +7,7 @@ or recovery processes. They refuse other hostnames. Do not remove that guard.
 - `check.py LABEL`: real status/resources, invalid arguments/non-root rejection,
   failed-worker detection and recovery, application/Icecast restart, encrypted
   backup/verify/list, and live restore of an active backup into a suspended host.
-- `interruption.py`: private signed candidate (`FREO_TEST_VERSION`, default `1.0.0-dev.9`), real backup/isolated
+- `interruption.py`: private signed candidate (`FREO_TEST_VERSION`, default `1.0.0-dev.10`), real backup/isolated
   restore, then SIGKILL at the migration boundary. Generic recovery must refuse
   implicit database rollback; explicitly authorized CLI restore must succeed and
   retain suspension. Set `FREO_TEST_SELFHOST=1` for the clean 0.3.2 self-hosted
