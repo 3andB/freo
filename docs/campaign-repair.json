@@ -1,0 +1,12 @@
+{
+  "base_version": "1.0.0-rc.4",
+  "base_commit": "913beb4020f50450da9094720d23a70d29c2b053",
+  "issue": "Future event scan causes hundreds of database round trips per tick",
+  "validation": {
+    "original_200_occurrences_sql_statements": 613,
+    "new_query_budget": "fewer than 35 for 10 and 200 future occurrences",
+    "event_regressions": 37,
+    "postgres_concurrency_and_events": 5
+  },
+  "deployment": "Not deployed; controlled-live campaign forbids unapproved broadcast outages"
+}

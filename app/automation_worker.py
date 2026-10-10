@@ -788,7 +788,18 @@ def process_timed_events(station, reader, now=None):
     if active_execution(station.id) or active_event:
         future=[row for row in rows if row.state in ('PENDING','READY')]
         return min(((row.scheduled_for_utc.replace(tzinfo=row.scheduled_for_utc.tzinfo or timezone.utc)-now).total_seconds() for row in future),default=None)
+    future_station_locked = False
     for candidate in rows:
+        # Unprepared future occurrences cannot play or expire on this tick.
+        # Retain the station-before-occurrence lock order for concurrent editors,
+        # without locking/reloading the entire generated recurrence horizon.
+        candidate_at = candidate.scheduled_for_utc.replace(
+            tzinfo=candidate.scheduled_for_utc.tzinfo or timezone.utc)
+        if candidate.state == 'PENDING' and candidate_at > now + timedelta(seconds=60) and not candidate.boundary_reserved:
+            if not future_station_locked:
+                db.session.query(Station.id).filter_by(id=station.id).with_for_update().first()
+                future_station_locked = True
+            continue
         # Event edits lock the station before its occurrences. Keep that order
         # through the scan and the selector that follows, including future rows.
         db.session.query(Station.id).filter_by(id=station.id).with_for_update().first()
