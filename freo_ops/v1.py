@@ -72,7 +72,10 @@ def prepare_icecast(release, state):
                       '--output', str(archive), 'https://downloads.xiph.org/releases/icecast/icecast-2.5.0.tar.gz'])
     if recovery.digest(archive) != 'd9aa07c7429aec19d950ff6fd425c371f77158cd34ff220fc191b2c186c67c7a':
         raise recovery.RecoveryError('Unexpected Icecast source checksum')
+    # Share the fresh installer's scoped, fingerprint-checked repository policy.
     # Called only after a verified recovery point; package output stays private.
+    recovery.run(['bash', str(release / 'scripts/configure-icecast-repository.sh')])
+    recovery.run(['apt-get', 'update'])
     recovery.run(['apt-get', 'install', '--no-remove', '-y', 'build-essential', 'pkg-config', 'patch',
                   'libigloo-dev', 'libxml2-dev', 'libxslt1-dev', 'libvorbis-dev', 'libogg-dev',
                   'libcurl4-openssl-dev', 'librhash-dev', 'libssl-dev', 'libtheora-dev', 'libspeex-dev'],

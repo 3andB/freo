@@ -93,3 +93,33 @@ def test_legacy_readoption_accepts_only_exact_administrative_guards(tmp_path):
     guard.unlink()
     guard.symlink_to(authority)
     with pytest.raises(recovery.RecoveryError):v1.check_icecast_overrides(tmp_path)
+
+
+def test_icecast_build_applies_verified_repository_before_resolving_headers(tmp_path, monkeypatch):
+    release, state = tmp_path / 'release', tmp_path / 'state'
+    state.mkdir()
+    (state / 'icecast-2.5.0.tar.gz').write_bytes(b'pinned-source')
+    expected = 'd9aa07c7429aec19d950ff6fd425c371f77158cd34ff220fc191b2c186c67c7a'
+    actual_path = Path
+    monkeypatch.setattr(v1, 'Path', lambda p: tmp_path / str(p).lstrip('/') if str(p).startswith('/opt/') else actual_path(p))
+    monkeypatch.setattr(recovery, 'digest', lambda p: expected if p.name == 'icecast-2.5.0.tar.gz' else 'a' * 64)
+    calls = []
+    def run(command, **kwargs):
+        calls.append(command)
+        if command[:2] == ['bash', str(release / 'scripts/build-icecast-2.5.sh')]:
+            binary = Path(command[-1]) / 'src/icecast'
+            binary.parent.mkdir(parents=True)
+            binary.write_bytes(b'built-icecast')
+    monkeypatch.setattr(recovery, 'run', run)
+    result = v1.prepare_icecast(release, state)
+    assert result.read_bytes() == b'built-icecast'
+    assert calls[0] == ['bash', str(release / 'scripts/configure-icecast-repository.sh')]
+    assert calls[1] == ['apt-get', 'update']
+    assert calls[2][:2] == ['apt-get', 'install'] and 'libigloo-dev' in calls[2]
+
+    # An untrusted native archive must cause no package or repository changes.
+    monkeypatch.setattr(recovery, 'digest', lambda p: 'b' * 64)
+    calls.clear()
+    with pytest.raises(recovery.RecoveryError, match='source checksum'):
+        v1.prepare_icecast(release, state)
+    assert calls == []

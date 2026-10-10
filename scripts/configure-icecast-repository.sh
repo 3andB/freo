@@ -44,7 +44,7 @@ Package: icecast2
 Pin: version 2.5.*
 Pin-Priority: 700
 
-Package: libigloo0
+Package: libigloo0 libigloo-dev
 Pin: origin download.opensuse.org
 Pin-Priority: 700
 

@@ -74,7 +74,9 @@ directory alone does not publish them through the API.
 On the V1 host, create the first key as root with:
 
 ```sh
-python3 /opt/freo/scripts/studio-api-key.py create
+freo_source=/opt/freo
+[ ! -L /opt/freo/current ] || freo_source=/opt/freo/current
+python3 "$freo_source/scripts/studio-api-key.py" create
 ```
 
 The command emits the key only on that invocation. `list` shows IDs and status

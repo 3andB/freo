@@ -51,3 +51,17 @@ def test_https_preflight_saves_correct_scheme_and_rejects_incomplete_options(tmp
     assert result.returncode == code, result.stderr
     assert expected in result.stdout + result.stderr
     assert not root.exists() and not stable.exists() and not media.exists()
+
+
+def test_xiph_policy_selects_matching_headers_and_blocks_unrelated_packages(tmp_path):
+    # Check the repository policy that governs the required native build.
+    source = Path('scripts/configure-icecast-repository.sh').read_text()
+    policy = source.split("cat > /etc/apt/preferences.d/freo-icecast <<'EOF'\n", 1)[1].split('\nEOF', 1)[0]
+    packages = {}
+    for record in policy.split('\n\n'):
+        fields = dict(line.split(': ', 1) for line in record.splitlines())
+        for package in fields['Package'].split():
+            packages[package] = (fields['Pin'], int(fields['Pin-Priority']))
+    assert packages['libigloo-dev'] == packages['libigloo0'] == ('origin download.opensuse.org', 700)
+    assert packages['icecast2'] == ('version 2.5.*', 700)
+    assert packages['*'] == ('origin download.opensuse.org', -1)
