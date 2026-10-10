@@ -13,13 +13,13 @@ trusted release handoff. Confirm the independently pinned publisher fingerprint
 From a root-owned staging directory, verify the outer kit before extraction:
 
 ```sh
-gpgv --keyring ./publisher.gpg freo-v1.0.0-rc.2-install-kit.tar.asc freo-v1.0.0-rc.2-install-kit.tar
+gpgv --keyring "$PWD/publisher.gpg" freo-v1.0.0-rc.2-install-kit.tar.asc freo-v1.0.0-rc.2-install-kit.tar
 sha256sum --check freo-v1.0.0-rc.2-install-kit.sha256
 mkdir rc2-kit
 tar -xf freo-v1.0.0-rc.2-install-kit.tar -C rc2-kit
 cd rc2-kit
 sha256sum --check SHA256SUMS
-gpgv --keyring ./publisher.gpg freo-v1.0.0-rc.2.tar.gz.asc freo-v1.0.0-rc.2.tar.gz
+gpgv --keyring "$PWD/publisher.gpg" freo-v1.0.0-rc.2.tar.gz.asc freo-v1.0.0-rc.2.tar.gz
 mkdir source
 tar -xzf freo-v1.0.0-rc.2.tar.gz -C source
 ```

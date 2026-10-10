@@ -89,7 +89,7 @@ jobs:
             tar -cf "$freo_kit" "$FREO_ARTIFACT" "${FREO_ARTIFACT}.asc" publisher.gpg SHA256SUMS INSTALL.md
             printf '%s\n' "$FREO_RELEASE_SIGNING_PASSPHRASE" | gpg --homedir "$freo_gpg_home" --batch --pinentry-mode loopback --passphrase-fd 0 --local-user "$FREO_RELEASE_SIGNING_FINGERPRINT" --armor --detach-sign --output "${freo_kit}.asc" "$freo_kit"
             sha256sum "$freo_kit" > "freo-v${freo_version}-install-kit.sha256"
-            gpgv --keyring publisher.gpg "${freo_kit}.asc" "$freo_kit"
+            gpgv --keyring "$PWD/publisher.gpg" "${freo_kit}.asc" "$freo_kit"
             sha256sum --check "freo-v${freo_version}-install-kit.sha256"
           fi
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
