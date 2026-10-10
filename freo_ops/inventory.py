@@ -8,13 +8,13 @@ DIRECTORIES = ('app', 'freo_ops', 'migrations', 'deploy', 'scripts', 'docs')
 FILES = ('wsgi.py', 'requirements.txt', 'requirements-live-mic.txt', '.env.example',
          'README.md', 'SECURITY.md', 'CHANGELOG.md', 'LICENSE', 'V1_UPGRADE_NOTES.md')
 SCRIPTS = {
-    'accept-install.py', 'admin-maintenance.py', 'hosting-guard.py', 'hosting-recording.py', 'hosting-admin.py', 'hosting-admin-launcher.py', 'install-hosting.py',
+    'accept-install.py', 'admin-maintenance.py', 'hosting-guard.py', 'hosting-recording.py', 'hosting-admin.py', 'hosting-admin-launcher.py', 'install-hosting.py', 'studio-api-key.py',
     'build-icecast-2.5.sh', 'recording-storage.py', 'install.sh', 'provision.sh', 'install-python.sh', 'install-statistics.sh',
     'configure-icecast-repository.sh', 'media-web-access.sh', 'render-radio-config.py',
     'validate-admin-login.py', 'validate-install.sh', 'validate-station-instance.py',
 }
 OPERATOR_DOCS = {
-    'v1-rc1-installation.md', 'freo-studio-hosting-integration.md',
+    'v1-rc1-installation.md', 'freo-studio-hosting-integration.md', 'studio-release-api.md',
     'installation.md', '0.3.2-rc.2-installation.md', 'recovery-and-upgrades.md', 'security.md', 'license-agreement.md',
     'audio-import-and-processing.md', 'appearance.md', 'automation.md', 'channel-management.md',
     'clocks.md', 'copyright-and-dmca.md', 'custom-domains.md', 'dj-booth-cue.md',

@@ -67,6 +67,8 @@ def create_app(config_name=None):
     migrate.init_app(app, db)
     from .routes.public_api import init_api
     init_api(app)
+    from .routes.studio_releases import init_studio_api
+    init_studio_api(app)
     from .routes.api_credentials import api_credentials
     app.register_blueprint(api_credentials)
     from .services.admin_setup import renew_login_session
