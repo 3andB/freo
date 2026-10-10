@@ -14,7 +14,7 @@ SCRIPTS = {
     'validate-admin-login.py', 'validate-install.sh', 'validate-station-instance.py',
 }
 OPERATOR_DOCS = {
-    'v1-rc1-installation.md', 'v1-rc2-installation.md', 'freo-studio-hosting-integration.md', 'studio-release-api.md',
+    'v1-rc1-installation.md', 'v1-rc2-installation.md', 'v1-rc3-installation.md', 'freo-studio-hosting-integration.md', 'studio-release-api.md',
     'installation.md', '0.3.2-rc.2-installation.md', 'recovery-and-upgrades.md', 'security.md', 'license-agreement.md',
     'audio-import-and-processing.md', 'appearance.md', 'automation.md', 'channel-management.md',
     'clocks.md', 'copyright-and-dmca.md', 'custom-domains.md', 'dj-booth-cue.md',

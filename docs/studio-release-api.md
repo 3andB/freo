@@ -10,8 +10,9 @@ The base URL on an activated HTTPS Freo World V1 host is
 signed `1.0.0-rc.1` kit do not contain this later addition. `1.0.0-rc.2` is the
 first candidate intended to include it. The first V1 installation still
 needs the existing privileged SSH/bootstrap path; an API running inside V1
-cannot bootstrap its own host. Do not point Studio at the current production
-0.3.2 URL and assume these routes are live.
+cannot bootstrap its own host. Confirm the target Freo World host is running RC2 or later before assuming
+these routes are live. Deployment availability is recorded separately from
+the signed package version.
 
 ## Authentication and responses
 

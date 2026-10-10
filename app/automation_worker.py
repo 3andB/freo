@@ -1053,6 +1053,8 @@ def tick(reader, target_depth=2):
     housekeeping()
     states = AutomationState.query.all()
     for state in states:
+        from app.services.live_mic import sync_pending_microphones
+        sync_pending_microphones(states, exclude=state.station_id)
         slug = state.station.slug
         from app.services.live_sessions import sync as sync_show
         try:
@@ -1214,7 +1216,8 @@ def tick(reader, target_depth=2):
 
 def worker_delay(reader):
     """Use the same bounded boundary cadence in production and system tests."""
-    if time.monotonic() < reader.calendar_poll_until:
+    from app.services.live_mic import pending_microphones
+    if pending_microphones() or time.monotonic() < reader.calendar_poll_until:
         return .25
     pending_leader = db.session.query(SelectionDecision.id).join(Station).filter(
         SelectionDecision.selection_method == 'playlist_leader',

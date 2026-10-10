@@ -32,14 +32,40 @@ def gateway(slug, action, *, timeout=2, **data):
         raise ValueError('Microphone audio service is unavailable. Check the connection before going live.') from error
 
 
+def _pending():
+    from flask import current_app, has_app_context
+    return current_app.extensions.setdefault('pending_microphones', set()) if has_app_context() else set()
+
+
+def pending_microphones():
+    return bool(_pending())
+
+
+def sync_pending_microphones(states, *, exclude):
+    """Renew prepared sessions between stations, using the same worker authority."""
+    pending = _pending()
+    for state in states:
+        station = state.station
+        if station.id not in pending or station.id == exclude:
+            continue
+        if not station.enabled or station.desired_state != 'running':
+            pending.discard(station.id)
+            continue
+        sync_live_mic(station)
+
+
 def sync_live_mic(station):
     """Called only by the automation worker. Returns whether mic owns program."""
+    pending = _pending()
+    identifier = getattr(station, 'id', None)
     if not enabled():
+        pending.discard(identifier)
         return False
     from app.services.playout_queue import _command
     try:
         parts = _command(station.slug, 'freo_mic.state').split('|')
         if len(parts) != 3:
+            pending.discard(identifier)
             return False
         token, phase, ready = parts
         engine = dict(token=token, phase=phase, ready=ready == 'true')
@@ -68,9 +94,12 @@ def sync_live_mic(station):
                 else:
                     db.session.commit()
             if not session or session.get('token') == token:
+                pending.discard(identifier)
                 return False
         if not session:
+            pending.discard(identifier)
             return phase in ('FADING', 'LIVE', 'RETURNING')  # Engine lease expires independently.
+        pending.add(identifier)
         new_token = session['token']
         from flask import has_app_context
         if has_app_context() and session.get('owner') is not None:
@@ -78,6 +107,7 @@ def sync_live_mic(station):
             from app.extensions import db
             from app.services.live_sessions import authorized_intent
             if not authorized_intent(station, db.session.get(AdminUser, session['owner'])):
+                pending.discard(identifier)
                 try:
                     gateway(station.slug, 'disconnect', owner=session['owner'], token=session['token'])
                 except ValueError:
@@ -100,4 +130,5 @@ def sync_live_mic(station):
             return True
         return phase in ('FADING', 'LIVE', 'RETURNING')
     except (OSError, RuntimeError, ValueError):
+        pending.discard(identifier)
         return False

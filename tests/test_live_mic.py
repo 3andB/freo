@@ -469,3 +469,49 @@ def test_failed_microphone_is_reconciled_once_across_worker_sessions(app, monkey
         assert sync_live_mic(station) is False
         assert station.automation.operator_mode == 'AUTO'
         assert AuditEvent.query.filter_by(action='live_mic_failure_handled').count() == 2
+
+
+def test_prepared_microphones_renew_between_other_stations(app, monkeypatch):
+    from app.services import live_mic
+    calls = []
+    monkeypatch.setattr(live_mic, 'sync_live_mic', lambda station: calls.append(station.id))
+    states = [SimpleNamespace(station=SimpleNamespace(id=i, enabled=True, desired_state='running')) for i in range(1, 5)]
+    with app.app_context():
+        pending = live_mic._pending()
+        pending.update((1, 2, 3))
+        states[2].station.desired_state = 'stopped'
+        live_mic.sync_pending_microphones(states, exclude=2)
+        assert calls == [1]  # Current and idle stations get no additional polling.
+        assert pending == {1, 2}
+        states[0].station.enabled = False
+        live_mic.sync_pending_microphones(states, exclude=2)
+        assert pending == {2}
+
+
+def test_prepared_microphone_gets_fast_worker_cadence(app):
+    from app.automation_worker import EventReader, worker_delay
+    from app.services import live_mic
+    with app.app_context():
+        live_mic._pending().add(1)
+        assert worker_delay(EventReader()) == .25
+
+
+def test_worker_tracks_prepared_session_and_clears_departure(app, monkeypatch):
+    from app.services import live_mic, playout_queue
+    monkeypatch.setattr(live_mic, 'enabled', lambda: True)
+    token = 'a' * 32
+    session = {'token': token, 'healthy': True, 'desired': 'READY', 'fade': 3}
+    calls = []
+    def command(slug, value):
+        calls.append(value)
+        return '|OFF AIR|false' if value == 'freo_mic.state' else 'OK'
+    monkeypatch.setattr(playout_queue, '_command', command)
+    monkeypatch.setattr(live_mic, 'gateway', lambda *args, **kwargs: session)
+    with app.app_context():
+        station = SimpleNamespace(id=1, slug='test-station')
+        assert live_mic.sync_live_mic(station) is False
+        assert live_mic._pending() == {1}
+        assert calls[-1] == 'freo_mic.prepare ' + token
+        session.clear()
+        assert live_mic.sync_live_mic(station) is False
+        assert not live_mic.pending_microphones()
