@@ -1,13 +1,20 @@
 """Resolve recurring station-local programming against absolute UTC instants."""
 from dataclasses import dataclass
+from functools import lru_cache
 from datetime import datetime, time, timedelta, timezone
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError, available_timezones
 
 from app.models import ScheduleAssignment
 
 
+@lru_cache(maxsize=1)
+def _canonical_timezones():
+    # ZoneInfo also caches per process; a service restart refreshes installed tzdata.
+    return frozenset(available_timezones())
+
+
 def validate_timezone(name):
-    if not isinstance(name, str) or name not in available_timezones() or '/' not in name and name != 'UTC':
+    if not isinstance(name, str) or name not in _canonical_timezones() or '/' not in name and name != 'UTC':
         raise ValueError('Use a canonical IANA timezone, such as America/Denver or UTC')
     try:
         ZoneInfo(name)

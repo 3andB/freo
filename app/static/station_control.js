@@ -3,12 +3,14 @@
   const root = document.getElementById('station-control');
   if (!root) return;
   const page = window.FreoPage;
+  const alive = () => !page.signal.aborted && root.isConnected;
   const $ = id => document.getElementById(id);
   const title = mode => mode.charAt(0) + mode.slice(1).toLowerCase();
   let state = JSON.parse($('control-initial').value), busy = false, broadcastBusy = false, refreshing = false, refreshFailed = false;
   const pending = () => state.transition && ['PENDING', 'PREPARING', 'FADING'].includes(state.transition.state);
 
   async function api(action, data) {
+    if (!alive()) throw new DOMException('Page closed.', 'AbortError');
     const options = data === undefined ? {} : {method: 'POST', body: new URLSearchParams({csrf: root.dataset.csrf, payload: JSON.stringify(data)})};
     const controller = new AbortController(), abort = () => controller.abort();
     page.signal.addEventListener('abort', abort, {once: true});
@@ -17,6 +19,7 @@
     try {
       const response = await page.fetch(root.dataset.api + action, {...options, signal: controller.signal});
       const result = await response.json();
+      if (!alive()) throw new DOMException('Page closed.', 'AbortError');
       if (!response.ok) throw Error(result.error || 'Unable to reach station control.');
       return result;
     } catch (error) {
@@ -27,10 +30,12 @@
     }
   }
   function message(text, error = false) {
+    if (!alive()) return;
     $('control-message').textContent = text;
     $('control-message').classList.toggle('error', error);
   }
   function render() {
+    if (!alive()) return;
     const broadcast = state.broadcast;
     const toggle = $('master-broadcast-toggle');
     if (toggle) {
@@ -79,7 +84,7 @@
   $('master-broadcast-toggle')?.addEventListener('click', () => setBroadcast(!state.broadcast.enabled));
   $('broadcast-retry').addEventListener('click', () => setBroadcast(state.broadcast.enabled));
   async function refresh() {
-    if (busy || broadcastBusy || refreshing || document.hidden) return;
+    if (!alive() || busy || broadcastBusy || refreshing || document.hidden) return;
     refreshing = true;
     try {
       const latest = await api('state');
