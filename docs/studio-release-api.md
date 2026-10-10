@@ -7,8 +7,8 @@ environment, database, backups, or configuration. It is not a management API.
 
 The base URL on an activated HTTPS Freo World V1 host is
 `https://<freo-world-host>/api/studio`. Freo World 0.3.2 and the previously
-signed `1.0.0-rc.1` kit do not contain this later addition. A future signed
-candidate must include it before activation. The first V1 installation still
+signed `1.0.0-rc.1` kit do not contain this later addition. `1.0.0-rc.2` is the
+first candidate intended to include it. The first V1 installation still
 needs the existing privileged SSH/bootstrap path; an API running inside V1
 cannot bootstrap its own host. Do not point Studio at the current production
 0.3.2 URL and assume these routes are live.

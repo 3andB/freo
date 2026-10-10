@@ -48,7 +48,7 @@ elif name == 'runuser':
         command = args[args.index('--') + 1:]
         os.execvp(command[0], command)
 elif name in ('python', 'python3') and args[0] == '-c':
-    print('1.0.0-rc.1')
+    print('1.0.0-rc.2')
 elif name in ('python', 'python3') and args[0] == '-':
     os.execv(os.environ['INSTALL_TEST_PYTHON'], ['python', *args])
 elif name == 'bash' and Path(args[0]).name == 'install-python.sh':
@@ -110,7 +110,7 @@ def test_fresh_source_install_contains_v1_and_optional_microphone(installer, mic
         assert ['python', '-B', '-m', 'freo_ops.dependencies', '--live-mic'] in calls
     assert calls.index(['flask', '--app', 'wsgi:app', 'db', 'upgrade']) < calls.index(['systemctl', 'enable', '--now', 'freo-production.service'])
     assert ['python3', str(installed / 'scripts/install-hosting.py')] in calls
-    assert (root / 'etc/freo/release').read_text().strip() == '1.0.0-rc.1'
+    assert (root / 'etc/freo/release').read_text().strip() == '1.0.0-rc.2'
     assert (installed / 'scripts/recording-storage.py').is_file()
     assert (installed / 'V1_UPGRADE_NOTES.md').read_bytes() == (ROOT / 'V1_UPGRADE_NOTES.md').read_bytes()
     assert (installed / 'docs/public-api-v1.md').read_bytes() == (ROOT / 'docs/public-api-v1.md').read_bytes()
