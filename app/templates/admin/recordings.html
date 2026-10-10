@@ -1,0 +1,39 @@
+{% extends 'admin/base.html' %}
+{% block head %}{{ super() }}<link rel="stylesheet" href="{{ url_for('static',filename='recordings.css') }}">{% endblock %}
+{% block admin_content %}
+<h1>Show recordings</h1>
+<p>Local MP3 recordings of the station program output. Partial recordings ended unexpectedly. Names also apply to downloads.</p>
+<form method="get" class="recording-filters">
+  <label>Search name or DJ <input name="q" value="{{ search }}" maxlength="160" type="search"></label>
+  <label>Status <select name="status"><option value="">All statuses</option>{% for value in ['pending','recording','finalizing','complete','partial','failed'] %}<option value="{{ value }}" {{ 'selected' if status == value }}>{{ value|capitalize }}</option>{% endfor %}</select></label>
+  <label>Sort <select name="sort">{% for value, label in [('newest','Newest first'),('name','Name'),('size','Largest first'),('duration','Longest first')] %}<option value="{{ value }}" {{ 'selected' if sort == value }}>{{ label }}</option>{% endfor %}</select></label>
+  <div class="recording-filter-actions"><button type="submit">Apply</button> <a href="{{ url_for('dj.recordings',slug=selected.slug) }}">Reset</a></div>
+</form>
+<p>{{ recordings.total }} recording{{ '' if recordings.total == 1 else 's' }}</p>
+{% for recording in recordings.items %}
+<article class="recording-card" data-recording="{{ recording.id }}">
+  <h2>{{ recording.filename }}</h2>
+  <p>{{ recording.session.dj_name }} · {{ recording.status }} · {{ format_station_time(recording.started_at, 'UTC') if recording.started_at else 'Not started' }} → {{ format_station_time(recording.ended_at, 'UTC') if recording.ended_at else 'Not confirmed' }} UTC</p>
+  <p>{% if recording.duration_ms %}{{ (recording.duration_ms / 1000)|round|int }} seconds{% endif %}{% if recording.file_size_bytes is not none %} · {{ recording.file_size_bytes|filesizeformat }}{% endif %}</p>
+  {% if recording.error %}<p role="status">{{ recording.error }}</p>{% endif %}
+  {% if recording.deletion_error %}<p role="alert">{{ recording.deletion_error }}</p>{% endif %}
+  {% if recording.deletion_requested_at %}<p role="status">Deletion queued. Downloads are disabled.</p>
+  {% elif recording.status in ['complete','partial'] and recording.duration_ms %}
+  <audio controls preload="none" src="{{ url_for('dj.recording_file',slug=selected.slug,identifier=recording.id) }}"></audio>
+  <a href="{{ url_for('dj.recording_file',slug=selected.slug,identifier=recording.id,download=1) }}">Download MP3</a>
+  {% endif %}
+  {% if editable(recording) %}
+  <form method="post" action="{{ url_for('dj.recording_action',slug=selected.slug,identifier=recording.id,action='rename') }}">
+    <input type="hidden" name="csrf" value="{{ csrf_token() }}"><input type="hidden" name="revision" value="{{ recording.revision }}">
+    <label>MP3 name <input name="name" maxlength="160" required value="{{ recording.filename }}"></label><button type="submit">Rename</button>
+  </form>
+  <form method="post" action="{{ url_for('dj.recording_action',slug=selected.slug,identifier=recording.id,action='delete') }}">
+    <input type="hidden" name="csrf" value="{{ csrf_token() }}"><input type="hidden" name="revision" value="{{ recording.revision }}">
+    <label><input type="checkbox" name="confirm" value="yes" required> Permanently delete this MP3</label><button type="submit">Delete</button>
+  </form>
+  {% endif %}
+</article>
+{% else %}<p>No recordings found.</p>{% endfor %}
+{% if recordings.has_prev %}<a href="{{ url_for('dj.recordings',slug=selected.slug,page=recordings.prev_num,q=search,status=status,sort=sort) }}">Previous</a>{% endif %}
+{% if recordings.has_next %}<a href="{{ url_for('dj.recordings',slug=selected.slug,page=recordings.next_num,q=search,status=status,sort=sort) }}">Next</a>{% endif %}
+{% endblock %}

@@ -1,0 +1,12 @@
+{
+  "deploy/icecast/icecast.xml.template": "443b76fb07dfc1d05926def9095eb7d7227d77047a73495a15f32a4497e6a7c8",
+  "deploy/liquidsoap/freo-test.liq.template": "f6a7c14e193e830e9ae0a89011e048b1781b8c06cddd58580c77b0c01fe29f80",
+  "deploy/liquidsoap/station.liq.template": "39e3dfd1e35dee292110fdd638b8113962738d95839b7220576c65a042a59234",
+  "deploy/nginx/admin-upload.conf": "c72c7170d41bed0e6e776ea5036626c0495eb53fb448bcf99d462cce56a991b3",
+  "deploy/nginx/custom-domain.conf.template": "8ac8005bfa2a6ca9bd3bc4fdf15ec94203fd4719e6f5121296ce611ce57289b0",
+  "deploy/nginx/freo.conf.template": "cddf8506879240690522746e93288299c475e2955adc8e0fb16a8c9eeb16b973",
+  "deploy/nginx/reject-unknown.conf": "4dd65d2221bf9925317ba66a120472a4dc5169465322613fb88e5d4c76221522",
+  "deploy/nginx/static-assets.conf": "f172e07c9196188f1a5436db9e5e6e182a01e1b922809a2646be77bb0e9118bb",
+  "deploy/nginx/station-location.conf.template": "53cc99c0b344b0a701be14487f89d34b29447a9998b04c577d800df25be79a3d",
+  "deploy/nginx/stream-location.conf": "1881aac45f75b44800c33f3b7c7d902a3c5ac8972d9ba29b7be901866be227c0"
+}

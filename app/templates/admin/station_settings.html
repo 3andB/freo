@@ -1,0 +1,129 @@
+{% from 'admin/_timezone.html' import timezone_select with context %}
+{% extends 'admin/base.html' %}
+{% block title %}{{ selected.name }} · Station settings{% endblock %}
+{% block admin_content %}
+<div class="settings-workspace"><nav class="ops-shortcuts" aria-label="Station settings shortcuts"><a href="{{ url_for('production.station_settings',slug=selected.slug) }}">Audio production permissions →</a><a href="{{ url_for('player_experience.settings',slug=selected.slug) }}">Player settings →</a><a href="{{ url_for('player_experience.inbox',slug=selected.slug) }}">Listener feedback →</a><a href="{{ url_for('web.admin_section',section='system',station=selected.slug) }}">System health →</a></nav>
+<form id="station-settings-form" method="post" action="{{ url_for('station_settings.page',slug=selected.slug) }}" enctype="multipart/form-data"><input type="hidden" name="combined" value="yes"><input type="hidden" name="settings_token" value="{{ settings_token }}"><section class="admin-card station-settings"><h1>Station settings</h1><p>Manage {{ selected.name }}’s identity and public listening page.</p>
+<p><a href="{{ url_for('dmca.cases') }}">DMCA reports</a> · <a href="{{ url_for('dmca.report',station_text=selected.name) }}">Public copyright report form</a></p>
+{% if error %}<p class="admin-notice error" role="alert">{{ error }}</p>{% endif %}
+{% set values = request.form if request.method == 'POST' else selected %}
+
+<input type="hidden" name="csrf" value="{{ csrf_token() }}">
+<label>Station name<input name="name" value="{{ values.name }}" required maxlength="120"></label>
+<div class="settings-columns"><label>City<input name="city" value="{{ values.city }}" maxlength="120"></label><label>State / province / region<input name="region" value="{{ values.region }}" maxlength="120"></label></div>
+<label>Country code<input name="country" value="{{ values.country }}" maxlength="2" pattern="[A-Za-z]{2}" placeholder="AU"></label>
+<p class="quiet">City, region and country only; no street address is needed.</p>
+{% set latitude = values.latitude if values.latitude is defined and values.latitude is not none else '' %}
+{% set longitude = values.longitude if values.longitude is defined and values.longitude is not none else '' %}
+<div class="settings-columns">
+<label>Latitude (optional)<input name="latitude" type="number" min="-90" max="90" step="any" value="{{ latitude }}" aria-describedby="station-location-help"></label>
+<label>Longitude (optional)<input name="longitude" type="number" min="-180" max="180" step="any" value="{{ longitude }}" aria-describedby="station-location-help"></label>
+</div>
+<p id="station-location-help" class="quiet">Use approximate city coordinates for the station’s location, not a street address or your server’s location. Values are rounded to two decimal places. Supply both coordinates for the freo.live admin map, or leave both empty. No paid plan or public directory listing is required.</p>
+<label><input type="checkbox" name="location_confirmation" value="{{ [values.city or '', values.region or '', values.country or '', latitude|string, longitude|string]|tojson|forceescape }}"> I confirm these coordinates match the city, region and country above.</label>
+<p class="quiet">Confirmation is only required when changing the named place while supplying coordinates. Changing any location field clears the confirmation.</p>
+<p>Freo Station UUID: <code>{{ selected.freo_station_id }}</code></p>
+<label>Genre<input name="genre" value="{{ values.genre }}" maxlength="100"></label>
+<label>Directory categories (comma-separated)<input name="directory_categories" value="{{ request.form.directory_categories if request.method == 'POST' else selected.directory_categories|join(', ') }}" maxlength="2020"></label>
+<label><input type="checkbox" name="directory_opt_in" value="yes" {% if values.directory_opt_in %}checked{% endif %}> Opt in to the Freo station directory</label>
+<p><a href="{{ url_for('central_api.settings') }}">Installation registration and manager email</a></p>
+<div class="settings-columns"><label>Contact email<input type="email" name="contact_email" value="{{ values.contact_email }}" maxlength="254"></label><label>Phone<input type="tel" name="phone" value="{{ values.phone }}" maxlength="40"></label></div>
+<label><input type="checkbox" name="publish_contact" value="yes" {% if values.publish_contact %}checked{% endif %}> Publish contact email and phone on the station’s public page</label>
+<label>Station description<textarea name="description" maxlength="500" rows="4">{{ values.description }}</textarea></label>
+<label>Timezone{{ timezone_select(values.timezone) }}<small>Future Events keep their local date and time in the new timezone. Queued events are rescheduled; audio already playing finishes. Past playback times stay unchanged.</small></label>
+<p><a href="{{ url_for('player_experience.settings',slug=selected.slug) }}">Customize player, cover artwork, messages, social links, ads & listener votes →</a></p><h2>Station logo</h2>
+<div id="station-logo-preview">{% if selected.logo %}<img class="station-logo settings-logo" src="{{ url_for('station_settings.logo',slug=selected.slug,v=selected.logo.version) }}" alt="Current station logo"><label><input type="checkbox" name="remove_logo" value="yes"> Remove logo</label>{% endif %}</div>
+<label>Upload or replace logo<input name="logo" type="file" accept="image/jpeg,image/png,image/webp"></label><p class="quiet">JPEG, PNG or WebP, up to 10 MB and 3000 × 3000 pixels. A square (1:1) logo is recommended.</p>
+<h2>Station URL</h2><label>Public URL name<input name="public_slug" value="{{ values.public_slug or selected.slug }}" required maxlength="64" pattern="[a-z0-9][a-z0-9-]*"></label><p class="quiet">Use lowercase letters, numbers and hyphens. Previous URLs continue to work.</p>
+<label>Public listening page<input id="station-public-url" readonly value="{{ public_url }}"></label>
+<p><button type="button" id="copy-station-url">Copy URL</button> <a href="{{ public_url }}">Open station ↗</a><span id="copy-url-status" role="status"></span></p>
+</section>
+<section class="admin-card station-settings" id="public-directories">
+<h2>Public radio directories</h2>
+<h3>Radio Browser</h3>
+<p>List this station in the public Radio Browser directory using its saved station details and public stream URL.</p>
+<p role="status">Status: <strong>{{ 'Listed' if selected.radio_browser_uuid else 'Not Listed' if selected.radio_browser_status == 'not_listed' else 'Error' if selected.radio_browser_status in ['error','uncertain'] else 'Not Listed' }}</strong></p>
+{% if selected.radio_browser_uuid %}
+<p>Listing active. Station UUID: <code>{{ selected.radio_browser_uuid }}</code></p>
+{% elif selected.radio_browser_status == 'submitting' %}
+<p>Submission in progress. Refresh to check its result. If it remains here, ask the operator to reconcile the listing before trying again.</p>
+{% endif %}
+{% if selected.radio_browser_error %}<p class="admin-notice error" role="alert">{{ selected.radio_browser_error }}</p>{% endif %}
+{% if not selected.radio_browser_uuid and selected.radio_browser_status in ['not_listed','error'] %}
+<button type="submit" form="radio-browser-form" class="admin-primary">List My Station</button>
+{% endif %}
+<h3>Internet-Radio.com</h3>
+<p>Advertise this station through Icecast’s public directory support. The directory decides when the listing appears or is removed.</p>
+<p role="status">Public Directory Listing: <strong>{{ 'ON' if selected.internet_radio_enabled else 'OFF' }}</strong>
+{% if selected.internet_radio_status in ['pending','applying'] %} — Change {{ selected.internet_radio_status }}. Refresh to check its result.{% endif %}</p>
+{% if selected.internet_radio_error %}<p class="admin-notice error" role="alert">{{ selected.internet_radio_error }}</p>{% endif %}
+<div>
+<input type="hidden" name="csrf" value="{{ csrf_token() }}">
+<fieldset {% if selected.internet_radio_status in ['pending','applying'] %}disabled{% endif %}>
+<legend>Public Directory Listing</legend>
+<label><select name="directory_enabled"><option value="no" {% if not selected.internet_radio_enabled %}selected{% endif %}>OFF</option><option value="yes" {% if selected.internet_radio_enabled %}selected{% endif %}>ON</option></select></label>
+</fieldset></div>
+</section>
+<section class="admin-card station-settings" id="listener-requests"><h2>Listener requests</h2>
+<input type="hidden" name="requests_present" value="yes">
+{% for key,label in [('enabled','Enable listener requests'),('restrict_programming','Only play requests eligible for the current playlist or block')] %}
+<label><input type="checkbox" name="request_{{ key }}" value="yes" {% if (request.form.get('request_' ~ key) == 'yes' if request.method == 'POST' else request_values[key]) %}checked{% endif %}> {{ label }}</label>{% endfor %}
+<div class="settings-columns">{% for key,label,low,high in request_fields %}<label>{{ label }}<input type="number" name="request_{{ key }}" min="{{ low }}" max="{{ high }}" value="{{ request.form.get('request_' ~ key,request_values[key]) if request.method == 'POST' else request_values[key] }}" required></label>{% endfor %}</div>
+<p>Only confirmed music starts count; the current song does not count toward a new request's delay. Existing automation separation also applies. Requests wait through fixed programming and expire after 24 hours. Disabling requests pauses pending requests until they expire and withdraws future request selections; current audio finishes.</p>
+<p><a href="{{ url_for('listener_requests.inbox',slug=selected.slug) }}">Manage requests</a> · <a href="{{ url_for('listener_requests.page',slug=selected.public_slug or selected.slug) }}">Public request page</a></p>
+<label>Embed code<input readonly value='&lt;iframe src="{{ url_for('listener_requests.page',slug=selected.public_slug or selected.slug,_external=True) }}" title="Request a song" width="100%" height="600"&gt;&lt;/iframe&gt;'></label>
+</section>
+<section class="admin-card station-settings" id="audio-settings" data-audio-api="{{ url_for('station_settings.audio',slug=selected.slug) }}">
+<h2>Freo Broadcast Processor & stream codec</h2>
+<p>Broadcasting at <strong id="audio-active-bitrate">{{ selected.stream.bitrate }}</strong> kbps <strong id="audio-active-codec">{{ selected.stream.format|upper }}</strong>. Uploads keep their original quality.</p>
+<p id="audio-settings-status" role="status">{% if selected.stream.audio_status == 'failed' %}{{ selected.stream.audio_error }}{% elif selected.stream.audio_status in ['pending','applying'] %}Audio changes {{ selected.stream.audio_status }}…{% else %}Audio settings are up to date.{% endif %}</p>
+<div>
+<input type="hidden" name="csrf" value="{{ csrf_token() }}"><input type="hidden" name="revision" value="{{ selected.stream.audio_revision }}">
+<fieldset {% if selected.stream.audio_status in ['pending','applying'] %}disabled{% endif %}>
+<legend>Station audio</legend>
+<label>Output codec<select name="codec">{% for codec,label in [('mp3','MP3'),('aac','AAC-LC')] %}<option value="{{ codec }}" {% if audio_values.codec == codec %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
+<label>Processor preset<select name="preset">{% for key in ['off','light','standard','punchy','custom'] %}<option value="{{ key }}" {% if audio_values.preset == key %}selected{% endif %}>{{ key|title }}</option>{% endfor %}</select></label>
+<p>Off preserves the existing output and final peak protection. Source loudness matching remains separate.</p>
+<label>Stream quality<select name="bitrate">{% for rate,usage in [(64,'28.8'),(96,'43.2'),(128,'57.6'),(192,'86.4')] if not hosting_summary or rate <= hosting_summary.limits.bitrate_kbps %}<option value="{{ rate }}" {% if audio_values.bitrate == rate %}selected{% endif %}>{{ rate }} kbps · approximately {{ usage }} MB per listener-hour</option>{% endfor %}</select></label>
+<p class="quiet">Higher bitrates use more bandwidth. Data estimates exclude network overhead.</p>
+<details><summary>Advanced · select Custom to use these controls</summary><label>AGC target (LUFS)<input type="number" name="target" min="-22" max="-12" step="0.1" value="{{ audio_values.target }}"></label><label>Compression ratio<input type="number" name="ratio" min="1" max="3" step="0.1" value="{{ audio_values.ratio }}"></label><label><input type="checkbox" name="agc" value="yes" {% if audio_values.agc %}checked{% endif %}> AGC — gentle automatic level control</label>
+<p class="quiet">Smooths changing levels with slow, limited gain adjustments. Very quiet passages and silence do not trigger gain increases.</p>
+<label><input type="checkbox" name="multiband" value="yes" {% if audio_values.multiband %}checked{% endif %}> Multiband compression — gentle preset</label>
+<p class="quiet">Light compression across three frequency bands. Listen to the broadcast when choosing processing settings.</p>
+<label><input type="checkbox" name="eq" value="yes" {% if audio_values.eq %}checked{% endif %}> Enable EQ</label>
+<div class="settings-columns">{% for key,label in [('bass','Bass'),('mid','Mid'),('treble','Treble')] %}<label>{{ label }} (dB)<input type="number" name="{{ key }}" min="-6" max="6" step="0.1" value="{{ audio_values[key] }}" required></label>{% endfor %}</div>
+<p class="quiet">EQ ranges from −6 to +6 dB. Existing song loudness matching and the final output limiter remain active.</p>
+</details><p>Processor changes apply live after the Phase 10 engine update. Codec or bitrate changes restart this station; listeners may briefly reconnect.</p>
+</fieldset></div></section>
+<section class="admin-card station-settings" id="playback-settings" data-base="{{ (playback_policy.default_playlist_id if playback_policy else none)|tojson }}" data-playback-api="{{ url_for('schedule_studio.write',slug=selected.slug,action='default') }}" data-source-api="{{ url_for('schedule_studio.read',slug=selected.slug,action='sources') }}" data-revision="{{ playback_policy.revision if playback_policy else 1 }}" data-csrf="{{ csrf_token() }}">
+<h2>Playback</h2><p>What plays when the active mode has nothing playable? Choose the default playlist for Calendar, Blocks, and Simple.</p>
+<p id="fallback-current">{{ playback_policy.default_playlist.name if playback_policy and playback_policy.default_playlist else 'No default playlist selected' }}</p>
+<input type="hidden" name="default_playlist" id="default-playlist" value="{{ playback_policy.default_playlist_id if playback_policy and playback_policy.default_playlist_id else '' }}"><label>Find a playlist<input type="search" id="fallback-search" placeholder="Search playlists"></label><div id="fallback-results"></div><p id="fallback-status" role="status"></p>
+</section>
+<div class="settings-save-bar"><p id="station-save-status" role="status">All changes saved.</p><button type="submit" class="admin-primary">Save changes</button></div>
+</form>
+<form id="radio-browser-form" method="post" action="{{ url_for('station_settings.directory',slug=selected.slug,directory='radio-browser') }}"><input type="hidden" name="csrf" value="{{ csrf_token() }}"></form>
+<section class="admin-card station-settings" id="relay-settings">
+<h2>Upstream relay</h2>
+<p>Relay replaces Auto programming. Enabling relay also enables local automation for fallback. Live controls keep their priority and current mode.</p>
+<form method="post" action="{{ url_for('station_settings.relay',slug=selected.slug) }}">
+<input type="hidden" name="csrf" value="{{ csrf_token() }}"><input type="hidden" name="relay_revision" value="{{ relay_status.revision }}">
+<label><input type="checkbox" name="relay_enabled" value="yes" {% if relay_status.enabled %}checked{% endif %}> Enable relay</label>
+<label>Upstream stream URL<input type="url" name="relay_url" maxlength="2048" value="{{ selected.relay.url if selected.relay else '' }}" placeholder="https://radio.example/stream"></label>
+<p class="quiet">Direct HTTP(S) audio only. Private sources require the operator’s network allowlist. Timed events wait while relay is on air, within their existing deadlines.</p>
+<button type="submit">Save relay</button></form>
+<p id="relay-status" role="status" data-status-url="{{ url_for('station_settings.relay',slug=selected.slug) }}">{{ 'Enabled' if relay_status.enabled else 'Disabled' }} · {{ 'Connected' if relay_status.connected else 'Disconnected' if relay_status.connected is not none else 'Connection unknown' }} · Source: {{ relay_status.source }}{% if relay_status.pending %} · Changes pending{% endif %}</p>
+<p id="relay-metadata">{{ relay_status.artist }}{% if relay_status.artist and relay_status.title %} — {% endif %}{{ relay_status.title }}</p>
+<p id="relay-history">Last failure: {{ relay_status.last_failure_at or 'None observed' }} · Last connection: {{ relay_status.last_reconnect_at or 'None observed' }}</p>
+<p id="relay-error">{{ relay_status.error or '' }}</p>
+</section>
+{% set context=player_context(selected) %}{% set config=context.player_config %}{% set player_assets=context.player_assets %}
+<section class="admin-card station-settings"><form method="post" enctype="multipart/form-data" action="{{ url_for('player_experience.settings',slug=selected.slug) }}">
+<input type="hidden" name="csrf" value="{{ csrf_token() }}"><input type="hidden" name="revision" value="{{ context.player_revision }}"><input type="hidden" name="action" value="save-polish">
+{% include 'admin/_player_polish_settings.html' %}<button type="submit">Save merchandise & visuals</button></form></section>
+{% include 'admin/_station_domains.html' %}
+</div>
+{% endblock %}
+{% block scripts %}{{ super() }}<script defer src="{{ url_for('static',filename='station_settings.js',v='station-location-1') }}"></script><script defer src="{{ url_for('static',filename='schedule_settings.js',v='rc6') }}"></script>
+<script src="{{ url_for('static',filename='relay.js') }}" defer></script>
+{% endblock %}

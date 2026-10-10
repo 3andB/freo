@@ -1,0 +1,38 @@
+"""The login revocation migration adds no permissions or account changes."""
+from tests.test_primary_admin_migration import installed, seed, rows
+from tests.test_recovery import postgres
+from app.extensions import db
+from app.models import AdminLoginSession
+from sqlalchemy import inspect, text
+
+
+def test_existing_schema_gains_empty_revocation_table_without_account_changes(installed):
+    app, source = installed
+    seed(source)
+    runner = app.test_cli_runner()
+    assert runner.invoke(args=['db', 'upgrade', 'b72e19d4c603']).exit_code == 0
+    before = rows(source)
+    with app.app_context():
+        assert 'admin_login_sessions' not in inspect(db.engine).get_table_names()
+    result = runner.invoke(args=['db', 'upgrade', 'c83d4e5f9012'])
+    assert result.exit_code == 0, result.output
+    assert rows(source) == before
+    with app.app_context():
+        assert db.session.execute(text('SELECT version_num FROM alembic_version')).scalar() == 'c83d4e5f9012'
+        assert db.session.query(AdminLoginSession).count() == 0
+        assert 'ix_admin_login_sessions_expires_at' in {i['name'] for i in inspect(db.engine).get_indexes('admin_login_sessions')}
+    assert runner.invoke(args=['db', 'upgrade', 'c83d4e5f9012']).exit_code == 0
+    assert rows(source) == before
+
+
+def test_real_postgres_revocation_survives_inflight_response_and_restart(installed):
+    from app.models import AdminUser
+    from werkzeug.security import generate_password_hash
+    from tests.test_logout_sessions import test_inflight_response_cannot_recreate_revoked_login_or_replace_new_cookie
+    app, _ = installed
+    result = app.test_cli_runner().invoke(args=['db', 'upgrade'])
+    assert result.exit_code == 0, result.output
+    with app.app_context():
+        db.session.add(AdminUser(email='admin@example.test', password_hash=generate_password_hash('test-password-long-enough'), installation_admin=True))
+        db.session.commit()
+    test_inflight_response_cannot_recreate_revoked_login_or_replace_new_cookie(app)

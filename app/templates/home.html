@@ -1,0 +1,70 @@
+{% extends 'base.html' %}
+{% block title %}{{ site.seo_title or site.name ~ ' · ' ~ site.tagline }}{% endblock %}
+{% block body_class %}public station-home font-{{ site.font }} focal-{{ site.focal }} shade-{{ site.overlay }}{% endblock %}
+{% block head %}<link rel="stylesheet" href="{{ url_for('static',filename='advertising_public.css',v='1') }}">
+<meta name="description" content="{{ site.seo_description or site.intro }}">
+<meta property="og:title" content="{{ site.seo_title or site.name }}">
+<meta property="og:description" content="{{ site.seo_description or site.intro }}">
+<meta property="og:type" content="website"><meta name="twitter:card" content="summary_large_image">
+{% set origin = config.PUBLIC_BASE_URL.rstrip('/') %}
+{% if origin and not preview %}<link rel="canonical" href="{{ origin }}/"><meta property="og:url" content="{{ origin }}/"><meta property="og:image" content="{{ origin }}{{ site_image('share_image') }}">{% endif %}
+{% if preview %}<meta name="robots" content="noindex,nofollow">{% endif %}
+<link rel="icon" href="{{ site_image('favicon') }}">
+<link rel="stylesheet" href="{{ url_for('static',filename='home.css',v='rc4') }}">
+<link rel="stylesheet" href="{{ url_for('website.theme',preview=1 if preview else none) }}">
+{% endblock %}
+{% macro listen_menu(extra='') %}<details class="listen-menu {{ extra }}"><summary class="site-button">Listen Now <span aria-hidden="true">▾</span></summary><div class="listen-options">{% for card in cards %}<a href="{{ card.url }}">{{ card.station.name }} <span aria-hidden="true">↗</span></a>{% endfor %}</div></details>{% endmacro %}
+{% block header %}
+{% if preview %}<aside class="site-preview-bar"><span>Draft preview · only you can see these changes</span><a href="{{ url_for('website.editor') }}" target="_top">Back to Website editor ↗</a></aside>{% endif %}
+<header class="station-header site-wrap">
+  <a class="station-brand" href="{{ url_for('web.homepage') }}"><img src="{{ site_image('logo',True) }}" width="44" height="44" alt=""><span>{{ site.name }}<small>{{ site.genre }}</small></span></a>
+  <nav id="station-navigation" aria-label="Main navigation"><a href="#channels">Our channels</a>{% if schedule and 'schedule' in site.sections %}<a href="#schedule">On the schedule</a>{% endif %}{% if 'about' in site.sections and site.about %}<a href="#about">Our story</a>{% endif %}<a href="#contact">Connect</a></nav>
+  <div class="station-header-tools"><button class="site-theme-toggle" type="button" aria-label="Switch color theme" data-default-theme="{{ site.theme }}" hidden>◐</button>{% if featured %}{{ listen_menu('small') }}{% endif %}<button class="station-menu" type="button" aria-label="Open menu" aria-controls="station-navigation" aria-expanded="false" hidden>☰</button></div>
+</header>
+{% if cards %}<nav class="channel-top-links site-wrap" aria-label="Radio channels">{% for card in cards %}<a href="{{ card.url }}">{{ card.station.name }} <span aria-hidden="true">↗</span></a>{% endfor %}</nav>{% endif %}
+{% if session.get('admin_user_id') %}<div class="site-owner-bar site-wrap"><a href="{{ url_for('website.editor') }}">Edit website ↗</a><div data-master-monitor data-preserve-station></div></div>{% endif %}
+{% endblock %}
+{% block content %}
+{% from '_advertising.html' import advertising_slot %}
+{% if featured %}{% set home_ads=advertising_context(featured.station,'homepage') %}{{ advertising_slot(featured.station,'homepage','top',home_ads.get('ad_top'),preview) }}{% endif %}
+<section class="station-hero" aria-labelledby="station-title">
+  <img class="hero-photo" src="{{ site_image('hero') }}" srcset="{{ site_image('hero',True) }} 800w, {{ site_image('hero') }} 1600w" sizes="100vw" alt="{{ site.hero_alt }}" width="1600" height="960" fetchpriority="high">
+  <div class="hero-shade"></div>
+  <div class="site-wrap hero-inner"><div class="hero-copy">
+    <div class="hero-identity"><img src="{{ site_image('logo',True) }}" alt="{{ site.logo_alt or site.name ~ ' station image' }}" width="72" height="72"><div><span class="site-eyebrow">{{ site.genre or 'Independent radio' }}</span><p>{{ site.name }}</p></div></div>
+    <h1 id="station-title">{{ site.tagline }}</h1><p class="hero-intro">{{ site.intro }}</p>
+    <div class="hero-actions">{% if featured %}{{ listen_menu('hero-listen') }}{% else %}<span class="coming-soon">A new frequency is on its way</span>{% endif %}<a class="hero-secondary" href="#channels">Explore the channels <span aria-hidden="true">↓</span></a></div>
+  </div><div class="hero-bottom"><span>{{ site.location or 'Independent in spirit. Connected by music.' }}</span><span class="hero-caption">YOUR SOUNDTRACK STARTS HERE <span aria-hidden="true">↘</span></span></div></div>
+</section>
+{% macro numbers() %}{% if metrics and cards %}<section class="station-numbers site-wrap" aria-label="The station in numbers">{% for number,label in metrics %}<div><strong>{{ '{:,}'.format(number) }}</strong><span>{{ label }}</span></div>{% endfor %}</section>{% endif %}{% endmacro %}
+{% if 'numbers' in site.sections and site.sections[0] == 'numbers' %}{{ numbers() }}{% endif %}
+<section id="channels" class="site-section site-wrap">
+  <div class="site-section-heading"><div><p class="site-eyebrow">A LITTLE SOMETHING FOR EVERY MOOD</p><h2>{{ site.channels_heading }}</h2></div><p>Different sounds. The same love of music.<br>Pick a channel and settle in.</p></div>
+  <div class="channel-grid count-{{ cards|length }}">
+  {% for card in cards %}<article class="channel-card channel-color-{{ loop.index0 % 4 }}" data-channel-state="{{ card.state_url }}">
+    <a class="channel-art" href="{{ card.url }}" aria-label="Listen to {{ card.station.name }}">
+      {% if card.artwork %}<img src="{{ card.artwork }}" width="720" height="480" alt="{{ card.station.name }} artwork" loading="lazy">{% else %}<div class="channel-record" aria-hidden="true"><span>{{ '%02d'|format(loop.index) }}</span></div><span class="channel-art-name" aria-hidden="true">{{ card.station.name }}</span>{% endif %}
+      <span class="channel-status{% if card.online %} is-online{% endif %}" data-status><i aria-hidden="true"></i>{{ card.status }}</span><span class="channel-play" aria-hidden="true">↗</span>
+    </a>
+    <div class="channel-copy"><p class="site-eyebrow">{{ card.station.genre or 'Independent radio' }}</p><h3><a href="{{ card.url }}">{{ card.station.name }}</a></h3><p class="channel-description">{{ card.station.description or 'Your next discovery is just a play away.' }}</p><div class="channel-now"><span>ON THE TURNTABLE</span><p data-now-song>Open the player to discover what’s on.</p></div>{% set merch=card.merch_url %}{% if merch %}<a class="channel-link" href="{{ merch }}" target="_blank" rel="noopener noreferrer">Merch ↗</a>{% endif %}<a class="channel-link" href="{{ card.url }}">Open player <span aria-hidden="true">↗</span></a></div>
+  </article>{% else %}<div class="station-empty"><img src="{{ site_image('logo',True) }}" alt="" width="80" height="80"><h3>Something good is on its way.</h3><p>Our channels are getting ready. Come back soon for your next great listen.</p>{% if session.get('admin_user_id') %}<a class="site-button" href="{{ url_for('web.admin_station_list') }}">Add your first channel ↗</a>{% endif %}</div>{% endfor %}
+  </div>
+</section>
+{% for section in site.sections %}
+{% if section == 'numbers' and not loop.first %}{{ numbers() }}
+{% elif section == 'schedule' and schedule %}
+<section id="schedule" class="site-section schedule-section"><div class="site-wrap">
+<div class="site-section-heading"><div><p class="site-eyebrow">MAKE A LITTLE TIME FOR MUSIC</p><h2>{{ site.schedule_heading }}</h2></div>{% if cards|length > 1 %}<label class="schedule-filter">Channel<select aria-label="Filter schedule by channel" data-schedule-filter><option value="">All channels</option>{% for card in cards %}<option value="{{ card.station.id }}">{{ card.station.name }}</option>{% endfor %}</select></label>{% endif %}</div>
+<div class="public-programs">{% for entry in schedule %}<a class="public-program" href="{{ entry.url }}" data-schedule-channel="{{ entry.station_id }}"><div class="program-time"><strong>{{ entry.time }}</strong><span>{{ entry.date }}</span></div><div><span class="site-eyebrow">{{ entry.channel }}</span><h3>{{ entry.title }}</h3><small>{{ entry.timezone }}</small></div><span aria-hidden="true">↗</span></a>{% endfor %}</div><p class="schedule-no-results" hidden>No upcoming published programs for this channel.</p>
+</div></section>
+{% elif section == 'about' and site.about %}
+<section id="about" class="site-section site-wrap station-story"><div class="story-image"><img src="{{ site_image('about_image') }}" srcset="{{ site_image('about_image',True) }} 800w, {{ site_image('about_image') }} 1600w" sizes="(max-width:760px) 100vw, 50vw" alt="{{ site.about_image_alt or 'Records, warm light, and a place to listen' }}" width="800" height="800" loading="lazy"><span class="story-stamp">MADE OF MUSIC<br><b>And a little soul.</b></span></div><div class="story-copy"><p class="site-eyebrow">THE PEOPLE BEHIND THE FREQUENCY</p><h2>{{ site.about_heading }}</h2><div class="story-text">{{ site.about }}</div>{% if site.location %}<p class="story-location">↗ &nbsp; {{ site.location }}</p>{% endif %}<a class="site-text-link" href="#channels">Find your next good listen <span aria-hidden="true">→</span></a></div></section>
+{% elif section == 'announcement' and announcement_visible %}
+<section class="site-wrap announcement-section"><div><p class="site-eyebrow">FROM THE STATION</p><h2>{{ site.announcement_title }}</h2><p>{{ site.announcement }}</p></div>{% if site.announcement_url %}<a class="site-button" href="{{ site.announcement_url }}" rel="noopener noreferrer">{{ site.announcement_label or 'Find out more' }} ↗</a>{% endif %}</section>
+{% endif %}{% endfor %}
+{% if featured %}{{ advertising_slot(featured.station,'homepage','bottom',home_ads.get('ad_bottom'),preview) }}{% endif %}
+{% endblock %}
+{% block footer %}
+<footer id="contact" class="station-footer"><div class="site-wrap"><div class="footer-top"><div><p class="site-eyebrow">STAY A LITTLE LONGER</p><h2>Keep good company.</h2><p>Wherever you are, take {{ site.name }} with you.</p></div><a class="station-brand" href="#main"><img src="{{ site_image('logo',True) }}" width="64" height="64" alt=""><span>{{ site.name }}<small>{{ site.genre }}</small></span></a></div><div class="footer-links">{% for social in site.socials %}<a href="{{ social.url }}" rel="noopener noreferrer">{{ social.label }} ↗</a>{% endfor %}{% if site.publish_contact %}{% if site.contact_email %}<a href="mailto:{{ site.contact_email }}">{{ site.contact_email }}</a>{% endif %}{% if site.phone %}<span>{{ site.phone }}</span>{% endif %}{% endif %}</div><div class="footer-bottom"><span>© {{ year }} {{ site.copyright or site.name }}</span><span><a href="https://freo.live/">Learn more about Freo Free Radio</a><span aria-hidden="true"> · </span><a href="{{ url_for('web.admin_home') if session.get('admin_user_id') else url_for('web.login') }}">{{ 'Open studio' if session.get('admin_user_id') else 'Station sign in' }}</a></span></div></div></footer>
+{% endblock %}
+{% block scripts %}<script defer src="{{ url_for('static',filename='player_ads.js',v='campaigns-1') }}"></script><script defer src="{{ url_for('static',filename='home.js',v='rc4') }}"></script>{% endblock %}

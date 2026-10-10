@@ -1,0 +1,13 @@
+{% extends 'admin/base.html' %}
+{% from 'admin/_discovery_fields.html' import fields with context %}
+{% block admin_content %}<h1>Public DJ profiles · {{ selected.name }}</h1>
+<p>All fields are optional. Profiles apply only to this station and appear when the DJ is live or selected in a public schedule listing.</p>
+{% if error %}<p role="alert">{{ error }}</p>{% endif %}
+{% for user in users %}{% set profile=profiles.get(user.id) %}
+<section class="admin-card station-settings"><h2>{{ user.username or 'DJ' }}</h2><form method="post" enctype="multipart/form-data">
+<input type="hidden" name="csrf" value="{{ csrf_token() }}"><input type="hidden" name="user_id" value="{{ user.id }}"><input type="hidden" name="revision" value="{{ profile.revision if profile else 0 }}">
+<label>Short bio<textarea name="bio" rows="4" maxlength="1000">{{ profile.bio if profile else '' }}</textarea></label>
+<label>Profile image<input type="file" name="image" accept="image/png,image/jpeg,image/webp"></label><p>JPEG, PNG or WebP, up to 10 MB and 3000 × 3000 px. Square images recommended; saved at up to 512 px without cropping.</p>
+{% if profile and profile.image_version %}<img width="120" src="{{ url_for('platform_polish.dj_image',slug=selected.slug,user_id=user.id,v=profile.image_version) }}" alt="{{ user.username or 'DJ' }}"><label><input type="checkbox" name="remove_image" value="yes"> Remove image</label>{% endif %}
+{{ fields(profile.links if profile else []) }}<button type="submit">Save profile</button></form></section>
+{% else %}<p>No DJs assigned. Assign a DJ in <a href="{{ url_for('dj.accounts') }}">DJ accounts</a>.</p>{% endfor %}{% endblock %}

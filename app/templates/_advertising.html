@@ -1,0 +1,3 @@
+{% macro advertising_slot(station,surface,placement,banner=none,preview=false) -%}
+{% if not preview or (banner and banner.source=='image') %}<aside class="radio-ad phase9-ad" data-placement="ad_{{ placement }}" data-ad='{{ banner|tojson|forceescape }}'{% if not preview %} data-ad-url="{{ url_for('advertising.selection',slug=station.public_slug or station.slug,surface=surface,placement=placement) }}"{% endif %} aria-label="Advertisement" hidden></aside>{% endif %}
+{%- endmacro %}

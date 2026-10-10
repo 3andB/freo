@@ -1,0 +1,61 @@
+# Freo
+
+**Freo 0.3.2 is available. Fresh installation and reboot recovery are tested
+and passed on Ubuntu 24.04 x86_64.**
+
+[Install Freo](docs/stable-installation.md) · [Download the signed installation kit](https://github.com/3andB/freo/releases/download/v0.3.2/freo-v0.3.2-install-kit.tar) · [Release notes](docs/release-0.3.2.md) · [Acceptance results](docs/0.3.2-acceptance.md)
+
+[Recovery and upgrades](docs/recovery-and-upgrades.md): existing installations
+use the signed updater with a verified backup/recovery point. The fresh installer
+refuses existing installations.
+
+[Radio Station Operations](docs/operations-navigation.md): **Admin → Overview** covers all stations, system health, freo.live connection, and aggregate statistics. Use the sidebar station selector and **Switch** to open an individual station’s controls. Website, player settings, feedback, installation, and audit tools are available in the operations context.
+
+[Station website and Website CMS](docs/station-website.md): every installation opens with a customizable station homepage, automatic channel cards, real library counts, published schedules, images, colors and draft/publish controls. Manage it in **Admin → Website**.
+
+[Central API integration](docs/central-api-integration-plan.md) covers installation registration, permanent station UUIDs, aggregate hourly reports, cached licensing, setup and recovery.
+
+[Copyright identification and DMCA reporting](docs/copyright-and-dmca.md) documents permanent public Track IDs, optional ISRC metadata, private copyright reports, admin review, and upgrade instructions.
+
+[First-use license agreement](docs/license-agreement.md) displays the licensing and copyright requirements on first admin use, records acceptance, and can be reopened from Station Control.
+
+[Player settings and listener feedback](docs/player-and-listener-experience.md) add station messages, cover art, social links, published Day/Week/Month schedules, top/bottom ad slots, and song votes with private comments. The public player uses a responsive DJ-inspired record design.
+
+[Public radio directories](docs/public-radio-directories.md): explicitly submit a station to Radio Browser or enable Internet-Radio.com advertising through Icecast YP from Station settings. Both are opt-in client integrations.
+
+Phase 9 adds first-class station imaging and carts: private validated uploads, station-scoped groups, exact-cart and group clock slots, and confirmed imaging history. See [Imaging and carts](docs/imaging.md). The authenticated [DJ Booth](docs/live-assist.md) provides two modes: focused Auto and paired-deck DJ Booth; observed Now Playing and Up Next; persistent cue; in-booth music/category browsing; twelve assignable cart/identity controls; worker-observed Program and optional browser Monitor meters; fixed Skip/Fade; and worker-mediated crossfade takeover. The [Booth Cue](docs/dj-booth-cue.md) adds saved sets, drag reordering, deck loading, and AUTO_CUE: finished songs move to the bottom and automatic playback continues without an open browser. Phase 11 adds [timed events](docs/timed-events.md): one-time and weekly events, HARD/SOFT/NON_INTERRUPTING behavior, timing windows, occurrence history, permitted automated-music interruption, and booth event awareness.
+
+Freo is an early-stage public internet radio automation and station management project. Freo has PostgreSQL-backed stations, one isolated Liquidsoap process per managed station, and an Artist → Album → Song catalog with optional availability across all channels. Safe ingestion, categories, rotations, artist/track separation, clocks, timed events, stopsets, traffic planning, Live Assist, and confirmed playback history feed a dedicated non-root automation worker. It does not claim frame-accurate timing, studio microphone/source switching, a cue bus, arbitrary queue surgery, fade-to-time, satellite joins, or accounting.
+
+The live [diagnostic stream](https://freo.world/stream/freo-test) tests the Liquidsoap → Icecast → Nginx engine. The separate [database-managed Freo Demo stream](https://freo.world/stream/freo-demo) proves station provisioning and real library playback. The public homepage and player use real stream and station data. The authenticated `/admin` dashboard provides an Artist → Album → Song music library, batch and folder ingestion, background audio analysis, station Category assignment, enable/disable, verification, and an audit trail. Categories, rotations, clocks, weekly assignments, and station timezone can be edited in authenticated admin pages. [Playlists](docs/playlists.md) provide ordered or random song lists, Music membership bubbles, and calendar scheduling; categories, artists, and albums can be copied into a playlist. [Reusable Blocks](docs/block-scheduler-2026-09-20.md) can be assigned to days or dragged into Calendar, with saved versions and precise section controls. Station creation and deletion are available in Admin → Overview and the server CLI, with a configurable default limit of three channels. Fresh installs start with zero stations. See [station lifecycle and shared music](docs/channel-management.md). Broadcast start/stop and automation enable/disable remain CLI operations. See [UI and account setup](docs/ui.md) and [programming controls](docs/programming-ui.md).
+
+The stack is Python 3.12, Flask, Gunicorn, PostgreSQL, Nginx, systemd, Liquidsoap, Icecast, and ffprobe on Ubuntu 24.04. Timed events can execute durable [event blocks and stopsets](docs/event-blocks.md): ordered Track/ImagingAsset snapshots that exclude normal music between items. Authenticated [traffic planning](docs/traffic.md) manages advertisers, campaigns, commercial creatives, stopset inventory, finalized daily logs, as-run reconciliation, and makegood relationships. Accounting and invoicing are not included. See [clocks](docs/clocks.md), [scheduling](docs/scheduling.md), [rotations](docs/rotations.md), [automation](docs/automation.md), [media library](docs/media-library.md), [stations](docs/stations.md), [radio engine](docs/radio-engine.md), [architecture](docs/architecture.md), [installation](docs/installation.md), and the [fresh-VM acceptance test](docs/clean-install-test.md).
+
+The [0.3.2 installation kit](docs/stable-installation.md) includes automatic
+PostgreSQL driver installation and separate local application/external access
+validation. The exact published signed kit passed independent fresh Ubuntu 24.04
+x86_64 HTTP/public-IP installation, music processing and playlist playback,
+full-VM reboot and automatic broadcast recovery. Installed validators exited 0
+before and after reboot, with no failed systemd units. It was not rebuilt after
+acceptance. See the [acceptance record](docs/0.3.2-acceptance.md) for test scope.
+
+Local development needs a Python 3.12 venv, `requirements-dev.txt`, a private
+`.env`, and `flask --app wsgi:app db upgrade`; run `pytest` for tests. Root, a
+domain, and radio services are not required for unit tests.
+
+Freo is source-available under the [Freo Source-Available License](LICENSE). Up to three stations total per owner are free, including commercial use. US$99 one time covers unlimited stations across all installations owned by the purchaser and all future updates. Contact [info@3andB.com](mailto:info@3andB.com) for a Stripe invoice.
+
+Created by Lee Eyerman. Copyright © 2026 3andB.
+
+[Installation](docs/stable-installation.md) · [VM acceptance](docs/0.3.2-acceptance.md) · [freo.live team handoff](docs/freo-live-distribution-handoff.md)
+
+[Station Control and DJ Booth system tests](docs/station-system-testing.md) provide accelerated scheduling simulations, connected browser/worker/audio checks, and unattended endurance runs with isolated streams and retained evidence.
+
+### Custom station domains
+
+See [custom domain setup](docs/custom-domains.md) for verified station domains,
+DNS instructions, and HTTPS deployment with the existing Nginx/Certbot setup.
+
+Audio upload formats, stream quality, processing, and deployment: [Audio imports and station sound](docs/audio-import-and-processing.md).
+
+[Master broadcast control and station monitoring](docs/master-broadcast.md) covers the station ON/OFF switch, tone fallback, live indicators, and rollout checks.

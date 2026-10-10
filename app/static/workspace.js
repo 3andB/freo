@@ -1,0 +1,366 @@
+/* Persistent listening and document navigation. Page scripts own disposable work. */
+(() => {
+  if (window.FreoWorkspace) return;
+  const makeScope = () => {
+    const controller = new AbortController(), timers = new Set(), frames = new Set(), cleanups = [];
+    return {
+      signal: controller.signal,
+      listen(target, name, callback, options = {}) {
+        target.addEventListener(name, callback, {...(typeof options === 'boolean' ? {capture: options} : options), signal: controller.signal});
+      },
+      interval(callback, delay) {const id = setInterval(callback, delay); timers.add(id); return id;},
+      frame(callback) {
+        if (controller.signal.aborted) return;
+        const id = requestAnimationFrame(time => {frames.delete(id); if (!controller.signal.aborted) callback(time);});
+        frames.add(id); return id;
+      },
+      cleanup(callback) {cleanups.push(callback);},
+      async fetch(url, options = {}) {
+        try {return await fetch(url, {...options, signal: options.signal || controller.signal});}
+        catch (error) {if (controller.signal.aborted) return new Promise(() => {}); throw error;}
+      },
+      dispose() {controller.abort(); timers.forEach(clearInterval); frames.forEach(cancelAnimationFrame); cleanups.forEach(fn => fn());}
+    };
+  };
+  window.FreoPage = makeScope();
+
+  window.FreoDialog = {
+    notify(options) {return this.confirm({...options,confirmLabel:"OK",notification:true});},
+    confirm({title = 'Confirm change', message, confirmLabel = 'Continue', notification = false, signal = window.FreoPage.signal}) {
+      return new Promise(resolve => {
+        if(signal?.aborted){resolve(false);return;}
+        const dialog = document.createElement('dialog'); dialog.className = 'freo-dialog';
+        const heading = document.createElement('h2'); heading.textContent = title;
+        heading.id = `dialog-${FreoUUID()}`; dialog.setAttribute('aria-labelledby', heading.id);
+        const copy = document.createElement('p'); copy.textContent = message;
+        const actions = document.createElement('div'); actions.className = 'dialog-actions';
+        const cancel = document.createElement('button'); cancel.textContent = 'Cancel'; cancel.type = 'button';
+        const accept = document.createElement('button'); accept.textContent = confirmLabel; accept.className = 'admin-primary'; accept.type = 'button';
+        const previous = document.activeElement;
+        let settled=false;
+        const abort=()=>finish(false);
+        const finish = value => {if(settled)return;settled=true;signal?.removeEventListener('abort',abort);dialog.close(); dialog.remove(); previous?.focus(); resolve(value);};
+        signal?.addEventListener('abort',abort,{once:true});
+        cancel.addEventListener('click', () => finish(false)); accept.addEventListener('click', () => finish(true));
+        dialog.addEventListener('cancel', event => {event.preventDefault(); finish(false);});
+        dialog.addEventListener('click', event => {if(event.target!==dialog)return;const r=dialog.getBoundingClientRect();if(event.clientX<r.left||event.clientX>r.right||event.clientY<r.top||event.clientY>r.bottom)finish(false);});
+        if(!notification)actions.append(cancel);actions.append(accept); dialog.append(heading, copy, actions); document.body.append(dialog); dialog.showModal(); (notification ? accept : cancel).focus();
+      });
+    }
+  };
+
+  const audio = new Audio(); audio.crossOrigin = 'anonymous'; audio.preload = 'none'; audio.id = 'master-monitor-audio';
+  // Keep one audio graph for the persistent player across page navigation.
+  let monitorContext=null, monitorAnalysers=null;
+  const prepareMonitorMeter=()=>{
+    const AudioCtx=window.AudioContext||window.webkitAudioContext;
+    if(!AudioCtx)return;
+    if(!monitorContext){
+      monitorContext=new AudioCtx();
+      const source=monitorContext.createMediaElementSource(audio),stereo=monitorContext.createGain(),split=monitorContext.createChannelSplitter(2);
+      stereo.channelCount=2;stereo.channelCountMode='explicit';
+      source.connect(stereo);stereo.connect(split);source.connect(monitorContext.destination);
+      monitorAnalysers=[0,1].map(channel=>{const analyser=monitorContext.createAnalyser();analyser.fftSize=1024;split.connect(analyser,channel);return {analyser,data:new Float32Array(analyser.fftSize)};});
+    }
+    return monitorContext.resume();
+  };
+  const monitorLevels=()=>{
+    if(audio.paused||monitorContext?.state!=='running'||!monitorAnalysers)return [0,0];
+    return monitorAnalysers.map(({analyser,data})=>{analyser.getFloatTimeDomainData(data);return Math.sqrt(data.reduce((sum,value)=>sum+value*value,0)/data.length)*audio.volume;});
+  };
+  let host = null, station = '', stationName = '', stream = '', wanted = false, state = 'off', attempt = 0, nowStation = '';
+  const render = () => {
+    if (!host) return;
+    const button = host.querySelector('button');
+    button.disabled = !stream; button.setAttribute('aria-pressed', String(wanted));
+    button.classList.toggle('is-listening', state === 'listening');
+    host.querySelector('.monitor-state').textContent = `${stationName || 'Select a station'} · ${state}`;
+    document.querySelectorAll('[data-monitor-toggle]').forEach(el => el.textContent = wanted ? 'MUTE MONITOR' : 'MONITOR');
+    document.querySelectorAll('[data-monitor-station]').forEach(row => {
+      const button = row.querySelector('[data-station-monitor-toggle]');
+      const listening = row.dataset.monitorStation === station && wanted;
+      button.disabled = !row.dataset.stream;
+      button.setAttribute('aria-pressed', String(listening));
+      button.textContent = listening ? 'MUTE MONITOR' : 'MONITOR';
+    });
+  };
+  const stop = () => {attempt++; wanted = false; audio.pause(); audio.removeAttribute('src'); audio.load(); state = 'off'; render();};
+  const play = async () => {
+    if (!stream) return;
+    document.querySelectorAll('audio,video').forEach(el => {if (el !== audio) el.pause();});
+    const version = ++attempt; wanted = true; state = 'connecting'; render();
+    audio.src = stream;
+    try {await prepareMonitorMeter(); await audio.play(); if (version === attempt) {state = 'listening'; render();}}
+    catch (_) {if (version === attempt) {wanted = false; state = 'unavailable — press to retry'; render();}}
+  };
+  audio.addEventListener('playing', () => {if (wanted) {state = 'listening'; render();}});
+  audio.addEventListener('waiting', () => {if (wanted) {state = 'connecting'; render();}});
+  audio.addEventListener('error', () => {if (wanted) {wanted = false; state = 'unavailable — press to retry'; render();}});
+  document.addEventListener('play', event => {if (event.target !== audio && event.target instanceof HTMLMediaElement) stop();}, true);
+  let nowTimer, nowRequest, nowVersion = 0, lastPlaying = null;
+  const showNow = (label, item) => {
+    const banner = document.querySelector('[data-now-playing]');
+    if (!banner) return;
+    banner.querySelector('[data-now-label]').textContent = label;
+    banner.querySelector('[data-now-title]').textContent = item?.title || '—';
+    banner.querySelector('[data-now-title]').title = item?.title || '';
+    banner.querySelector('[data-now-artist]').title = item?.artist || '';
+    banner.querySelector('[data-now-artist]').textContent = item?.artist || '';
+  };
+  const refreshNow = async () => {
+    clearTimeout(nowTimer);
+    nowRequest?.abort();
+    const version = ++nowVersion, slug = nowStation;
+    if (!document.querySelector('[data-now-playing]')) return;
+    if (!slug) {showNow('Select a station', null); return;}
+    const controller = new AbortController(); nowRequest = controller;
+    const timeout = setTimeout(() => controller.abort(), 4000);
+    try {
+      const response = await fetch(`/admin/api/stations/${encodeURIComponent(slug)}/live-status`, {cache: 'no-store', signal: controller.signal});
+      if (!response.ok) throw new Error('Playback status unavailable');
+      const payload = await response.json();
+      if (version !== nowVersion) return;
+      if (payload.playout_error) {
+        lastPlaying = payload.last_known_current || lastPlaying;
+        showNow(lastPlaying ? 'Last known · Connection lost' : 'Playback unavailable', lastPlaying);
+      } else {
+        const mixer = payload.mixer;
+        const paused = mixer && ['a', 'b'].map(deck => {
+          const item = mixer[deck];
+          return !mixer[deck + '_playing'] && item?.started_at &&
+            (!payload.current || payload.current.decision_id === item.decision_id) ? item : null;
+        }).find(Boolean);
+        lastPlaying = payload.current || paused || null;
+        showNow(paused ? 'Paused' : payload.current ? 'Now playing' : 'Nothing playing', lastPlaying);
+      }
+    } catch (_) {
+      if (version === nowVersion) showNow(lastPlaying ? 'Last known · Connection lost' : 'Playback unavailable', lastPlaying);
+    } finally {
+      clearTimeout(timeout);
+      if (version === nowVersion) nowTimer = setTimeout(refreshNow, 3000);
+    }
+  };
+  const mountBroadcast = () => {
+    const strip = document.querySelector('[data-station-monitors]');
+    if (!strip) return;
+    const scope = window.FreoPage;
+    scope.listen(strip, 'click', event => {
+      const button = event.target.closest('[data-station-monitor-toggle]');
+      const row = button?.closest('[data-monitor-station]');
+      if (row && !button.disabled) {
+        if (wanted && station === row.dataset.monitorStation) {stop(); return;}
+        stop(); station = row.dataset.monitorStation; stationName = row.dataset.stationName;
+        stream = row.dataset.stream; play();
+      }
+    });
+    const reconcile = stations => {
+      const existing = new Map([...strip.querySelectorAll('[data-monitor-station]')].map(row => [row.dataset.monitorStation, row]));
+      for (const [slug, data] of Object.entries(stations)) {
+        let row = existing.get(slug);
+        if (!row) {
+          row = document.createElement('div'); row.className = 'station-monitor'; row.dataset.monitorStation = slug;
+          // Static markup only; station names and URLs are assigned as data/text.
+          row.innerHTML = '<strong></strong><span class="on-air-icon"><i aria-hidden="true"></i> <b data-broadcast-label>CHECKING</b><span class="sr-only" data-broadcast-description></span></span><button type="button" data-station-monitor-toggle aria-pressed="false">MONITOR</button><small data-monitor-setup></small>';
+          row.querySelector('.on-air-icon').dataset.broadcastStation = slug;
+          strip.append(row);
+        }
+        existing.delete(slug);
+        row.dataset.stationName = data.name;
+        row.dataset.stream = data.stream || '';
+        row.querySelector('strong').textContent = data.name;
+        row.querySelector('button').setAttribute('aria-label', `Monitor ${data.name}`);
+        row.querySelector('[data-monitor-setup]').textContent = data.lifecycle === 'pending_create' ? 'Preparing…'
+          : !data.ready ? 'Unavailable' : data.status === 'failed' ? 'Needs attention'
+          : data.online === true ? 'On air' : !data.enabled ? 'Stopped'
+          : ['pending','applying'].includes(data.status) ? 'Starting…' : data.online === false ? 'Offline' : 'Checking…';
+        if (station === slug) {
+          stationName = data.name;
+          stream = data.stream || '';
+          if (!stream && wanted) stop();
+        }
+      }
+      for (const [slug, row] of existing) {
+        row.remove();
+        if (station === slug) {stop(); station = ''; stationName = ''; stream = '';}
+      }
+      render();
+    };
+    let pending = false;
+    const paint = stations => document.querySelectorAll('[data-broadcast-station]').forEach(el => {
+      const row = stations[el.dataset.broadcastStation];
+      const online = row?.online === true;
+      const description = row?.online === true ? (row.tone ? 'Online · Broadcasting tone' : 'Online')
+        : row?.online === false ? 'Offline' : 'Status unknown · observation unavailable';
+      el.classList.toggle('is-online', online);
+      el.title = description;
+      el.querySelector('[data-broadcast-description]').textContent = ' · ' + description;
+      const label = el.querySelector('[data-broadcast-label]');
+      if (label) label.textContent = online ? 'STATION LIVE' : row?.online === false ? 'NOT LIVE' : 'CHECKING';
+    });
+    const refresh = async () => {
+      if (pending || document.hidden) return;
+      pending = true;
+      const controller = new AbortController();
+      const abort = () => controller.abort();
+      scope.signal.addEventListener('abort', abort, {once:true});
+      const timeout = setTimeout(abort, 6000);
+      try {
+        const response = await scope.fetch(strip.dataset.broadcastUrl, {cache:'no-store', signal:controller.signal});
+        if (!response.ok) throw Error('Status unavailable');
+        const data = await response.json();
+        if (!scope.signal.aborted) {reconcile(data.stations); paint(data.stations);}
+      } catch (_) { if (!scope.signal.aborted) paint({}); }
+      finally {clearTimeout(timeout); scope.signal.removeEventListener('abort', abort); pending = false;}
+    };
+    scope.interval(refresh, 4000);
+    scope.listen(document, 'visibilitychange', () => {if (!document.hidden) refresh();});
+    refresh();
+  };
+  const mount = () => {
+    const header = document.querySelector('.admin-topbar');
+    if (header) {
+      const sizeHeader = () => document.documentElement.style.setProperty('--header-height', `${header.getBoundingClientRect().height}px`);
+      const observer = new ResizeObserver(sizeHeader);
+      observer.observe(header); sizeHeader();
+      window.FreoPage.cleanup(() => observer.disconnect());
+    }
+
+    const placeholder = document.querySelector('[data-master-monitor]');
+    if (!placeholder) {stop(); host?.remove(); clearTimeout(nowTimer); nowVersion++; nowRequest?.abort(); return;}
+    const availableStations = placeholder.dataset.availableStations ? JSON.parse(placeholder.dataset.availableStations) : null;
+    const preserve = Boolean(station) && placeholder.hasAttribute('data-preserve-station') && (!availableStations || availableStations.includes(station));
+    const next = preserve ? station : placeholder.dataset.station || '', nextStream = preserve ? stream : placeholder.dataset.stream || '';
+    stationName = preserve ? stationName : placeholder.dataset.stationName || '';
+    if (!host) {
+      host = document.createElement('div'); host.className = 'master-monitor';
+      host.innerHTML = '<button type="button" aria-pressed="false"><span class="monitor-dot" aria-hidden="true"></span> Monitor</button><small class="monitor-state" role="status"></small><label class="monitor-volume">Volume<input type="range" min="0" max="100" value="80" aria-label="Master monitor listening volume"></label>';
+      audio.volume = .8;
+      host.querySelector('button').addEventListener('click', () => wanted ? stop() : play());
+      host.querySelector('input').addEventListener('input', event => audio.volume = Number(event.target.value) / 100);
+    }
+    placeholder.replaceWith(host);
+    if (next !== station || nextStream !== stream) {
+      lastPlaying = null; showNow('Checking playback…', null);
+      const resume = wanted; station = next; stream = nextStream;
+      if (resume) {stop(); play();}
+    }
+    const nextNow = placeholder.dataset.station || next;
+    if (nextNow !== nowStation) {lastPlaying = null; showNow('Checking playback…', null);}
+    nowStation = nextNow;
+    mountBroadcast();
+    render();
+    if (lastPlaying) showNow('Checking playback…', lastPlaying);
+    refreshNow();
+  };
+  window.FreoMonitor = {toggle: () => {
+    const selected = [...document.querySelectorAll('[data-monitor-station]')].find(row => row.dataset.monitorStation === nowStation);
+    if (selected && station !== nowStation) {
+      stop(); station = nowStation; stationName = selected.dataset.stationName; stream = selected.dataset.stream; play();
+    } else {wanted ? stop() : play();}
+  }, stop, audio, levels:monitorLevels};
+
+  let navigating = false;
+  let pendingNavigation = null;
+  const dirtyForms = new Set();
+  // Browser fragment navigation also emits popstate. Track the rendered page,
+  // since location has already changed by the time a history event arrives.
+  let renderedPage = location.pathname + location.search;
+  const remember = () => history.replaceState({...history.state, freo: true, scroll: scrollY}, '', location.href);
+  const isPage = url => url.origin === location.origin && !/\/(api|stream|static)\//.test(url.pathname) && !/\/(audition|artwork|export|download)(\/|$)/.test(url.pathname);
+  async function navigate(url, options = {}) {
+    if (navigating) {
+      // Keep the latest history or link destination while a response or its
+      // scripts are loading. Submitted forms must never be replayed here.
+      if (options.pop || !options.request) pendingNavigation = {url, options};
+      return;
+    }
+    const guard=window.FreoPage.beforeNavigate || (!options.submitted && window.FreoPage.beforeLeave);
+    if (guard) {
+      if (!await guard()) {
+        if(options.pop)history.pushState({freo:true},'',renderedPage);
+        return;
+      }
+    } else if (dirtyForms.size && !options.submitted && !await FreoDialog.confirm({title: 'Leave unsaved changes?', message: 'Your edits on this page have not been saved. Leave this page and discard them?', confirmLabel: 'Leave page'})) return;
+    if(navigating)return navigate(url, options);
+    // Public player ad vendors must not persist into authenticated interfaces,
+    // and public CSP must be delivered by a full document response.
+    if (!options.request && (document.body.classList.contains('player-page') || new URL(url, location.href).pathname.startsWith('/player/'))) {location.assign(url); return;}
+    navigating = true; document.documentElement.classList.add('is-navigating');
+    try {
+      const response = await fetch(url, {credentials: 'same-origin', ...options.request});
+      if (!response.headers.get('content-type')?.includes('text/html')) {location.assign(url); return;}
+      const destination = new URL(response.url);
+      if (destination.pathname.startsWith('/player/')) {location.assign(destination); return;}
+      const requestedHash = new URL(url, location.href).hash;
+      if (requestedHash) destination.hash = requestedHash;
+      const next = new DOMParser().parseFromString(await response.text(), 'text/html');
+      if (next.body.classList.contains('player-page')) {location.assign(destination); return;}
+      if (!next.querySelector('#main')) throw new Error('Page unavailable');
+      if (pendingNavigation) return;
+      if (!options.pop) remember();
+      window.FreoPage.dispose(); window.FreoPage = makeScope();
+      document.querySelectorAll('audio,video').forEach(el => {if (el !== audio) {el.pause(); el.removeAttribute('src'); el.load();}});
+      host?.remove();
+      const scripts = [...next.querySelectorAll('script[src]')].map(el => el.src).filter(src => new URL(src).origin === location.origin && !src.includes('/workspace.js'));
+      next.querySelectorAll('script').forEach(el => el.remove());
+      document.querySelectorAll('link[href*="/website-theme.css"]').forEach(link => link.remove());
+      next.querySelectorAll('link[rel="stylesheet"]').forEach(link => {
+        if (![...document.querySelectorAll('link[rel="stylesheet"]')].some(el => el.href === link.href)) document.head.insertBefore(link.cloneNode(true), document.querySelector('link[href*="/theme.css"]'));
+      });
+      document.title = next.title; document.body.className = next.body.className;
+      document.body.replaceChildren(...next.body.childNodes);
+      renderedPage = destination.pathname + destination.search;
+      window.FreoTheme?.sync();
+      if (!options.pop) history.pushState({freo: true, scroll: 0}, '', destination.href);
+      dirtyForms.clear(); mount(); prepareForms();
+      for (const src of scripts) await new Promise((resolve, reject) => {
+        const script = document.createElement('script'); script.src = src; script.onload = resolve; script.onerror = reject; document.body.append(script);
+      });
+      document.querySelector('#main')?.setAttribute('tabindex', '-1'); document.querySelector('#main')?.focus({preventScroll: true});
+      if (destination.hash) document.getElementById(decodeURIComponent(destination.hash.slice(1)))?.scrollIntoView();
+      else window.scrollTo(0, options.pop ? history.state?.scroll || 0 : 0);
+    } catch (_) {
+      const notice = document.createElement('p'); notice.className = 'admin-notice error'; notice.setAttribute('role', 'alert');
+      notice.textContent = 'This page could not load. Check your connection and try again.'; document.querySelector('#main')?.prepend(notice);
+    } finally {
+      navigating = false; document.documentElement.classList.remove('is-navigating');
+      if (pendingNavigation) {
+        const destination = pendingNavigation; pendingNavigation = null;
+        navigate(destination.url, destination.options);
+      }
+    }
+  }
+  const prepareForms = () => document.querySelectorAll('form').forEach(form => {form.noValidate = true;});
+  document.addEventListener('input', event => {const form=event.target.closest('form[method="post"]');if(form)dirtyForms.add(form);});
+  document.addEventListener('freo:form-saved', event => dirtyForms.delete(event.detail.form));
+  document.addEventListener('click', event => {
+    const link = event.target.closest('a[href]');
+    if (!link || event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || link.target || link.hasAttribute('download')) return;
+    const url = new URL(link.href);
+    if (!isPage(url) || (url.pathname === location.pathname && url.search === location.search && url.hash)) return;
+    event.preventDefault(); navigate(url.href);
+  });
+  document.addEventListener('submit', async event => {
+    const form = event.target;
+    if (event.defaultPrevented || form.method === 'dialog') return;
+    const invalid = [...form.elements].find(el => el.willValidate && !el.validity.valid);
+    if (invalid) {event.preventDefault(); invalid.focus(); let error = form.querySelector('.form-error'); if (!error) {error = document.createElement('p'); error.className = 'form-error admin-notice error'; error.setAttribute('role', 'alert'); form.prepend(error);} error.textContent = `${invalid.labels?.[0]?.textContent?.trim() || 'Field'}: ${invalid.validationMessage}`; return;}
+    const url = new URL(event.submitter?.hasAttribute('formaction') ? event.submitter.formAction : form.action);
+    if (/\/(login|logout)$/.test(url.pathname)) {stop();return;}
+    if (!isPage(url) || form.target || event.submitter?.formTarget) return;
+    event.preventDefault();
+    if (url.pathname.endsWith('/logout')) stop();
+    if (form.dataset.confirm && !await FreoDialog.confirm({title:'Confirm change',message:form.dataset.confirm,confirmLabel:event.submitter?.textContent.trim() || 'Continue'})) return;
+    const data = new FormData(form, event.submitter);
+    if (form.method === 'get') {
+      url.search = new URLSearchParams(data).toString(); navigate(url.href);
+    }
+    else navigate(url.href, {submitted: true, request: {method: 'POST', body: data}});
+  });
+  window.addEventListener('popstate', () => {
+    if (!navigating && location.pathname + location.search === renderedPage) return;
+    navigate(location.href, {pop: true});
+  });
+  window.FreoWorkspace = {navigate};
+  mount(); prepareForms(); remember();
+})();

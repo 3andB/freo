@@ -1,0 +1,40 @@
+{% extends 'admin/base.html' %}
+{% block title %}Copyright reports · Freo{% endblock %}
+{% block admin_content %}
+<h1>Copyright reports</h1>
+{% if case is defined %}
+<p><a href="{{ url_for('dmca.cases') }}">All reports</a></p>
+<section class="admin-card">
+<h2>{{ case.reference }}</h2>
+<dl class="detail-list">
+<div><dt>Submitted</dt><dd>{{ case.created_at }}</dd></div>
+<div><dt>Status</dt><dd>{{ case.status }}</dd></div>
+<div><dt>Claimant</dt><dd>{{ case.claimant_name }} · {{ case.claimant_email }}</dd></div>
+<div><dt>Station supplied by claimant</dt><dd>{{ case.station_text }}</dd></div>
+<div><dt>Track owning station (snapshot)</dt><dd>{{ case.snapshot.get('station_name') or 'Unresolved' }}</dd></div>
+<div><dt>Reported station (snapshot)</dt><dd>{{ case.snapshot.get('reported_station_name') or 'Unresolved' }}</dd></div>
+<div><dt>Supplied Freo Track ID</dt><dd>{{ case.supplied_track_id or 'Not supplied' }}</dd></div>
+<div><dt>Resolved Freo Track ID</dt><dd>{{ case.snapshot.get('freo_track_id') or 'Unresolved' }}</dd></div>
+<div><dt>Title / artist</dt><dd>{{ case.snapshot.get('title') or '—' }} / {{ case.snapshot.get('artist') or '—' }}</dd></div>
+<div><dt>ISRC</dt><dd>{{ case.snapshot.get('isrc') or 'Not supplied' }}</dd></div>
+<div><dt>SHA-256</dt><dd><code>{{ case.snapshot.get('sha256') or 'Unavailable' }}</code></dd></div>
+<div><dt>Copyrighted work</dt><dd>{{ case.copyrighted_work }}</dd></div>
+<div><dt>Material description/location</dt><dd>{{ case.material_location }}</dd></div>
+<div><dt>Good-faith statement confirmed</dt><dd>{{ 'Yes' if case.good_faith else 'No' }}</dd></div>
+<div><dt>Accuracy and authorization under penalty of perjury confirmed</dt><dd>{{ 'Yes' if case.authorized else 'No' }}</dd></div>
+<div><dt>Electronic signature</dt><dd>{{ case.signature }}</dd></div>
+</dl>
+<form method="post" action="{{ url_for('dmca.status',reference=case.reference) }}">
+<input type="hidden" name="csrf" value="{{ csrf_token() }}">
+<label>Status<select name="status">{% for status in statuses %}<option {% if case.status == status %}selected{% endif %}>{{ status }}</option>{% endfor %}</select></label>
+<button type="submit">Update status</button>
+</form><p>Status changes are recorded in the admin audit. They do not automatically alter tracks or stations.</p>
+</section>
+{% else %}
+<div class="table-scroll"><table class="admin-table"><thead><tr><th>Reference</th><th>Submitted</th><th>Status</th><th>Claimant</th><th>Station</th><th>Freo Track ID</th></tr></thead><tbody>
+{% for row in cases.items %}<tr><td><a href="{{ url_for('dmca.detail',reference=row.reference) }}">{{ row.reference }}</a></td><td>{{ row.created_at }}</td><td>{{ row.status }}</td><td>{{ row.claimant_name }}</td><td>{{ row.station_text }}</td><td>{{ row.supplied_track_id or '—' }}</td></tr>{% else %}<tr><td colspan="6">No copyright reports.</td></tr>{% endfor %}
+</tbody></table></div>
+{% if cases.has_prev %}<a href="{{ url_for('dmca.cases',page=cases.prev_num) }}">Previous</a>{% endif %}
+{% if cases.has_next %}<a href="{{ url_for('dmca.cases',page=cases.next_num) }}">Next</a>{% endif %}
+{% endif %}
+{% endblock %}

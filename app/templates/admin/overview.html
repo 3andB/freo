@@ -1,0 +1,71 @@
+{% extends 'admin/base.html' %}
+{% block title %}Overview · Radio Station Ops · Freo{% endblock %}
+{% block scripts %}{{ super() }}<script defer src="{{ url_for('static',filename='operations.js',v='rc6-version-awareness') }}"></script>{% endblock %}
+{% block admin_content %}
+<div id="operations" data-url="{{ url_for('web.operations_snapshot') }}">
+  <header class="ops-heading"><div><span class="eyebrow">RADIO STATION OPS / ALL STATIONS</span><h1>Operations overview</h1><p>Your stations, audience, and system in one place.</p></div><a class="admin-primary" href="#add-station">Add station</a></header>
+  <p id="ops-freshness" class="quiet" role="status">Live observations refresh every 15 seconds. Missing observations are shown as unknown.</p>
+  <div class="admin-kpis ops-kpis">
+    {% for key,label,note in [('stations','Managed stations','This installation'),('on_air','On air','Observed stream mounts'),('stopped','Stopped','Requested to stop'),('attention','Need attention','Broadcast or setup issues'),('listeners','Listening now','Concurrent connections'),('listener_hours','Listening hours','Past 24 hours'),('peak','Peak audience','Simultaneous · past 24 hours'),('uptime','Uptime %','Observed · past 24 hours')] %}
+    <article class="admin-card kpi-card"><span class="eyebrow">{{ label }}</span><strong data-summary="{{ key }}">{{ ops.summary[key] if ops.summary[key] is not none else '—' }}</strong><small>{{ note }}</small></article>
+    {% endfor %}
+  </div>
+  <div class="admin-columns">
+    <section class="admin-card ops-connection"><span class="eyebrow">FREO.LIVE / MOTHER SHIP</span><h2 data-connection="status">{{ ops.connection.status }}</h2><dl class="detail-list">
+      <div><dt>Last successful heartbeat</dt><dd data-connection="last_contact">{{ ops.connection.last_contact }}</dd></div>
+      <div><dt>Station synchronization</dt><dd data-connection="synced">{{ ops.connection.synced }}</dd></div>
+      <div><dt>Installed version</dt><dd data-connection="installed_version">{{ ops.connection.installed_version }}</dd></div>
+      <div><dt>Latest stable version</dt><dd data-connection="latest_version">{{ ops.connection.latest_version }}</dd></div>
+      <div><dt>Update status</dt><dd data-connection="update_status">{{ ops.connection.update_status }}</dd></div>
+      <div><dt>Version source</dt><dd data-connection="version_source">{{ ops.connection.version_source }}</dd></div>
+      <div><dt>Status received at</dt><dd data-connection="version_checked_at">{{ ops.connection.version_checked_at }}</dd></div>
+      <div><dt>Release discovered at</dt><dd data-connection="release_checked_at">{{ ops.connection.release_checked_at }}</dd></div>
+      <div><dt>Plan</dt><dd data-connection="plan">{{ ops.connection.plan }}</dd></div>
+      <div><dt>License status</dt><dd data-connection="entitlement_status">{{ ops.connection.entitlement_status }}</dd></div>
+      <div><dt>Local station limit</dt><dd data-connection="channel_limit">{{ ops.connection.channel_limit }}</dd></div>
+    </dl><p data-connection="error" class="quiet">{{ ops.connection.error }}</p>
+      <p class="quiet" data-connection="version_note">{{ ops.connection.version_note }}</p>
+      <p data-version-notice {% if ops.connection.update_available is not sameas true %}hidden{% endif %}>An update is available according to the last successful heartbeat.</p>
+      <p><a data-release-link {% if ops.connection.release_url %}href="{{ ops.connection.release_url }}"{% else %}hidden{% endif %} target="_blank" rel="noopener noreferrer">View stable release on GitHub ↗</a></p>
+      <form id="connection-check" method="post" action="{{ url_for('central_api.request_connection_check') }}">
+        <input type="hidden" name="csrf" value="{{ csrf_token() }}">
+        <button type="submit" class="admin-primary" {% if ops.connection.check.busy or ops.connection.check.retry_at > ops.generated_at %}disabled{% endif %}>Check connection now</button>
+      </form>
+      <p id="connection-check-status" role="status" aria-live="polite" data-check-status="{{ ops.connection.check.status }}" data-retry-at="{{ ops.connection.check.retry_at }}">{{ ops.connection.check.message }}</p>
+      <a href="{{ url_for('central_api.settings') }}">Installation and connection settings →</a></section>
+    <section class="admin-card"><span class="eyebrow">SYSTEM / OPERATIONS</span><h2>System health</h2><dl class="detail-list">
+      <div><dt>Web and database</dt><dd>Available</dd></div>
+      <div><dt>Automation worker</dt><dd data-summary="automation">{{ ops.summary.automation }}</dd></div>
+      <div><dt>Statistics collector</dt><dd data-summary="collector">{{ ops.summary.collector }}</dd></div>
+      <div><dt>Observation coverage · 24h</dt><dd><span data-summary="coverage">{{ ops.summary.coverage }}</span>%</dd></div>
+      <div><dt>Stored media and images</dt><dd data-storage>{{ ops.summary.storage|filesizeformat if ops.summary.storage is not none else 'Not yet measured' }}</dd></div>
+    </dl><p class="quiet">Shared media counts once across the installation. Statistics show observed coverage and gaps.</p><a href="{{ url_for('statistics.page') }}">Full operations statistics →</a></section>
+  </div>
+  <nav class="ops-shortcuts" aria-label="Operations shortcuts">
+    <a href="{{ url_for('website.editor') }}">Homepage editor <span>Website and station directory →</span></a>
+    <a href="{{ url_for('player_experience.directory') }}">Player settings <span>Configure each station’s player →</span></a>
+    <a href="{{ url_for('player_experience.operations_inbox') }}">Listener feedback <span>Review feedback across stations →</span></a>
+    <a href="{{ url_for('dmca.cases') }}">DMCA reports <span>Copyright reports and review →</span></a>
+    <a href="{{ url_for('statistics.page') }}">Operations statistics <span>Audience, plays, resources, reliability →</span></a>
+    <a href="{{ url_for('admin_media.audit_view') }}">Admin audit <span>Recent administrative activity →</span></a>
+  </nav>
+  <div class="ops-heading" id="stations"><div><span class="eyebrow">EVERY STATION</span><h2>Station operations</h2><p>Switch to a station to open its controls and workspace.</p></div></div>
+  <div class="admin-station-grid ops-stations">
+  {% for station in stations %}{% set observation = ops.stations[station.slug] %}
+    <article class="admin-card station-tile" data-ops-station="{{ station.slug }}">
+      <div class="station-tile-top"><span class="eyebrow">{{ station.slug }}</span><span class="state-pill {{ 'is-on' if observation.status == 'On air' else 'is-off' }}" data-station-field="status">{{ observation.status }}</span></div>
+      <h2 class="ops-station-name">{% if station.logo %}<img src="{{ url_for('station_settings.logo',slug=station.slug,v=station.logo.version) }}" alt="">{% endif %}{{ station.name }} <span class="on-air-icon {{ 'is-online' if observation.status == 'On air' else '' }}" data-broadcast-station="{{ station.slug }}"><i aria-hidden="true"></i> ON AIR<span class="sr-only" data-broadcast-description> · {{ observation.status }}</span></span></h2><p>{{ station.description or 'Independent Freo station' }}</p><p class="quiet">{{ [station.city,station.region,station.country]|select|join(', ') }}</p>
+      <div class="ops-playing"><span class="eyebrow" data-station-field="playback_label">{{ observation.playback_label }}</span><strong data-station-field="title">{{ observation.title }}</strong><span data-station-field="artist">{{ observation.artist }}</span><small data-station-field="started_at">{{ observation.started_at or 'No confirmed start recorded' }}</small></div>
+      <dl class="detail-list">
+        {% for key,label in [('listeners','Listeners'),('mode','Programming mode'),('program','Scheduled program'),('next_transition','Next transition'),('worker','Automation'),('queue','Queue depth'),('desired','Desired state'),('lifecycle','Setup')] %}<div><dt>{{ label }}</dt><dd data-station-field="{{ key }}">{{ observation[key] if observation[key] is not none else 'Unknown' }}</dd></div>{% endfor %}
+        <div><dt>Timezone</dt><dd>{{ station.timezone }}</dd></div>
+      </dl>
+      <p class="ops-issues" data-station-field="issues">{{ observation.issues }}</p>
+      {% if station.lifecycle_state not in ('pending_delete','delete_failed') %}<div class="tile-links"><a class="admin-primary" href="{{ url_for('schedule_studio.page',slug=station.slug,view='control') }}">Switch to Station Control →</a><a href="{{ url_for('station_settings.page',slug=station.slug) }}">Station settings →</a><a href="{{ url_for('statistics.page',slug=station.slug) }}">Statistics →</a>{% if station.enabled %}<a href="{{ url_for('web.player',slug=station.public_slug or station.slug) }}">Public player ↗</a>{% endif %}</div>{% endif %}
+      {% include 'admin/_station_lifecycle.html' %}
+    </article>
+  {% else %}<section class="empty-panel"><h2>No managed stations yet</h2><p>Add your first station below to begin broadcasting.</p></section>{% endfor %}
+  </div>
+</div>
+{% include 'admin/_station_create.html' %}
+{% endblock %}

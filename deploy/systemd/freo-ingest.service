@@ -1,0 +1,24 @@
+[Unit]
+Description=Freo media ingest worker
+After=network.target postgresql.service
+Wants=postgresql.service
+
+[Service]
+Type=simple
+User=freo-ingest
+Group=freo-ingest
+SupplementaryGroups=freo
+WorkingDirectory=/opt/freo
+EnvironmentFile=/opt/freo/.env
+ExecStart=/opt/freo/venv/bin/python -m app.ingest_worker
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/freo/uploads /var/lib/freo/media
+UMask=0027
+
+[Install]
+WantedBy=multi-user.target

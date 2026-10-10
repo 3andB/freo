@@ -1,0 +1,126 @@
+"""Real browser and worker exercise import, listening, artwork, and editing."""
+import subprocess
+import os
+from pathlib import Path
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from app.extensions import db
+from app.models import Track,MediaIngestJob,Artist,Album
+from tests.test_live_browser import booth,wait_text,open_import
+from tests.test_web import app as app_fixture
+
+
+def test_import_and_edit_catalog(booth, request):
+    app,driver,base,tmp_path=booth
+    def click(selector):
+        element=driver.find_element(By.CSS_SELECTOR,selector)
+        driver.execute_script('arguments[0].scrollIntoView({block:"center"})',element)
+        element.click()
+    audio=tmp_path/'incoming.mp3';image=tmp_path/'cover.png'
+    subprocess.run(['ffmpeg','-v','error','-f','lavfi','-i','sine=frequency=650:duration=12','-metadata','title=My imported song','-metadata','artist=File artist',str(audio)],check=True)
+    subprocess.run(['ffmpeg','-v','error','-f','lavfi','-i','color=c=blue:s=900x700','-frames:v','1',str(image)],check=True)
+    import tempfile,shutil
+    browser_tmp=Path('/tmp/snap-private-tmp/snap.chromium/tmp')
+    browser_binary = Path(os.environ.get('FREO_TEST_CHROME', '/usr/bin/chromium-browser'))
+    # Launching the native binary under /snap/ does not enter Snap's namespace.
+    snap_browser = browser_tmp.exists() and browser_binary in (Path('/snap/bin/chromium'), Path('/usr/bin/chromium-browser'))
+    share=Path(tempfile.mkdtemp(prefix='freo-catalog-',dir=browser_tmp if snap_browser else tmp_path))
+    request.addfinalizer(lambda:shutil.rmtree(share))
+    shutil.copy(audio,share/audio.name);shutil.copy(image,share/image.name)
+    browser_dir=Path('/tmp')/share.name if snap_browser else share
+    open_import(driver, base)
+    driver.find_element(By.ID,'media-file').send_keys(str(browser_dir/audio.name))
+    wait_text(driver,'.import-card','Uploaded')
+    from tests.test_import_sessions_browser import work,choose
+    work(app,True)
+    wait_text(driver,'.import-card','Ready to import')
+    WebDriverWait(driver,8).until(lambda d:d.find_element(By.CSS_SELECTOR,'.import-song-fields input').get_attribute('value')=='My imported song')
+    click('.import-card-head button')
+    WebDriverWait(driver,8).until(lambda d:d.execute_script('return !document.getElementById("music-audio").paused'))
+    choose(driver,'.import-card','Artist','New browser artist',True)
+    choose(driver,'.import-card','Album','New browser album',True)
+    assert driver.find_element(By.CSS_SELECTOR,'.import-card .import-more').get_attribute('open')
+    click('.import-card [aria-label=categories] button')
+    driver.find_element(By.XPATH,"//button[text()='Choose artwork']").click()
+    driver.find_element(By.CSS_SELECTOR,'.artwork-dialog input[type=file]').send_keys(str(browser_dir/image.name))
+    save=driver.find_element(By.XPATH,"//button[text()='Save artwork']")
+    WebDriverWait(driver,8).until(lambda d:save.is_enabled());save.click()
+    WebDriverWait(driver,8).until(lambda d:not d.find_elements(By.CSS_SELECTOR,'.artwork-dialog'))
+    click('#media-upload-form button[type=submit]')
+    wait_text(driver,'#import-message','Import started')
+    WebDriverWait(driver,8).until(lambda d:'Uploading' not in d.find_element(By.CSS_SELECTOR,'.import-card p[role=status]').text)
+    from app.ingest_worker import process_one
+    from app.services.analysis_queue import process_analysis
+    with app.app_context():
+        assert process_one()
+        job=MediaIngestJob.query.filter_by(kind='ingest').one();song=job.track
+        assert song and song.artist=='New browser artist' and song.album=='New browser album'
+        assert song.catalog_album.cover_id and not song.enabled
+        Track.query.filter(Track.id!=song.id).update({'analysis_status':'complete'});db.session.commit()
+        assert process_analysis();db.session.refresh(song);assert song.enabled and song.waveform
+        identifier=song.uuid
+    wait_text(driver,'#import-success','imported successfully')
+    assert not driver.find_elements(By.CSS_SELECTOR,'.import-card')
+    driver.get(base+'/admin/stations/test-station/media/'+identifier)
+    wait_text(driver,'#broadcast-status','Enabled for broadcast')
+    assert driver.find_element(By.ID,'editor-cover').is_displayed()
+    click('.editor-listen [data-preview]')
+    WebDriverWait(driver,8).until(lambda d:d.execute_script('return !document.getElementById("music-audio").paused'))
+    click('#waveform-seek')
+    WebDriverWait(driver,8).until(lambda d:d.execute_script('return document.getElementById("music-audio").currentTime > 1'))
+    driver.save_screenshot('/tmp/freo-media-editor-desktop.png')
+    click('.music-toggle[data-kind=category]')
+    wait_text(driver,'#broadcast-status','choose an active category')
+    driver.find_element(By.ID,'broadcast-toggle').click()
+    wait_text(driver,'#broadcast-status','Disabled')
+    title=driver.find_element(By.CSS_SELECTOR,'#song-details [name=title]');title.clear();title.send_keys('Edited in browser')
+    click('#song-details button[type=submit]')
+    wait_text(driver,'#editor-title','Edited in browser')
+    choose(driver,'#editor-catalog','Artist','Popup artist',True)
+    click('#song-details button[type=submit]')
+    wait_text(driver,'#editor-subtitle','Popup artist')
+    driver.set_window_size(430,932)
+    assert driver.execute_script('return document.documentElement.scrollWidth <= innerWidth')
+    driver.save_screenshot('/tmp/freo-media-editor-mobile.png')
+    with app.app_context():
+        song=Track.query.filter_by(uuid=identifier).one();assert song.title=='Edited in browser' and not song.enabled and song.album_id is None
+
+
+def test_save_waits_for_artist_creation(booth):
+    app, driver, base, tmp_path = booth
+    with app.app_context():
+        song = Track.query.first()
+        identifier, original_artist = song.uuid, song.artist
+    driver.get(base + '/admin/stations/test-station/media/' + identifier)
+    WebDriverWait(driver, 10).until(lambda d:d.execute_script('return !document.getElementById("media-editor").inert'))
+    driver.execute_script('''
+        const original = window.fetch;
+        window.fetch = async function(url, options) {
+            if (String(url).endsWith('/catalog/artists') && options?.method === 'POST') {
+                await new Promise(resolve => window.releaseCatalogCreate = resolve);
+            }
+            return original.call(this, url, options);
+        };
+    ''')
+    field = driver.find_element(By.CSS_SELECTOR, '#editor-catalog input[aria-label="Artist"]')
+    driver.execute_script('arguments[0].scrollIntoView({block:"center"})', field)
+    field.clear(); field.send_keys('Delayed artist')
+    driver.find_element(By.CSS_SELECTOR, '[aria-label="Create artist Delayed artist"]').click()
+    WebDriverWait(driver, 8).until(lambda d:d.execute_script('return typeof window.releaseCatalogCreate === "function"'))
+    save = driver.find_element(By.CSS_SELECTOR, '#song-details button[type=submit]')
+    assert not save.is_enabled()
+    # Artwork also saves song details first; it must not persist stale selections.
+    cover = driver.find_element(By.ID, 'cover-edit')
+    driver.execute_script('arguments[0].scrollIntoView({block:"center"})', cover)
+    cover.click()
+    wait_text(driver, '#editor-status', 'Wait for artist or album creation')
+    assert not driver.find_elements(By.CSS_SELECTOR, '.artwork-dialog')
+    with app.app_context():
+        assert Track.query.filter_by(uuid=identifier).one().artist == original_artist
+    driver.execute_script('window.releaseCatalogCreate()')
+    WebDriverWait(driver, 8).until(lambda d:save.is_enabled() and field.get_attribute('value') == 'Delayed artist')
+    driver.execute_script('arguments[0].scrollIntoView({block:"center"})', save)
+    save.click()
+    wait_text(driver, '#editor-subtitle', 'Delayed artist')
+    with app.app_context():
+        assert Track.query.filter_by(uuid=identifier).one().artist == 'Delayed artist'

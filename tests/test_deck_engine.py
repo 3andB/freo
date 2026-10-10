@@ -1,0 +1,483 @@
+"""Opt-in real Liquidsoap + worker integration, using temporary audio and SQLite."""
+import os,subprocess,time,uuid
+from pathlib import Path
+from datetime import datetime,timezone
+import pytest
+from app.extensions import db
+from app.models import Station,Track,AdminUser,SelectionDecision
+from app.services.station_runtime import render_liquidsoap
+from app.services.live_assist import request_deck,status
+from app.automation_worker import process_manual,observe_queue,EventReader
+from tests.test_web import app
+
+pytestmark=pytest.mark.skipif(os.environ.get('FREO_ENGINE_TEST')!='1',reason='Explicit isolated Liquidsoap integration')
+
+
+def test_actual_worker_load_play_pause_repeat_clear_and_mode(app,tmp_path,monkeypatch):
+    media=tmp_path/'media';runtime=tmp_path/'runtime';directory=runtime/'test-station';directory.mkdir(parents=True)
+    originals=media/'test-station'/'originals';originals.mkdir(parents=True)
+    key='a'*32+'.mp3';audio=originals/key
+    # Leave time for real socket/DB observations and operator commands. Four
+    # seconds could expire during CLEAR, correctly triggering stale protection.
+    subprocess.run(['ffmpeg','-v','error','-f','lavfi','-i','sine=frequency=440:duration=20','-y',str(audio)],check=True)
+    monkeypatch.setenv('FREO_MEDIA_ROOT',str(media))
+    monkeypatch.setattr('app.services.playout_queue.SOCKET_ROOT',runtime)
+    monkeypatch.setattr('app.automation_worker.EVENT_ROOT',runtime)
+    with app.app_context():
+        station=Station.query.filter_by(slug='test-station').one();track=Track.query.first();track.storage_key=key;track.duration_ms=20000
+        station.automation.operator_mode='DJ_BOOTH';station.automation.hold=True;db.session.commit();user=AdminUser.query.first()
+        source=render_liquidsoap(station,'a'*64).replace('/run/freo/playout/test-station',str(directory))
+        source='settings.init.allow_root := true\n'+source[:source.index('output.icecast(')]+f'output.file(%wav, "{tmp_path}/audio.wav", radio)\n'
+        config=tmp_path/'engine.liq';config.write_text(source)
+        with (tmp_path/'engine.log').open('w') as log:
+            proc=subprocess.Popen(['liquidsoap',str(config)],stdout=log,stderr=log)
+            try:
+                for _ in range(300):
+                    if (directory/'control.sock').exists():break
+                    if proc.poll() is not None:pytest.fail((tmp_path/'engine.log').read_text()[-2000:])
+                    time.sleep(.2)
+                reader=EventReader()
+                def refresh():
+                    process_manual(station,reader);observe_queue(station);return status(station)
+                refresh()
+                def action(deck,operation):
+                    observed=refresh();item=observed['mixer'][deck.lower()]
+                    command=request_deck(station,user,deck,operation,track.uuid,str(item['decision_id']) if item else '',str(uuid.uuid4()),fade_seconds=0)
+                    refresh();db.session.refresh(command);assert command.status=='sent',command.error_code
+                    time.sleep(.3);return refresh(),command
+                for deck in ('A','B'):
+                    observed,command=action(deck,'LOAD');identifier=command.target_decision_id
+                    assert observed['mixer'][deck.lower()]['decision_id']==identifier
+                    assert not observed['mixer'][deck.lower()+'_playing']
+                    assert db.session.get(SelectionDecision,identifier).status=='queued'
+                    observed,_=action(deck,'PLAY')
+                    assert observed['current']['decision_id']==identifier
+                    assert db.session.get(SelectionDecision,identifier).status=='started'
+                    observed,_=action(deck,'PAUSE');elapsed=observed['mixer'][deck.lower()+'_elapsed'];time.sleep(.3)
+                    assert abs(refresh()['mixer'][deck.lower()+'_elapsed']-elapsed)<.1
+                    observed,replacement=action(deck,'LOAD');identifier=replacement.target_decision_id
+                    assert observed['mixer'][deck.lower()+'_elapsed']==0
+                    time.sleep(.2);assert refresh()['mixer'][deck.lower()+'_elapsed']==0
+                    observed,_=action(deck,'PLAY');assert observed['current']['decision_id']==identifier
+                observed,command=action('B','REPEAT');repeat=command.target_decision_id
+                deadline=time.monotonic()+30
+                while time.monotonic()<deadline:
+                    observed=refresh()
+                    if (observed['current'] and observed['current']['decision_id']==repeat
+                            and db.session.get(SelectionDecision,repeat).status=='started'):break
+                    time.sleep(.1)
+                assert observed['current']['decision_id']==repeat
+                assert db.session.get(SelectionDecision,repeat).status=='started'
+                # Freeze the repeated track before testing explicit cleanup;
+                # end-of-track stale commands have separate rejection coverage.
+                action('B','PAUSE')
+                for deck in ('A','B'):
+                    observed,_=action(deck,'CLEAR');assert observed['mixer'][deck.lower()] is None
+                assert refresh()['current'] is None
+            finally:
+                proc.terminate()
+                try:proc.wait(timeout=5)
+                except subprocess.TimeoutExpired:proc.kill();proc.wait()
+
+
+def test_recorded_crossfade_has_both_tones_and_live_meter(app,tmp_path,monkeypatch):
+    """Spectral energy must ramp in both directions, not just switch flags."""
+    import math, wave, struct
+    from app.services.playout_queue import _command,deck_control,mixer_state,program_rms
+    media=tmp_path/'media';runtime=tmp_path/'runtime';directory=runtime/'test-station';directory.mkdir(parents=True)
+    originals=media/'test-station'/'originals';originals.mkdir(parents=True)
+    for key,hz in [('a',440),('b',880)]:
+        subprocess.run(['ffmpeg','-v','error','-f','lavfi','-i',f'sine=frequency={hz}:duration=25','-y',str(originals/(key*32+'.mp3'))],check=True)
+    monkeypatch.setenv('FREO_MEDIA_ROOT',str(media));monkeypatch.setattr('app.services.playout_queue.SOCKET_ROOT',runtime)
+    with app.app_context():
+        station=Station.query.filter_by(slug='test-station').one();station.automation.operator_mode='DJ_BOOTH'
+        source=render_liquidsoap(station,'a'*64).replace('/run/freo/playout/test-station',str(directory))
+    recording=tmp_path/'crossfade.wav'
+    source='settings.init.allow_root := true\n'+source[:source.index('output.icecast(')]+f'output.file(%wav, "{recording}", radio)\n'
+    config=tmp_path/'crossfade.liq';config.write_text(source)
+    with (tmp_path/'crossfade.log').open('w') as log:
+        proc=subprocess.Popen(['liquidsoap',str(config)],stdout=log,stderr=log)
+        try:
+            for _ in range(300):
+                if (directory/'control.sock').exists():break
+                if proc.poll() is not None:pytest.fail((tmp_path/'crossfade.log').read_text()[-2500:])
+                time.sleep(.2)
+            for deck,key,bus,identifier in [('A','a','freo_a',1),('B','b','freo_b',2)]:
+                deck_control('test-station',deck,'clear')
+                _command('test-station',f'{bus}.push annotate:freo_decision={identifier}:{originals/(key*32+".mp3")}')
+            time.sleep(1)
+            deck_control('test-station','A','take',0);time.sleep(.8)
+            assert 0 < program_rms('test-station') < 1
+            deck_control('test-station','B','take',2);time.sleep(.6)
+            state=mixer_state('test-station');assert state['a_playing'] and state['b_playing']
+            assert state['transition']['incoming']=='B' and 0<state['transition']['progress']<1
+            time.sleep(1.8)
+            state=mixer_state('test-station');assert not state['a_playing'] and state['b_playing']
+            deck_control('test-station','A','take',2);time.sleep(2.4)
+            state=mixer_state('test-station');assert state['a_playing'] and not state['b_playing']
+            # An old delayed completion must not stop a newer Take Air command.
+            deck_control('test-station','B','take',1);time.sleep(.2)
+            deck_control('test-station','A','take',0);time.sleep(1.1)
+            state=mixer_state('test-station');assert state['a_playing'] and not state['b_playing']
+            deck_control('test-station','A','fade',.5);time.sleep(.8)
+            assert not mixer_state('test-station')['a_playing']
+        finally:
+            proc.terminate()
+            try:proc.wait(timeout=5)
+            except subprocess.TimeoutExpired:proc.kill();proc.wait()
+    # Downsample each 100 ms window; exact-bin Fourier amplitudes isolate decks.
+    with wave.open(str(recording),'rb') as wav:
+        rate=wav.getframerate();channels=wav.getnchannels();assert wav.getsampwidth()==2
+        from array import array
+        data=array('h')
+        while chunk:=wav.readframes(rate):data.frombytes(chunk)
+        if __import__('sys').byteorder!='little':data.byteswap()
+    mono=data[::channels];size=rate//10
+    levels=[]
+    for start in range(0,len(mono)-size,size):
+        window=mono[start:start+size:4]
+        amplitudes=[]
+        for hz in (440,880):
+            real=sum(value*math.cos(2*math.pi*hz*4*i/rate) for i,value in enumerate(window))
+            imag=sum(value*math.sin(2*math.pi*hz*4*i/rate) for i,value in enumerate(window))
+            amplitudes.append(math.hypot(real,imag)*2/len(window))
+        levels.append(amplitudes)
+    peak_a=max(a for a,b in levels);peak_b=max(b for a,b in levels)
+    ratios=[(a/peak_a,b/peak_b) for a,b in levels]
+    assert sum(.15<a<.85 and .15<b<.85 for a,b in ratios)>=18
+    assert any(a>.8 and b<.1 for a,b in ratios)
+    assert any(b>.8 and a<.1 for a,b in ratios)
+    # During a ramp, several consecutive windows must move gradually both ways.
+    assert sum(a2<a1-.015 and b2>b1+.015 for (a1,b1),(a2,b2) in zip(ratios,ratios[1:]))>=10
+    assert sum(a2>a1+.015 and b2<b1-.015 for (a1,b1),(a2,b2) in zip(ratios,ratios[1:]))>=10
+
+
+@pytest.mark.parametrize('deck',['A','B'])
+@pytest.mark.parametrize('direction',['to_auto','to_dj'])
+def test_auto_and_dj_crossfade(app,tmp_path,monkeypatch,deck,direction):
+    import math,wave
+    from array import array
+    from app.services.playout_queue import _command,deck_control,mixer_state,program_decision_id
+    runtime=tmp_path/'runtime';directory=runtime/'test-station';directory.mkdir(parents=True)
+    originals=tmp_path/'media'/'test-station'/'originals';originals.mkdir(parents=True)
+    for key,hz in [('a',440),('b',880)]:
+        subprocess.run(['ffmpeg','-v','error','-f','lavfi','-i',f'sine=frequency={hz}:duration=20','-y',str(originals/(key*32+'.mp3'))],check=True)
+    monkeypatch.setenv('FREO_MEDIA_ROOT',str(tmp_path/'media'));monkeypatch.setattr('app.services.playout_queue.SOCKET_ROOT',runtime)
+    with app.app_context():
+        station=Station.query.filter_by(slug='test-station').one();station.automation.operator_mode='AUTO' if direction=='to_dj' else 'DJ_BOOTH'
+        source=render_liquidsoap(station,'a'*64).replace('/run/freo/playout/test-station',str(directory))
+    recording=tmp_path/'auto.wav'
+    source='settings.init.allow_root := true\n'+source[:source.index('output.icecast(')]+f'output.file(%wav,"{recording}",radio)\n'
+    config=tmp_path/'auto.liq';config.write_text(source)
+    with (tmp_path/'auto.log').open('w') as log:
+        proc=subprocess.Popen(['liquidsoap',str(config)],stdout=log,stderr=log)
+        try:
+            for _ in range(300):
+                if (directory/'control.sock').exists():break
+                if proc.poll() is not None:pytest.fail((tmp_path/'auto.log').read_text()[-2500:])
+                time.sleep(.2)
+            bus='freo_a' if deck=='A' else 'freo_b'
+            if direction=='to_auto':
+                deck_control('test-station',deck,'clear')
+                _command('test-station',f'{bus}.push annotate:freo_decision=1:{originals/("a"*32+".mp3")}')
+                time.sleep(.5);deck_control('test-station',deck,'take',0);time.sleep(1)
+                _command('test-station','freo_mixer.mode AUTO')
+                _command('test-station',f'freo_queue.push annotate:freo_decision=2:{originals/("b"*32+".mp3")}')
+            else:
+                _command('test-station',f'freo_queue.push annotate:freo_decision=1:{originals/("a"*32+".mp3")}')
+                time.sleep(1)
+                _command('test-station','freo_mixer.mode DJ_BOOTH')
+                time.sleep(1)
+                standby=mixer_state('test-station')
+                assert standby['auto_standby'] and standby['a_id'] is None and standby['b_id'] is None
+                assert program_decision_id('test-station')==1
+                deck_control('test-station',deck,'clear')
+                _command('test-station',f'{bus}.push annotate:freo_decision=2:{originals/("b"*32+".mp3")}')
+                time.sleep(.5)
+                assert program_decision_id('test-station')==1
+                assert not mixer_state('test-station')[deck.lower()+'_playing']
+                deck_control('test-station',deck,'take',3)
+            time.sleep(.8)
+            assert program_decision_id('test-station')==1
+            assert mixer_state('test-station')[deck.lower()+'_playing']
+            time.sleep(4)
+            assert program_decision_id('test-station')==2
+            assert mixer_state('test-station')['mode']==('AUTO' if direction=='to_auto' else 'DJ_BOOTH')
+            if direction=='to_dj':assert mixer_state('test-station')['auto_gain']==0
+        finally:
+            proc.terminate()
+            try:proc.wait(timeout=5)
+            except subprocess.TimeoutExpired:proc.kill();proc.wait()
+    with wave.open(str(recording),'rb') as wav:
+        rate=wav.getframerate();channels=wav.getnchannels();data=array('h',wav.readframes(wav.getnframes()))
+    mono=data[::channels];size=rate//10;levels=[]
+    for start in range(0,len(mono)-size,size):
+        window=mono[start:start+size:4];pair=[]
+        for hz in (440,880):
+            real=sum(v*math.cos(2*math.pi*hz*4*i/rate) for i,v in enumerate(window))
+            imag=sum(v*math.sin(2*math.pi*hz*4*i/rate) for i,v in enumerate(window))
+            pair.append(math.hypot(real,imag)*2/len(window))
+        levels.append(pair)
+    outgoing=max(a for a,b in levels);incoming=max(b for a,b in levels)
+    assert outgoing>100 and incoming>100
+    ratios=[(a/outgoing,b/incoming) for a,b in levels]
+    assert sum(.1<a<.9 and .1<b<.9 for a,b in ratios)>=15
+    assert sum(a2<a1-.01 for (a1,_),(a2,_) in zip(ratios,ratios[1:]))>=15
+
+
+@pytest.mark.parametrize('future_count', [2, 6])
+@pytest.mark.parametrize('batch',[False,True])
+def test_soft_insert_preserves_current_song_and_all_future_requests(app,tmp_path,monkeypatch,future_count,batch):
+    """Actual engine proof: current song → inserted event → all future music."""
+    from app.services.playout_queue import _command, queued_order
+    media=tmp_path/'media';runtime=tmp_path/'runtime';directory=runtime/'test-station';directory.mkdir(parents=True)
+    originals=media/'test-station'/'originals';originals.mkdir(parents=True)
+    for key,seconds in [('a',5),('b',2),('c',2),('d',1)]:
+        subprocess.run(['ffmpeg','-v','error','-f','lavfi','-i',f'sine=frequency=440:duration={seconds}','-y',str(originals/(key*32+'.mp3'))],check=True)
+    monkeypatch.setenv('FREO_MEDIA_ROOT',str(media));monkeypatch.setattr('app.services.playout_queue.SOCKET_ROOT',runtime)
+    with app.app_context():
+        station=Station.query.filter_by(slug='test-station').one();station.automation.operator_mode='AUTO'
+        source=render_liquidsoap(station,'a'*64).replace('/run/freo/playout/test-station',str(directory))
+    source='settings.init.allow_root := true\n'+source[:source.index('output.icecast(')]+f'output.file(%wav, "{tmp_path}/insert.wav", radio)\n'
+    config=tmp_path/'insert.liq';config.write_text(source)
+    with (tmp_path/'insert.log').open('w') as log:
+        proc=subprocess.Popen(['liquidsoap',str(config)],stdout=log,stderr=log)
+        try:
+            for _ in range(300):
+                if (directory/'control.sock').exists():break
+                if proc.poll() is not None:pytest.fail((tmp_path/'insert.log').read_text()[-2500:])
+                time.sleep(.2)
+            def enqueue(key,identifier,operation='push'):
+                return int(_command('test-station',f'freo_queue.{operation} annotate:freo_decision={identifier}:{originals/(key*32+".mp3")}'))
+            enqueue('a',1)
+            def starts():
+                file=directory/'events.log'
+                return [(int(line.split()[0]),float(line.split()[1])) for line in file.read_text().splitlines() if not line.startswith('END ')] if file.exists() else []
+            for _ in range(60):
+                if starts():break
+                time.sleep(.1)
+            assert starts()[0][0] == 1
+            future=[enqueue('b' if i%2==0 else 'c',i+2) for i in range(future_count)]
+            event_decision=future_count+2
+            if batch:
+                uris=[f'annotate:freo_decision={event_decision+i}:{originals/("d"*32+".mp3")}' for i in range(2)]
+                events=[int(v) for v in _command('test-station','freo_queue.insert_many '+'|'.join(uris)).split()]
+            else:events=[enqueue('d',event_decision,'insert')]
+            assert queued_order('test-station') == [*events,*future]
+            assert [identifier for identifier,_ in starts()] == [1]
+            deadline=time.monotonic()+10+2*future_count
+            while time.monotonic()<deadline:
+                if len(starts()) >= future_count+1+len(events):break
+                time.sleep(.1)
+            actual=starts()
+            assert [identifier for identifier,_ in actual] == [1,*range(event_decision,event_decision+len(events)),*range(2,future_count+2)]
+            assert actual[1][1]-actual[0][1] >= 4.5
+        finally:
+            proc.terminate()
+            try:proc.wait(timeout=5)
+            except subprocess.TimeoutExpired:proc.kill();proc.wait()
+
+
+@pytest.mark.parametrize('event_audio', [False, True])
+def test_auto_skip_advances_once_and_counts_only_engine_starts(app,tmp_path,monkeypatch,event_audio):
+    """Real Auto queue, worker skip, observer ordering and confirmed airplay."""
+    from app.services.playout_queue import push_decision, socket_identity
+    from app.services.live_assist import request_skip
+    from app.services.airplay import play_counts
+    media=tmp_path/'media';runtime=tmp_path/'runtime';directory=runtime/'test-station';directory.mkdir(parents=True)
+    originals=media/'test-station'/'originals';originals.mkdir(parents=True)
+    key='a'*32+'.mp3'
+    subprocess.run(['ffmpeg','-v','error','-f','lavfi','-i','sine=frequency=440:duration=30','-y',str(originals/key)],check=True)
+    monkeypatch.setenv('FREO_MEDIA_ROOT',str(media))
+    monkeypatch.setattr('app.services.playout_queue.SOCKET_ROOT',runtime)
+    monkeypatch.setattr('app.automation_worker.EVENT_ROOT',runtime)
+    with app.app_context():
+        station=Station.query.filter_by(slug='test-station').one();track=Track.query.first();track.storage_key=key;track.duration_ms=30000
+        category=track.categories[0];user=AdminUser.query.first();db.session.commit()
+        baseline=play_counts(station.id,'track')[track.id]
+        category_baseline=play_counts(station.id,'category')[category.id]
+        source=render_liquidsoap(station,'a'*64).replace('/run/freo/playout/test-station',str(directory))
+        source='settings.init.allow_root := true\n'+source[:source.index('output.icecast(')]+f'output.file(%wav, "{tmp_path}/audio.wav", radio)\n'
+        config=tmp_path/'auto.liq';config.write_text(source)
+        with (tmp_path/'auto.log').open('w') as log:
+            proc=subprocess.Popen(['liquidsoap',str(config)],stdout=log,stderr=log)
+            try:
+                for _ in range(300):
+                    if (directory/'control.sock').exists():break
+                    if proc.poll() is not None:pytest.fail((tmp_path/'auto.log').read_text()[-2000:])
+                    time.sleep(.2)
+                rows=[]
+                for _ in range(3):
+                    row=SelectionDecision(station_id=station.id,track_id=track.id,category_id=category.id,status='selected')
+                    db.session.add(row);db.session.commit()
+                    row.liquidsoap_request_id=push_decision(row);row.socket_identity=socket_identity(station.slug);row.status='queued';db.session.commit();rows.append(row)
+                reader=EventReader()
+                def refresh():
+                    process_manual(station,reader);observe_queue(station);return status(station)
+                def wait_current(identifier):
+                    for _ in range(80):
+                        observed=refresh()
+                        if observed['current'] and observed['current']['decision_id']==identifier and db.session.get(SelectionDecision,identifier).status=='started':return observed
+                        time.sleep(.1)
+                    pytest.fail('Engine did not advance to expected Auto item')
+                observed=wait_current(rows[0].id)
+                assert [item['decision_id'] for item in observed['queue']]==[row.id for row in rows[1:]]
+                assert play_counts(station.id,'track')[track.id]==baseline+1
+                if event_audio:
+                    from app.services.timed_events import save_event
+                    event=save_event(station.slug,name='Skipped event',recurrence_type='DAILY',
+                        content_type='TRACK',content_identifier=track.uuid,local_time='12:00')
+                    occurrence=event.occurrences[-1]
+                    occurrence.selection_decision=rows[0];occurrence.state='STARTED'
+                    occurrence.started_at=rows[0].started_at
+                    rows[0].selection_method='timed_event';db.session.commit()
+                command=request_skip(station,user,rows[0].id,str(uuid.uuid4()))
+                assert request_skip(station,user,rows[0].id,str(uuid.uuid4())).id==command.id
+                from app.services.playout_queue import program_rms
+                refresh()
+                levels=[]
+                for _ in range(8):
+                    time.sleep(.3);levels.append(program_rms(station.slug))
+                assert levels[0]>0 and levels[-1]<levels[0]*.5,levels
+                observed=wait_current(rows[1].id)
+                # The RMS meter averages a window; allow it to fill with the new song.
+                for _ in range(20):
+                    if program_rms(station.slug)>levels[-1]*2:break
+                    time.sleep(.1)
+                assert program_rms(station.slug)>levels[-1]*2
+                assert command.status=='sent'
+                assert observed['queue'][0]['decision_id']==rows[2].id
+                assert request_skip(station,user,rows[0].id,str(uuid.uuid4())).id==command.id
+                refresh();time.sleep(.2);observed=refresh()
+                assert observed['current']['decision_id']==rows[1].id
+                assert play_counts(station.id,'track')[track.id]==baseline+2
+                assert play_counts(station.id,'category')[category.id]==category_baseline+2
+                assert rows[2].status=='queued'
+                if event_audio:
+                    assert occurrence.state=='FAILED' and occurrence.failure_reason=='operator_skip'
+                    assert occurrence.completed_at is None and rows[0].status=='started'
+            finally:
+                proc.terminate()
+                try:proc.wait(timeout=5)
+                except subprocess.TimeoutExpired:proc.kill();proc.wait()
+
+
+@pytest.mark.parametrize('deck,operation',[('A',None),('B',None),('AUTO',None),('A','PAUSE'),('B','CLEAR'),('A','MODE'),('A','TAKEOVER'),('B','OVER')])
+def test_event_bus_waits_for_dj_boundary_and_preserves_mode(app,tmp_path,monkeypatch,deck,operation):
+    from app.services.playout_queue import _command,event_bus
+    directory=tmp_path/'runtime'/'test-station';directory.mkdir(parents=True)
+    media=tmp_path/'media';originals=media/'test-station'/'originals';originals.mkdir(parents=True)
+    for key,seconds in [('a',6),('b',2)]:
+        subprocess.run(['ffmpeg','-v','error','-f','lavfi','-i',f'sine=frequency=440:duration={seconds}','-y',str(originals/(key*32+'.mp3'))],check=True)
+    monkeypatch.setenv('FREO_MEDIA_ROOT',str(media));monkeypatch.setattr('app.services.playout_queue.SOCKET_ROOT',directory.parent)
+    with app.app_context():
+        station=Station.query.filter_by(slug='test-station').one();station.automation.operator_mode='DJ_BOOTH'
+        source=render_liquidsoap(station,'a'*64).replace('/run/freo/playout/test-station',str(directory))
+    config=tmp_path/'dj-event.liq';config.write_text('settings.init.allow_root := true\n'+source[:source.index('output.icecast(')]+f'output.file(%wav, "{tmp_path}/event.wav", radio)\n')
+    with (tmp_path/'event.log').open('w') as log:
+        proc=subprocess.Popen(['liquidsoap',str(config)],stdout=log,stderr=log)
+        try:
+            for _ in range(300):
+                if (directory/'control.sock').exists():break
+                if proc.poll() is not None:pytest.fail((tmp_path/'event.log').read_text()[-2500:])
+                time.sleep(.2)
+            def records():
+                file=directory/'events.log'
+                return [line.split() for line in file.read_text().splitlines()] if file.exists() else []
+            _command('test-station',f'freo_{"queue" if deck == "AUTO" else deck.lower()}.push annotate:freo_decision=1:{originals/("a"*32+".mp3")}')
+            if deck != 'AUTO':
+                _command('test-station',f'freo_deck.take_{deck.lower()} 0.000')
+            for _ in range(60):
+                if any(r[0]=='1' for r in records()):break
+                time.sleep(.1)
+            assert any(r[0]=='1' for r in records())
+            uris=[f'annotate:freo_decision={identifier}:{originals/("b"*32+".mp3")}' for identifier in (2,3)]
+            assert len(_command('test-station','freo_event.load_many '+'|'.join(uris)).split())==2
+            assert event_bus('test-station','arm',123)=='OK'
+            assert event_bus('test-station').endswith('|WAITING')
+            if operation=='PAUSE':
+                _command('test-station','freo_deck.pause_a');time.sleep(.5)
+                assert event_bus('test-station').endswith('|WAITING')
+                assert not any(r[0]=='2' for r in records())
+                _command('test-station','freo_deck.take_a 0.000')
+            elif operation=='CLEAR':_command('test-station','freo_deck.clear_b')
+            elif operation=='MODE':_command('test-station','freo_mixer.mode AUTO')
+            cart_sent=False;cart_observed=False
+            for _ in range(160):
+                if operation in ('TAKEOVER','OVER') and not cart_sent and any(r[0]=='2' for r in records()):
+                    _command('test-station','freo_mixer.cart_mode '+operation)
+                    _command('test-station',f'freo_cart.push annotate:freo_decision=4:{originals/("b"*32+".mp3")}')
+                    cart_sent=True
+                if cart_sent and not cart_observed and _command('test-station','freo_mixer.state').split('|')[6]=='4':
+                    assert _command('test-station','freo_program.current')==('4' if operation=='TAKEOVER' else '2')
+                    cart_observed=True
+                if any(r[:2]==['END','3'] for r in records()):break
+                time.sleep(.1)
+            observed = records()
+            assert all(r[0].isdigit() or r[0] in ('END', 'HANDOFF') for r in observed), observed
+            starts={int(r[0]):float(r[1]) for r in observed if r[0].isdigit()}
+            handoffs = [r for r in observed if r[0] == 'HANDOFF']
+            if deck != 'AUTO' and operation not in ('CLEAR', 'MODE'):
+                # Natural DJ completion must report the correct deck/decision,
+                # and preserve the event reservation through the handoff.
+                handoff = next(r for r in handoffs if r[2:4] == [deck, '1'])
+                assert float(handoff[1]) >= starts[1] + 5.5, handoff
+                assert 'event=123' in handoff, handoff
+            assert 2 in starts,records()
+            if operation not in ('CLEAR','MODE'):assert starts[2]-starts[1]>=5.5,records()
+            elif operation=='MODE':assert starts[2]-starts[1]>=2.5,records()
+            assert any(r[:2]==['END','2'] for r in records())
+            assert any(r[:2]==['END','3'] for r in records())
+            if operation=='TAKEOVER':assert 3.5 <= starts[3]-starts[2] <= 4.8,records()
+            else:assert 1.5 <= starts[3]-starts[2] <= 2.5,records()
+            if operation in ('TAKEOVER','OVER'):assert cart_observed
+            assert _command('test-station','freo_mixer.state').startswith('AUTO|' if operation=='MODE' else 'DJ_BOOTH|')
+            assert event_bus('test-station','release',123)=='OK'
+            assert event_bus('test-station')=='|WAITING'
+        finally:
+            proc.terminate()
+            try:proc.wait(timeout=5)
+            except subprocess.TimeoutExpired:proc.kill();proc.wait()
+
+
+def test_master_delete_removes_loaded_and_future_requests_only(app,tmp_path,monkeypatch):
+    from app.services.playout_queue import _command, mixer_state, queued_order, request_decision_id
+    media=tmp_path/'media';runtime=tmp_path/'runtime';directory=runtime/'test-station';directory.mkdir(parents=True)
+    originals=media/'test-station'/'originals';originals.mkdir(parents=True)
+    audio=originals/('a'*32+'.mp3')
+    subprocess.run(['ffmpeg','-v','error','-f','lavfi','-i','sine=frequency=440:duration=60','-y',str(audio)],check=True)
+    monkeypatch.setenv('FREO_MEDIA_ROOT',str(media));monkeypatch.setattr('app.services.playout_queue.SOCKET_ROOT',runtime)
+    with app.app_context():
+        station=Station.query.filter_by(slug='test-station').one();station.automation.operator_mode='DJ_BOOTH'
+        source=render_liquidsoap(station,'a'*64).replace('/run/freo/playout/test-station',str(directory))
+    source='settings.init.allow_root := true\n'+source[:source.index('output.icecast(')]+f'output.file(%wav, "{tmp_path}/delete.wav", radio)\n'
+    config=tmp_path/'delete.liq';config.write_text(source)
+    with (tmp_path/'delete.log').open('w') as log:
+        proc=subprocess.Popen(['liquidsoap',str(config)],stdout=log,stderr=log)
+        try:
+            for _ in range(300):
+                if (directory/'control.sock').exists():break
+                if proc.poll() is not None:pytest.fail((tmp_path/'delete.log').read_text()[-2500:])
+                time.sleep(.2)
+            def push(bus,identifier):return _command('test-station',f'freo_{bus}.push annotate:freo_decision={identifier}:{audio}')
+            push('a',1);push('b',2);time.sleep(.5)
+            assert mixer_state('test-station')['a_id']==1
+            _command('test-station','freo_music.remove 1');time.sleep(.5)
+            observed=mixer_state('test-station');assert observed['a_id'] is None and observed['b_id']==2
+            _command('test-station','freo_mixer.mode AUTO')
+            push('queue',3);push('queue',4);push('queue',5);time.sleep(.5)
+            _command('test-station','freo_music.remove 4');time.sleep(.3)
+            ids=[request_decision_id('test-station',rid) for rid in queued_order('test-station')]
+            assert 4 not in ids and 5 in ids
+            assert mixer_state('test-station')['auto_id']==3
+            _command('test-station','freo_music.remove 3');time.sleep(.5)
+            assert mixer_state('test-station')['auto_id']==5
+            _command('test-station','freo_music.remove 3');time.sleep(.3)
+            assert mixer_state('test-station')['auto_id']==5
+            push('cart',6);time.sleep(.3)
+            _command('test-station','freo_music.remove 6');time.sleep(.5)
+            assert mixer_state('test-station')['cart_id'] is None
+        finally:
+            proc.terminate()
+            try:proc.wait(timeout=5)
+            except subprocess.TimeoutExpired:proc.kill();proc.wait()

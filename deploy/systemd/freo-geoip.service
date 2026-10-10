@@ -1,0 +1,20 @@
+[Unit]
+Description=Update Freo local DB-IP geographic database
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=freo-stats
+Group=freo
+WorkingDirectory=/opt/freo
+EnvironmentFile=/opt/freo/.env
+ExecStart=/opt/freo/venv/bin/flask --app wsgi:app stats update-geoip
+ReadWritePaths=/var/lib/freo/geoip
+TimeoutStartSec=600
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+UMask=0027
+Nice=15

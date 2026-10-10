@@ -1,0 +1,47 @@
+{% extends 'admin/base.html' %}
+{% block title %}Installation · Freo{% endblock %}
+{% block admin_content %}
+<section class="admin-card installation-settings"><h1>Freo installation</h1>
+<p>Freo automatically contacts api.freo.live to identify this installation and report its version, machine information, channel metadata, and hourly listener and library totals. No email or owner account is needed for Community. Listener identities, listener IP addresses and music metadata are never sent. Public directory listing is a separate opt-in for each channel.</p>
+<p>Registration: <strong>{{ "Registered with Freo" if installation.state.get("owner_profile_id") else "Unregistered" }}</strong></p>
+<p>Reporting setup: <strong>{{ "enrolled" if installation.registration_state == "registered" else installation.registration_state|replace("_", " ") }}</strong></p>
+{% if installation.state.get('last_heartbeat') %}<p>Last successful heartbeat: <time>{{ installation.state.last_heartbeat.server_time }}</time>.</p>{% endif %}
+<h2>Version</h2>
+<dl class="detail-list">
+<div><dt>Installed version</dt><dd>{{ version.installed_version }}</dd></div>
+<div><dt>Latest stable version</dt><dd>{{ version.latest_version }}</dd></div>
+<div><dt>Version status</dt><dd>{{ version.update_status }}</dd></div>
+<div><dt>Status received at</dt><dd>{{ version.version_checked_at }}</dd></div>
+<div><dt>Release discovered at</dt><dd>{{ version.release_checked_at }}</dd></div>
+</dl>
+{% if version.version_note %}<p class="quiet">{{ version.version_note }}</p>{% endif %}
+{% if version.update_available is sameas true %}<p class="admin-notice" role="status">An update is available according to the last successful heartbeat.</p>{% endif %}
+{% if version.release_url %}<p><a href="{{ version.release_url }}" target="_blank" rel="noopener noreferrer">View stable release on GitHub ↗</a></p>{% endif %}
+<p class="quiet">Version status comes from Freo Live. Unknown is normal before a stable release is published. Use Check connection now on the overview to refresh release details.</p>
+<h2>Register with Freo (optional)</h2>
+<p>Registration links your owner account. A paid license is optional; Community reporting works before and after registration.</p>
+<p><a href="https://freo.live/account" target="_blank" rel="noopener">Open your Freo Live account</a>, choose your station, and generate a connection code. Existing installation and channel identities are preserved.</p>
+{% if installation.state.get('owner_profile_id') %}<p>Your Freo Live station profile is connected.</p>{% endif %}
+{% if installation.state.get('activation') %}<p>An activation code is queued for the background reporter.</p>{% else %}
+<form method="post"><input type="hidden" name="csrf" value="{{ csrf_token() }}"><input type="hidden" name="action" value="activate">
+<label>Activation code<input name="activation_code" type="password" autocomplete="off" maxlength="14" required placeholder="FREO-XXXX-XXXX"></label>
+<button type="submit">Connect Freo Live</button></form>{% endif %}
+{% if error %}<p class="admin-notice error" role="alert">{{ error }}</p>{% endif %}
+{% if installation.last_error %}<p class="admin-notice error">Connection needs attention: {{ installation.last_error }}. Existing broadcasts remain available.</p>{% endif %}
+{% if installation.installation_id %}
+<p>Installation ID: <code>{{ installation.installation_id }}</code></p>
+<div id="installation-plan"><h2>License</h2><p>Free use covers three stations total per owner. A perpetual US$99 license covers unlimited stations across all your installations and all future updates. Registration and reporting availability do not change that allowance.</p><p>Your installation administrator can activate the offline license in Software and license.</p></div>
+<form method="post"><input type="hidden" name="csrf" value="{{ csrf_token() }}"><input type="hidden" name="action" value="retry_connection"><button type="submit">Retry connection</button></form>
+{% elif installation.registration_state == 'registration_uncertain' %}
+<form method="post"><input type="hidden" name="csrf" value="{{ csrf_token() }}">
+<label>Station manager email<input type="email" name="manager_email" value="{{ installation.manager_email }}" required maxlength="254"></label>
+<p>This email is sent once during registration for account purposes.</p>
+{% if installation.registration_state == 'registration_uncertain' %}
+<p>A registration request may have reached Freo without saving its response. Contact Freo to recover it if possible.</p>
+<label><input type="checkbox" name="acknowledge_retry" value="yes" required> I understand retrying may create a second installation identity.</label>
+{% endif %}
+<button type="submit">{{ 'Retry registration' if installation.registration_state == 'registration_uncertain' else 'Register installation' }}</button></form>
+{% else %}<p>The background reporter enrolls this installation automatically. If the API is unavailable it will retry with the same saved identity.</p><form method="post"><input type="hidden" name="csrf" value="{{ csrf_token() }}"><input type="hidden" name="action" value="retry_connection"><button type="submit">Retry connection</button></form>{% endif %}
+{% if not hosting_summary and not installation.installation_id %}<div id="installation-plan"><h2>Plan</h2><p>Three stations total per owner are free. Registration is optional; paid licenses work offline.</p></div>{% endif %}
+</section>
+{% endblock %}

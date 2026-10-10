@@ -1,0 +1,231 @@
+"""Opt-in production-database migration and concurrent station allocation."""
+import os
+from concurrent.futures import ThreadPoolExecutor
+from threading import Barrier
+import pytest
+from sqlalchemy import text
+from app import create_app
+from app.extensions import db
+from app.models import Station, Playlist
+from app.services.stations import create_station
+
+pytestmark=pytest.mark.skipif(not os.environ.get('FREO_TEST_POSTGRES_URL'),reason='Requires a disposable PostgreSQL database')
+
+
+def test_migration_preserves_existing_station_and_limit_serializes_empty_database(monkeypatch, tmp_path):
+    monkeypatch.setenv('DATABASE_URL',os.environ['FREO_TEST_POSTGRES_URL'])
+    monkeypatch.setenv('FREO_ENV_FILE','/dev/null')
+    monkeypatch.setenv('SECRET_KEY','test-only')
+    monkeypatch.setenv('FREO_MAX_STATIONS','3')
+    app=create_app('testing');runner=app.test_cli_runner()
+    result=runner.invoke(args=['db','upgrade','f61c20d9a843'])
+    assert result.exit_code==0,result.output
+    with app.app_context():
+        db.session.execute(text("INSERT INTO stations (name,slug,description,enabled,desired_state,timezone,target_lufs,created_at,updated_at) VALUES ('Existing','existing','',true,'stopped','UTC',-16,now(),now())"))
+        db.session.commit()
+    result=runner.invoke(args=['db','upgrade'])
+    assert result.exit_code==0,result.output
+    with app.app_context():
+        station=Station.query.one()
+        assert station.name=='Existing' and station.lifecycle_state=='ready' and station.deleted_at is None
+        assert [row.name for row in Playlist.query.filter_by(station_id=station.id).order_by(Playlist.id)]==['Playlist 1','Playlist 2','STATION','COMMERCIALS']
+    result=runner.invoke(args=['db','downgrade','f61c20d9a843'])
+    assert result.exit_code!=0
+    result=runner.invoke(args=['db','upgrade'])
+    assert result.exit_code==0,result.output
+    with app.app_context():
+        Station.query.delete();db.session.commit()
+    barrier=Barrier(8)
+    def create(index):
+        with app.app_context():
+            barrier.wait(timeout=10)
+            try:
+                create_station(f'Station {index}',f'concurrent-{index}')
+                return True
+            except ValueError as error:
+                db.session.rollback()
+                assert 'maximum of 3' in str(error)
+                return False
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        results=list(pool.map(create,range(8)))
+    assert sum(results)==3
+    with app.app_context():
+        assert Station.query.count()==3
+        assert Playlist.query.count()==12
+        # Slow filesystem/engine provisioning must not hold the allocation lock.
+        from app.services import station_runtime as runtime
+        from app.services.station_lifecycle import process_station
+        from unittest.mock import Mock
+        monkeypatch.setattr(runtime, 'ROOT', tmp_path)
+        monkeypatch.setattr(runtime, 'require_root', lambda: None)
+        monkeypatch.setattr(runtime, 'run_checked', Mock())
+        monkeypatch.setattr('app.services.media._prepare_dirs', Mock())
+        # Provisioning concurrency is independent of the free-tier test above.
+        # Use a real signed perpetual entitlement for allocations beyond three.
+        import base64
+        import uuid
+        from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+        from app.services.software_license import activate, signing_bytes
+        issuer = Ed25519PrivateKey.generate()
+        app.config['FREO_LICENSE_PUBLIC_KEYS'] = {'fixture': base64.b64encode(issuer.public_key().public_bytes_raw()).decode()}
+        payload = dict(license_id=str(uuid.uuid4()), owner='Concurrency fixture', issued_at='2000-01-01T00:00:00+00:00',
+                       product='Freo', edition='unlimited', updates='all-future', installations='all-owned', expires=None)
+        activate(dict(payload=payload, key_id='fixture', signature=base64.b64encode(issuer.sign(signing_bytes(payload))).decode()))
+        pending = create_station('Slow setup', 'slow-setup', pending=True)
+        def render_while_allocating(station):
+            def allocate():
+                with app.app_context():
+                    return create_station('Independent', 'independent').id
+            with ThreadPoolExecutor(max_workers=1) as pool:
+                assert pool.submit(allocate).result(timeout=5)
+        monkeypatch.setattr(runtime, 'render', render_while_allocating)
+        process_station(pending)
+        assert pending.lifecycle_state == 'ready'
+        db.session.remove();db.engine.dispose()
+
+
+def test_concurrent_flags_keep_one_station_review_and_reject_lost_updates(monkeypatch):
+    from app.models import AdminUser, Track, SongFlag
+    monkeypatch.setenv('DATABASE_URL',os.environ['FREO_TEST_POSTGRES_URL'])
+    monkeypatch.setenv('FREO_ENV_FILE','/dev/null')
+    monkeypatch.setenv('SECRET_KEY','test-only')
+    app=create_app('testing')
+    with app.app_context():
+        station=Station.query.filter_by(deleted_at=None).first()
+        user=AdminUser(email='flag-test@example.test',password_hash='unused',active=True)
+        track=Track(station_id=station.id,uuid='aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',title='Concurrency',artist='Test',original_filename='test.mp3',storage_key='a'*32+'.mp3',media_type='mp3',duration_ms=1000,sample_rate_hz=44100,channels=2,file_size_bytes=100,checksum_sha256='a'*64,enabled=True,ingest_status='accepted')
+        db.session.add_all([user,track]);db.session.commit()
+        user_id=user.id;slug=station.slug;identifier=track.uuid;station_id=station.id
+    for revision in (0,1):
+        barrier=Barrier(2)
+        def flag(index):
+            client=app.test_client()
+            from tests.auth import authenticate
+            authenticate(client, user_id, 'test-csrf')
+            barrier.wait(timeout=10)
+            return client.post(f'/admin/api/stations/{slug}/flags/{identifier}',data={'csrf':'test-csrf','revision':revision,'note':f'Edit {index}'}).status_code
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            assert sorted(pool.map(flag,range(2)))==[200,409]
+    with app.app_context():
+        row=SongFlag.query.filter_by(station_id=station_id).one()
+        assert row.revision==2
+        db.session.remove();db.engine.dispose()
+
+
+def test_concurrent_cart_fire_accepts_only_one_operator(monkeypatch):
+    import uuid
+    from datetime import datetime,timezone
+    from app.models import AdminUser,Track,LiveCartSlot,LiveQueueSnapshot,SelectionDecision
+    from app.services.live_assist import fire_cart
+    monkeypatch.setenv('DATABASE_URL',os.environ['FREO_TEST_POSTGRES_URL'])
+    monkeypatch.setenv('FREO_ENV_FILE','/dev/null');monkeypatch.setenv('SECRET_KEY','test-only')
+    monkeypatch.setattr('app.services.media_storage.LocalMediaStorage.regular_file',lambda *a:'/safe')
+    app=create_app('testing')
+    with app.app_context():
+        song=Track.query.first();station=Station.query.filter_by(id=song.station_id).one();station.desired_state='running'
+        station_id=station.id;user_id=AdminUser.query.first().id
+        db.session.add(LiveQueueSnapshot(station_id=station_id,observed_at=datetime.now(timezone.utc),queued_decision_ids=[],unknown_count=0,mixer={'mode':'AUTO','cart_id':None}))
+        for pos in (1,2):db.session.add(LiveCartSlot(station_id=station_id,role='HOT',position=pos,track_id=song.id))
+        db.session.commit()
+    barrier=Barrier(2)
+    def fire(pos):
+        with app.app_context():
+            station=db.session.get(Station,station_id);user=db.session.get(AdminUser,user_id)
+            barrier.wait(timeout=10)
+            try:fire_cart(station,user,'HOT',pos,str(uuid.uuid4()));return True
+            except ValueError as error:
+                db.session.rollback();assert 'already queued' in str(error);return False
+    with ThreadPoolExecutor(max_workers=2) as pool:assert sum(pool.map(fire,(1,2)))==1
+    with app.app_context():
+        assert SelectionDecision.query.filter_by(station_id=station_id,playback_bus='CART').count()==1
+        db.session.remove();db.engine.dispose()
+
+
+def test_domain_constraints_concurrent_claims_and_primary_changes(monkeypatch):
+    from datetime import datetime, timezone
+    from sqlalchemy.exc import IntegrityError
+    from app.models import StationDomain
+    from app.services import station_domains as domains
+    monkeypatch.setenv('DATABASE_URL', os.environ['FREO_TEST_POSTGRES_URL'])
+    monkeypatch.setenv('FREO_ENV_FILE', '/dev/null')
+    monkeypatch.setenv('SECRET_KEY', 'test-only')
+    app = create_app('testing')
+    with app.app_context():
+        station_ids = [station.id for station in Station.query.limit(2)]
+    barrier = Barrier(2)
+
+    def claim(station_id):
+        with app.app_context():
+            barrier.wait(timeout=10)
+            try:
+                domains.add_domain(db.session.get(Station, station_id), 'same.example.test')
+                db.session.commit()
+                return True
+            except (IntegrityError, ValueError):
+                db.session.rollback()
+                return False
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        assert sum(pool.map(claim, station_ids)) == 1
+    with app.app_context():
+        row = StationDomain.query.one()
+        row.enabled = True
+        with pytest.raises(IntegrityError):
+            db.session.commit()
+        db.session.rollback()
+        row.verified_at = datetime.now(timezone.utc)
+        row.enabled = True
+        row.is_primary = True
+        other = domains.add_domain(row.station, 'other.example.test')
+        other.verified_at = datetime.now(timezone.utc)
+        other.enabled = True
+        db.session.commit()
+        other.is_primary = True
+        with pytest.raises(IntegrityError):
+            db.session.commit()
+        db.session.rollback()
+        domains.set_primary(other)
+        db.session.commit()
+        assert StationDomain.query.filter_by(is_primary=True).one().id == other.id
+        station_id = row.station_id
+        db.session.remove()
+    runner = app.test_cli_runner()
+    result = runner.invoke(args=['db', 'downgrade', 'c48f1d207ab9'])
+    assert result.exit_code != 0
+    result = runner.invoke(args=['db', 'upgrade'])
+    assert result.exit_code == 0, result.output
+    with app.app_context():
+        assert db.session.get(Station, station_id)
+        assert StationDomain.query.count() == 2
+        db.session.remove()
+        db.engine.dispose()
+
+
+def test_listener_vote_concurrency_and_publication_migration(monkeypatch):
+    import uuid
+    from datetime import datetime, timezone
+    from app.models import StationPlayerSettings, ListenerVote, SelectionDecision, Track
+    from app.services.player import DEFAULTS
+    monkeypatch.setenv('DATABASE_URL',os.environ['FREO_TEST_POSTGRES_URL'])
+    monkeypatch.setenv('FREO_ENV_FILE','/dev/null');monkeypatch.setenv('SECRET_KEY','test-only')
+    app=create_app('testing')
+    with app.app_context():
+        station=Station.query.filter_by(deleted_at=None).first();slug=station.slug;station_id=station.id
+        row=StationPlayerSettings(station_id=station.id,revision=1,config=dict(DEFAULTS,voting_enabled=True,comments_enabled=True))
+        song=Track(station_id=station.id,uuid=str(uuid.uuid4()),title='Listener race',artist='Test',
+            original_filename='test.mp3',storage_key='c'*32+'.mp3',media_type='mp3',duration_ms=1000,
+            sample_rate_hz=44100,channels=2,file_size_bytes=100,checksum_sha256='c'*64,enabled=True,ingest_status='accepted')
+        db.session.add_all([row,song]);db.session.flush()
+        decision=SelectionDecision(station_id=station.id,track_id=song.id,status='started',started_at=datetime.now(timezone.utc))
+        db.session.add(decision);db.session.commit();identifier=decision.id
+    barrier=Barrier(2)
+    def cast(value):
+        client=app.test_client()
+        with client.session_transaction() as state:state['listener_key']='c'*64;state['listener_csrf']='listener-test'
+        barrier.wait(timeout=10)
+        return client.post(f'/api/stations/{slug}/feedback/{identifier}',json=dict(value=value,revision=0),headers={'X-Listener-CSRF':'listener-test'}).status_code
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        assert sorted(pool.map(cast,(-1,1)))==[200,409]
+    with app.app_context():
+        assert ListenerVote.query.filter_by(station_id=station_id).count()==1
+        db.session.remove();db.engine.dispose()

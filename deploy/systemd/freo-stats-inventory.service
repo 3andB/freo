@@ -1,0 +1,17 @@
+[Unit]
+Description=Freo read-only media and image storage inventory
+After=postgresql.service
+
+[Service]
+Type=oneshot
+User=freo-ingest
+Group=freo-ingest
+SupplementaryGroups=freo
+WorkingDirectory=/opt/freo
+EnvironmentFile=/opt/freo/.env
+ExecStart=/opt/freo/venv/bin/flask --app wsgi:app stats inventory
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+Nice=15

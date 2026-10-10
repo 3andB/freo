@@ -1,0 +1,11 @@
+[Unit]
+Description=Measure Freo media storage hourly
+
+[Timer]
+OnBootSec=45
+OnUnitActiveSec=1h
+Persistent=true
+Unit=freo-stats-inventory.service
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,3 @@
+-r requirements.txt
+aiortc==1.14.0
+aiohttp==3.13.3

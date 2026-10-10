@@ -1,0 +1,18 @@
+{% macro deck(letter, item) %}
+{% set a = letter == 'A' %}
+<article class="deck {{ 'onair-deck' if a else 'cue-deck' }} console-panel" id="{{ 'now-drop' if a else 'cue-drop' }}" aria-label="Deck {{ letter }}">
+  <div class="deck-status"><span class="eyebrow">DECK {{ letter }}</span><span class="source-chip" id="deck-{{ letter|lower }}-state">{{ 'READY' if item else 'EMPTY' }}</span></div>
+  <div class="platter"><div class="disc {{ 'cue-disc' if not a else '' }}" {% if a %}id="spinning-disc"{% endif %}><div class="disc-label" id="deck-{{ letter|lower }}-label">{{ letter }}</div></div><svg viewBox="0 0 140 140" class="record-progress" aria-hidden="true"><circle cx="70" cy="70" r="63"></circle><circle id="{{ 'progress-ring' if a else 'b-progress-ring' }}" cx="70" cy="70" r="63"></circle></svg></div>
+  <div class="now-copy" {% if a %}id="live-current"{% endif %}><h2 {% if not a %}id="cue-title"{% endif %}>{{ item.title if item else 'NOTHING LOADED' }}</h2><p {% if not a %}id="cue-artist"{% endif %}>{{ item.artist if item else '' }}</p><small id="{{ 'now-album' if a else 'cue-album' }}">{{ item.album if item and item.album else '' }}</small></div>
+  <div class="track-facts">{% for field,label in [('category','CATEGORY —'),('bpm','BPM —'),('year','YEAR —'),('lufs','LUFS —')] %}<span id="{{ 'fact-' if a else 'b-fact-' }}{{ field }}">{{ label }}</span>{% endfor %}</div>
+  <div class="time-row"><span id="{{ 'elapsed' if a else 'b-elapsed' }}">0:0:00</span><div class="time-track"><i id="{{ 'time-progress' if a else 'b-progress' }}"></i></div><span id="{{ 'remaining' if a else 'b-remaining' }}">—:—:—</span></div>
+  <div class="transport-row" data-deck="{{ letter }}">
+    <button type="button" class="transport deck-take" data-deck="{{ letter }}" data-operation="PLAY" disabled>PLAY / TAKE AIR</button>
+    <button class="transport cue-picker-button" data-target="{{ letter }}" type="button">LOAD SONG</button>
+    {% for operation,label in [('PAUSE','PAUSE'),('CLEAR','STOP / CLEAR'),('FADE','FADE OUT'),('REPEAT','REPEAT ×1')] %}<button type="button" class="transport" data-deck="{{ letter }}" data-operation="{{ operation }}" disabled>{{ label }}</button>{% endfor %}
+    <button class="transport" data-preview-deck="{{ letter }}" type="button" disabled>PREVIEW</button>
+  </div>
+  <div class="deck-message" role="status"><span id="deck-{{ letter|lower }}-message">{{ 'CUED · READY TO TAKE AIR' if item else '' }}</span>{% if not a %}<span id="cue-warning" hidden></span>{% endif %}</div>
+  <div class="takeover-hint">DROP SONG TO PREPARE DECK {{ letter }}</div>
+</article>
+{% endmacro %}

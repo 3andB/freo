@@ -1,0 +1,10 @@
+[Unit]
+Description=Process requested Freo station changes
+
+[Timer]
+OnBootSec=15
+OnUnitInactiveSec=5
+Unit=freo-provision.service
+
+[Install]
+WantedBy=timers.target

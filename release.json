@@ -1,0 +1,2957 @@
+{
+  "candidate": true,
+  "commit": "913beb4020f50450da9094720d23a70d29c2b053",
+  "development": false,
+  "files": {
+    ".env.example": {
+      "mode": 420,
+      "sha256": "d6b7a6c25a3788aef8024af9f64d311ba1a7c3bdc06c29df192fc0d9020db056",
+      "size": 2459
+    },
+    "CHANGELOG.md": {
+      "mode": 420,
+      "sha256": "05b4f3ec1148d7086294ab7ab44bcfb0136794508d350ad7516b8e2f26b0dd87",
+      "size": 10773
+    },
+    "LICENSE": {
+      "mode": 420,
+      "sha256": "e2f580ab15d7f2b78ebab72d953e20a9ed6578251224d5de9ce82f1b856c877d",
+      "size": 2847
+    },
+    "README.md": {
+      "mode": 420,
+      "sha256": "dcc0750bc5b306316a63259029ed7e13bf59d9947b0d2c8e0389bb46d614b2b7",
+      "size": 8271
+    },
+    "SECURITY.md": {
+      "mode": 420,
+      "sha256": "f637539b2154972400a3467cde07c344f6b5e574442c5c5b8f39f0477a37ae1d",
+      "size": 1135
+    },
+    "V1_UPGRADE_NOTES.md": {
+      "mode": 420,
+      "sha256": "ad4700747216f82041d6412ffd657eb7e605a43214b4daaf87f0ab38d57ba97f",
+      "size": 169378
+    },
+    "app/__init__.py": {
+      "mode": 420,
+      "sha256": "a0b8258c8e61906c39e8e2f349c1dcb28327fb87820c7a4eeff3ff58475d6d51",
+      "size": 9852
+    },
+    "app/admin_cli.py": {
+      "mode": 420,
+      "sha256": "fbfca5a20c92c6aac2b21ff0d75c4837499c4ea90928eecfff50816c26c575b9",
+      "size": 3769
+    },
+    "app/audio_migration_cli.py": {
+      "mode": 420,
+      "sha256": "52619891de80062d68de8ebfdf97ed265082bddefe666ca0aa958cbfd2d80066",
+      "size": 1022
+    },
+    "app/automation_cli.py": {
+      "mode": 420,
+      "sha256": "b5e6cc8c4353020b33fc8a9c060113704dfbce9704edd7621239e33568690149",
+      "size": 10952
+    },
+    "app/automation_worker.py": {
+      "mode": 420,
+      "sha256": "3fc995c650aa9a4ac024a4f325afb5bda59260f1087b85208a4e6844ca6c817d",
+      "size": 73289
+    },
+    "app/block_cli.py": {
+      "mode": 420,
+      "sha256": "6a5cbb697d1cfbfa1b9093a05f4329c60e50657f4aab9c825312bdda7c3e28df",
+      "size": 3508
+    },
+    "app/cli.py": {
+      "mode": 420,
+      "sha256": "357fb24f921a8fde56438f8165940fa8d8170755b6584796ad86ed1dcf128770",
+      "size": 8941
+    },
+    "app/config.py": {
+      "mode": 420,
+      "sha256": "5a681c5ca3056cf8d12554dccadce0cdbf8843ceb2fe9acd874e468fe957888c",
+      "size": 1284
+    },
+    "app/data/license-keys.json": {
+      "mode": 420,
+      "sha256": "35c65265127f6d2c021224dda4358abfeb93fc23456789e791dbb08abaf9c15f",
+      "size": 73
+    },
+    "app/event_cli.py": {
+      "mode": 420,
+      "sha256": "e05520cc99abbc3eb4a5ef51366f5639f5bb99df8dfac8a52c4d5cd96a5fa1a5",
+      "size": 6087
+    },
+    "app/extensions.py": {
+      "mode": 420,
+      "sha256": "556f0157f2b87a7c2c2cc06abeef9fc2038570ca686108a8d13446d1a26464a9",
+      "size": 113
+    },
+    "app/imaging_cli.py": {
+      "mode": 420,
+      "sha256": "f0e8776d3991869e90b121f46a7a7ea805b8ca606422bdacd16685b00170dd6e",
+      "size": 4163
+    },
+    "app/ingest_worker.py": {
+      "mode": 420,
+      "sha256": "1e59e1da6d9fe2ce38e35b1becc04c0dbab6a82e92bed0eacd8f089b8f22e1c1",
+      "size": 9687
+    },
+    "app/media_cli.py": {
+      "mode": 420,
+      "sha256": "b2006428939860d6f846eb6fc2d98e766d94242763e728c5ef9b6677dde8e696",
+      "size": 3689
+    },
+    "app/mic_gateway.py": {
+      "mode": 420,
+      "sha256": "b110608f8db6a44f69272e514ddcd4e706f326ad19bcd6dc815f90deece026cc",
+      "size": 12021
+    },
+    "app/models/__init__.py": {
+      "mode": 420,
+      "sha256": "5af6897e0f93b351e947a8030f5d15fb5c069392e7362732edff24bc6913d879",
+      "size": 95794
+    },
+    "app/models/cue.py": {
+      "mode": 420,
+      "sha256": "26b03279299fca55e6fc7e8e5627daa3a1d1dc800e1b5dd254f2d05f00c557c7",
+      "size": 2305
+    },
+    "app/models/imports.py": {
+      "mode": 420,
+      "sha256": "0a495e975b7c8af9ebf49ca51d251553ce74266d821906918f817c65acfa25c8",
+      "size": 2524
+    },
+    "app/models/polish.py": {
+      "mode": 420,
+      "sha256": "6c09cc9063d7a2ea2be58a416b13ce51ec07ce3d88a503cef8a9da4644231f7e",
+      "size": 838
+    },
+    "app/models/production.py": {
+      "mode": 420,
+      "sha256": "cd5896278bec08933062fd75edecfcd673ae13690e78162dc56445083e862310",
+      "size": 4209
+    },
+    "app/models/public_api.py": {
+      "mode": 420,
+      "sha256": "028e3a20c9c1eeecbc3161ef32d5fd2430715584c2b764c96c26219f1b3d55bf",
+      "size": 1580
+    },
+    "app/models/relay.py": {
+      "mode": 420,
+      "sha256": "293a1688a75e3b6cfe86b7c6c66b30813fc943580cf513f56cc8aa9a1933f5bd",
+      "size": 963
+    },
+    "app/models/scheduling.py": {
+      "mode": 420,
+      "sha256": "1e8ee00b7f9b7a16a6073704fb3b4a2f1057b74202ed341be048409597e66d0f",
+      "size": 4110
+    },
+    "app/models/statistics.py": {
+      "mode": 420,
+      "sha256": "034b9ad8bbad2a1610fda4bc520502e3f0991f2ada6acf8c2ba64e1a1efd9efd",
+      "size": 4424
+    },
+    "app/production_worker.py": {
+      "mode": 420,
+      "sha256": "016421515681c7d66b6a2245aa3887a6c11b5ef695654148bb62084d8f2fbd06",
+      "size": 1048
+    },
+    "app/routes/__init__.py": {
+      "mode": 420,
+      "sha256": "5a9e4841101c06e2be45baa67ba4bafc28e1485fbaf7f94d00d6ea45553c7c94",
+      "size": 19
+    },
+    "app/routes/admin_blocks.py": {
+      "mode": 420,
+      "sha256": "7e0069035a39d9d1743cb70c63c054753b763fb37860fedfd270ec2ea78ff9ea",
+      "size": 5022
+    },
+    "app/routes/admin_calendar.py": {
+      "mode": 420,
+      "sha256": "1c7a9ce51b45b989eddf1722043b722cecf098bf87f5822d2cba47e5bf1fa052",
+      "size": 3268
+    },
+    "app/routes/admin_events.py": {
+      "mode": 420,
+      "sha256": "605a3d0b74de7045e80833c4d913f93eca246a9d7f128aaa7899299850eb32d0",
+      "size": 9509
+    },
+    "app/routes/admin_imaging.py": {
+      "mode": 420,
+      "sha256": "f5bc03022f1b189f838750c8dfba576f626488f810b9fe6b7ebbee679deacdf9",
+      "size": 1095
+    },
+    "app/routes/admin_live.py": {
+      "mode": 420,
+      "sha256": "948a17fceae4328913e4778e73f245be0afb601e40e74bccfe0c17f63e1cab4e",
+      "size": 12824
+    },
+    "app/routes/admin_media.py": {
+      "mode": 420,
+      "sha256": "91a231d30167366a1c2787a3b0fa48a4b156d0971b3ff4c917bdd59f76055177",
+      "size": 25583
+    },
+    "app/routes/admin_programming.py": {
+      "mode": 420,
+      "sha256": "56bc71f3ac20e275242e2ce76aaa422ac2155cb77f0219c1079ab6816d7d1b8e",
+      "size": 17684
+    },
+    "app/routes/admin_traffic.py": {
+      "mode": 420,
+      "sha256": "71b973222fdbf11fa8914b47c9905bf41f0cfc8940a16bc3134d5a55e2e85c4b",
+      "size": 11651
+    },
+    "app/routes/advertising.py": {
+      "mode": 420,
+      "sha256": "3013a4005c2d900f565952c0e237a21bcec5a87db611a0dbaa674e7d73e011b4",
+      "size": 9980
+    },
+    "app/routes/api_credentials.py": {
+      "mode": 420,
+      "sha256": "9d02e605ef058f7aacbbeb52d0f5782e67568adcb3c0183870a3693d2d0601ff",
+      "size": 2016
+    },
+    "app/routes/automation.py": {
+      "mode": 420,
+      "sha256": "a15bae91d066410ca6dc7be9238c68a05068b6a57bf3ebe3d1ff108f76971e67",
+      "size": 5699
+    },
+    "app/routes/broadcast_reports.py": {
+      "mode": 420,
+      "sha256": "39b20df51edfed52ea2e38e6bddc718f1cf4355615c8906967b95435db6fa861",
+      "size": 3906
+    },
+    "app/routes/bulletins.py": {
+      "mode": 420,
+      "sha256": "65aadf33a8233958b1eb1d131e049e42f6b18977d3887b5d9f0ae36246702278",
+      "size": 2678
+    },
+    "app/routes/catalog_editor.py": {
+      "mode": 420,
+      "sha256": "522bac22b841fd6473709fd9256adac16f3e0f755fca89cda82bd1b868db9a4a",
+      "size": 14036
+    },
+    "app/routes/central_api.py": {
+      "mode": 420,
+      "sha256": "1f4c47c85dd091ef7a0fcdf839e7f4d1001b38d5c36dfd6c8047af84f6ee3d11",
+      "size": 10177
+    },
+    "app/routes/distribution.py": {
+      "mode": 420,
+      "sha256": "f71c494c17c5f9d1d2d9f6640775c1d4bda1f1360afddf4755ed4d062d5850e7",
+      "size": 2941
+    },
+    "app/routes/dj.py": {
+      "mode": 420,
+      "sha256": "9187f0e2757447352f058d0941f8d0a121a1b49d014ae42799d50901df578770",
+      "size": 9536
+    },
+    "app/routes/dmca.py": {
+      "mode": 420,
+      "sha256": "f204457633858c7463e550dd064b29e1d81fe6fcec077d913f9710992797dbdc",
+      "size": 2823
+    },
+    "app/routes/health.py": {
+      "mode": 420,
+      "sha256": "1ce6e8a52b621d89b6afd685d830501c3d4b48267e9e1023602d8422f19ecf07",
+      "size": 1402
+    },
+    "app/routes/license_agreement.py": {
+      "mode": 420,
+      "sha256": "051d2582673d8997e260eb51643359f1c716a68084fc15916642c9044daf4315",
+      "size": 1324
+    },
+    "app/routes/listener_requests.py": {
+      "mode": 420,
+      "sha256": "04c5f18951cc642c7872c9ed965464b5a7e964ebd83b5983aead2ff34584705c",
+      "size": 8775
+    },
+    "app/routes/live_mic.py": {
+      "mode": 420,
+      "sha256": "0a3ee7cdabbf777eefb5e66d73126dbab598f44f760126b94e54cefbd83dde72",
+      "size": 2674
+    },
+    "app/routes/media.py": {
+      "mode": 420,
+      "sha256": "3db01dce8c98c1cfcdb810b255ac8838369e2ec3ae88b11aac96a0a5d9cbd055",
+      "size": 1839
+    },
+    "app/routes/music_import.py": {
+      "mode": 420,
+      "sha256": "980a16f5c170d96a0d7cb19bf7e1c9b8e9517d4336e6f44f58fbeb3409b2ef88",
+      "size": 17011
+    },
+    "app/routes/platform_polish.py": {
+      "mode": 420,
+      "sha256": "5ca9673c48817deb784917a81fd75c4bdf9c6ace4e30ea072747cb9fbbbe12ba",
+      "size": 5254
+    },
+    "app/routes/player_experience.py": {
+      "mode": 420,
+      "sha256": "a442fe676204c5be4f3e2bf1359b1550b5a6a609a20a6cd3516d98ea3feb2222",
+      "size": 21825
+    },
+    "app/routes/playlists.py": {
+      "mode": 420,
+      "sha256": "942ca1c15236770b6e562c8745641f8b95b707f07979f235c98caacda0639dc5",
+      "size": 3351
+    },
+    "app/routes/production.py": {
+      "mode": 420,
+      "sha256": "53534dd950b05d8c22252eff8b4dac9037296c72994abb8351ba917e76f21619",
+      "size": 12491
+    },
+    "app/routes/public_api.py": {
+      "mode": 420,
+      "sha256": "0764a19ee4b91dffbf0290515872f2fb233f57f206fe756fcaebe2923dec7510",
+      "size": 10212
+    },
+    "app/routes/radio_health.py": {
+      "mode": 420,
+      "sha256": "88bd508cec5d0269c50ec6c82205ddf51bd6e320135c84465bbfae03fa5000d0",
+      "size": 1907
+    },
+    "app/routes/schedule.py": {
+      "mode": 420,
+      "sha256": "8338f968d729c5a88b940ccf9b006c3686b175ec95bb5479f46d0949071f9fe8",
+      "size": 2866
+    },
+    "app/routes/schedule_studio.py": {
+      "mode": 420,
+      "sha256": "6d9c3bc1a8e73ce6b972585288bed099d1fe19a7213c7981504e0a5631074743",
+      "size": 16923
+    },
+    "app/routes/song_flags.py": {
+      "mode": 420,
+      "sha256": "14b0e3701d5e06661561ee9bdbd582a0984bcc84f84a5c9644d0ae2558efe633",
+      "size": 3381
+    },
+    "app/routes/sound_room.py": {
+      "mode": 420,
+      "sha256": "147ca5801f0e0fa1164cc0ca55cdaa9b82689308d7bf272404852de15a193617",
+      "size": 22700
+    },
+    "app/routes/station_domains.py": {
+      "mode": 420,
+      "sha256": "9dd233f59a2e7bfff6fc0c3ebd29f553f52f55f187c9e11729950235abc16c4d",
+      "size": 2235
+    },
+    "app/routes/station_settings.py": {
+      "mode": 420,
+      "sha256": "d7a601a4c66a1d3c623808ee0bafbcaab2f413485bca8caf760808d4c98e4702",
+      "size": 15914
+    },
+    "app/routes/stations.py": {
+      "mode": 420,
+      "sha256": "6941bb958c6540d7279b0ce2f1439529b24549d705dda135d42015370ff52d48",
+      "size": 2222
+    },
+    "app/routes/statistics.py": {
+      "mode": 420,
+      "sha256": "80d032420ef9d74a5b6fb1f6548c8dbfd86bed553979c615ec3bfc19dcdfb6f7",
+      "size": 13711
+    },
+    "app/routes/studio_pwa.py": {
+      "mode": 420,
+      "sha256": "202b23bb12c6ba945e176df08c2e2bdd0299730d13aba91c303f43e6d5c1bb99",
+      "size": 3485
+    },
+    "app/routes/studio_releases.py": {
+      "mode": 420,
+      "sha256": "05326832aa563667046c99e203f1e21b9fb4cb469ec98c0da9c5f26a32d719fb",
+      "size": 5133
+    },
+    "app/routes/web.py": {
+      "mode": 420,
+      "sha256": "6fe0bb9a3b9875b3f0f0872ec046f2ad763e718dd8e12a6f78b9fdb6746aba6b",
+      "size": 21156
+    },
+    "app/routes/website.py": {
+      "mode": 420,
+      "sha256": "291af10b36e244aa3bb2644c1b775ae4d175cc5701eb5de38dc630c4676eb84c",
+      "size": 8077
+    },
+    "app/schedule_cli.py": {
+      "mode": 420,
+      "sha256": "4830ee0351e80bc03e06bb0659faefd1c6db79baf15fd56c82ae0fe183a1b778",
+      "size": 7369
+    },
+    "app/services/admin_auth.py": {
+      "mode": 420,
+      "sha256": "a914e68925060278c4941c97fa9b7c51ffcfde8777dc797970fd415c6d80802f",
+      "size": 4841
+    },
+    "app/services/admin_media.py": {
+      "mode": 420,
+      "sha256": "24a6bafdc36571caa3b72042cd5e40aed447da496686d3466d3228f2fa7b069b",
+      "size": 3904
+    },
+    "app/services/admin_setup.py": {
+      "mode": 420,
+      "sha256": "5e3618d093b81257565b7e43df1d25e816529a66a86c03dd8dc8e756a680562c",
+      "size": 6621
+    },
+    "app/services/admin_view.py": {
+      "mode": 420,
+      "sha256": "c6600b3bb97909410467961df8178ca9916fef294d2c5d2bcecf21ee6cde21d1",
+      "size": 7720
+    },
+    "app/services/advertising.py": {
+      "mode": 420,
+      "sha256": "7a6b1022e5423ef4dbbd1473f974f958c64a7d18ab76c8a19f803fccf2566f62",
+      "size": 6841
+    },
+    "app/services/airplay.py": {
+      "mode": 420,
+      "sha256": "8fc83a16d24ed811e8167f06f34ff59bd283c364f009710d1b65f6b8bdca87f7",
+      "size": 744
+    },
+    "app/services/analysis_queue.py": {
+      "mode": 420,
+      "sha256": "0aefbd4f0c89d34dafad8f4c4c37a74060bdbb0e364c93e69b5813b54ad2e690",
+      "size": 3603
+    },
+    "app/services/audio_analysis.py": {
+      "mode": 420,
+      "sha256": "f4ed3f300393e8372e899b1be4211a00e4b015ac09ab851f710c361526bc3a37",
+      "size": 5604
+    },
+    "app/services/audio_classification.py": {
+      "mode": 420,
+      "sha256": "718f1f229d32f7d71c3b781951ef248190ad5651050fec12ee7b6dce1de3f271",
+      "size": 3376
+    },
+    "app/services/automation.py": {
+      "mode": 420,
+      "sha256": "78219f61c195f48b3557be7dd33fb4e0965f32d9fa4b0dd23a0e72b3e4013abd",
+      "size": 21160
+    },
+    "app/services/availability.py": {
+      "mode": 420,
+      "sha256": "504aa2f694ada84d1a5f229f4d93844060fb85814295861624ae7340fe4e4c97",
+      "size": 3800
+    },
+    "app/services/booth_cue.py": {
+      "mode": 420,
+      "sha256": "ab8a816d8601552ef960985f2ab6de60854fe3dbdf09a63b354cb200f523a404",
+      "size": 15719
+    },
+    "app/services/broadcast_reports.py": {
+      "mode": 420,
+      "sha256": "fe1f0489f5e81a0058793299f08004251c00990d2990f4a9df7563308e43040a",
+      "size": 4702
+    },
+    "app/services/broadcast_status.py": {
+      "mode": 420,
+      "sha256": "616e3a0672442b1083a570882dee3a0a60f1f3537e878f73211f48ad49372e78",
+      "size": 3182
+    },
+    "app/services/bulletins.py": {
+      "mode": 420,
+      "sha256": "5e48c8c27c696ff33424b83fe076786f2b99a2c870b73bde4b98a11f7cafee6e",
+      "size": 15236
+    },
+    "app/services/calendar.py": {
+      "mode": 420,
+      "sha256": "6d730f2676e5dc7138d9123b9cac7025e9b20984d07418e0855fe48bcfa37b9b",
+      "size": 8003
+    },
+    "app/services/catalog_edit.py": {
+      "mode": 420,
+      "sha256": "551230070af3c9e88ed14b8962249eb5fded104528ccca51552f91981448923a",
+      "size": 9434
+    },
+    "app/services/central_api/__init__.py": {
+      "mode": 420,
+      "sha256": "77bc7dcae7ba8607f499cc7df06d98a16f3a782a90dc389b8612787c2d5f202d",
+      "size": 23563
+    },
+    "app/services/central_api/client.py": {
+      "mode": 420,
+      "sha256": "4bbfcf78f3dfefcef1220f74e471e8ac61c756c786b4dae36267f8baec62b288",
+      "size": 6950
+    },
+    "app/services/central_api/connection_check.py": {
+      "mode": 420,
+      "sha256": "e4522511ab819a80473c7f13b205157895c2aa5ee9c5d6ded072b7ef3efd4ef6",
+      "size": 2045
+    },
+    "app/services/central_api/identity.py": {
+      "mode": 420,
+      "sha256": "a16ad55e34d6b2f1b8bd0000da94d927dbd85484d11a92261118a3a5bf109bf5",
+      "size": 2893
+    },
+    "app/services/central_api/licensing.py": {
+      "mode": 420,
+      "sha256": "f82b4381b5692e7468eaab52e6b8f1546203d18e64fc2b187d64ae76c17dcedd",
+      "size": 1930
+    },
+    "app/services/central_api/metrics.py": {
+      "mode": 420,
+      "sha256": "b8a33f98445adeba4fe15694395bebf6f5f869cd1ac061db569932d1ffc94a82",
+      "size": 5185
+    },
+    "app/services/central_api/releases.py": {
+      "mode": 420,
+      "sha256": "72cef743f8553af13f523e6352bc04761be9f5e8e79993754bd837777d44ad4e",
+      "size": 4923
+    },
+    "app/services/clocks.py": {
+      "mode": 420,
+      "sha256": "5cd84fecba3a9c37c10f397b1d531837fb3c1fbb27a0959a279440280b660be3",
+      "size": 16559
+    },
+    "app/services/copyright.py": {
+      "mode": 420,
+      "sha256": "3871e91d148a0968c864f34804dc3b4ac0fb8cee82ff0b542be13ad5ecebd342",
+      "size": 687
+    },
+    "app/services/dmca.py": {
+      "mode": 420,
+      "sha256": "c8f3e96d5b87859bcd0a92b7e72a15372732f682c0e71944998713a59aad5a7a",
+      "size": 4930
+    },
+    "app/services/event_blocks.py": {
+      "mode": 420,
+      "sha256": "a0b9a963f755204a9b76f276fa5371f7a0572c580ec0e8bfea638b9b6c8594cf",
+      "size": 20724
+    },
+    "app/services/event_search.py": {
+      "mode": 420,
+      "sha256": "23efad3b043a89b9f945776cf78ee4fc28b89b6594e4967baa04c7f37d061fdc",
+      "size": 5186
+    },
+    "app/services/hosting_web.py": {
+      "mode": 420,
+      "sha256": "323c4644776406ca3a6c5d64ee24f75b43fccd579f37a023fc7e8d51c65d5c31",
+      "size": 5382
+    },
+    "app/services/icecast_directory.py": {
+      "mode": 420,
+      "sha256": "581c8a3ce550e04981d52ddd4bd200279579f010ed5d37427da5b2baefd15c7c",
+      "size": 10949
+    },
+    "app/services/imaging.py": {
+      "mode": 420,
+      "sha256": "26d313383fd06ebbcad93190c559ce43f59f1214bda6a1aff602e444f2b5129f",
+      "size": 12757
+    },
+    "app/services/imaging_migration.py": {
+      "mode": 420,
+      "sha256": "73fc15383c221678a893b74025af61b827274e9f27f78b447471c35193cf12b8",
+      "size": 8552
+    },
+    "app/services/import_sessions.py": {
+      "mode": 420,
+      "sha256": "e338ad64561b0417c37025d44cb3ecaea8c7f7708ab6093f92609339135dbb4e",
+      "size": 10327
+    },
+    "app/services/installation_settings.py": {
+      "mode": 420,
+      "sha256": "c2e71961169c5b1d63706d7551b350a309f61802c19be1eceaae9533bdc22633",
+      "size": 5642
+    },
+    "app/services/license_agreement.py": {
+      "mode": 420,
+      "sha256": "0156e968c32c595a433fb133c3d0c4dfc22d65e1019dcb2bdfd1d369a7a47032",
+      "size": 658
+    },
+    "app/services/listener_requests.py": {
+      "mode": 420,
+      "sha256": "c9a6556aeecd2594083115264dfc26e904bc75c231f456d4a69ff909de98339a",
+      "size": 20812
+    },
+    "app/services/live_assist.py": {
+      "mode": 420,
+      "sha256": "f2e7743e5cd7eb641a50a4645e6666f066bc70966f397c716eedb05cd01c5403",
+      "size": 35815
+    },
+    "app/services/live_mic.py": {
+      "mode": 420,
+      "sha256": "9a1261c03f0e4bf1e86fb59628fdab66b53780f3ddadca53c374c2594f4bc7db",
+      "size": 6072
+    },
+    "app/services/live_sessions.py": {
+      "mode": 420,
+      "sha256": "594b9a323ce21b1a2e9726ed0a613a3c6deef6adce65889a9066b75e30335ceb",
+      "size": 16006
+    },
+    "app/services/loudness.py": {
+      "mode": 420,
+      "sha256": "7f053930ff897a433eb53d06856b3593682ec8fe70edc6ebbb42d61159bbbfa9",
+      "size": 1571
+    },
+    "app/services/master_broadcast.py": {
+      "mode": 420,
+      "sha256": "204393c075381f2a177f9a3d1ff727ac6187994619bf0abc551369548a8bb122",
+      "size": 3920
+    },
+    "app/services/media.py": {
+      "mode": 420,
+      "sha256": "73c25a870a7e836037f9234fb4ff9093de7b4203971ac3521b206f8f06d0a881",
+      "size": 10478
+    },
+    "app/services/media_preview.py": {
+      "mode": 420,
+      "sha256": "16520c57fc3a4b957907723555e990fd57649159bddf3197a7221a19430d8c39",
+      "size": 1394
+    },
+    "app/services/media_probe.py": {
+      "mode": 420,
+      "sha256": "66e73285961accc3f31ea68b6a20d28fe8c028b330acce376d7d394853fe1496",
+      "size": 2959
+    },
+    "app/services/media_storage.py": {
+      "mode": 420,
+      "sha256": "35a53632b9f762a09095d29d2a0f9a4cda00da18e0ac895ece9c0a660534df2e",
+      "size": 3977
+    },
+    "app/services/music_catalog.py": {
+      "mode": 420,
+      "sha256": "09f1cb4444fc73ab46eceb28bddf95853ee189c6deab3797056d8b1b9b0172d6",
+      "size": 4101
+    },
+    "app/services/music_delete.py": {
+      "mode": 420,
+      "sha256": "6cd85387e519c687102480bc1bfef5955faff723c429e8dff9cafb95466b322f",
+      "size": 12313
+    },
+    "app/services/music_tags.py": {
+      "mode": 420,
+      "sha256": "39c745d22e43bd01a804a8b8f0ce83f21019fe2c0f44c0378ec32adde28744c4",
+      "size": 507
+    },
+    "app/services/operations.py": {
+      "mode": 420,
+      "sha256": "8b1119b1edf17f8901f700110f94f852e5c738a9e04b60671177e8651228da6b",
+      "size": 10264
+    },
+    "app/services/planning.py": {
+      "mode": 420,
+      "sha256": "a21a6f2f5a55ea18139796f6ad812e665cb7d253cbd28c6290669776e8311fa4",
+      "size": 11051
+    },
+    "app/services/player.py": {
+      "mode": 420,
+      "sha256": "49024a0ae40323d4a2d737e4c4fe563f601556da20befdbe795fdd46f335fce6",
+      "size": 18933
+    },
+    "app/services/playlists.py": {
+      "mode": 420,
+      "sha256": "a81d93d979e57aaeb8fce63b6c1384bc0b729a13c2612e017f6d185316e4991e",
+      "size": 17266
+    },
+    "app/services/playout_queue.py": {
+      "mode": 420,
+      "sha256": "000404e8dba7c80e201de19b37ef7e188b0aaf4a13b0cf75e8471babf1fe6c55",
+      "size": 20358
+    },
+    "app/services/polish.py": {
+      "mode": 420,
+      "sha256": "221c982b6eb2a9fd6a718cc5e171301512304316cb9995af3b32d3fcdaea2c31",
+      "size": 8165
+    },
+    "app/services/production.py": {
+      "mode": 420,
+      "sha256": "b6ef07d5dc78e719ac25c47c5ba0eafe4ac11316a6ab31195766f1f2e567f187",
+      "size": 15130
+    },
+    "app/services/production_audio.py": {
+      "mode": 420,
+      "sha256": "96d223879ab4f95dc916f50860b4fbed290608c2724b2b7a38dca3aee722ca34",
+      "size": 6557
+    },
+    "app/services/production_providers.py": {
+      "mode": 420,
+      "sha256": "de5a5cb31c66b04e19b75c4530aa9478e9c8a6d73370ef5819de6bc073aa0df9",
+      "size": 8944
+    },
+    "app/services/production_worker.py": {
+      "mode": 420,
+      "sha256": "3b0b9176c54e7a628912afecdcaa33885033dfd922fa1119b887c9ad390a1338",
+      "size": 10067
+    },
+    "app/services/programming.py": {
+      "mode": 420,
+      "sha256": "8c09084f28ba50e8935424c404cbf69066307a8bb7ad002644ca3a77625a37e5",
+      "size": 8327
+    },
+    "app/services/programming_refresh.py": {
+      "mode": 420,
+      "sha256": "76bdbadf2d19a0ffdcd2c0007261680c677349aee04b4b22c7c0ceb1104d0ef3",
+      "size": 13444
+    },
+    "app/services/public_api.py": {
+      "mode": 420,
+      "sha256": "2346cda72a440450c7a589a4d68e11e2128046dcb8505f68fef63424df371c40",
+      "size": 4534
+    },
+    "app/services/radio_directories.py": {
+      "mode": 420,
+      "sha256": "611256c995fd7834f985bf30d9d6927f8019b1ff7de894ac3396cc67522426db",
+      "size": 8717
+    },
+    "app/services/recording_manager.py": {
+      "mode": 420,
+      "sha256": "d34f4604a16be8fa271e072beb6ad44cf3558bce772e44436bccc00e630c1964",
+      "size": 2863
+    },
+    "app/services/relay.py": {
+      "mode": 420,
+      "sha256": "7f7012720b74a2b149a65e00a8a213b5a7ac9b8d2412a69e730d14e024cdb989",
+      "size": 8779
+    },
+    "app/services/relay_transport.py": {
+      "mode": 420,
+      "sha256": "b6cc70d9c2fa3b9a14a6db7ae131a78b57e1a03d491412f3377c4defa313fb5c",
+      "size": 7598
+    },
+    "app/services/schedule.py": {
+      "mode": 420,
+      "sha256": "3d983c4e56f7c79031aa66169db6c270b4d75edf94df55963caebc1992182a8d",
+      "size": 6607
+    },
+    "app/services/schedule_conflicts.py": {
+      "mode": 420,
+      "sha256": "fbdd2043b70268b6cc85939e91dd5263c468eb18a963624d6f77302e2778e9b2",
+      "size": 5794
+    },
+    "app/services/schedule_documents.py": {
+      "mode": 420,
+      "sha256": "70948fa61957c547dccc8ed4cf3a966cf88056b03c2da0c720708b5f16156842",
+      "size": 1540
+    },
+    "app/services/schedule_switch.py": {
+      "mode": 420,
+      "sha256": "5e31a016d75e247ae33c26e1ad0d34f12559a1efe027feaa31f2b6333c15a7e7",
+      "size": 8678
+    },
+    "app/services/selection_policy.py": {
+      "mode": 420,
+      "sha256": "437f0274058700f2bf22b8b7042ed749f6412eb24fd34804ed706713596cf46e",
+      "size": 3159
+    },
+    "app/services/smart_playlists.py": {
+      "mode": 420,
+      "sha256": "7cd48c510d64476ab8c7a8932c45fcc6290fa0e99ce311f8b87ba0f30457f203",
+      "size": 4221
+    },
+    "app/services/software_license.py": {
+      "mode": 420,
+      "sha256": "92a42f401788456fbece48af951fc1f15b5f326362cf2bc22a631267b309c456",
+      "size": 2883
+    },
+    "app/services/station_audio.py": {
+      "mode": 420,
+      "sha256": "b19f14caf569c36872733c315e0db0c6cca9991060fcb34068486933be0907f0",
+      "size": 8459
+    },
+    "app/services/station_domains.py": {
+      "mode": 420,
+      "sha256": "23455c8170a9bff315c3704191b2685b9fce185422dc181fada0bbfe72165434",
+      "size": 6851
+    },
+    "app/services/station_lifecycle.py": {
+      "mode": 420,
+      "sha256": "7b85a78c0821c1642edf39593bdd1ad09e2f36f0f566da73e65c930ad0033e11",
+      "size": 5411
+    },
+    "app/services/station_location.py": {
+      "mode": 420,
+      "sha256": "728d4b57446576215d4b1704febde822437c2ae75ae52d8e442c0d1d9349beb9",
+      "size": 2236
+    },
+    "app/services/station_runtime.py": {
+      "mode": 420,
+      "sha256": "4850845346dbf54cc86f32089aaac807100f85f0f8f557290eebec181f8a9a6a",
+      "size": 16224
+    },
+    "app/services/stations.py": {
+      "mode": 420,
+      "sha256": "5f73280d2bd035e2f3b0643f0903c0540cea4d270a76f38044a15a01fdffb7f1",
+      "size": 7948
+    },
+    "app/services/statistics/__init__.py": {
+      "mode": 420,
+      "sha256": "4dbbe93037d4827b1aee7666e39c6fa0a8ef5c1562f03ace0b3423685a223179",
+      "size": 16987
+    },
+    "app/services/statistics/collect.py": {
+      "mode": 420,
+      "sha256": "0da0d43168594db0ede99815e6d631627cc0aa7a085cd339d08aae404bee7992",
+      "size": 11143
+    },
+    "app/services/statistics/geo.py": {
+      "mode": 420,
+      "sha256": "2ab7b6ebf92eafe61f3292c27fb41ff4748097b81b68449610cc71c4d2ace30b",
+      "size": 2276
+    },
+    "app/services/statistics/icecast.py": {
+      "mode": 420,
+      "sha256": "05d08472d8d0ca098eccbcc8b15f1ce77673086656182fb6e1b5ba8a5f521bfa",
+      "size": 3163
+    },
+    "app/services/statistics/sessions.py": {
+      "mode": 420,
+      "sha256": "8156ce44263ba2bf5b536bdff382160bb5b6b1f3b66e8e4d40c2660d805872d8",
+      "size": 11114
+    },
+    "app/services/statistics/storage.py": {
+      "mode": 420,
+      "sha256": "12eae9ec88811db7d83738f04b677c1722fb80986d428ef6da977593506bc9e9",
+      "size": 4892
+    },
+    "app/services/timed_events.py": {
+      "mode": 420,
+      "sha256": "eabb4e979e9d8a8172013e41b021477a6970a4741404297e8e4f6f5f6ed50544",
+      "size": 25592
+    },
+    "app/services/timezones.py": {
+      "mode": 420,
+      "sha256": "f81beff7363e59319c78a97199bb399cd5cb6c0eae576d21ad0837563f551f45",
+      "size": 836
+    },
+    "app/services/track_audio.py": {
+      "mode": 420,
+      "sha256": "1cf76ef2614b4d75a1d31a77a4c601fa2f3ad1dc873f61a5bbd51e4f7c8e953c",
+      "size": 4140
+    },
+    "app/services/traffic.py": {
+      "mode": 420,
+      "sha256": "d2a2c1a7004bf9c732e8e82dc3dc6129a3473d78cdaa1e0f8ffa6cc5832caec5",
+      "size": 19905
+    },
+    "app/services/visual_schedule.py": {
+      "mode": 420,
+      "sha256": "8fe73b98e51844df7c27bfa57e4de52bfebdc4d687faaf54c066794fa0bc44b5",
+      "size": 34244
+    },
+    "app/services/website.py": {
+      "mode": 420,
+      "sha256": "509a425bf5ffd47e95bf99bd485f5baa2dc8e8ee901ddc99abdfba4ad60944b9",
+      "size": 14156
+    },
+    "app/settings_cli.py": {
+      "mode": 420,
+      "sha256": "05fff0c4e1d13714f68c950686d82d204473ecf4f94803ff517ef6c740ae51a1",
+      "size": 1511
+    },
+    "app/static/admin.js": {
+      "mode": 420,
+      "sha256": "dbc12611638d8f4efa62694161cf0711eea8a01370fc0f620d24af189c127ab9",
+      "size": 4526
+    },
+    "app/static/admin_refinements.css": {
+      "mode": 420,
+      "sha256": "5e7162f26d04cf7360e39cd78b130323a3374dc45c89851519ea33f37c3afdff",
+      "size": 5573
+    },
+    "app/static/admin_workspaces.css": {
+      "mode": 420,
+      "sha256": "f93347b7fac72e155a5f35cbcd95cd379e0942aa1a371b611c42e49b130b611f",
+      "size": 5182
+    },
+    "app/static/advertising.css": {
+      "mode": 420,
+      "sha256": "74342816d11d6aa806989a36e75ce28108a78571f152f45c9f1fc644a5857f4e",
+      "size": 1431
+    },
+    "app/static/advertising_editor.js": {
+      "mode": 420,
+      "sha256": "a8110f4a7814cd1aa049b7541968dc5fe18817e2450ec7f589507dd22245fefc",
+      "size": 349
+    },
+    "app/static/advertising_public.css": {
+      "mode": 420,
+      "sha256": "c5fe333a611b7eed8b4066836533506f27360183a388d5b3afd642dc5cab5bde",
+      "size": 655
+    },
+    "app/static/booth_cue.css": {
+      "mode": 420,
+      "sha256": "6f1f590f971561adbef9a5f6c2d1ab30fcfe671ad77de4eac268bcb30592b6d8",
+      "size": 10797
+    },
+    "app/static/booth_cue.js": {
+      "mode": 420,
+      "sha256": "06d6019160235753c3726e6c52add885e04de43afaf21e9f928d3b529ba10be5",
+      "size": 15331
+    },
+    "app/static/bulletin_form.js": {
+      "mode": 420,
+      "sha256": "cd6a60eb7e9f90d16d8f79092c40c449c0b7bf4c158d65e5aa8c50d6ec664f90",
+      "size": 584
+    },
+    "app/static/calendar.js": {
+      "mode": 420,
+      "sha256": "61343c3946c1557f3975bd36845ffec44dda396bbf4aeeb3e60a8d7224352c3f",
+      "size": 2219
+    },
+    "app/static/catalog_controls.js": {
+      "mode": 420,
+      "sha256": "0faff04a236badfb6da827d1ecc054d519cbd2bacec57b0226636b1a0230d608",
+      "size": 18937
+    },
+    "app/static/events.js": {
+      "mode": 420,
+      "sha256": "4f4175adb00632527b8755538a3686ce9360d65837b5bf74641c2067fb759511",
+      "size": 5563
+    },
+    "app/static/favicon.svg": {
+      "mode": 420,
+      "sha256": "ceb18b7bc2b79ae21910d87c3517637cf4ce381e866d97c892cf9f4d1bf1ced3",
+      "size": 338
+    },
+    "app/static/forms.css": {
+      "mode": 420,
+      "sha256": "d974048fe6a3ed760614b6fecfdb40d4b02f97de7b8434a4da6bf41cf81c5fae",
+      "size": 13987
+    },
+    "app/static/freo.css": {
+      "mode": 420,
+      "sha256": "a26b8c49c4b9b077192839c36e040b90a36ee12d97d1f9650cf744b59e815908",
+      "size": 83920
+    },
+    "app/static/home.css": {
+      "mode": 420,
+      "sha256": "e226968586a74333e051a6eb446df959e1c01c51e5f85fb1e28c949477c40636",
+      "size": 17040
+    },
+    "app/static/home.js": {
+      "mode": 420,
+      "sha256": "e29defb6a0feb6b18ce4964c481569ae53d14eccb6f20e021ee4ad352b9221fd",
+      "size": 4035
+    },
+    "app/static/import_metadata.js": {
+      "mode": 420,
+      "sha256": "5e508e07904f322e2eeae31ed2873baca1878e991f1205554d984367298144a5",
+      "size": 1246
+    },
+    "app/static/license_agreement.css": {
+      "mode": 420,
+      "sha256": "08508352d4485b293da549c7eb25d140241689e4360ec0820e05e5029413364a",
+      "size": 843
+    },
+    "app/static/license_agreement.js": {
+      "mode": 420,
+      "sha256": "a068a66974bcef30090e735ce5cdd53f8760d930b455d3c61bffbb2ccc576420",
+      "size": 2039
+    },
+    "app/static/listener_requests.css": {
+      "mode": 420,
+      "sha256": "9edfa5025ba67352d45deccd86d90eff757f56ab61f7f512f41a7730e7316f8c",
+      "size": 786
+    },
+    "app/static/listener_requests.js": {
+      "mode": 420,
+      "sha256": "4effb6a8c39e114c23fa978b195915cfb5dab562b6de4c605d28723e9a209b59",
+      "size": 2784
+    },
+    "app/static/live.js": {
+      "mode": 420,
+      "sha256": "d4d5b327ed6496a5ac7058f1b78f157652e3a11573d1f635f138c2985e0148d2",
+      "size": 35845
+    },
+    "app/static/live_mic.js": {
+      "mode": 420,
+      "sha256": "5ed840cc79563f532d969b6b8a9a9d42cf8c1e9c5231818c95400329ce4ce82d",
+      "size": 14406
+    },
+    "app/static/media_editor.js": {
+      "mode": 420,
+      "sha256": "f2dd4892024269b56e457864b0c4f8f8aa20cdd17bb584650b1ea8b4015bb85b",
+      "size": 7737
+    },
+    "app/static/media_job.js": {
+      "mode": 420,
+      "sha256": "12c44819b6e57a0120f53be7008ab74e78c86294477665be2484c9b581d6cccd",
+      "size": 1233
+    },
+    "app/static/media_upload.js": {
+      "mode": 420,
+      "sha256": "499099ff45ed3e970c7f8080c5e7c3b1576ba1ed56b2c087bcc6e85176c86b92",
+      "size": 46968
+    },
+    "app/static/music.css": {
+      "mode": 420,
+      "sha256": "8a41ceaec4ba38f3ab3eb4d12400a6a0d4c0dad7b670fb1bc0e81b03e05f792a",
+      "size": 39630
+    },
+    "app/static/music_availability.js": {
+      "mode": 420,
+      "sha256": "51754cc8d676a3771d5475512678bf592a95cea29a72c971f6b08857d218615e",
+      "size": 3605
+    },
+    "app/static/music_library.js": {
+      "mode": 420,
+      "sha256": "ed143376bd248cf51abc35f53493112def08d1cfcbcfe9a6e995f1c1238ddeac",
+      "size": 850
+    },
+    "app/static/music_preview.js": {
+      "mode": 420,
+      "sha256": "c99ff1288f3bbcb313500b682003a7a440483ce6c8809719cc927bd9ced45037",
+      "size": 7115
+    },
+    "app/static/music_tags.js": {
+      "mode": 420,
+      "sha256": "ea5dae9f1dd6a2c1556ae11fd574794846dce5f5cf16b5f9a2c87cf660c8c568",
+      "size": 2500
+    },
+    "app/static/music_toggles.js": {
+      "mode": 420,
+      "sha256": "ed4c7fba04b23090a42f3ab6347c1701f6d51704e27916f4d29a5edbcf8c5a8a",
+      "size": 4752
+    },
+    "app/static/operations.css": {
+      "mode": 420,
+      "sha256": "cadc51e154068db638579b5db805f23542e17dfb8a346db6cd54cbd7985025cd",
+      "size": 5881
+    },
+    "app/static/operations.js": {
+      "mode": 420,
+      "sha256": "04627f363dccf23c0ad449e46e3c92eec91a732b87581f03cd89b7b96a515a7e",
+      "size": 5902
+    },
+    "app/static/player-pwa.js": {
+      "mode": 420,
+      "sha256": "8ecbbd38edc323e6a3d39a0d7442fd19bbf5a798092c10fa51b5a5dfd4ab8083",
+      "size": 1183
+    },
+    "app/static/player-sw.js": {
+      "mode": 420,
+      "sha256": "1e2e8bf01f8473bea971eb86984e6661d91a6cceef69c30c004d4987bddb8f33",
+      "size": 804
+    },
+    "app/static/player.css": {
+      "mode": 420,
+      "sha256": "a001d9a0eb0c4160341e876ecf2481d04f7222205540815cb3ca80daf1888416",
+      "size": 24605
+    },
+    "app/static/player.js": {
+      "mode": 420,
+      "sha256": "9bac9d2933d0b1cd2144371b368ca231460c5e84ff89c10c718dfe4d9885a42f",
+      "size": 21546
+    },
+    "app/static/player_ads.js": {
+      "mode": 420,
+      "sha256": "b520977eb9a46b3676f90fdfaee847dbd04c0aff12654327f5035e1c0d6c90cc",
+      "size": 7841
+    },
+    "app/static/player_audio.js": {
+      "mode": 420,
+      "sha256": "55de633d42470c9e33d2738b483184e48cdcc30f61414e60fe426bc7101ca705",
+      "size": 9554
+    },
+    "app/static/player_diagnostics.js": {
+      "mode": 420,
+      "sha256": "3178fede5e18b75f7a18a24f45270717314def41a8080d5750cf74aa80acc289",
+      "size": 10895
+    },
+    "app/static/player_scenes.js": {
+      "mode": 420,
+      "sha256": "47c37a9b218f1796c0921c5c12d64158774a8d7fc37bee341b86d2a82cd93a69",
+      "size": 26471
+    },
+    "app/static/player_source_check.js": {
+      "mode": 420,
+      "sha256": "cc28029e41e669349f59de7244725db640dc2b0c992649694f2a8b8a82fe28e6",
+      "size": 7691
+    },
+    "app/static/player_stream_analysis.js": {
+      "mode": 420,
+      "sha256": "42e13e0659552d7c1cb583a2060c142f6efbe96c21392363c19624500097259f",
+      "size": 7288
+    },
+    "app/static/player_stream_worker.js": {
+      "mode": 420,
+      "sha256": "e7715e9b9cc0c950e5e2138d8e0b5b11c348056e4171429ddf522acaf95892a2",
+      "size": 1186
+    },
+    "app/static/player_visuals.js": {
+      "mode": 420,
+      "sha256": "450d2d16d717df3fdfdda35026dc9d815a20e64190b7a549de7175373601f349",
+      "size": 25184
+    },
+    "app/static/playlists.js": {
+      "mode": 420,
+      "sha256": "1581b89ed301c484fd595345dcb53c5651d75a0c51697223df46f026eb61af94",
+      "size": 16020
+    },
+    "app/static/production.css": {
+      "mode": 420,
+      "sha256": "ca35ac3a4a369b4162b562fe0d3dbf89832fc53f48d7a775f791ba54748f96ff",
+      "size": 1537
+    },
+    "app/static/production.js": {
+      "mode": 420,
+      "sha256": "1fc13b6fcc9074040b31ce716030fa288afd892d384c64375465eebffcb64938",
+      "size": 9947
+    },
+    "app/static/production_settings.js": {
+      "mode": 420,
+      "sha256": "c49cae41445300d937a69edfa1373c9ad980f7207a058438bc640144e09546e4",
+      "size": 2795
+    },
+    "app/static/programming.js": {
+      "mode": 420,
+      "sha256": "a877b7827752f8d0b152c51870cb53583515962dbb39fefecec6b24ed1dfcdf7",
+      "size": 1726
+    },
+    "app/static/recordings.css": {
+      "mode": 420,
+      "sha256": "34335c5762ac2ab9a7282c153a04508c5be4ac4ec4e36bbdcc54f1d8be7d3ff0",
+      "size": 1223
+    },
+    "app/static/relay.js": {
+      "mode": 420,
+      "sha256": "a484d4501d32b12c1eba829fddc8901dfc39bb908d4daf029c5802cb9977a600",
+      "size": 1044
+    },
+    "app/static/schedule_editor.js": {
+      "mode": 420,
+      "sha256": "ba61506605c8d5dced92f1c4d8ce8284e40b040c70bf09584704db9265f77c92",
+      "size": 8702
+    },
+    "app/static/schedule_settings.js": {
+      "mode": 420,
+      "sha256": "37e47c9c78eb9d885a9281ef4b455143d14622ee6658b463621604e5209f9748",
+      "size": 1865
+    },
+    "app/static/schedule_status.js": {
+      "mode": 420,
+      "sha256": "d5617eba5f73c384a7809b908fb0214bdebfdc72ad53ec5c4d3f454a63707034",
+      "size": 735
+    },
+    "app/static/schedule_studio.css": {
+      "mode": 420,
+      "sha256": "cc10d494dea545a1ab5f8baf1694330cecc045b3348b2cbe43531f6542eb6d77",
+      "size": 20091
+    },
+    "app/static/schedule_studio.js": {
+      "mode": 420,
+      "sha256": "10f8e13acca758df45371719a79a7cd6a26216907d685a339701d1d934e1eb33",
+      "size": 71290
+    },
+    "app/static/song_flags.js": {
+      "mode": 420,
+      "sha256": "28e4619d2240b743a6df9faa872f33c4fc774d0f8d52984d491bbe59dc5c92cb",
+      "size": 2826
+    },
+    "app/static/sound_room.js": {
+      "mode": 420,
+      "sha256": "8565d3b593a83d7599ca66c88e9bc171d4afd44d91aac117d67679a9aa98f117",
+      "size": 28060
+    },
+    "app/static/station/identity.svg": {
+      "mode": 420,
+      "sha256": "ddf5cb481c9eaa7584f3a952ee75a18ec948ffd195cfeb3e7f3a30e51d5d797c",
+      "size": 533
+    },
+    "app/static/station/listening-room-800.webp": {
+      "mode": 420,
+      "sha256": "730e01a8144b896310e612d6c7444bec15b09c8dd55c29e9ac4697ce1fa2b619",
+      "size": 40386
+    },
+    "app/static/station/listening-room.webp": {
+      "mode": 420,
+      "sha256": "9ce28e692e6da829fec38c22e5e14fbc9db0ad1424a64c1cf4d4ac99b5d85b2e",
+      "size": 132000
+    },
+    "app/static/station_control.css": {
+      "mode": 420,
+      "sha256": "1f7b629ce26da2e7a6fef5de519f5a2ba74cc2bc944e4eb853e747b1101168f9",
+      "size": 2188
+    },
+    "app/static/station_control.js": {
+      "mode": 420,
+      "sha256": "3c36d1300a231279a5d599d3638140daab56ffc75c6384c124ec147038266e19",
+      "size": 7132
+    },
+    "app/static/station_editor.js": {
+      "mode": 420,
+      "sha256": "42fc7a9bf652ef1789f84e0cf05437fefe446da671dde24843d753494ee7ec19",
+      "size": 582
+    },
+    "app/static/station_settings.js": {
+      "mode": 420,
+      "sha256": "4a70df3a4e7de8f3166a6eb3aeb8208e2765a57aeccfb88397574229700bac82",
+      "size": 5052
+    },
+    "app/static/statistics.css": {
+      "mode": 420,
+      "sha256": "1965a5990095224e44b409d654803d052d4de2a9da271fed67c510cb9babf7d5",
+      "size": 11043
+    },
+    "app/static/statistics.js": {
+      "mode": 420,
+      "sha256": "bf1ec2623496c4508a16fa64660d313cd9570013582b837ad8a3b5cfa76965cf",
+      "size": 28991
+    },
+    "app/static/statistics_presence.js": {
+      "mode": 420,
+      "sha256": "03ef8e43b3b00638ee59b00b205766853eada40cf6b7bfe608c51270edc0649d",
+      "size": 898
+    },
+    "app/static/studio-180.png": {
+      "mode": 420,
+      "sha256": "39a5630af341b27c49e398b58ad19d241240230abc1faaf3a8512e0351055eca",
+      "size": 1468
+    },
+    "app/static/studio-192.png": {
+      "mode": 420,
+      "sha256": "ee93cba62977c75bd76827004d2cb9ce62e153642d2d58a7fdce8785b4a6d550",
+      "size": 1537
+    },
+    "app/static/studio-512.png": {
+      "mode": 420,
+      "sha256": "113aa61d09f64da23d67489a33b8910735b824058b75a4c30d3c74cb44fabe29",
+      "size": 6813
+    },
+    "app/static/studio-pwa.js": {
+      "mode": 420,
+      "sha256": "470d6c7726740b641f8c105c7040a1c8c20806686d86d2381053e0942c1139e1",
+      "size": 202
+    },
+    "app/static/studio-sw.js": {
+      "mode": 420,
+      "sha256": "0b2ad42574c7e5a881e69da271a98f2e86ff7bae98b6e3c501ab26827b31879d",
+      "size": 1057
+    },
+    "app/static/theme.css": {
+      "mode": 420,
+      "sha256": "82d80cf685d2567593982ac13d32c32a53d263d1b1d3cbaa9b7fd6c44f7ac466",
+      "size": 4472
+    },
+    "app/static/theme.js": {
+      "mode": 420,
+      "sha256": "ee1c8ba249997e924477523ef495a58def18a8d7058ec4f2bb7ff6d5628cfece",
+      "size": 1535
+    },
+    "app/static/track_audio_editor.js": {
+      "mode": 420,
+      "sha256": "05daaafb84142e2e56660456c8b29c928f4554016b53611cc8f0a81b27c5a54c",
+      "size": 6795
+    },
+    "app/static/uuid.js": {
+      "mode": 420,
+      "sha256": "0599d04cbc4bcc7235d7389d9d5331a28790baaa2d1741b2cbc13c362ca21a61",
+      "size": 514
+    },
+    "app/static/vendor/STATISTICS-LICENSES.md": {
+      "mode": 420,
+      "sha256": "4f9a48e044dbfe3cf9be22392807afa101c227ca971a01d0765c121887d17d6e",
+      "size": 934
+    },
+    "app/static/vendor/maplibre/LICENSE.txt": {
+      "mode": 420,
+      "sha256": "ee5fc05a0677eaf69601d2c7db0d9ecd6cc27c3abc1d0733bc9ed34707cf8ef2",
+      "size": 5984
+    },
+    "app/static/vendor/maplibre/maplibre-gl-csp-worker.js": {
+      "mode": 420,
+      "sha256": "127ae116b0d4c0e4a2d215d68b10300fa7c2365d0d234831ff037af5cff58524",
+      "size": 377634
+    },
+    "app/static/vendor/maplibre/maplibre-gl-csp.js": {
+      "mode": 420,
+      "sha256": "e9038be2353aa748b56271bf15cf81a8240c5b9c46dabcc5f150499c1b97824a",
+      "size": 863280
+    },
+    "app/static/vendor/maplibre/maplibre-gl.css": {
+      "mode": 420,
+      "sha256": "792ac997dcf6ae6f643eb4e2dee4630c85e7056526bd8fb85ffe83c67d6c41b4",
+      "size": 69422
+    },
+    "app/static/vendor/mpg123/NOTICE.txt": {
+      "mode": 420,
+      "sha256": "86b81f5d552c2ea74c4959d8247c5028429392438a9d3fcb3691a08f869c817f",
+      "size": 2491
+    },
+    "app/static/vendor/mpg123/decoder-source.tar.gz": {
+      "mode": 420,
+      "sha256": "41ea6af134e2914f16bceba3abef13f0d9742abb6fbeab8f1d9f4b5df6939289",
+      "size": 1024617
+    },
+    "app/static/vendor/mpg123/mpg123-AUTHORS.txt": {
+      "mode": 420,
+      "sha256": "acf074a5eb7933a9d60074ea3251629c2eddd28e5255b306252c753142c91b4c",
+      "size": 9170
+    },
+    "app/static/vendor/mpg123/mpg123-COPYING.txt": {
+      "mode": 420,
+      "sha256": "c22482728a634a8dfdb4ff72a96d4c1ed64cd8f3e79335c401751ac591609366",
+      "size": 40718
+    },
+    "app/static/vendor/mpg123/mpg123-decoder.min.js": {
+      "mode": 420,
+      "sha256": "c13a80f0455795eb0c8a1c7844fb5e567cf37acc00fdd3e1f3e6b89f7b4601ce",
+      "size": 78895
+    },
+    "app/static/website_editor.css": {
+      "mode": 420,
+      "sha256": "bd2678afcf614e7ab018cfc798bfa6f0542b66f69215f893c5dc6d0756bfd4aa",
+      "size": 4430
+    },
+    "app/static/website_editor.js": {
+      "mode": 420,
+      "sha256": "f4c5d91d34e324467429ba05d7f5c2d1f2db7879fc3e8654fa9cd5f47021d7c8",
+      "size": 2734
+    },
+    "app/static/website_preview.css": {
+      "mode": 420,
+      "sha256": "d16758dc33c663bd72678a78ab4171c0c253ff55e8fcb31d027e356781a85ffd",
+      "size": 744
+    },
+    "app/static/website_preview.js": {
+      "mode": 420,
+      "sha256": "2f995abbb85bec83c8ac9d0d4b63b58675e8b7af71df619d32c5516c42b67a95",
+      "size": 302
+    },
+    "app/static/workspace.js": {
+      "mode": 420,
+      "sha256": "afc8f3e32007ba4bc6aaf1d1190869a69cc3821d7852ef295cf3c06c7dc6fa39",
+      "size": 23585
+    },
+    "app/static/world-countries.json": {
+      "mode": 420,
+      "sha256": "9decbee00191f1d24bd9460bd0a32a5a9c30543faa56312ae4430fbde9adfa63",
+      "size": 262358
+    },
+    "app/templates/_advertising.html": {
+      "mode": 420,
+      "sha256": "9ed9729b230df8b21673dc8011e00d7989dcaa6e1721edc7df047b8c5dbada08",
+      "size": 485
+    },
+    "app/templates/_appearance.html": {
+      "mode": 420,
+      "sha256": "f149a6d615b21b520aa1008cecdaa47ff3a8f7c3759942f89e72c5c826ec1fb1",
+      "size": 360
+    },
+    "app/templates/admin/_booth_cue.html": {
+      "mode": 420,
+      "sha256": "321cf0f0b5ac9a75de44c8e242d3ef1933e9314c6295ce7c69f89ad5d0f6fd60",
+      "size": 1664
+    },
+    "app/templates/admin/_discovery_editor.html": {
+      "mode": 420,
+      "sha256": "bd814f3a6e7ed8f5b33efc2f63b1d2bd388f672d968dc125df1da12f054c9c2f",
+      "size": 482
+    },
+    "app/templates/admin/_discovery_fields.html": {
+      "mode": 420,
+      "sha256": "5e37f3a63af465aa8c337f81f00718b88ac8222187798d6312f99e9fb9a956bc",
+      "size": 1395
+    },
+    "app/templates/admin/_dj_deck.html": {
+      "mode": 420,
+      "sha256": "47aa24ff9b34d1aca20ec1eb673a4f50fb039ddcee4ce8cace5f5ce6d490e40e",
+      "size": 2625
+    },
+    "app/templates/admin/_hosting.html": {
+      "mode": 420,
+      "sha256": "67354f3074ca0465bb0f7e12d2b925724975abe5c1b00a9bdec82b87373b50d9",
+      "size": 1287
+    },
+    "app/templates/admin/_license_agreement.html": {
+      "mode": 420,
+      "sha256": "333546a2f35e8befb8607e131a7c16edcb4a752900dd20103dfeacdd988551ac",
+      "size": 3249
+    },
+    "app/templates/admin/_live_mic.html": {
+      "mode": 420,
+      "sha256": "79512d7527d5132254ae32e388c80f53048a23db287c333ea638482b6edaad9d",
+      "size": 2237
+    },
+    "app/templates/admin/_music_macros.html": {
+      "mode": 420,
+      "sha256": "e530a0760c4759b69365082f27750c893bc752bd929e4567a1f2219cedbd0da0",
+      "size": 1881
+    },
+    "app/templates/admin/_music_player.html": {
+      "mode": 420,
+      "sha256": "720df8a47d4058069a00deae14a6c995ac7cc357c44e528cbe74c0029820bacc",
+      "size": 959
+    },
+    "app/templates/admin/_player_polish_settings.html": {
+      "mode": 420,
+      "sha256": "048012500155d671189d70da80cc51580a55243f7f14a31ffbc65a467f2a093d",
+      "size": 840
+    },
+    "app/templates/admin/_scheduling_tabs.html": {
+      "mode": 420,
+      "sha256": "2c131b2e0df6dcf03a4c79fb685889887ffc256883112a1171b0d553d6cfa806",
+      "size": 334
+    },
+    "app/templates/admin/_sharing.html": {
+      "mode": 420,
+      "sha256": "708ec0b0feae2417376d663f6f1fc7b1692e03ed29db7c1d740ffc2175f05b39",
+      "size": 2377
+    },
+    "app/templates/admin/_song_flag_dialog.html": {
+      "mode": 420,
+      "sha256": "427a898b95eb25d3816b4f4b11f3553c8d301f19c49f78751f4e581968170b2e",
+      "size": 854
+    },
+    "app/templates/admin/_sound_workspace.html": {
+      "mode": 420,
+      "sha256": "f5c188b2f7e1bca07796052093e0dcfbe0a7a3848967a49bf08338aa4d729fae",
+      "size": 4975
+    },
+    "app/templates/admin/_station_create.html": {
+      "mode": 420,
+      "sha256": "b14a00447a51a10a5b4566a9171bd71e4a13e10994ee2e83ded3cd745683f09e",
+      "size": 1922
+    },
+    "app/templates/admin/_station_default.html": {
+      "mode": 420,
+      "sha256": "2b70c8d4d3332d3c9bdd075e83869429c449b7ac9707f8b279e7b2a7ec34918c",
+      "size": 3175
+    },
+    "app/templates/admin/_station_domains.html": {
+      "mode": 420,
+      "sha256": "f108ef1e649af7f285b26ee3a24161c5e95febe91ada6d4e356da86833ace636",
+      "size": 2617
+    },
+    "app/templates/admin/_station_lifecycle.html": {
+      "mode": 420,
+      "sha256": "04b6ac86ddd2f5e0f45d1979de860b3958097213a5e78f311844b27bc5819c1c",
+      "size": 1167
+    },
+    "app/templates/admin/_timezone.html": {
+      "mode": 420,
+      "sha256": "a81781787f0852a62550cdeaf311247a827c038ca5c8ef38e4a06df6405c9480",
+      "size": 277
+    },
+    "app/templates/admin/advertising.html": {
+      "mode": 420,
+      "sha256": "9d9016b690a65591b40bd9242212518751e6f1cd9dce490ef114238a2c0fa540",
+      "size": 3427
+    },
+    "app/templates/admin/advertising_editor.html": {
+      "mode": 420,
+      "sha256": "e3edbdeb5ad666e714b2c8d16ef66e2a961697c96fc6d3a9f4552f65faccbe51",
+      "size": 6716
+    },
+    "app/templates/admin/api_credentials.html": {
+      "mode": 420,
+      "sha256": "97095f375b52fce0c89433f02cf2389593efa88e868066910bbefbbd2a8955ef",
+      "size": 2655
+    },
+    "app/templates/admin/base.html": {
+      "mode": 420,
+      "sha256": "68a3c28056b710bbba6e3ac442a5037906d53210287a30788caf62519f02b635",
+      "size": 11551
+    },
+    "app/templates/admin/block_detail.html": {
+      "mode": 420,
+      "sha256": "6c0b9aff48023f2fb473151420fad4abe4520e3d18a69062ed4740ed7fdd3023",
+      "size": 5158
+    },
+    "app/templates/admin/blocks.html": {
+      "mode": 420,
+      "sha256": "f224f142659cc4a9a6c6710399070bed006a72c99777945d5fede7cc2dcc38eb",
+      "size": 1902
+    },
+    "app/templates/admin/broadcast_reports.html": {
+      "mode": 420,
+      "sha256": "c9782f4d23ef4d7551d0294de683cd18d31f5624dbc4938494dc065eb22f8203",
+      "size": 4328
+    },
+    "app/templates/admin/bulletins.html": {
+      "mode": 420,
+      "sha256": "ceef23671a43bea052c9525b40bdf3d1133b70aba5f5649221c5fe9c85aa856c",
+      "size": 4578
+    },
+    "app/templates/admin/calendar.html": {
+      "mode": 420,
+      "sha256": "a630913ca5e6b19cc4fccf34a83ff02cd99c2ea5cb34ed394ea282a50cc0b8f0",
+      "size": 11160
+    },
+    "app/templates/admin/discovery_edit.html": {
+      "mode": 420,
+      "sha256": "be058c3266f1c6f3cd389f78f9642375eb956524a618ab64e4780a0e0b096dfd",
+      "size": 147
+    },
+    "app/templates/admin/dj_empty.html": {
+      "mode": 420,
+      "sha256": "9414163c88b19a35bf54deb3bca885e42e98af5d1b4147c3b955f1d3dc40a7d7",
+      "size": 180
+    },
+    "app/templates/admin/dj_profiles.html": {
+      "mode": 420,
+      "sha256": "8d3a18eee8dbcdaf2699ba21a8d74e8fd937ccb4ae65e116815ed38776d20709",
+      "size": 1654
+    },
+    "app/templates/admin/djs.html": {
+      "mode": 420,
+      "sha256": "edebdf51ad247ef35c74aab706bb6ca34379eec7c4034d5a5aa39c3bab66d2f5",
+      "size": 2963
+    },
+    "app/templates/admin/dmca.html": {
+      "mode": 420,
+      "sha256": "ebc3519f303b0a7d9968737ef1f468317341dce733473e18dd7bae8d64f62cab",
+      "size": 3133
+    },
+    "app/templates/admin/event_detail.html": {
+      "mode": 420,
+      "sha256": "9b82d9b8de5fce2c1c00c13da10aacfd09971c56eee092a303bf5441faab0d3d",
+      "size": 3846
+    },
+    "app/templates/admin/event_fields.html": {
+      "mode": 420,
+      "sha256": "a7677b61e45ec6424f19bc3c46cbafadbe53eb8a1a05892db4eb202a612f10d9",
+      "size": 8918
+    },
+    "app/templates/admin/event_form.html": {
+      "mode": 420,
+      "sha256": "89e09c52b42c746ffa55807c74a2e3f10e36d04899edc9545719b796ec29ef36",
+      "size": 669
+    },
+    "app/templates/admin/events.html": {
+      "mode": 420,
+      "sha256": "0525a622c0fb7dd6b50ff329f541f8f05241866a40582db4aa946b73d8fca359",
+      "size": 1836
+    },
+    "app/templates/admin/imaging.html": {
+      "mode": 420,
+      "sha256": "147737e22955cda92af91d9699f38e2526e4dc685befe18fe85a132f13723e22",
+      "size": 3886
+    },
+    "app/templates/admin/imaging_asset.html": {
+      "mode": 420,
+      "sha256": "b0a19d936861f5d23f4efc29cf6b12ab50aad75a787864c8c7fdf802c1619545",
+      "size": 4114
+    },
+    "app/templates/admin/imaging_group.html": {
+      "mode": 420,
+      "sha256": "82c23c3fc544abadfb6dffa840c4d7224a590e63cc2aa2680131094c150abba3",
+      "size": 2135
+    },
+    "app/templates/admin/imaging_job.html": {
+      "mode": 420,
+      "sha256": "a516e81badbefc8f35a6d938ffefb6b364414ef6eb9085c08301050c43a2fc6d",
+      "size": 798
+    },
+    "app/templates/admin/imaging_upload.html": {
+      "mode": 420,
+      "sha256": "db803be86b3ba880db761a1a8871740e892a28e4d4335efd6ce77c5bf43dcdeb",
+      "size": 1498
+    },
+    "app/templates/admin/installation.html": {
+      "mode": 420,
+      "sha256": "61ec78858167f166c6513d500b5f6fff07b7ca64031b2316a8acdf3e1958d859",
+      "size": 5458
+    },
+    "app/templates/admin/listener_feedback.html": {
+      "mode": 420,
+      "sha256": "69602c67072dde6c2490e020cacdbfd22596762bb371bd3027d3521da32f8dfb",
+      "size": 2225
+    },
+    "app/templates/admin/listener_requests.html": {
+      "mode": 420,
+      "sha256": "2a77e962acc8b4278bd98de2ece8dcd6e3866b9f937a5302ce96ed306db579c9",
+      "size": 2846
+    },
+    "app/templates/admin/live.html": {
+      "mode": 420,
+      "sha256": "81d373898156bd057681e1e681249bde45915bb6f25656b99db2a670494f523f",
+      "size": 11876
+    },
+    "app/templates/admin/media.html": {
+      "mode": 420,
+      "sha256": "77b5607041c73fa5a1df7fcdaf722784a627ba34dceba8eb99de48b4a3e8e4be",
+      "size": 2471
+    },
+    "app/templates/admin/media_audit.html": {
+      "mode": 420,
+      "sha256": "15c266e223dc404d5a6ce90f99c0bef00f470c8d4da6fad37d2c9fa3ff6c7acb",
+      "size": 1462
+    },
+    "app/templates/admin/media_error.html": {
+      "mode": 420,
+      "sha256": "075dd5aed5103b113e9c9df175e4e47e5759018fcf075c5ff789de4dfcf0d8f2",
+      "size": 311
+    },
+    "app/templates/admin/media_job.html": {
+      "mode": 420,
+      "sha256": "ca47901ea55ae6ca2803bb1af8f4a58a3a79ed81e1e7f8276fcdc7fc8848e49d",
+      "size": 2545
+    },
+    "app/templates/admin/media_track.html": {
+      "mode": 420,
+      "sha256": "b79ccefcd5ff67439c474993e9738e57f168dea4122a344df2167f90d60ee2ed",
+      "size": 9858
+    },
+    "app/templates/admin/media_upload.html": {
+      "mode": 420,
+      "sha256": "125f6606828319eef8d589279044b938376b6bfb56c075f550079581e0fb2f90",
+      "size": 6416
+    },
+    "app/templates/admin/music_album.html": {
+      "mode": 420,
+      "sha256": "1bce27d0e460f8ae8241c713440514c344eaa6df93787fbe0b5f98b0772e220f",
+      "size": 1899
+    },
+    "app/templates/admin/music_artist.html": {
+      "mode": 420,
+      "sha256": "c0e06f6ce55c9c945efe6b3037a799a9337025abfa562d953aa066ef9fbc3515",
+      "size": 1371
+    },
+    "app/templates/admin/operations_feedback.html": {
+      "mode": 420,
+      "sha256": "3964c0eaba684239a5c3fe0a1db7b7f0bdb752330d55163c32a9950185b831f2",
+      "size": 3141
+    },
+    "app/templates/admin/overview.html": {
+      "mode": 420,
+      "sha256": "b2be94f2b03c43e930a7d46bf3a3c07ff0922eb8288e9600ba9f576f7c715aa5",
+      "size": 9091
+    },
+    "app/templates/admin/player_directory.html": {
+      "mode": 420,
+      "sha256": "1d3e4b08e057d2fc059c630a5d96d24fd5ce5e6eb2c32b134759391305b956c3",
+      "size": 1873
+    },
+    "app/templates/admin/player_settings.html": {
+      "mode": 420,
+      "sha256": "df9669d0cdaff8424cb79e9f284e282b1ed98564894da57e7a43ddeeb13f117c",
+      "size": 9840
+    },
+    "app/templates/admin/playlists.html": {
+      "mode": 420,
+      "sha256": "2597c512c98e5d5ce293012f043ecbb81014521242d319fd397b739a3eb736b5",
+      "size": 6138
+    },
+    "app/templates/admin/production.html": {
+      "mode": 420,
+      "sha256": "142a00d3bb5726caf1382a31d881a2daceb7fd57bed7547bf7f0e25e51d6bcff",
+      "size": 7602
+    },
+    "app/templates/admin/production_providers.html": {
+      "mode": 420,
+      "sha256": "6cf8de8b87645d57246d4da01ca746920ca3a08ba051db147280e7fa08baf58e",
+      "size": 2305
+    },
+    "app/templates/admin/production_settings.html": {
+      "mode": 420,
+      "sha256": "128d0e11ec4b2dffbc52524b8b2c9609ad928411ff7a22cac995ac9163c59756",
+      "size": 2131
+    },
+    "app/templates/admin/programming.html": {
+      "mode": 420,
+      "sha256": "199f1239a551816768a3fbd3ad05a5d224d7727d01bb68994790a0b7c50cb391",
+      "size": 18646
+    },
+    "app/templates/admin/recordings.html": {
+      "mode": 420,
+      "sha256": "1252e2c4701f7918cad80b5a999bd3f27d19559795165c9a5f61345e40faacc4",
+      "size": 3823
+    },
+    "app/templates/admin/schedule_studio.html": {
+      "mode": 420,
+      "sha256": "f626ff1a5210e4a0f70b679c9b6b68dbc8e6ec31b75083a09b87f09917153007",
+      "size": 15930
+    },
+    "app/templates/admin/section.html": {
+      "mode": 420,
+      "sha256": "c2aa1bd1f9efae393591bb89d3c4bb9e0f06a56657ab1b339b598bc6faf923d1",
+      "size": 8867
+    },
+    "app/templates/admin/software.html": {
+      "mode": 420,
+      "sha256": "f6f559cc2733378dfdaf8ca0f2e26b59618822f3e382d256e7d6cc5fed6973ae",
+      "size": 3094
+    },
+    "app/templates/admin/sound_room.html": {
+      "mode": 420,
+      "sha256": "b3e343528b110ad250fc683e47c91950f5536e6f9d7b3fd7076cf95266208c5b",
+      "size": 658
+    },
+    "app/templates/admin/station_control.html": {
+      "mode": 420,
+      "sha256": "aed51024ea3908501b7818d01403c1d55acfc85038fd305d0af58ec54fa96a94",
+      "size": 4142
+    },
+    "app/templates/admin/station_overview.html": {
+      "mode": 420,
+      "sha256": "02f5e6b713d7af10c6af5fb1f52f61281bcfd89c63cdaae62a370600e8eb8247",
+      "size": 11826
+    },
+    "app/templates/admin/station_settings.html": {
+      "mode": 420,
+      "sha256": "0ce3887dfbcfe1f69b4527c49b67903c96ef4b41a118ff0ffa82db3167422bc4",
+      "size": 17946
+    },
+    "app/templates/admin/statistics.html": {
+      "mode": 420,
+      "sha256": "3fedd16e589d30408dfc6253cc0a8d12d1bb4d9cbb42c077848beaca72ffe960",
+      "size": 12500
+    },
+    "app/templates/admin/tags.html": {
+      "mode": 420,
+      "sha256": "e2438c02d01e11452a9ee79805c62d62ed21c5b0c78d81dc844cd287e5bd8792",
+      "size": 1787
+    },
+    "app/templates/admin/traffic.html": {
+      "mode": 420,
+      "sha256": "7f5f9f6778302c733d01c1d401ae3c77c02a8e1db43a4340df1ed08573711cb3",
+      "size": 11100
+    },
+    "app/templates/admin/traffic_log.html": {
+      "mode": 420,
+      "sha256": "7d960ea3e5cfbe8a36254f6b7deb5220aca1d2efa7047c4246e54d13785c362f",
+      "size": 4266
+    },
+    "app/templates/admin/website.html": {
+      "mode": 420,
+      "sha256": "dfbdba3474a3e8ead7d02a4e172511c790ddbe476fb1bc3b853df3b8b80e4a43",
+      "size": 12685
+    },
+    "app/templates/admin/website_preview.html": {
+      "mode": 420,
+      "sha256": "9463950a2be1018c94d417cf1486fcd3c933065074061ad23c3b839685a6073b",
+      "size": 758
+    },
+    "app/templates/admin_setup.html": {
+      "mode": 420,
+      "sha256": "133e825d63e2201cdd7e334487765e9c87e1cbe0adcef822a7c674f1a096a205",
+      "size": 1143
+    },
+    "app/templates/base.html": {
+      "mode": 420,
+      "sha256": "f35ae862ed612bb910cb5a056076535bb072b30d589521b13421104f9dad7c5a",
+      "size": 2777
+    },
+    "app/templates/dmca.html": {
+      "mode": 420,
+      "sha256": "425cb5fea2c2d527d87055f862e83c4591a0df7ad9b50c19980025e768cfa86e",
+      "size": 2078
+    },
+    "app/templates/home.html": {
+      "mode": 420,
+      "sha256": "25918e21a9c5334e1dd04286ab68bfe9a40a32a1fa998364662a3bb2a820a74f",
+      "size": 11417
+    },
+    "app/templates/hosting_status.html": {
+      "mode": 420,
+      "sha256": "1c9116760bfae47f3c2318473c7be64839ac939e1c3de321a85ccc8f63dcb7d1",
+      "size": 924
+    },
+    "app/templates/listener_requests.html": {
+      "mode": 420,
+      "sha256": "919a2e4b4ab1e774b917930f90c03d7357b5ae849123826b643a372ad27fe2d8",
+      "size": 1272
+    },
+    "app/templates/login.html": {
+      "mode": 420,
+      "sha256": "2b5e7fafea8740d5f64cb380d5c6005bcbaf0702deadf510f16597eb0d90c283",
+      "size": 749
+    },
+    "app/templates/player.html": {
+      "mode": 420,
+      "sha256": "9e68e079f84af882e8cc9be53f3faaa0a0e658e321c1e32458be7d210cb26276",
+      "size": 15080
+    },
+    "app/templates/website_unavailable.html": {
+      "mode": 420,
+      "sha256": "1f3668b9b67628a0cb8b26fe5cb202784f897cd2245b0543580a5419dcd2410f",
+      "size": 266
+    },
+    "app/traffic_cli.py": {
+      "mode": 420,
+      "sha256": "52f3b426a4d85292e1bbae03420f4aa5cab71f59ccdfdfa7624f1d1c56edcf12",
+      "size": 2080
+    },
+    "app/version.py": {
+      "mode": 420,
+      "sha256": "7ab2d26dbebdbdb606b7cbf7419d99d281996aaa76224db5345ae8e25d6db7ca",
+      "size": 389
+    },
+    "deploy/icecast/icecast.xml.template": {
+      "mode": 420,
+      "sha256": "443b76fb07dfc1d05926def9095eb7d7227d77047a73495a15f32a4497e6a7c8",
+      "size": 1474
+    },
+    "deploy/icecast/patches/2.5.0-hosting-listeners.patch": {
+      "mode": 420,
+      "sha256": "ba17cb2460770ba121eda4f1d66c770e5ccc2a82cfc2cdea30eda536b7f48fdf",
+      "size": 4775
+    },
+    "deploy/icecast/patches/2.5.0-listener-locks.patch": {
+      "mode": 420,
+      "sha256": "eed565360dc368b948d8b1852080d89fb1b860a8812588d76f2e7afcfcc41c48",
+      "size": 570
+    },
+    "deploy/liquidsoap/bulletin.liq": {
+      "mode": 420,
+      "sha256": "5434f7974f6b5d874d87cd985c69f322756ea24f4bc9bbd2046e434667cf5eb8",
+      "size": 6505
+    },
+    "deploy/liquidsoap/freo-test.liq.template": {
+      "mode": 420,
+      "sha256": "f6a7c14e193e830e9ae0a89011e048b1781b8c06cddd58580c77b0c01fe29f80",
+      "size": 625
+    },
+    "deploy/liquidsoap/processor.liq": {
+      "mode": 420,
+      "sha256": "f84a8625732e5273bf496e48227e65b5ecc25c1024f6c2e1eaf82a1ba1e253f1",
+      "size": 2342
+    },
+    "deploy/liquidsoap/station.liq.template": {
+      "mode": 420,
+      "sha256": "2ac9c871b820d6790c88e1d1db17953f461514650f6147b6501614e466007c23",
+      "size": 45830
+    },
+    "deploy/nginx/admin-upload.conf": {
+      "mode": 420,
+      "sha256": "93ffe8a60f10ee6d0a5e76b8cb2a9e4e720f039ca46d4750af4cb913ac27a4cb",
+      "size": 1647
+    },
+    "deploy/nginx/custom-domain.conf.template": {
+      "mode": 420,
+      "sha256": "8ac8005bfa2a6ca9bd3bc4fdf15ec94203fd4719e6f5121296ce611ce57289b0",
+      "size": 708
+    },
+    "deploy/nginx/freo.conf.template": {
+      "mode": 420,
+      "sha256": "cddf8506879240690522746e93288299c475e2955adc8e0fb16a8c9eeb16b973",
+      "size": 800
+    },
+    "deploy/nginx/reject-unknown.conf": {
+      "mode": 420,
+      "sha256": "4dd65d2221bf9925317ba66a120472a4dc5169465322613fb88e5d4c76221522",
+      "size": 269
+    },
+    "deploy/nginx/static-assets.conf": {
+      "mode": 420,
+      "sha256": "f172e07c9196188f1a5436db9e5e6e182a01e1b922809a2646be77bb0e9118bb",
+      "size": 370
+    },
+    "deploy/nginx/station-location.conf.template": {
+      "mode": 420,
+      "sha256": "53cc99c0b344b0a701be14487f89d34b29447a9998b04c577d800df25be79a3d",
+      "size": 400
+    },
+    "deploy/nginx/stream-location.conf": {
+      "mode": 420,
+      "sha256": "1881aac45f75b44800c33f3b7c7d902a3c5ac8972d9ba29b7be901866be227c0",
+      "size": 544
+    },
+    "deploy/systemd/freo-automation.service": {
+      "mode": 420,
+      "sha256": "e7c50242c7e0271bbf218d810a03741584feb4c6b595d93d95df679a4e09ca82",
+      "size": 525
+    },
+    "deploy/systemd/freo-central-api.service": {
+      "mode": 420,
+      "sha256": "649818ff8e7af8ad76383b0f1929e708986581712368edb20a49821e0047b1ce",
+      "size": 632
+    },
+    "deploy/systemd/freo-geoip.service": {
+      "mode": 420,
+      "sha256": "819c093f299d6bc0c3d163c08b03c01711ec8afc552384fc3443361d830ab873",
+      "size": 446
+    },
+    "deploy/systemd/freo-geoip.timer": {
+      "mode": 420,
+      "sha256": "b9e24e9872f25cdc8a800fcd29ad9a36760f36d34e931aed493595603c5fa7d2",
+      "size": 191
+    },
+    "deploy/systemd/freo-ingest.service": {
+      "mode": 420,
+      "sha256": "d3989669e7a2965a9679840a534620a17648344c32f06723b1006d91ff1a81be",
+      "size": 520
+    },
+    "deploy/systemd/freo-mic.service": {
+      "mode": 420,
+      "sha256": "7bad51e471510f6d6571d04620d0eaf78a23c23ef492ba12b1165779e7029ed6",
+      "size": 492
+    },
+    "deploy/systemd/freo-playout.service": {
+      "mode": 420,
+      "sha256": "daf3d063128088bbb0a06fdcaf8dd4ff95a1f3cdf262a695fc1f867b80809ebf",
+      "size": 614
+    },
+    "deploy/systemd/freo-playout@.service": {
+      "mode": 420,
+      "sha256": "c0866e7eee6652bf6ec983ee0eeb334bd7c9a97d7c90f62861644a9c3b828802",
+      "size": 689
+    },
+    "deploy/systemd/freo-production.service": {
+      "mode": 420,
+      "sha256": "6558cbe859c5c6c29702911f666df058ab0462efd5c18070455cd634d3648ef0",
+      "size": 574
+    },
+    "deploy/systemd/freo-provision.service": {
+      "mode": 420,
+      "sha256": "573a19185be8bed4f33c1a33007e14bf5d24d3022ae250b8393fe0338c20ca3b",
+      "size": 331
+    },
+    "deploy/systemd/freo-provision.timer": {
+      "mode": 420,
+      "sha256": "ab6b49612a957a092cce7fcd397aaab669bc7f3ed052788b9862684c9894ccb4",
+      "size": 162
+    },
+    "deploy/systemd/freo-public-schedules.service": {
+      "mode": 420,
+      "sha256": "fbdf290c42a2b0fe3fb483cb274fc4f127ed932b3d804c0260482e3cd63a2a6d",
+      "size": 431
+    },
+    "deploy/systemd/freo-public-schedules.timer": {
+      "mode": 420,
+      "sha256": "d305974035bddf85e968fe3e2998c78d32cbd5168853b8c1e7f6f4c7df8b05b4",
+      "size": 187
+    },
+    "deploy/systemd/freo-stats-inventory.service": {
+      "mode": 420,
+      "sha256": "cfdfaf0df8b8c5bf53b9c3e7fc2fabfdbff09f15cf2fe50596545534ce5060ed",
+      "size": 384
+    },
+    "deploy/systemd/freo-stats-inventory.timer": {
+      "mode": 420,
+      "sha256": "c745be0277b3a226883ac496bb8d0e66aa07ea8e8101d147fa9c7e72691b7966",
+      "size": 178
+    },
+    "deploy/systemd/freo-stats.service": {
+      "mode": 420,
+      "sha256": "1531dbb1f0236bf8b249d77ebc6ce8b719ebea38dfe31ea955052f1743fe5061",
+      "size": 560
+    },
+    "deploy/systemd/freo-updater.service": {
+      "mode": 420,
+      "sha256": "8ac7592ae0af852ada2c0c43869f7886c78e1f71bf00f5cbebc4c4664f056a20",
+      "size": 351
+    },
+    "deploy/systemd/freo-updater.timer": {
+      "mode": 420,
+      "sha256": "f139568b32dc2134f8e4a1af02b3d9096f292e74b689c5e907acf3b07eae3632",
+      "size": 169
+    },
+    "deploy/systemd/freo.service": {
+      "mode": 420,
+      "sha256": "ea0d44afd814476b6760a409a2d0011be70aa7d42ce1c3c5993458f619f05a7b",
+      "size": 585
+    },
+    "deploy/systemd/icecast2.service": {
+      "mode": 420,
+      "sha256": "12fa503d6debeed19373724c71ec3c48c5c51b66aa144e548043df50043c083f",
+      "size": 440
+    },
+    "docs/0.3.2-rc.2-installation.md": {
+      "mode": 420,
+      "sha256": "e5cb127c55dae5324fa52496a8b1fa0efbf73ed0409fdfc2e018c6ce05ca3532",
+      "size": 5254
+    },
+    "docs/appearance.md": {
+      "mode": 420,
+      "sha256": "b64e53d6e9ba817da5f86f15b7af5c85b927b9eb34ebec967676ab47167562ea",
+      "size": 3371
+    },
+    "docs/audio-import-and-processing.md": {
+      "mode": 420,
+      "sha256": "28e984514b8374ee55e33740afac7b092f668c01f301081ee1ef372e026a3637",
+      "size": 5253
+    },
+    "docs/automation.md": {
+      "mode": 420,
+      "sha256": "635b3c4669a9c6e047d10b03bc419cf824e3a4348da01cfff112bcb919808788",
+      "size": 6296
+    },
+    "docs/channel-management.md": {
+      "mode": 420,
+      "sha256": "2b68c539310167e05d53d46050f6b435df77db5f5efe88897a34e007acea1875",
+      "size": 6771
+    },
+    "docs/clocks.md": {
+      "mode": 420,
+      "sha256": "cc50911fa087292f4260e8d70018cb684b90abc59b51590ca81b0e7524e009ae",
+      "size": 2422
+    },
+    "docs/copyright-and-dmca.md": {
+      "mode": 420,
+      "sha256": "259b7f21e557746e756dfce13e06da2881364820a5b0f7eb0bbd76a8254d613e",
+      "size": 11765
+    },
+    "docs/custom-domains.md": {
+      "mode": 420,
+      "sha256": "b515f7038013b85ae62042fe657ebbf675b93c2d2857f857f167dff5eb5a1471",
+      "size": 5987
+    },
+    "docs/dj-booth-cue.md": {
+      "mode": 420,
+      "sha256": "7e08ab6f91f3f58c92756c92c3488065fb2cadab9120852121ad29f7b32cd212",
+      "size": 8105
+    },
+    "docs/event-blocks.md": {
+      "mode": 420,
+      "sha256": "3fddbdc9736d7b4b15554188bce37b1dbed469ad92e992610b59fdd54efd931e",
+      "size": 2350
+    },
+    "docs/freo-studio-hosting-integration.md": {
+      "mode": 420,
+      "sha256": "60cbf6302a4a368c5c0f5c8fcedd7c3c3e806f3bb9a087b7eb6b9665a5bd02c6",
+      "size": 28394
+    },
+    "docs/icecast-upgrade.md": {
+      "mode": 420,
+      "sha256": "e78d9da5f2f02912538484fae98b28649704cf842e28cad2b65861bf4842b373",
+      "size": 5133
+    },
+    "docs/imaging.md": {
+      "mode": 420,
+      "sha256": "ae1e0f0df31ff6addb47ea72d62883e7c9c9f05e0aaea90eea551b44228fb8e0",
+      "size": 3361
+    },
+    "docs/installation.md": {
+      "mode": 420,
+      "sha256": "4b5381956f55a856d6e2cc1a3001dc91652b106e9886d2ad06c16fa5b4645015",
+      "size": 10989
+    },
+    "docs/license-agreement.md": {
+      "mode": 420,
+      "sha256": "253fae3a47b0c03d803cef7f9b565e4788a8faf8f44c83b90eaa486c13c797e7",
+      "size": 1578
+    },
+    "docs/live-assist.md": {
+      "mode": 420,
+      "sha256": "eaafc2faef909c38713e807948dc62828d5d3d96e37bc13063a0bce3847192c5",
+      "size": 15191
+    },
+    "docs/live-mic.md": {
+      "mode": 420,
+      "sha256": "6e792ded88623a9f87b81d5df6c9760fb91ed10cd4265ca9437da6fff1116572",
+      "size": 10344
+    },
+    "docs/master-broadcast.md": {
+      "mode": 420,
+      "sha256": "b2826a834cc71fea5807f0d727cd42047351e4d7648c83a8e07660522f37990d",
+      "size": 3594
+    },
+    "docs/media-library.md": {
+      "mode": 420,
+      "sha256": "61e441535f07d92e3b611e8007e0baac55f92eecda3fe1f8390ae81d0ca1de6b",
+      "size": 3558
+    },
+    "docs/operations-navigation.md": {
+      "mode": 420,
+      "sha256": "31ade94d7a1874174c6bb4d551b4d3985b57431512680adcf5653b9b3a9ed65d",
+      "size": 3555
+    },
+    "docs/player-and-listener-experience.md": {
+      "mode": 420,
+      "sha256": "560b4df16908583aa0127d3d0dc2a55880d6ddebd6e5a326306c28b77e7e39d9",
+      "size": 33997
+    },
+    "docs/playlists.md": {
+      "mode": 420,
+      "sha256": "2e57c736f134127221ab26576609fe125ef9536fec43ed0a2a9882de9435003c",
+      "size": 9300
+    },
+    "docs/programming-ui.md": {
+      "mode": 420,
+      "sha256": "76fc37c79cc19565819acd7b3bec6d412d17a0724abe5a51e244fd5664520095",
+      "size": 2731
+    },
+    "docs/public-api-v1.md": {
+      "mode": 420,
+      "sha256": "e26a734b1e319da2ea39e7191629a40bf7de924b3a33c66f3ae262ae4c03d31a",
+      "size": 7673
+    },
+    "docs/public-radio-directories.md": {
+      "mode": 420,
+      "sha256": "f45222c9c71428de992d46de065d797b1b861d8794dfb16ed65a9cdae3401190",
+      "size": 9117
+    },
+    "docs/radio-engine.md": {
+      "mode": 420,
+      "sha256": "c91995e4dee2d376e9e859c055297cb6ac169b9d0a170142ac4a2f4f887521e7",
+      "size": 5965
+    },
+    "docs/recovery-and-upgrades.md": {
+      "mode": 420,
+      "sha256": "76d0c20f50db0cc192180a551277b71440e4fc55f9be96abb0f73e5256ee25aa",
+      "size": 17277
+    },
+    "docs/rotations.md": {
+      "mode": 420,
+      "sha256": "f95e727296158d8cd170c7517ec733c2dfecb2d6dbe66dcd867ccbc4cf77d8f7",
+      "size": 3419
+    },
+    "docs/scheduling.md": {
+      "mode": 420,
+      "sha256": "909fe8c9a796508eb4b2a1dd613d8b80591ee8fedeb164c9df99b6b67dcefed5",
+      "size": 3997
+    },
+    "docs/security.md": {
+      "mode": 420,
+      "sha256": "7cef0bd6bd53f5ac805e0c041c9f6a83327bf1d48c2fac351b5ef780464eae6e",
+      "size": 1834
+    },
+    "docs/sound-room.md": {
+      "mode": 420,
+      "sha256": "0f6c0a5a529f8cb9a448809be52a6060dbd1bfa28e34d3738b4ca14e09c01f96",
+      "size": 7869
+    },
+    "docs/station-location-reporting.md": {
+      "mode": 420,
+      "sha256": "e63651a186e48b8d4394adfbdcdeb66743e519ca6e83d689ab1b43fe00faef3e",
+      "size": 7778
+    },
+    "docs/station-settings-and-review.md": {
+      "mode": 420,
+      "sha256": "20a46124893b5c816d08ac0513278fc6682c22cb4394e31aef9f665822864fdc",
+      "size": 3910
+    },
+    "docs/station-website.md": {
+      "mode": 420,
+      "sha256": "a17767e6bf58e79e55d005874255bc1dc6dc73f49092a54d61d404f4aae30691",
+      "size": 6306
+    },
+    "docs/stations.md": {
+      "mode": 420,
+      "sha256": "013ba997ba5378b751a5c4dcb900a7e79e4f0f55a2063c05331e72be6ea4babb",
+      "size": 6975
+    },
+    "docs/statistics.md": {
+      "mode": 420,
+      "sha256": "36cd1577611c898e37765c82d1894131cf6a8b57be066f06570c0e511d6ea779",
+      "size": 12889
+    },
+    "docs/studio-release-api.md": {
+      "mode": 420,
+      "sha256": "467c528e7b20d889c1d1d4e6c892e2f98142b9ad45eb182846bd95f835e142ff",
+      "size": 4992
+    },
+    "docs/timed-events.md": {
+      "mode": 420,
+      "sha256": "b1aabb5982231dc82eefdd9a0920f370e7c474d971629b53ba1cb433acff9702",
+      "size": 4853
+    },
+    "docs/traffic.md": {
+      "mode": 420,
+      "sha256": "f67cd32d5efcea654355415dee194b9e6537683b8b076385588e62ea37e4768c",
+      "size": 2757
+    },
+    "docs/ui.md": {
+      "mode": 420,
+      "sha256": "e51a7c1d37fec9d57121eda597189d06dcc5e16ad9334b81e0b7e3a67cfc8650",
+      "size": 4761
+    },
+    "docs/v1-rc1-installation.md": {
+      "mode": 420,
+      "sha256": "299902212eba36931c3d65cdd30ad1ec18e20ff301ff768f40d69ef09b0e7cb7",
+      "size": 8604
+    },
+    "docs/v1-rc2-installation.md": {
+      "mode": 420,
+      "sha256": "4e483b259f7fe4a92ab895026af49d03ba4765a7190896ec91349d42fb79915b",
+      "size": 2424
+    },
+    "docs/v1-rc3-installation.md": {
+      "mode": 420,
+      "sha256": "15dba569b98d019814015689b96692da1afbaedabba5e7fbd0493530121b1e50",
+      "size": 2990
+    },
+    "docs/v1-rc4-installation.md": {
+      "mode": 420,
+      "sha256": "8f7dcb452e664cd5f68c7d2608be5ed74bc830d5eca79260f038780d0bae13a1",
+      "size": 3371
+    },
+    "docs/version-awareness-client.md": {
+      "mode": 420,
+      "sha256": "f45dd915daa7605b1ba79f149a3e2b261ad5b568983318e5c67afff38ef5ecc6",
+      "size": 8027
+    },
+    "freo_ops/__init__.py": {
+      "mode": 420,
+      "sha256": "87f9478d71367c95413df8be50b7aaa3314fb795ea52180833fc0a5570d3f9c3",
+      "size": 81
+    },
+    "freo_ops/__main__.py": {
+      "mode": 420,
+      "sha256": "053e217e283136729a803168cd474756eae0efc3a338f7e2753e9c70fe7074db",
+      "size": 8966
+    },
+    "freo_ops/admin.py": {
+      "mode": 420,
+      "sha256": "bd8d33f4b425888ce1f70a1ad9fbc76b859b8f3ef62cab61848046260787d9bf",
+      "size": 22214
+    },
+    "freo_ops/admin_backup.py": {
+      "mode": 420,
+      "sha256": "a5958ffe21594ffa677f6c295b94e2f8e7cb84901900050357948c284331f600",
+      "size": 32987
+    },
+    "freo_ops/admin_identity.py": {
+      "mode": 420,
+      "sha256": "d8cb5d771c750f42689b880da4059bc0954148e4d7f6c0e59d1158de80a3ccbb",
+      "size": 2931
+    },
+    "freo_ops/admin_upgrade.py": {
+      "mode": 420,
+      "sha256": "3627b8d928a138977b1b78588b34924ef6c1eb5e43938a9107688767f1ab1f28",
+      "size": 6823
+    },
+    "freo_ops/dependencies.py": {
+      "mode": 420,
+      "sha256": "41bc4d6ede96706649aa3be1959ea9ddadb7b7d2c1060a6391bbb93db2cd01d3",
+      "size": 2172
+    },
+    "freo_ops/hosting.py": {
+      "mode": 420,
+      "sha256": "f1f9ce24ace415dcda1e3e1828e67571dd122bcce66586c74a27139dddc4de41",
+      "size": 6932
+    },
+    "freo_ops/hosting_admin.py": {
+      "mode": 420,
+      "sha256": "586f20a5b2a1462549a0a69f1eacfa3b4691fcfb23e0346b926d505e3283bc35",
+      "size": 21821
+    },
+    "freo_ops/hosting_recording.py": {
+      "mode": 420,
+      "sha256": "c5100d62c1cc03227c1492bb3476ad3c42250e5a456dfff7831f0442d14b1b0c",
+      "size": 1709
+    },
+    "freo_ops/hosting_recovery.py": {
+      "mode": 420,
+      "sha256": "b8d0f843fab5087bbf70d1d2a2e8491874a1906555b1199470fc64248a990f02",
+      "size": 3122
+    },
+    "freo_ops/hosting_storage.py": {
+      "mode": 420,
+      "sha256": "acd8510b295bd5b59952ce8aed1007628f6cd55da81c2782743c0ad26230c227",
+      "size": 6963
+    },
+    "freo_ops/inventory.py": {
+      "mode": 420,
+      "sha256": "645ba5958905c53b4bb65586eea8362439f21f9fcbaa4c0f8a5db1720f4de88d",
+      "size": 2833
+    },
+    "freo_ops/legacy_032.json": {
+      "mode": 420,
+      "sha256": "d378cc2479e2b6169372070b1ab2ea2663ebe96b5e7471c96396a633bd9eb88e",
+      "size": 1096
+    },
+    "freo_ops/legacy_v1_phase_a.json": {
+      "mode": 420,
+      "sha256": "3dfff0b56be30fba57cb09512011afb990e4cecdc8171549685723c7ead8bbb0",
+      "size": 1428
+    },
+    "freo_ops/recovery.py": {
+      "mode": 420,
+      "sha256": "a71bf883a1511fb4cd3fae89f71f72cd26c9fa2e4be4d8c81db3b5c271ea1292",
+      "size": 24206
+    },
+    "freo_ops/releases.py": {
+      "mode": 420,
+      "sha256": "e4c4bde93373c96e33ae0bafd9a512436a4afe6ecb1ac28ed6608acfc2a6755f",
+      "size": 12649
+    },
+    "freo_ops/studio_access.py": {
+      "mode": 420,
+      "sha256": "9b2122efdc3636c35ad38e34ac54d194713ede8ec83ea10da861f2931bc3179b",
+      "size": 7882
+    },
+    "freo_ops/upgrade.py": {
+      "mode": 420,
+      "sha256": "f1fec7e40c328c70d8e2b6dacb6f0bff02d85bf5fc75e899435c9e3260c05d6d",
+      "size": 29797
+    },
+    "freo_ops/v1.py": {
+      "mode": 420,
+      "sha256": "634df46a2c1ce5dac9a76efefe16e144b919c9085f8498d481a4844f2951c418",
+      "size": 11890
+    },
+    "freo_ops/web_updates.py": {
+      "mode": 420,
+      "sha256": "a0e500b9077a91b8067f4793f4a0ab8bebd4dcd0e8b79cd24bed78fa9cff0f0b",
+      "size": 6145
+    },
+    "migrations/README": {
+      "mode": 420,
+      "sha256": "24bd0dae33abb1c3dc2a0466421d51de196fd7fae8843a2dd13be999d336ec99",
+      "size": 41
+    },
+    "migrations/alembic.ini": {
+      "mode": 420,
+      "sha256": "4a36049892b3cfa2bc41fb995ad2c900959c08a39d45b7d486c565a60bfca1c9",
+      "size": 857
+    },
+    "migrations/env.py": {
+      "mode": 420,
+      "sha256": "ab22bcc6d785e907421b3149afa920a45edda378e9b066bc4d6933ad69f45814",
+      "size": 3376
+    },
+    "migrations/script.py.mako": {
+      "mode": 420,
+      "sha256": "f3fc6003e826fce85e8673bb0a22228d68279b4d1996ccc41ed207ac0605265d",
+      "size": 494
+    },
+    "migrations/versions/.gitkeep": {
+      "mode": 420,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "size": 0
+    },
+    "migrations/versions/2d350f63a154_add_station_scoped_tracks.py": {
+      "mode": 420,
+      "sha256": "5229d91aa74b63aba7fdeda4e663c42b2a56b1ae4c969dbf3d7ed5d5d167992d",
+      "size": 2718
+    },
+    "migrations/versions/4a97b6c1d2e3_add_first_class_imaging.py": {
+      "mode": 420,
+      "sha256": "404a962c2ecbf2fdb130493e8b3a06759e29f4a9bf1a355b580d6d36ff1190c2",
+      "size": 6943
+    },
+    "migrations/versions/8d62c4a9b10e_add_live_assist_state.py": {
+      "mode": 420,
+      "sha256": "802a5f237bb60eaffdb6bfa31b952ef5b19f7351b836322843b583fce8215a0e",
+      "size": 2967
+    },
+    "migrations/versions/93acb4e00651_add_admin_users.py": {
+      "mode": 420,
+      "sha256": "65f3cd9ccfe0e7b5c1105ab42024638129a68791bd3713fc09d7b951272e6f8c",
+      "size": 709
+    },
+    "migrations/versions/9d53a42c7cbb_track_liquidsoap_request_identity_for_.py": {
+      "mode": 420,
+      "sha256": "7ee17fb7145ee0470f002e3e4d44ddd06636e713770f79a38e23f82ac981b9b5",
+      "size": 1024
+    },
+    "migrations/versions/a09f6d3e82b1_station_domains.py": {
+      "mode": 420,
+      "sha256": "2b6f7bf69cfbd59403a1c980b819b724ea0bf954e812e1a76ececab5e2e45525",
+      "size": 1562
+    },
+    "migrations/versions/a166ec8c40ab_add_stations_and_primary_stream_mounts.py": {
+      "mode": 420,
+      "sha256": "98671068875285d1a8468ffb7365bb3bcdade69e7113b10508918fe2fb8fb897",
+      "size": 2373
+    },
+    "migrations/versions/a57ce920bd31_broadcast_mixer.py": {
+      "mode": 420,
+      "sha256": "955862868550877b63fde0a1a2e814dfa3332749450465784003db244b9247a8",
+      "size": 1921
+    },
+    "migrations/versions/a64f09e2b731_primary_installation_admin.py": {
+      "mode": 420,
+      "sha256": "e24f64d9772e29a7bf555e29ab3b4957290e40067d09c90d193f04b079ecca10",
+      "size": 888
+    },
+    "migrations/versions/a71d25b609ef_public_radio_directories.py": {
+      "mode": 420,
+      "sha256": "9638a3be3cbbe42bb981cb4e988ed370d8c9b304f779346e8df8298f3ba725de",
+      "size": 1260
+    },
+    "migrations/versions/a8d1e4f72c10_add_dj_booth_modes_and_carts.py": {
+      "mode": 420,
+      "sha256": "9d5652b79ebe2bbd6a8c0bb1fa3a515b730b342cec8d9eacc1f197546e364cc3",
+      "size": 1891
+    },
+    "migrations/versions/ab28c910d642_booth_cue_lists.py": {
+      "mode": 420,
+      "sha256": "b648b585741b76bf3a1c78f88661e14784c6428502d987a6a4de74a1796c15e2",
+      "size": 2200
+    },
+    "migrations/versions/ab31e76f209d_manual_connection_check.py": {
+      "mode": 420,
+      "sha256": "3b8bbf82ee5804af723f8e6fe27caabaacae0587dd6c720dded12a6f1e0d2d6a",
+      "size": 812
+    },
+    "migrations/versions/ab92e51c7034_visual_scheduling.py": {
+      "mode": 420,
+      "sha256": "32dceced60888e792192bdef49191e3ac1e99fc016789962c65b936cc2e07e05",
+      "size": 4320
+    },
+    "migrations/versions/b185c9a027d6_local_statistics.py": {
+      "mode": 420,
+      "sha256": "7aa58c2db9425dbb487b5ed2fcaae09083be818c6f5083a33cf51e773baf0a2a",
+      "size": 6590
+    },
+    "migrations/versions/b27d903e1a46_station_identity_and_flags.py": {
+      "mode": 420,
+      "sha256": "680c0f7281bd99e8cd73a86b48c73e792d56e99dd905acd9233d585c288a28d1",
+      "size": 1982
+    },
+    "migrations/versions/b680aa432d19_button_deck_controls.py": {
+      "mode": 420,
+      "sha256": "e6a1db406f45fd95d9331e341a28a6a99b4b7a0c7d670533ff69549f431d1d7c",
+      "size": 950
+    },
+    "migrations/versions/b72e19d4c603_station_coordinates.py": {
+      "mode": 420,
+      "sha256": "852db8a4248579262e66b4614f5981ce1754cacf039cbeb3cfb91e4860ee75d5",
+      "size": 773
+    },
+    "migrations/versions/b7e14f9c203d_add_timed_events.py": {
+      "mode": 420,
+      "sha256": "3c0240aae4a27377c0dcfbbe7fd0ee0ffe6a15aff42063884e58f6884c24baf0",
+      "size": 4746
+    },
+    "migrations/versions/c07d9a21b634_copyright_and_dmca.py": {
+      "mode": 420,
+      "sha256": "e82e607089c74cd779755f19b749a0ca77f8f308ca3243d704b6416bc6a8c1d8",
+      "size": 4099
+    },
+    "migrations/versions/c2f6a7d91e40_add_dj_cue_and_fade.py": {
+      "mode": 420,
+      "sha256": "f9b335a57bcc58895817a744709a7d614452ecfc236920849dd40123d55b3750",
+      "size": 1121
+    },
+    "migrations/versions/c39fa204bb17_deck_transition_options.py": {
+      "mode": 420,
+      "sha256": "fecd46e3655d4daf0cda0efc48ea2a381f83b01cc641ba446eb8da6e3ef149a1",
+      "size": 681
+    },
+    "migrations/versions/c48f1d207ab9_booth_playback_refresh.py": {
+      "mode": 420,
+      "sha256": "8ccc7d2d2fe130b12b1ce907340d89ad5386f368e36407d0789f53926b71f1aa",
+      "size": 1084
+    },
+    "migrations/versions/c7e7a1d55a42_add_media_ingest_jobs_and_audit.py": {
+      "mode": 420,
+      "sha256": "d1ac388e9593bea12ae7846d9a38c096383bbe102c81b651c59d4ceadc002d37",
+      "size": 2389
+    },
+    "migrations/versions/c83d4e5f9012_revocable_admin_logins.py": {
+      "mode": 420,
+      "sha256": "fb3757bf2dfac01e3f68be3e0643eff1d21b9629ac5fefb751cde4cef3b81e65",
+      "size": 749
+    },
+    "migrations/versions/c84a2e019b36_audio_formats_and_settings.py": {
+      "mode": 420,
+      "sha256": "9b542cee87f94846c6e4c8396103ead4ccea83eff4cf735dc5a12e3a66915a95",
+      "size": 2683
+    },
+    "migrations/versions/c91d2e3f4a56_add_event_blocks.py": {
+      "mode": 420,
+      "sha256": "3bac018d6830c16144dddda07c2d4e76679c6b8979d6ac0a1891e4a604867e9b",
+      "size": 9166
+    },
+    "migrations/versions/d02f9a41c830_installation_settings.py": {
+      "mode": 420,
+      "sha256": "10739330d28b330dbb921e718a245628464f2c179c59ea0f6dc729a6503df425",
+      "size": 908
+    },
+    "migrations/versions/d18e42f6a905_central_api.py": {
+      "mode": 420,
+      "sha256": "76b2ebfbd3f8e3497f7b5a8c1a65535abb660f1fae35fae814c05d37abd38bac",
+      "size": 3244
+    },
+    "migrations/versions/d65fdad18060_add_traffic_scheduling_and_.py": {
+      "mode": 420,
+      "sha256": "ccf2c4ddb978bf9c540b72d6a31cc75a3931e54e90857e17b637eeaea2dfbfa1",
+      "size": 13418
+    },
+    "migrations/versions/d72e1f90a631_event_repeat_days.py": {
+      "mode": 420,
+      "sha256": "f4a03430d8541b2f314fddfde611132982d5d54f5c7c65f50b56569e2ee7e0dd",
+      "size": 1476
+    },
+    "migrations/versions/d8a4b37f20ce_add_program_meter_and_merge_dj_modes.py": {
+      "mode": 420,
+      "sha256": "0b7ef955e7e5ef8bfde763e1a0571bc607b148e74d4763a0e42d3a6b53e26473",
+      "size": 675
+    },
+    "migrations/versions/d91f3a26b807_station_website.py": {
+      "mode": 420,
+      "sha256": "4484c6a97e9b0eaa7c3904f346ce9d5034a19bb1482a53e896c6afe9c04eb19f",
+      "size": 1167
+    },
+    "migrations/versions/dc81ffee4ee2_add_categories_rotations_and_automation_.py": {
+      "mode": 420,
+      "sha256": "aaabb00d11650966efbf823b50898f094614ad18300e75ee2db49b824a18768d",
+      "size": 7082
+    },
+    "migrations/versions/e20a6b7c9012_music_tag_descriptions_and_starters.py": {
+      "mode": 420,
+      "sha256": "99d934363a564e009ca4561a6ea6e0dfce922c0a83f30fa5091752614724b935",
+      "size": 1262
+    },
+    "migrations/versions/e28a91bc7304_station_audio_events.py": {
+      "mode": 420,
+      "sha256": "a3158d3dae952e913518453fdcf8381d0dc06054fa748349eb3ce2a25b470e89",
+      "size": 6536
+    },
+    "migrations/versions/e7a13c9d2f01_index_audit_admin_user.py": {
+      "mode": 420,
+      "sha256": "c7e58490b0609cabe2ce4252893fd899af2ae076a4d2e9d0eda7b04bc2e8e53a",
+      "size": 415
+    },
+    "migrations/versions/e83b9204c6af_distribution_controls.py": {
+      "mode": 420,
+      "sha256": "83636a3c4a6fe965270e3d64ae4a0470a85129826957cb7fc4b99ea598007b8e",
+      "size": 1231
+    },
+    "migrations/versions/e91b6c8a02f3_sound_room_and_loudness.py": {
+      "mode": 420,
+      "sha256": "9687b04894d475405eb8ba3399ee8f0fb3e1b5cb7c07148c3d6700b3c7f8a775",
+      "size": 2127
+    },
+    "migrations/versions/e92b740a613f_music_import_sessions.py": {
+      "mode": 420,
+      "sha256": "cc4834465d2d8db5c8ec861d5d71278e2f50da85ce01c4755fdcc3e11b768f15",
+      "size": 2664
+    },
+    "migrations/versions/ea640b19c275_station_lifecycle_and_sharing.py": {
+      "mode": 420,
+      "sha256": "a95a257d817c623c1116aeb762a07958f888726fe74a957c6a1a3f8510195b08",
+      "size": 1865
+    },
+    "migrations/versions/f106a1b2c3d4_smart_playlists.py": {
+      "mode": 420,
+      "sha256": "82a1867ba46de97fce8bf1d5768b230292745995df5998f36547638ef5ce6b0f",
+      "size": 1464
+    },
+    "migrations/versions/f19a73b206ce_master_broadcast.py": {
+      "mode": 420,
+      "sha256": "5e7e8994d1860b127e25bb36038d3334fb7b757198563809db625921553f5cf3",
+      "size": 689
+    },
+    "migrations/versions/f206a1b2c3d4_track_audio_edits.py": {
+      "mode": 420,
+      "sha256": "cae8f9fc53dc1044e72cb8a39e615db84c7cc24f7ae3783d6a0fccfd884e7897",
+      "size": 1352
+    },
+    "migrations/versions/f2d3b66ece57_add_clocks_and_weekly_schedule.py": {
+      "mode": 420,
+      "sha256": "7058649841fcf06e647c4174439855a70f27dba625b53dcdd1afbbaec7d15378",
+      "size": 7708
+    },
+    "migrations/versions/f306a1b2c3d4_dj_sessions_and_recordings.py": {
+      "mode": 420,
+      "sha256": "3afb2571d1a18f2c366ef8c04fea9686b8d2aae0e7bab6eecc62f237b3713db1",
+      "size": 3365
+    },
+    "migrations/versions/f316a1b2c3d4_recording_manager.py": {
+      "mode": 420,
+      "sha256": "84ead7e89b44a8dadfd1b9f746ff22c45b7bd2a951f5459d8a98242c3b8ddd3f",
+      "size": 1252
+    },
+    "migrations/versions/f35a908ed421_station_identity_and_programs.py": {
+      "mode": 420,
+      "sha256": "309c81ee1c9587e6b1de5cdef2eada3b7eef4d132287e4cb07edb86dae3ae8d9",
+      "size": 1883
+    },
+    "migrations/versions/f38c6a902e17_playlist_starter_identity.py": {
+      "mode": 420,
+      "sha256": "37629b6d7a65720ee89c61d48af9b0c3c1f02758fc9d10102c9b07984d8c20fa",
+      "size": 1121
+    },
+    "migrations/versions/f39c8210b7de_first_use_admin.py": {
+      "mode": 420,
+      "sha256": "1a920dc27dea24d1a38d4d3ce1f42b87a294fe7fe9f5205f514b70b830df153b",
+      "size": 804
+    },
+    "migrations/versions/f406a1b2c3d4_listener_sessions.py": {
+      "mode": 420,
+      "sha256": "0fc42db3900d89bbb8e129821fabfd2191f4620f40f548e35b405907d82313ca",
+      "size": 1303
+    },
+    "migrations/versions/f4c2d8a91b30_add_music_catalog_hierarchy.py": {
+      "mode": 420,
+      "sha256": "ed3779bff1cbd7a51fe679afa25457f5259ab91d5372fbc816801503bb8189dc",
+      "size": 5158
+    },
+    "migrations/versions/f506a1b2c3d4_listener_requests.py": {
+      "mode": 420,
+      "sha256": "c5542dd0b64b877a9bd610755e31526fc3ed493ef3644600174b63c4880fb651",
+      "size": 2635
+    },
+    "migrations/versions/f606a1b2c3d4_public_api.py": {
+      "mode": 420,
+      "sha256": "4cb36f310854df0356b090ce416631a60e443d1d4fe36307412bd04ae440bd61",
+      "size": 1628
+    },
+    "migrations/versions/f61c20d9a843_media_import_experience.py": {
+      "mode": 420,
+      "sha256": "549c656e575a94c3c3eb532f84d8fb3a64e83de9a55bbb9428902b89ca2193d3",
+      "size": 1696
+    },
+    "migrations/versions/f706a1b2c3d4_station_relays.py": {
+      "mode": 420,
+      "sha256": "2299fb161bf812af734c0a845197cf8072aaa9efedf4b49e2f9467a000d9cd5d",
+      "size": 1027
+    },
+    "migrations/versions/f73b8c9012ab_playlists.py": {
+      "mode": 420,
+      "sha256": "969fd29f13692ee34a5cedc51a5c3e8c164a0dac3d91a52a357b80b2ac8d231e",
+      "size": 5495
+    },
+    "migrations/versions/f806a1b2c3d4_audio_production.py": {
+      "mode": 420,
+      "sha256": "dc0dc6548529c9ad73a2a8a63b4950094a5b4509c638672448aca6d26a94f524",
+      "size": 4133
+    },
+    "migrations/versions/f84c1d92be30_public_player_and_feedback.py": {
+      "mode": 420,
+      "sha256": "ef628f7a1c816665eb772f37898c105c54993f57b89b05b0f39b2794da454524",
+      "size": 3524
+    },
+    "migrations/versions/f906a1b2c3d4_platform_polish.py": {
+      "mode": 420,
+      "sha256": "b1658b3195ec2c0f7c7bf30a7fb6cebb3af6b336bd95f51daa4527a1ddadaa34",
+      "size": 2429
+    },
+    "migrations/versions/fa06a1b2c3d4_broadcast_tools.py": {
+      "mode": 420,
+      "sha256": "edb50b34df13fc9a683bc55635cd5c6aa73c6981726115894e65d4418133a4eb",
+      "size": 3171
+    },
+    "migrations/versions/fb06a1b2c3d4_advertising_campaigns.py": {
+      "mode": 420,
+      "sha256": "c0d44f3b7cba06545e6e75fcb110aa4916a116db4e2d9d58b7de21dba347ba07",
+      "size": 3811
+    },
+    "migrations/versions/fc06a1b2c3d4_preserve_duplicate_legacy_imaging.py": {
+      "mode": 420,
+      "sha256": "26d83d217621b17f4750e53138c0599c49035762be7e72297fcf4675b53cd577",
+      "size": 1243
+    },
+    "requirements-live-mic.txt": {
+      "mode": 420,
+      "sha256": "3b39252c4fe9d37b30bfb320f78adfe8fcd53e4d14e0579e4b37c4654fc508d0",
+      "size": 51
+    },
+    "requirements.lock": {
+      "mode": 420,
+      "sha256": "51ce98a26b476fcfa4303f73d253407181728c685f467ebfae0735ce6fcd427c",
+      "size": 4030
+    },
+    "requirements.txt": {
+      "mode": 420,
+      "sha256": "ec5b1888802feebb9be83b0d8d4d398a3dad5335b11a3bb240f60de71fd9010d",
+      "size": 472
+    },
+    "scripts/accept-install.py": {
+      "mode": 493,
+      "sha256": "451bb6ff7d1b1f5228912c3b701343567fd569a4eecf1a833052960ac390a1af",
+      "size": 11009
+    },
+    "scripts/admin-maintenance.py": {
+      "mode": 420,
+      "sha256": "e8236aeedf5457b34a5c6cf526cdaed91bbdd956d067a019a4eff3aba358471d",
+      "size": 3154
+    },
+    "scripts/build-icecast-2.5.sh": {
+      "mode": 493,
+      "sha256": "761e789f3bd96b245d88a1c7d1124960755c3fda7f4d3e8576cef7401d6f9c12",
+      "size": 1404
+    },
+    "scripts/configure-icecast-repository.sh": {
+      "mode": 493,
+      "sha256": "c7db24c1f3743ac994ba646c375d8076fd95d25a9e69804a1b55e952cc11a2da",
+      "size": 2144
+    },
+    "scripts/hosting-admin-launcher.py": {
+      "mode": 420,
+      "sha256": "7c8d4cf2464cbdba1b9ce015ac0ff5ead1e04d1f49bdb95670a5b985989d081a",
+      "size": 1844
+    },
+    "scripts/hosting-admin.py": {
+      "mode": 420,
+      "sha256": "9cfa5567684d9a0489253862779fa0b91f6fd8621ed5cb93b415f41855688285",
+      "size": 255
+    },
+    "scripts/hosting-guard.py": {
+      "mode": 420,
+      "sha256": "324af92df8f3ea66a492e1e028ee0201a57ed870e8dbacd6f5559246e49a6037",
+      "size": 807
+    },
+    "scripts/hosting-recording.py": {
+      "mode": 420,
+      "sha256": "da2e45b0cb17ef7b9d27fb25fb91510f985073dd6d22baf4aca50e9a785bf2d4",
+      "size": 248
+    },
+    "scripts/install-hosting.py": {
+      "mode": 420,
+      "sha256": "c80e6fa480e2ab56111a3a3e2119be8a821d57b19208084fd2ae679340b8f4bf",
+      "size": 1876
+    },
+    "scripts/install-python.sh": {
+      "mode": 493,
+      "sha256": "9abe4892edfe8ffdfdab3d0026e11ee869fe1d16576287d07ad553186889e9e9",
+      "size": 1800
+    },
+    "scripts/install-statistics.sh": {
+      "mode": 493,
+      "sha256": "b6174188b9ba417eae78ca66ce62593f4ad8178347351a8e6ccf9fc76772e9cb",
+      "size": 1363
+    },
+    "scripts/install.sh": {
+      "mode": 493,
+      "sha256": "0e8a2f65b5e7e7f28983d5218fd246105cd9b1c1945d690abedf9f6fd75c54d7",
+      "size": 447
+    },
+    "scripts/media-web-access.sh": {
+      "mode": 493,
+      "sha256": "373db3000ae29007e09c7cf5ab846e87ca37046f432526e332996b06d9f8ac96",
+      "size": 1002
+    },
+    "scripts/provision.sh": {
+      "mode": 493,
+      "sha256": "361f67222c74779b35a105b3286ef38d1a7079881eac3258493fe579bb8baae5",
+      "size": 17141
+    },
+    "scripts/recording-storage.py": {
+      "mode": 420,
+      "sha256": "89f598e809c25eb6e505ebf2ef03d609318eb2d7cdd97fb7b8ec32b18b089e97",
+      "size": 2683
+    },
+    "scripts/render-radio-config.py": {
+      "mode": 493,
+      "sha256": "8ce6da81e774269b34c9bd96b2f3dcedeabe565f3f77961e94a2e4e178e95f7a",
+      "size": 5419
+    },
+    "scripts/studio-api-key.py": {
+      "mode": 420,
+      "sha256": "b05fbb54f31e7d5c910528eec69ebeb5f180a7b178de27a7a177af602fe74268",
+      "size": 1623
+    },
+    "scripts/validate-admin-login.py": {
+      "mode": 420,
+      "sha256": "a58110920d1d07c8c03966e5ebcb352c2a4fce98d0aabdb81433ecc76d1869bf",
+      "size": 8232
+    },
+    "scripts/validate-install.sh": {
+      "mode": 493,
+      "sha256": "de586d537e883ca57876ed9348a470b3766f71d5980d19f3b4046271fd2075b8",
+      "size": 7907
+    },
+    "scripts/validate-station-instance.py": {
+      "mode": 493,
+      "sha256": "051d5dd92e97e05a888807c2f2d483c500f6aaa7b50117c806131fdc09ccbb51",
+      "size": 669
+    },
+    "wheels/Flask_Migrate-4.1.0-py3-none-any.whl": {
+      "mode": 420,
+      "sha256": "24d8051af161782e0743af1b04a152d007bad9772b2bca67b7ec1e8ceeb3910d",
+      "size": 21237
+    },
+    "wheels/aiohappyeyeballs-2.7.1-py3-none-any.whl": {
+      "mode": 420,
+      "sha256": "9243213661e29250eb41368e5daa826fc017156c3b8a11440826b2e3ed376472",
+      "size": 15038
+    },
+    "wheels/aiohttp-3.13.3-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl": {
+      "mode": 420,
+      "sha256": "9ae8dd55c8e6c4257eae3a20fd2c8f41edaea5992ed67156642493b8daf3cecc",
+      "size": 1755181
+    },
+    "wheels/aioice-0.10.2-py3-none-any.whl": {
+      "mode": 420,
+      "sha256": "14911c15ab12d096dd14d372ebb4aecbb7420b52c9b76fdfcf54375dec17fcbf",
+      "size": 24875
+    },
+    "wheels/aiortc-1.14.0-py3-none-any.whl": {
+      "mode": 420,
+      "sha256": "4b244d7e482f4e1f67e685b3468269628eca1ec91fa5b329ab517738cfca086e",
+      "size": 93183
+    },
+    "wheels/aiosignal-1.4.0-py3-none-any.whl": {
+      "mode": 420,
+      "sha256": "053243f8b92b990551949e63930a839ff0cf0b0ebbe0597b0f3fb19e1a0fe82e",
+      "size": 7490
+    },
+    "wheels/alembic-1.20.0-py3-none-any.whl": {
+      "mode": 420,
+      "sha256": "77eb101048d95f982c0353e9233404889dcd7a6fc244c107836c0e2fc9cf7d9d",
+      "size": 268719
+    },
+    "wheels/attrs-26.1.0-py3-none-any.whl": {
+      "mode": 420,
+      "sha256": "c647aa4a12dfbad9333ca4e71fe62ddc36f4e63b2d260a37a8b83d2f043ac309",
+      "size": 67548
+    },
+    "wheels/av-16.1.0-cp312-cp312-manylinux_2_28_x86_64.whl": {
+      "mode": 420,
+      "sha256": "7ae547f6d5fa31763f73900d43901e8c5fa6367bb9a9840978d57b5a7ae14ed2",
+      "size": 41174337
+    },
+    "wheels/blinker-1.9.0-py3-none-any.whl": {
+      "mode": 420,
+      "sha256": "ba0efaa9080b619ff2f3459d1d500c57bddea4a6b424b60a91141db6fd2f08bc",
+      "size": 8458
+    },
+    "wheels/cffi-2.1.1-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.whl": {
+      "mode": 420,
+      "sha256": "c1453022f490d2459a11819d83ad1d586e9ff65a12ac3e705ffebd46d3685dcf",
+      "size": 221822
+    },
+    "wheels/click-8.5.0-py3-none-any.whl": {
+      "mode": 420,
+      "sha256": "255bc9599cf7748b4b1a446ccc735421bd08a2ae529a8b88597d3de5664ee360",
+      "size": 125251
+    },
+    "wheels/cryptography-50.0.1-cp311-abi3-manylinux_2_34_x86_64.whl": {
+      "mode": 420,
+      "sha256": "51afcfceb15597cf2635068e4ac9a56b2abde622edde17f37d85fd7b5306497a",
+      "size": 4746230
+    },
+    "wheels/dnspython-2.8.0-py3-none-any.whl": {
+      "mode": 420,
+      "sha256": "01d9bbc4a2d76bf0db7c1f729812ded6d912bd318d3b1cf81d30c0f845dbf3af",
+      "size": 331094
+    },
+    "wheels/flask-3.1.3-py3-none-any.whl": {
+      "mode": 420,
+      "sha256": "f4bcbefc124291925f1a26446da31a5178f9483862233b23c0c96a20701f670c",
+      "size": 103424
+    },
+    "wheels/flask_sqlalchemy-3.1.1-py3-none-any.whl": {
+      "mode": 420,
+      "sha256": "4ba4be7f419dc72f4efd8802d69974803c37259dd42f3913b0dcf75c9447e0a0",
+      "size": 25125
+    },
+    "wheels/frozenlist-1.8.0-cp312-cp312-manylinux1_x86_64.manylinux_2_28_x86_64.manylinux_2_5_x86_64.whl": {
+      "mode": 420,
+      "sha256": "494a5952b1c597ba44e0e78113a7266e656b9794eec897b19ead706bd7074383",
+      "size": 242411
+    },
+    "wheels/google_crc32c-1.9.0-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.whl": {
+      "mode": 420,
+      "sha256": "3abb18297d9ef0ab120531838be0e6d68c9fa876570e11c229c48f2edac23ce7",
+      "size": 36347
+    },
+    "wheels/greenlet-3.5.6-cp312-cp312-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl": {
+      "mode": 420,
+      "sha256": "975736b002ed080d124cf81a79cb7e05cb26d6b3f5c7a7b651c0fcce70353aa1",
+      "size": 621404
+    },
+    "wheels/gunicorn-26.2.0-py3-none-any.whl": {
+      "mode": 420,
+      "sha256": "bd249d0b3f7972f7432f0a6b6ff3b3ee2d129f70cd1ff6c09a9dd9e29a2b88e3",
+      "size": 228389
+    },
+    "wheels/idna-3.20-py3-none-any.whl": {
+      "mode": 420,
+      "sha256": "ab7ae7122974553370f0bdb919e1a960b2cd1bc1ef0276416d896db81c14582c",
+      "size": 69583
+    },
+    "wheels/ifaddr-0.2.0-py3-none-any.whl": {
+      "mode": 420,
+      "sha256": "085e0305cfe6f16ab12d72e2024030f5d52674afad6911bb1eee207177b8a748",
+      "size": 12314
+    },
+    "wheels/itsdangerous-2.2.0-py3-none-any.whl": {
+      "mode": 420,
+      "sha256": "c6242fc49e35958c8b15141343aa660db5fc54d4f13a1db01a3f5891b98700ef",
+      "size": 16234
+    },
+    "wheels/jinja2-3.1.6-py3-none-any.whl": {
+      "mode": 420,
+      "sha256": "85ece4451f492d0c13c5dd7c13a64681a86afae63a5f347908daf103ce6d2f67",
+      "size": 134899
+    },
+    "wheels/mako-1.4.3-py3-none-any.whl": {
+      "mode": 420,
+      "sha256": "723296007c870bfd6b3f0c3230dba7198096e5269297ebf5e4eff9e7ffa39d4f",
+      "size": 80164
+    },
+    "wheels/markupsafe-3.0.4-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl": {
+      "mode": 420,
+      "sha256": "8e124f974786f831d6043728e38296969d3579db8896fe004682f5758e613581",
+      "size": 22985
+    },
+    "wheels/maxminddb-3.2.0-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl": {
+      "mode": 420,
+      "sha256": "8e8ff70716a4f565ba9c7e91d86e3e60e4baac9794b944e5c35b772e7aedb21e",
+      "size": 104032
+    },
+    "wheels/multidict-6.9.1-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl": {
+      "mode": 420,
+      "sha256": "976fd7689d69ec78d67d31d38d396d8adb562f7e8368279f76aed4aa451fa06d",
+      "size": 336881
+    },
+    "wheels/packaging-26.3-py3-none-any.whl": {
+      "mode": 420,
+      "sha256": "d7193f7c8e4e93f444fde0262bf90af30e16fa0ad0ad44cb553c87339b23cd1c",
+      "size": 129956
+    },
+    "wheels/propcache-0.5.4-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl": {
+      "mode": 420,
+      "sha256": "2814ecd8e818f487bee4b0f921bc4d1c176cc5fc71ac0f072d0fa67eda4ac14b",
+      "size": 250424
+    },
+    "wheels/psycopg-3.3.6-py3-none-any.whl": {
+      "mode": 420,
+      "sha256": "a1db9f7148b06a28606767efaca51fa6f9398c5c0a3810519be69d7000bdb631",
+      "size": 215490
+    },
+    "wheels/psycopg2_binary-2.9.13-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.whl": {
+      "mode": 420,
+      "sha256": "e3861eba31f8ea8663fd876166b032fd89179e42aa63764d6feb281f13f9eb60",
+      "size": 4282380
+    },
+    "wheels/psycopg_binary-3.3.6-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.whl": {
+      "mode": 420,
+      "sha256": "1679a1cb93fbe5a6d1fd58d82cbddcc6fcb8c61446ba7cae6eb2a7b19bc585de",
+      "size": 5235723
+    },
+    "wheels/pycparser-3.11-py3-none-any.whl": {
+      "mode": 420,
+      "sha256": "51d5a8ba2be0bbe440b99d2112604c95bbbc3c2748a64260186c541e1729cd80",
+      "size": 51178
+    },
+    "wheels/pyee-14.0.0-py3-none-any.whl": {
+      "mode": 420,
+      "sha256": "3ac2d3229a9677f7de2c33d7f52fe25b638a46b19c413fea2edc8c6d0a644e4d",
+      "size": 15553
+    },
+    "wheels/pylibsrtp-1.0.0-cp310-abi3-manylinux_2_26_x86_64.manylinux_2_28_x86_64.whl": {
+      "mode": 420,
+      "sha256": "293c9f2ac21a2bd689c477603a1aa235d85cf252160e6715f0101e42a43cbedc",
+      "size": 2434534
+    },
+    "wheels/pyopenssl-26.4.0-py3-none-any.whl": {
+      "mode": 420,
+      "sha256": "f0eb0cb2d581d3ad2b9c489468485e7f2ab6727d08401bcf9d824c3caddf3c1c",
+      "size": 56026
+    },
+    "wheels/python_dotenv-1.2.3-py3-none-any.whl": {
+      "mode": 420,
+      "sha256": "904552145e8bfed22162c09dab1c2b9b54fefa7b23ba780f4f26ca0316b0f0d9",
+      "size": 22780
+    },
+    "wheels/sqlalchemy-2.0.54-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl": {
+      "mode": 420,
+      "sha256": "68d994e9b0d0423a02a20039631fa6fcbb7fa829a992f7605025774940305d19",
+      "size": 3466644
+    },
+    "wheels/typing_extensions-4.16.0-py3-none-any.whl": {
+      "mode": 420,
+      "sha256": "481caa481374e813c1b176ada14e97f1f67a4539ce9cfeb3f350d78d6370c2e8",
+      "size": 45571
+    },
+    "wheels/werkzeug-3.1.9-py3-none-any.whl": {
+      "mode": 420,
+      "sha256": "6392e50c78460ba618e5b21f08a71f59c99ce99cdc6cf6e3dd7e6ccca8754fab",
+      "size": 228700
+    },
+    "wheels/yarl-1.25.1-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl": {
+      "mode": 420,
+      "sha256": "c6f117789d22dce188e5754e8bc65b7e6ebf8cb73963b9fa761f672a5883769d",
+      "size": 117050
+    },
+    "wsgi.py": {
+      "mode": 420,
+      "sha256": "d0e730c9f0089d5c52970d5cd0beec0557567936e631f7236b13f4245b7eea2a",
+      "size": 47
+    }
+  },
+  "format": 1,
+  "platform": "ubuntu-24.04-x86_64",
+  "python": "3.12",
+  "schema_head": "fc06a1b2c3d4",
+  "supported_source_revisions": [
+    "a71d25b609ef",
+    "d02f9a41c830",
+    "e83b9204c6af",
+    "f39c8210b7de",
+    "a64f09e2b731",
+    "b72e19d4c603",
+    "c83d4e5f9012",
+    "fc06a1b2c3d4"
+  ],
+  "version": "1.0.0-rc.4"
+}

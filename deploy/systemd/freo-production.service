@@ -1,0 +1,28 @@
+[Unit]
+Description=Freo optional station audio production worker
+After=network.target postgresql.service
+Wants=postgresql.service
+
+[Service]
+Type=simple
+User=freo-ingest
+Group=freo-ingest
+SupplementaryGroups=freo
+WorkingDirectory=/opt/freo
+EnvironmentFile=/opt/freo/.env
+ExecStart=/opt/freo/venv/bin/python -m app.production_worker
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/freo/uploads
+UMask=0027
+Nice=10
+CPUQuota=100%
+MemoryMax=768M
+TasksMax=64
+
+[Install]
+WantedBy=multi-user.target

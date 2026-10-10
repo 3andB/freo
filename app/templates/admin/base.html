@@ -1,0 +1,95 @@
+{% extends 'base.html' %}
+{% block head %}{{ super() }}<link rel="stylesheet" href="{{ url_for('static',filename='admin_workspaces.css',v='admin-ui-csv-1') }}"><link rel="stylesheet" href="{{ url_for('static',filename='admin_refinements.css',v='software-spacing') }}"><link rel="stylesheet" href="{{ url_for('static',filename='license_agreement.css',v='20260921') }}"><link rel="stylesheet" href="{{ url_for('static',filename='operations.css',v='rc5') }}">{% if page in ['media','sound-room','tags','playlists'] %}<link rel="stylesheet" href="{{ url_for('static',filename='music.css',v='admin-ui-csv-1') }}">{% endif %}{% endblock %}
+{% block body_class %}dashboard-page admin-page{% endblock %}
+{% block footer %}{{ super() }}{% include 'admin/_license_agreement.html' %}{% endblock %}
+{% block header %}
+<header class="admin-topbar">
+  <a class="wordmark" href="{{ url_for('web.admin_home') }}">freo<span>.world</span></a>
+  <div class="topbar-monitor-group">
+  <div class="topbar-now-playing" data-now-playing role="status"><small data-now-label>Checking playback…</small><strong data-now-title>—</strong><span data-now-artist></span>{% if selected and current_admin().role == "ADMIN" %}<a class="schedule-mode-status" data-status-url="{{ url_for('schedule_studio.read',slug=selected.slug,action='state') }}" href="{{ url_for('schedule_studio.page',slug=selected.slug,view='control') }}">Active mode: {{ selected.scheduling.mode|title if selected.scheduling else 'Calendar' }}</a>{% endif %}</div>
+  <div data-station-monitors data-broadcast-url="{{ url_for('web.broadcast_snapshot') }}">
+    {% for station in stations if not station.deleted_at %}
+    <div class="station-monitor" data-monitor-station="{{ station.slug }}" data-station-name="{{ station.name }}" data-stream="{{ station.stream.public_path if station.stream and station.stream.enabled and station.enabled and station.lifecycle_state == 'ready' else '' }}">
+      <strong>{{ station.name }}</strong>
+      <span class="on-air-icon" data-broadcast-station="{{ station.slug }}" title="Broadcast status unknown"><i aria-hidden="true"></i> <b data-broadcast-label>CHECKING</b><span class="sr-only" data-broadcast-description> · Status unknown</span></span>
+      <button type="button" data-station-monitor-toggle aria-pressed="false" aria-label="Monitor {{ station.name }}" {% if station.lifecycle_state != 'ready' or not station.enabled or not station.stream or not station.stream.enabled %}disabled{% endif %}>MONITOR</button>
+      <small data-monitor-setup>{{ 'Preparing…' if station.lifecycle_state == 'pending_create' else 'Stopped' if station.desired_state == 'stopped' else '' }}</small>
+    </div>
+    {% endfor %}
+  </div>
+  </div>
+  <div data-master-monitor data-available-stations='{{ stations|selectattr("enabled")|map(attribute="slug")|list|tojson }}' data-preserve-station data-station="{{ selected.slug if selected else '' }}" data-station-name="{{ selected.name if selected else '' }}" data-stream="{{ selected.stream.public_path if selected and selected.stream else '' }}"></div>
+  <div class="admin-topbar-end">{% include '_appearance.html' %}<a href="{{ url_for('web.homepage') }}">Public site</a>
+    <form action="{{ url_for('web.logout') }}" method="post"><input type="hidden" name="csrf" value="{{ session.get('logout_csrf', '') }}"><button type="submit">Sign out</button></form>
+  </div>
+</header>
+{% endblock %}
+{% block scripts %}<script defer src="{{ url_for('static',filename='license_agreement.js',v='20260921') }}"></script><script defer src="{{ url_for('static',filename='music_availability.js',v='phase9-owner') }}"></script>{% if selected and page in ['live','media','sound-room'] %}<script defer src="{{ url_for('static',filename='song_flags.js') }}"></script>{% endif %}<script defer src="{{ url_for('static', filename='admin.js',v='v1-phase3') }}"></script><script defer src="{{ url_for('static',filename='schedule_status.js') }}"></script>{% if page in ['media','sound-room','tags','playlists'] %}<script defer src="{{ url_for('static',filename='music_preview.js',v='v1-phase2') }}"></script><script defer src="{{ url_for('static',filename='music_toggles.js',v='playlists-v1') }}"></script>{% endif %}{% endblock %}
+{% block content %}
+<div class="admin-layout">
+  <aside class="admin-sidebar" aria-label="Admin navigation">
+    <div class="admin-identity"><span class="admin-identity-mark">F</span><div><b>Freo control</b><small>Radio Station Operations</small></div></div>
+    <nav class="admin-nav" aria-label="Admin sections" data-context="{{ 'station' if selected else 'operations' }}">
+      <span class="admin-nav-label scope-label">RADIO STATION OPS <small>All stations</small></span>
+      <a href="{{ url_for('web.admin_home') }}" {% if page == 'overview' %}aria-current="page"{% endif %}>Overview</a>
+      {% set switchable = stations|rejectattr('deleted_at')|rejectattr('lifecycle_state','in',['pending_delete','delete_failed'])|list %}
+      <form method="get" action="{{ url_for('web.switch_station') }}" class="station-picker sidebar-station-picker">
+        <label for="station-select">Stations <small>Individual station</small></label>
+        <select id="station-select" name="station" required {% if not switchable %}disabled{% endif %}>
+          <option value="" {% if not selected %}selected{% endif %} disabled>Select station</option>
+          {% for station in switchable %}<option value="{{ station.slug }}" {% if selected and station.id == selected.id %}selected{% endif %}>{{ station.name }}</option>{% endfor %}
+        </select>
+        <button type="submit" {% if not switchable %}disabled{% endif %}>Switch</button>
+      </form>
+      {% if selected %}<a href="{{ url_for('production.page',slug=selected.slug) }}">Voice tracking / Station audio</a>{% endif %}
+      {% if current_admin().role == 'DJ' %}
+      {% if selected %}<a href="{{ url_for('admin_live.page',slug=selected.slug) }}">DJ Booth</a><a href="{{ url_for('dj.recordings',slug=selected.slug) }}">My recordings</a>{% endif %}
+      {% elif selected %}
+      <span class="admin-nav-label scope-label">STATION <small>{{ selected.name }}</small></span>
+      <a href="{{ url_for('schedule_studio.page',slug=selected.slug,view='control') }}" {% if page in ['station-control','studio-calendar','studio-blocks','studio-simple','station-detail'] %}aria-current="page"{% endif %}>Station Control</a>
+      <a href="{{ url_for('admin_live.page',slug=selected.slug) }}" {% if page == 'live' %}aria-current="page"{% endif %}>DJ Booth</a>
+      <a href="{{ url_for('dj.recordings',slug=selected.slug) }}">Show recordings</a>
+      <a href="{{ url_for('web.admin_section',section='media',station=selected.slug) }}" {% if page in ['media','sound-room'] %}aria-current="page"{% endif %}>Music</a>
+      <a href="{{ url_for('admin_programming.list_page',slug=selected.slug,section='categories') }}" {% if page == 'categories' %}aria-current="page"{% endif %}>Categories</a>
+      <a href="{{ url_for('admin_programming.tags',slug=selected.slug) }}" {% if page == 'tags' %}aria-current="page"{% endif %}>Tags</a>
+      <a href="{{ url_for('playlists.page',slug=selected.slug) }}" {% if page == 'playlists' %}aria-current="page"{% endif %}>Playlists</a>
+      <a href="{{ url_for('schedule_studio.page',slug=selected.slug,view='shows') }}" {% if page == 'studio-shows' %}aria-current="page"{% endif %}>Shows</a>
+      <a href="{{ url_for('admin_events.list_page',slug=selected.slug) }}" {% if page == 'events' %}aria-current="page"{% endif %}>Events</a>
+      <a href="{{ url_for('bulletins.page',slug=selected.slug) }}">External Bulletin</a>
+      <a href="{{ url_for('broadcast_reports.page',slug=selected.slug) }}">Broadcast Reports</a>
+      <a href="{{ url_for('statistics.page',slug=selected.slug) }}" {% if page == 'stats' %}aria-current="page"{% endif %}>Statistics</a>
+      <a href="{{ url_for('web.admin_section',section='history',station=selected.slug) }}" {% if page == 'history' %}aria-current="page"{% endif %}>History</a>
+      <a href="{{ url_for('web.admin_section',section='system',station=selected.slug) }}" {% if page == 'system' %}aria-current="page"{% endif %}>System</a>
+      <a href="{{ url_for('advertising.page',slug=selected.slug) }}" {% if page == 'advertising' %}aria-current="page"{% endif %}>Advertising</a>
+      <a href="{{ url_for('station_settings.page',slug=selected.slug) }}" {% if page == 'settings' %}aria-current="page"{% endif %}>Station settings</a>
+      {% else %}
+      <span class="admin-nav-label scope-label">OPERATIONS <small>All stations</small></span>
+      <a href="{{ url_for('statistics.page') }}" {% if page == 'stats' %}aria-current="page"{% endif %}>Operations Statistics</a>
+      <a href="{{ url_for('website.editor') }}" {% if page == 'website' %}aria-current="page"{% endif %}>Website / Homepage Editor</a>
+      <a href="{{ url_for('dmca.cases') }}" {% if page == 'dmca' %}aria-current="page"{% endif %}>DMCA Reports</a>
+      <a href="{{ url_for('player_experience.directory') }}" {% if page == 'player-directory' %}aria-current="page"{% endif %}>Player Settings</a>
+      <a href="{{ url_for('player_experience.operations_inbox') }}" {% if page == 'operations-feedback' %}aria-current="page"{% endif %}>Listener Feedback</a>
+      <a href="{{ url_for('central_api.settings') }}" {% if page == 'installation' %}aria-current="page"{% endif %}>Installation / freo.live</a>
+      {% if current_admin() and current_admin().installation_admin %}<a href="{{ url_for('distribution.page') }}" {% if page == 'software' %}aria-current="page"{% endif %}>{{ 'Software' if hosting_summary else 'Software and license' }}</a>{% endif %}
+      {% if current_admin().installation_admin %}<a href="{{ url_for('production.settings') }}">AI provider settings</a>{% endif %}
+      <a href="{{ url_for('dj.accounts') }}">DJ accounts and access</a>
+      <a href="{{ url_for('api_credentials.page') }}" {% if page == 'api-credentials' %}aria-current="page"{% endif %}>API credentials</a>
+      <a href="{{ url_for('admin_media.audit_view') }}" {% if page == 'audit' %}aria-current="page"{% endif %}>Admin Audit</a>
+      {% endif %}
+    </nav>
+    <div class="admin-sidebar-foot">Made for your next great hour.<br><a href="https://github.com/3andB/freo/tree/main/docs">Documentation ↗</a></div>
+  </aside>
+  <div class="admin-main">
+    <div class="admin-toolbar">
+      <div><span class="eyebrow">{{ selected.name if selected else 'Radio Station Ops' }} / {{ page|replace('-', ' ')|title }}</span><span class="toolbar-caption">{{ 'Individual station workspace' if selected else 'All stations · ' ~ stations|rejectattr('deleted_at')|list|length ~ ' managed' }}</span></div>
+    </div>
+    <div class="admin-content">
+      {% if hosting_summary %}{% include 'admin/_hosting.html' %}{% endif %}
+      {% with messages = get_flashed_messages(with_categories=true) %}{% for category, message in messages %}<p class="admin-notice {{ 'error' if category == 'error' else 'success' }}" role="status">{{ message }}</p>{% endfor %}{% endwith %}
+      {% if selected and page in ['calendar','events','blocks','traffic','clocks','rotations','schedule'] %}{% include 'admin/_scheduling_tabs.html' %}{% endif %}
+      {% block admin_content %}{% endblock %}{% if selected and page in ['live','media','sound-room'] %}{% include 'admin/_song_flag_dialog.html' %}{% endif %}
+      {% if page in ['media','sound-room','tags','playlists'] %}{% include 'admin/_music_player.html' %}{% endif %}
+    </div>
+  </div>
+</div>
+{% endblock %}

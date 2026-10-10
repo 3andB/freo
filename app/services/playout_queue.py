@@ -1,0 +1,357 @@
+"""Narrow Liquidsoap socket adapter: queue depth and approved request push only."""
+from app.services.availability import playable
+from app.extensions import db
+from pathlib import Path
+import re
+import socket
+import unicodedata
+
+from app.services.media_storage import LocalMediaStorage
+from app.services.stations import validate_slug
+
+SOCKET_ROOT = Path('/run/freo/playout')
+REQUEST_ID = re.compile(r'^\d+$')
+
+
+def _metadata(value, fallback):
+    """Reduce untrusted labels to an ASCII subset safe in Liquidsoap's annotate URI."""
+    ascii_value = unicodedata.normalize('NFKD', value or '').encode('ascii', 'ignore').decode('ascii')
+    cleaned = re.sub(r'[^A-Za-z0-9 ._-]', ' ', ascii_value)
+    return ' '.join(cleaned.split())[:120] or fallback
+
+
+def _command(slug, command):
+    validate_slug(slug)
+    if '\n' in command or '\r' in command or len(command) > 262144:
+        raise ValueError('Invalid Liquidsoap command')
+    media_root = re.escape(str(LocalMediaStorage().root))
+    music_pattern = rf'(?:freo_queue\.(?:push|insert)|freo_(?:a|b|cart|event)\.push) annotate:freo_decision=(?P<decision>[1-9][0-9]*)(?:,freo_gain="-?[0-9]{{1,2}}\.[0-9]{{3}} dB")?(?:,liq_cue_in="[0-9]+\.[0-9]{{3}}",liq_cue_out="[0-9]+\.[0-9]{{3}}",freo_fade_in="[0-9]+\.[0-9]{{3}}",freo_fade_out="[0-9]+\.[0-9]{{3}}")?:{media_root}/(?P<owner>[a-z0-9](?:[a-z0-9-]{{0,62}}[a-z0-9])?)/originals/(?P<key>[0-9a-f]{{32}}\.(?:mp3|wav|m4a|flac))'
+    imaging_pattern = rf'(?:freo_queue\.(?:push|insert)|freo_(?:a|b|cart|event)\.push) annotate:freo_decision=[1-9][0-9]*,title="[A-Za-z0-9 ._-]{{1,120}}",artist="[A-Za-z0-9 ._-]{{1,120}}":{media_root}/{re.escape(slug)}/imaging/[0-9a-f]{{32}}\.mp3'
+    batch = command.startswith(('freo_queue.insert_many ','freo_event.load_many '))
+    if batch:
+        uris = command.split(' ',1)[1].split('|')
+        if not 1 <= len(uris) <= 500 or any(not (re.fullmatch(music_pattern,'freo_queue.insert '+uri) or re.fullmatch(imaging_pattern,'freo_queue.insert '+uri)) for uri in uris):
+            raise ValueError('Invalid event sequence')
+    bulletin_command = bool(re.fullmatch(r'freo_bulletin\.(?:state|(?:lease|cancel) [1-9][0-9]*)', command))
+    bulletin_uris = []
+    if command.startswith('freo_bulletin.prepare '):
+        from app.services.bulletins import root
+        fields = command.split(' ',1)[1].split('|')
+        if len(fields) != 6: raise ValueError('Invalid bulletin command')
+        identifier, kind, source, duration, intro, outro = fields
+        from app.models import TimedEventOccurrence
+        occurrence = db.session.get(TimedEventOccurrence, int(identifier)) if identifier.isdigit() else None
+        if not occurrence or occurrence.station.slug != slug or occurrence.event.content_type != 'BULLETIN' or occurrence.state != 'READY':
+            raise ValueError('Invalid bulletin occurrence')
+        if not re.fullmatch(r'[0-9]+\.[0-9]{3}',duration) or not 0 < float(duration) <= 600:
+            raise ValueError('Invalid bulletin duration')
+        if kind == 'LIVE':
+            if not re.fullmatch(r'http://127\.0\.0\.1:[0-9]{1,5}/[0-9a-f]{64}',source):raise ValueError('Invalid bulletin transport')
+        elif kind == 'FILE':
+            expected = root()/str(occurrence.station_id)/f'{occurrence.id}.wav'
+            if source != str(expected) or expected.is_symlink() or not expected.is_file():raise ValueError('Invalid bulletin file')
+        else: raise ValueError('Invalid bulletin kind')
+        bulletin_uris = [uri for uri in (intro,outro) if uri != '-']
+        for uri in bulletin_uris:
+            match = re.fullmatch(music_pattern,'freo_queue.insert '+uri)
+            if not match:raise ValueError('Invalid bulletin station audio')
+            from app.models import SelectionDecision
+            selected = db.session.get(SelectionDecision,int(match['decision']))
+            if not selected or selected.station.slug != slug or not selected.track or selected.track.audio_kind != 'STATION' or not playable(selected.track,selected.station_id):
+                raise ValueError('Invalid bulletin station audio')
+        bulletin_command = True
+    processor_command = re.fullmatch(r'freo_processor\.(?:state|apply -?[0-9]+\.[0-9]+(?: -?[0-9]+\.[0-9]+){7})', command)
+    relay_command = command in ('freo_relay.state', 'freo_relay.reserve') or bool(re.fullmatch(r'freo_relay\.(?:discard [1-9][0-9]*|hold (?:true|false)|apply [1-9][0-9]* (?:-|http://127\.0\.0\.1:[0-9]{1,5}/[0-9a-f]{64}))', command))
+    recording_command = re.fullmatch(r'freo_record\.(?:state|(?:arm|lease|stop) [0-9a-f]{32})', command)
+    mic_command = re.fullmatch(r'freo_mic\.(?:state|(?:prepare|lease) [0-9a-f]{32}|(?:take|end) [0-9a-f]{32} (?:[0-9]\.[0-9]{3}|10\.000))', command)
+    schedule_command = re.fullmatch(r'freo_schedule\.switch [0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12} [0-9]+', command)
+    event_command = re.fullmatch(r'freo_event\.(?:arm|release|cancel) [1-9][0-9]*', command)
+    return_command = re.fullmatch(r'freo_mixer\.(?:return_cancel|return_discard [1-9][0-9]*|return_stopped [1-9][0-9]*|return_arm [AB] [1-9][0-9]* [1-9][0-9]*)', command)
+    if not bulletin_command and not processor_command and not relay_command and not recording_command and not return_command and not batch and not event_command and not schedule_command and not mic_command and command not in ('freo_show.state', 'freo_schedule.status', 'freo_queue.queue', 'request.on_air', 'freo_queue.skip', 'freo_queue.flush_and_skip', 'freo_program.rms', 'freo_program.current', 'freo_deck.requests', 'freo_event.state') and not re.fullmatch(r'(?:freo_music\.remove [1-9][0-9]*|freo_(?:queue|event)\.remove [0-9]+(?: [0-9]+){0,19}|freo_deck\.(?:take|fade)_[ab](?: (?:[0-9]\.[0-9]{3}|10\.000))?|freo_deck\.(?:pause|clear|future)_[ab]|request.metadata [0-9]+|freo_(?:a|b|cart|event)\.queue|freo_mixer\.(?:state|fade_a|fade_next [1-9][0-9]*|clear_future|mode (?:AUTO|DJ_BOOTH)|crossfader (?:0\.[0-9]{3}|1\.000)|(?:a_play|b_play) (?:true|false)|cart_mode (?:OVER|TAKEOVER)|duck (?:0\.[0-9]{3}|1\.000)))', command) and not (re.fullmatch(music_pattern, command) or re.fullmatch(imaging_pattern, command)):
+        raise ValueError('Liquidsoap command is not allowlisted')
+    matches=[re.fullmatch(music_pattern,'freo_queue.insert '+uri) for uri in uris] if batch else [re.fullmatch(music_pattern,command)]
+    matches += [re.fullmatch(music_pattern,'freo_queue.insert '+uri) for uri in bulletin_uris]
+    for music in matches:
+        if music and music['owner'] != slug:
+            from app.models import SelectionDecision
+            row = db.session.get(SelectionDecision, int(music['decision']))
+            if (row is None or row.station.slug != slug or not row.station.enabled or
+                    row.station.deleted_at or not row.track or not playable(row.track, row.station_id) or
+                    row.track.station.slug != music['owner'] or row.track.storage_key != music['key']):
+                raise ValueError('Shared audio is not approved for this station decision')
+            LocalMediaStorage().regular_file(music['owner'], music['key'])
+    path = SOCKET_ROOT / slug / 'control.sock'
+    with socket.socket(socket.AF_UNIX) as connection:
+        connection.settimeout(8)
+        connection.connect(str(path))
+        connection.sendall((command + '\n').encode('ascii'))
+        response = bytearray()
+        while b'END\r\n' not in response:
+            chunk = connection.recv(4096)
+            if not chunk or len(response) + len(chunk) > 65536:
+                raise RuntimeError('Invalid Liquidsoap response')
+            response.extend(chunk)
+    body = response.split(b'END\r\n', 1)[0].decode('utf-8', errors='replace').strip()
+    if body in ('ERROR event busy','ERROR unavailable bulletin','ERROR event already armed','ERROR microphone active'):
+        raise RuntimeError(body)
+    if body.startswith('ERROR'):
+        raise RuntimeError('Liquidsoap queue operation failed')
+    return body
+
+
+def queue_depth(slug):
+    return len(queued_ids(slug))
+
+
+def queued_ids(slug):
+    return set(queued_order(slug))
+
+
+def queued_order(slug):
+    body = _command(slug, 'freo_queue.queue')
+    if not body:
+        return []
+    ids = body.split()
+    if not all(REQUEST_ID.fullmatch(value) for value in ids):
+        raise RuntimeError('Invalid Liquidsoap queue state')
+    return [int(value) for value in ids]
+
+
+def request_decision_id(slug, request_id):
+    if not isinstance(request_id, int) or request_id < 0:
+        raise ValueError('Invalid request ID')
+    body = _command(slug, f'request.metadata {request_id}')
+    match = re.search(r'(?m)^freo_decision="([1-9][0-9]*)"$', body)
+    return int(match.group(1)) if match else None
+
+
+def skip_current(slug):
+    return _command(slug, 'freo_queue.skip')
+
+
+def interrupt_for_event(slug):
+    """Worker-only fixed operation: clear stale lookahead and advance current."""
+    return _command(slug, 'freo_queue.flush_and_skip')
+
+
+def program_rms(slug):
+    value = float(_command(slug, 'freo_program.rms'))
+    if not 0.0 <= value <= 1.0:
+        raise RuntimeError('Invalid program RMS')
+    return value
+
+
+def active_ids(slug):
+    body = _command(slug, 'request.on_air')
+    try:
+        body += ' ' + _command(slug, 'freo_deck.requests')
+    except (OSError,RuntimeError,ValueError):
+        pass  # Older engines do not expose prepared deck requests.
+    ids = body.split()
+    if not all(REQUEST_ID.fullmatch(value) for value in ids):
+        raise RuntimeError('Invalid Liquidsoap active request state')
+    return {int(value) for value in ids}
+
+
+def socket_identity(slug):
+    validate_slug(slug)
+    info = (SOCKET_ROOT / slug / 'control.sock').stat()
+    return f'{info.st_dev}:{info.st_ino}'
+
+
+def push_decision(decision, storage=None, *, prepare_only=False):
+    """Build the URI solely from a committed, approved station playable."""
+    if not decision.station.enabled or decision.station.deleted_at or decision.station.lifecycle_state in ('pending_delete', 'delete_failed'):
+        raise ValueError('Station is unavailable')
+    from app.services.stations import allocation_lock
+    from app.services.availability import tracks_for
+    from app.models import Station
+    allocation_lock()
+    # Serialize handoff with sharing/deletion changes, and query current access
+    # rather than trusting an ORM object cached by a long-lived worker.
+    if not Station.query.filter_by(id=decision.station_id, enabled=True, deleted_at=None).filter(
+            ~Station.lifecycle_state.in_(('pending_delete', 'delete_failed'))).first():
+        raise ValueError('Station is unavailable')
+    if decision.listener_request_id:
+        from app.services.listener_requests import validate_decision
+        validate_decision(decision)
+    track = decision.track
+    if track and not tracks_for(decision.station_id).filter_by(id=track.id, enabled=True,
+            ingest_status='accepted', decommissioned_at=None).first():
+        raise ValueError('Decision track is not approved for this station')
+    imaging = decision.imaging_asset
+    slug = decision.station.slug
+    if (track is None) == (imaging is None):
+        raise ValueError('Decision must target exactly one playable')
+    if not isinstance(decision.id, int) or decision.id <= 0:
+        raise ValueError('Decision must be committed before queueing')
+    storage = storage or LocalMediaStorage()
+    if track:
+        if not playable(track, decision.station_id):
+            raise ValueError('Decision track is not approved for this station')
+        path = storage.regular_file(track.station.slug, track.storage_key)
+    else:
+        if imaging.station_id != decision.station_id or not imaging.enabled or imaging.ingest_status != 'accepted' or imaging.decommissioned_at:
+            raise ValueError('Decision imaging is not approved for this station')
+        path = storage.imaging_file(slug, imaging.storage_key)
+    bus = getattr(decision, 'playback_bus', None) or 'A'
+    queue_name = {'A':'freo_queue','B':'freo_b','CART':'freo_cart'}.get(bus)
+    if bus=='A' and decision.reason in ('deck_load','deck_repeat'):
+        queue_name='freo_a'
+    if not queue_name:
+        raise ValueError('Invalid broadcast bus')
+    occurrence = getattr(decision, 'timed_event_occurrence', None)
+    item = getattr(decision, 'block_item_execution', None)
+    if item and item.execution.timed_event_occurrence:
+        occurrence = item.execution.timed_event_occurrence
+    if occurrence:
+        db.session.query(Station.id).filter_by(id=decision.station_id).with_for_update().first()
+        db.session.refresh(occurrence)
+        db.session.refresh(occurrence.event)
+        if occurrence.state != 'STARTED' and (not occurrence.event.enabled or occurrence.state in ('CANCELLED','MISSED','FAILED','COMPLETED') or occurrence.revision != occurrence.event.revision):
+            raise ValueError('Event changed before queue submission')
+    if occurrence and (occurrence.runtime or {}).get('dj'):
+        queue_name = 'freo_event'
+    operation = 'insert' if queue_name == 'freo_queue' and occurrence and occurrence.event.timing_mode == 'SOFT' else 'push'
+    if imaging:
+        title = _metadata(imaging.name, imaging.asset_type.replace('_', ' ').title())
+        artist = _metadata(decision.station.name, slug)
+        command = f'{queue_name}.{operation} annotate:freo_decision={decision.id},title="{title}",artist="{artist}":{path}'
+    else:
+        from app.services.track_audio import prepare_snapshot, snapshot_annotations
+        saved = prepare_snapshot(decision)
+        gain = saved['gain_db']
+        command = f'{queue_name}.{operation} annotate:freo_decision={decision.id},freo_gain="{gain:.3f} dB"{snapshot_annotations(saved)}:{path}'
+    if prepare_only: return command.split(' ',1)[1]
+    response = _command(slug, command)
+    if not REQUEST_ID.fullmatch(response):
+        raise RuntimeError('Liquidsoap did not accept the request')
+    return int(response)
+
+
+def program_decision_id(slug):
+    """Final-output metadata, after crossfade buffering; None means no managed audio."""
+    body = _command(slug, "freo_program.current")
+    if not body:
+        return None
+    if not REQUEST_ID.fullmatch(body):
+        raise RuntimeError("Invalid program decision")
+    return int(body)
+
+
+def mixer_state(slug):
+    import math
+    parts = _command(slug, 'freo_mixer.state').split('|')
+    if len(parts) not in (9,13,16,17,18) or parts[0] not in ('AUTO','DJ_BOOTH') or any(value not in ('true','false') for value in parts[2:4]):
+        raise RuntimeError('Invalid mixer state')
+    numeric = [float(parts[index]) for index in (1,7,8)]
+    if not all(math.isfinite(value) for value in numeric) or not 0 <= numeric[0] <= 1:
+        raise RuntimeError('Invalid mixer levels')
+    if any(value and not REQUEST_ID.fullmatch(value) for value in parts[4:7]):
+        raise RuntimeError('Invalid mixer identity')
+    transition = {}
+    if len(parts) >= 13:
+        levels = [float(value) for value in parts[10:13]]
+        if parts[9] not in ('','A','B') or not all(math.isfinite(value) and 0 <= value <= 1 for value in levels):
+            raise RuntimeError('Invalid deck transition')
+        transition = dict(incoming=parts[9] or None,progress=levels[0],a_gain=levels[1],b_gain=levels[2])
+    extra={}
+    if len(parts)>=16:
+        gain=float(parts[15])
+        if parts[13] not in ('true','false') or (parts[14] and not REQUEST_ID.fullmatch(parts[14])) or not math.isfinite(gain) or not 0<=gain<=1:
+            raise RuntimeError('Invalid Auto source state')
+        extra=dict(auto_standby=parts[13]=='true',auto_id=int(parts[14]) if parts[14] else None,auto_gain=gain)
+    if len(parts)>=17:
+        if parts[16] not in ('true','false'):
+            raise RuntimeError('Invalid broadcast tone state')
+        extra['tone'] = parts[16] == 'true'
+    if len(parts)==18:
+        if parts[17] and not re.fullmatch(r'[1-9][0-9]*', parts[17]):
+            raise RuntimeError('Invalid automatic return identity')
+        extra['auto_return_id'] = int(parts[17]) if parts[17] else None
+    return dict(**extra,transition=transition,mode=parts[0],crossfader=numeric[0],a_playing=parts[2]=='true',b_playing=parts[3]=='true',
+                a_id=int(parts[4]) if parts[4] else None,b_id=int(parts[5]) if parts[5] else None,
+                cart_id=int(parts[6]) if parts[6] else None,a_elapsed=max(0,numeric[1]),b_elapsed=max(0,numeric[2]))
+
+
+def sync_mixer(station):
+    state = station.automation
+    observed = mixer_state(station.slug)
+    if state.operator_mode == 'DJ_BOOTH' and observed['mode'] == 'AUTO' and observed.get('auto_return_id'):
+        from app.services.live_assist import accept_engine_return
+        accept_engine_return(station, observed['auto_return_id'])
+    # A rendered EOF may change the engine mode immediately after this snapshot.
+    # Reasserting an already-matching DJ mode would undo that handoff and erase
+    # its completion identity before the next worker observation can adopt it.
+    if observed['mode'] != state.operator_mode:
+        _command(station.slug, 'freo_mixer.mode ' + state.operator_mode)
+    return observed
+
+
+def channel_queue(slug, bus):
+    name = {'A':'freo_a','B':'freo_b','CART':'freo_cart'}.get(bus)
+    if not name:
+        raise ValueError('Invalid broadcast bus')
+    value = _command(slug, name + '.queue')
+    if any(not REQUEST_ID.fullmatch(part) for part in value.split()):
+        raise RuntimeError('Invalid channel queue')
+    return [int(part) for part in value.split()]
+
+
+def prepare_cart(decision):
+    if decision.cart_mode not in ('OVER','TAKEOVER') or not 0 <= decision.duck_percent <= 100:
+        raise ValueError('Invalid cart behavior')
+    _command(decision.station.slug, 'freo_mixer.cart_mode ' + decision.cart_mode)
+    _command(decision.station.slug, f'freo_mixer.duck {decision.duck_percent/100:.3f}')
+
+
+def fade_current(slug, expected_decision_id=None):
+    if expected_decision_id is None:
+        return _command(slug, 'freo_mixer.fade_a')
+    if type(expected_decision_id) is not int or expected_decision_id<1:
+        raise ValueError('Invalid playback identity')
+    return _command(slug, f'freo_mixer.fade_next {expected_decision_id}')
+
+
+def clear_future(slug):
+    return _command(slug, 'freo_mixer.clear_future')
+
+
+def deck_control(slug, deck, action, fade_seconds=None):
+    if deck not in ('A','B') or action not in ('take','pause','clear','fade','future'):
+        raise ValueError('Invalid deck control')
+    argument = ''
+    if fade_seconds is not None:
+        if action not in ('take','fade') or not 0 <= float(fade_seconds) <= 10:
+            raise ValueError('Invalid fade duration')
+        argument = f' {float(fade_seconds):.3f}'
+    return _command(slug, f'freo_deck.{action}_{deck.lower()}{argument}')
+
+
+def remove_future(slug, request_ids):
+    if not request_ids or len(request_ids)>20 or any(type(value) is not int or value<0 for value in request_ids):
+        raise ValueError('Invalid future request list')
+    response=_command(slug,'freo_queue.remove '+' '.join(map(str,request_ids)))
+    if response != 'OK':raise RuntimeError('Queue refresh was not acknowledged')
+
+
+def event_bus(slug, operation='state', occurrence_id=None):
+    if operation not in ('state','arm','release','cancel'): raise ValueError('Invalid event operation')
+    command = 'freo_event.'+operation
+    if operation != 'state':
+        if not isinstance(occurrence_id,int) or occurrence_id <= 0: raise ValueError('Invalid occurrence')
+        command += ' '+str(occurrence_id)
+    return _command(slug,command)
+
+
+def push_sequence(decisions):
+    if not decisions or len(decisions)>500:raise ValueError('Event sequences support 1–500 playable items')
+    if len({row.station_id for row in decisions})!=1:raise ValueError('Sequence belongs to multiple stations')
+    uris=[push_decision(row,prepare_only=True) for row in decisions]
+    slug=decisions[0].station.slug
+    occurrence=decisions[0].block_item_execution.execution.timed_event_occurrence
+    command='freo_event.load_many ' if occurrence and occurrence.runtime.get('dj') else 'freo_queue.insert_many '
+    reply=_command(slug,command+'|'.join(uris))
+    ids=reply.split()
+    if len(ids)!=len(decisions) or not all(REQUEST_ID.fullmatch(v) for v in ids):raise RuntimeError('Invalid event sequence response')
+    return [int(v) for v in ids]

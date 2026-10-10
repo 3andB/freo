@@ -1,0 +1,11 @@
+.license-agreement{width:min(680px,calc(100% - 32px));max-height:calc(100dvh - 32px);overflow:auto;padding:24px;border:1px solid var(--theme-border);border-radius:14px;background:var(--theme-surface);color:var(--theme-text);box-shadow:0 18px 70px #0005}
+.license-agreement::backdrop{background:#0009}
+.license-agreement h2{margin-top:0}
+.license-agreement h3{margin-bottom:8px}
+.license-agreement a{color:var(--theme-accent)}
+.license-copyright{padding:16px;border:2px solid var(--theme-danger);border-radius:8px;background:var(--theme-danger-soft)}
+.license-copyright strong{font-weight:800}
+.license-acknowledgment{display:flex;align-items:flex-start;gap:10px;margin:20px 0}
+.license-acknowledgment input{flex-shrink:0;margin-top:5px}
+.license-agreement form{margin:12px 0}
+.license-agreement [data-license-error]{color:var(--theme-danger)}

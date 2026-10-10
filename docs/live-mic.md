@@ -1,0 +1,158 @@
+# LIVE MIC
+
+V1 Phase 3 adds station-assigned DJs, confirmed show status and an unchecked
+“Record this show” choice before GO LIVE or entering DJ mode. Booth and microphone
+use remain one show until automation resumes. See `V1_UPGRADE_NOTES.md` for the
+required migration, recording storage provisioning and station template rollout.
+These V1 changes have not been deployed by this development task.
+
+LIVE MIC is a third DJ Booth view, separate from the existing AUTO/DJ engine mode.
+Opening the tab has no broadcast side effect. CONNECT / TEST MIC captures a
+browser audio input (including an OS-recognized USB microphone or the stereo USB
+output of a mixer), displays its level, and establishes a WebRTC session. Audio is
+drained continuously but gated off in Liquidsoap until GO LIVE.
+
+The board shares the station's eight carts and four station ID slots. Software
+gain ranges from -24 to +12 dB, with a post-gain peak meter, clipping indication,
+and mute. Hardware gain remains on the USB device. Browser automatic gain,
+noise suppression and echo cancellation are requested off for mixer audio.
+Browser/driver support for these constraints varies; arbitrary multichannel
+mixer channel routing is outside this first implementation.
+
+## Broadcast behavior
+
+- GO LIVE requires fresh engine readiness and arriving RTP audio, not merely
+  browser permission or a signaling response. Zero-valued audio counts as a
+  healthy connection: a quiet or muted mic must not trigger fallback.
+- Liquidsoap fades the existing feed over the selected 0–10 seconds, then opens
+  the microphone with a 20 ms smoothing ramp. The UI reports observed READY,
+  FADING, LIVE, RETURNING, and FAILED states. Wait for ON AIR before speaking.
+- The interrupted music sources pause at zero gain. END LIVE crossfades back to
+  that feed and resumes its position; AUTO then continues normal scheduling.
+  This preserves the outgoing feed rather than selecting a new song on return.
+- Overlay carts duck the microphone by their assigned percentage. Takeover carts
+  close the microphone while they play, then restore it. A browser-muted mic
+  stays muted. Live speech during a takeover cart is discarded, not recorded.
+- Program monitoring stops when GO LIVE is pressed. Monitoring may be re-enabled
+  with headphones; hardware direct monitoring is preferable for the speaker.
+- LIVE MIC must remain the selected booth view while this page owns a live mic.
+  Choosing AUTO or DJ BOOTH disconnects the microphone, waits for the worker's
+  return acknowledgement, then applies the requested mode. A failed return keeps
+  the mic view selected and exposes a retry; it does not claim AUTO is on air.
+  Carts remain available while live.
+- A station admits one microphone session. It is owned by an authenticated user
+  and an unpredictable per-tab token; a second tab cannot replace it. Access uses
+  the existing `can_control_playout` boundary: administrators and DJs explicitly
+  assigned to this station. In V1 Phase 3, an active show has one controlling DJ.
+- In-app navigation, browser Back and sign-out warn while the owning microphone
+  is live (including a pending GO LIVE). Cancel leaves it untouched. Confirming
+  stops capture and restores the interrupted feed before navigation/sign-out.
+  Reload, external navigation and closing the tab use the browser's native
+  warning; browser/platform limitations can suppress that warning.
+- Intentional departure sends the existing authenticated `disconnect` action.
+  The gateway immediately discards speech, closes WebRTC and supplies only silent
+  PCM while the existing worker completes END and observes the prior feed resume.
+  This handoff is bounded to 15 seconds and cannot be extended by repeated exit
+  requests. It preserves the mixer mode/song position; explicit AUTO/DJ choices
+  apply their chosen mode afterward. No new worker, endpoint or migration is used.
+  On audio loss, the receiver allows up to 750 ms of silence for a page-exit
+  beacon to arrive after WebRTC closure; it never replays buffered speech.
+- Abrupt loss without a delivered departure request retains the fail-safe:
+  a missing browser heartbeat
+  expires it after 10 seconds. Missing RTP ends the PCM source after roughly two
+  seconds; Liquidsoap also requires a worker-renewed six-second lease. Source or
+  lease loss closes the microphone and returns the engine to AUTO without relying
+  on the browser. Reconnection never automatically goes on air.
+- Restarting the gateway loses its ephemeral sessions and safely ends broadcasts.
+  Microphone credentials remain ephemeral. V1 Phase 3 optionally records the final
+  station program to MP3; the database stores session/recording metadata, not speech.
+
+## Architecture
+
+Browser Web Audio gain/mute -> encrypted WebRTC/Opus -> `freo-mic` (aiortc) ->
+bounded stereo PCM/WAV over loopback HTTP -> Liquidsoap mixer -> existing limiter
+and Icecast output. PCM queues retain at most ten decoded frames and drop oldest
+frames if a consumer falls behind, preventing a growing backlog of speech.
+
+Flask authenticates and CSRF-checks same-origin signaling/control requests, then
+proxies to the loopback-only gateway. Only the automation worker sends Liquidsoap
+socket commands. The browser never receives Icecast or Liquidsoap credentials. Each loopback audio
+URL is bound to the exact microphone session token, so a replacement session
+cannot inherit an old open microphone gate.
+The gateway binds **127.0.0.1:8091** and must not be exposed through nginx or a
+public bind address. Its internal control API trusts local processes, just as the
+existing playout control sockets do. The original mic transport requires no schema
+change; V1 Phase 3 permissions and show history require migration `f306a1b2c3d4`.
+
+## Installation and activation
+
+Fresh source installations can pass `FREO_LIVE_MIC=1` to `scripts/install.sh`.
+The installer installs the optional dependencies, saves/imports the preference,
+and enables the gateway. HTTPS and the ICE/network requirements below still
+apply; no TURN credentials are generated. The default remains disabled.
+
+The tab is available in the UI; microphone transmission is disabled until the
+service and station configs are installed. This avoids claiming readiness on
+servers without the receiver. Perform activation in a maintenance window because
+station config changes require restarting the relevant playout processes.
+
+1. Install `venv/bin/pip install -r requirements-live-mic.txt`.
+2. Install `deploy/systemd/freo-mic.service` in `/etc/systemd/system/` and reload
+   systemd. Set `FREO_LIVE_MIC=1` in the shared Freo environment.
+3. Provide HTTPS for the booth. Configure ICE connectivity for the server's
+   deployment. With a publicly reachable host, direct WebRTC requires inbound
+   UDP to its negotiated ephemeral ports. Restricted networks/NAT may require
+   TURN. Set `FREO_MIC_ICE_SERVERS` to a JSON array accepted by aiortc, and
+   `FREO_MIC_BROWSER_ICE_SERVERS` to a browser RTCIceServer JSON array. For example,
+   `[{"urls":"turn:YOUR_TURN_HOST:3478","username":"YOUR_USER","credential":"YOUR_PASSWORD"}]`.
+   The browser configuration is supplied only to authenticated operators; use
+   limited, managed TURN credentials. Do not commit actual credentials.
+4. Enable/start `freo-mic.service`. Render each participating station using the
+   existing root-run `flask station render SLUG` workflow, with the same environment
+   loaded, then restart that station using `flask station restart SLUG`.
+5. Restart `freo.service` and `freo-automation.service` with the updated environment.
+6. Check input readiness with a real USB device on the deployed HTTPS origin and
+   an external network. Confirm gain/mute, off-air test, GO LIVE, station IDs,
+   END LIVE, and device unplug/browser-close fallback on a test station first.
+
+Do not expose port 8091. WebRTC audio uses ICE-negotiated transports; putting the
+HTTP gateway behind nginx alone does not establish audio connectivity. Input
+readiness remains false on engines rendered with microphone support disabled,
+even if the web and worker environment is later enabled.
+
+Rollback: end microphone sessions, clear `FREO_LIVE_MIC`, re-render/restart the
+station(s), restart web/automation, and stop the gateway. Existing AUTO and DJ
+controls have no dependency on a running gateway while the feature is disabled.
+
+## Validation
+
+For the post-RC6 exit correction, deploy the browser assets and gateway together.
+End any current microphone session before restarting the web and microphone
+services. The existing automation worker and Liquidsoap commands are reused;
+no station re-render, database migration or playout restart is required.
+
+`venv/bin/pytest -q tests/test_live_mic.py tests/test_live_mic_browser.py` checks
+authentication, CSRF, token privacy, ownership, readiness, generated WebRTC audio,
+expiry, tab isolation and responsive layout. The receiver tests require the
+optional dependencies and permission to bind local test sockets.
+
+Exit regressions additionally cover AUTO/DJ switches, cancelled and confirmed
+navigation, sign-out, browser Back, refresh warnings, pagehide cleanup, failed
+return requests and late microphone permission responses. Browser tests use real
+MediaStream tracks with isolated signaling; engine tests independently exercise
+real WebRTC audio through Liquidsoap.
+
+`FREO_ENGINE_TEST=1 venv/bin/pytest -q tests/test_live_mic.py` additionally launches
+an isolated Liquidsoap process with a generated WebRTC tone. It measures the
+received tone in the rendered WAV to test no pre-GO leakage, live audio, overlay
+ducking, takeover muting, return, and loss-of-input fallback. It does not touch
+production streams, service units, the production database, or station configs.
+The intentional page-exit test measures that the microphone tone disappears and
+the interrupted DJ song resumes without forcing AUTO; the abrupt-disconnect test
+continues to require the existing AUTO fallback. Both run in candidate audio CI.
+
+Before activation on a fresh VM, validate systemd startup after reboot, actual
+ICE/TURN reachability from an external browser, two simultaneous stations,
+permission denial, physical USB removal and reconnect, input channel mapping,
+and audible end-to-end latency. Local automated tests cannot establish physical
+USB compatibility or WAN latency.
