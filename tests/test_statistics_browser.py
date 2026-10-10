@@ -82,7 +82,7 @@ def test_session_devices_retention_and_csv_in_browser(booth):
     assert 'mobile' in driver.find_element(By.ID, 'device-table').text
     assert 'desktop' in driver.find_element(By.ID, 'device-table').text
     driver.find_element(By.CSS_SELECTOR, '[data-tab="audience"]').click()
-    assert driver.find_elements(By.CSS_SELECTOR, '#session-duration-chart svg')
+    WebDriverWait(driver, 15).until(lambda d: d.find_elements(By.CSS_SELECTOR, '#session-duration-chart svg'))
     assert '100%' in driver.find_element(By.ID, 'session-retention').text
     driver.find_element(By.CSS_SELECTOR, '#session-trend-data').find_element(By.XPATH, '../summary').click()
     assert '1 min' in driver.find_element(By.ID, 'session-trend-data').text
