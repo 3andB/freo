@@ -67,8 +67,11 @@ def _save_keys(value):
     fd, name = tempfile.mkstemp(prefix='.studio-keys-', dir=directory)
     try:
         with os.fdopen(fd, 'w') as output:
-            os.fchown(output.fileno(), 0, _freo_gid())
+            group = _freo_gid()
+            os.fchown(output.fileno(), 0, group)
             os.fchmod(output.fileno(), 0o640)
+            if os.fstat(output.fileno()).st_gid != group:
+                raise AccessError('Studio key file group could not be set')
             json.dump(value, output, sort_keys=True)
             output.write('\n')
             output.flush()

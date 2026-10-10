@@ -18,7 +18,7 @@ def staged(tmp_path, monkeypatch):
     monkeypatch.setattr(access, 'CATALOG', tmp_path / 'approved-releases.json')
     monkeypatch.setattr(access, 'KEYS', tmp_path / 'studio-api-keys.json')
     monkeypatch.setattr(access, '_require_root', lambda: None)
-    monkeypatch.setattr(access, '_freo_gid', lambda: 0)
+    monkeypatch.setattr(access, '_freo_gid', access.os.getgid)
     monkeypatch.setattr(access.os, 'fchown', lambda *args: None)
     # /tmp is intentionally writable; keep checks below this disposable root.
     def trusted(path, *, private=False):
