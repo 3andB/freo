@@ -9,7 +9,7 @@ FILES = ('wsgi.py', 'requirements.txt', 'requirements-live-mic.txt', '.env.examp
          'README.md', 'SECURITY.md', 'CHANGELOG.md', 'LICENSE', 'V1_UPGRADE_NOTES.md')
 SCRIPTS = {
     'accept-install.py', 'admin-maintenance.py', 'hosting-guard.py', 'hosting-recording.py', 'hosting-admin.py', 'hosting-admin-launcher.py', 'install-hosting.py', 'studio-api-key.py',
-    'build-icecast-2.5.sh', 'recording-storage.py', 'install.sh', 'provision.sh', 'install-python.sh', 'install-statistics.sh',
+    'build-icecast-2.5.sh', 'check-igloo.py', 'recording-storage.py', 'install.sh', 'provision.sh', 'install-python.sh', 'install-statistics.sh',
     'configure-icecast-repository.sh', 'media-web-access.sh', 'render-radio-config.py',
     'validate-admin-login.py', 'validate-install.sh', 'validate-station-instance.py',
 }

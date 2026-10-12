@@ -8,6 +8,7 @@ import re
 import subprocess
 import sys
 import time
+from .engine_readiness import wait_ready
 import xml.etree.ElementTree as ET
 from . import hosting as h
 
@@ -260,10 +261,13 @@ def apply(policy, operation):
                 binary = run(['systemctl','show','icecast2.service','--property=ExecStart','--value'])
                 match = re.search(r'path=([^ ;]+)',binary)
                 if not match or b'freo-listeners' not in Path(match.group(1)).read_bytes():
-                    from .v1 import prepare_icecast, activate_icecast
+                    from .v1 import prepare_icecast, activate_icecast, IcecastDependencyError
                     import tempfile
                     build_state=Path(tempfile.mkdtemp(prefix='hosting-engine-',dir=h.STATE))
-                    engine=prepare_icecast(runtime.SOURCE,build_state)
+                    try:
+                        engine=prepare_icecast(runtime.SOURCE,build_state)
+                    except IcecastDependencyError as error:
+                        raise h.HostingError('icecast_dependencies_unavailable', str(error)) from error
                     activate_icecast(engine, replacing=True)
                 storage_changes = provision_storage()
             elif operation == 'activate':
@@ -305,13 +309,18 @@ def apply(policy, operation):
                 for station in stations:
                     if station.enabled and station.desired_state == 'running':
                         run(['systemctl','restart' if first or 'freo-playout@.service' in storage_changes else 'start',runtime.unit_name(station.slug)])
-                deadline=time.monotonic()+45
-                while True:
+                result = None
+                last_error = None
+                def ready():
+                    nonlocal result, last_error
                     try:
-                        result=verify(requested);break
-                    except h.HostingError:
-                        if time.monotonic()>deadline:raise
-                        time.sleep(1)
+                        result = verify(requested)
+                        return True
+                    except h.HostingError as error:
+                        last_error = error
+                        return False
+                if not wait_ready(ready):
+                    raise last_error
             else:
                 result=verify(requested)
             db.session.commit()

@@ -14,6 +14,7 @@ import tempfile
 import zlib
 
 from app.services.stations import validate_slug
+from freo_ops.engine_readiness import COMMAND_TIMEOUT, STARTUP_TIMEOUT, wait_ready
 
 ROOT = Path('/etc/freo')
 SECRETS = ROOT / 'secrets/stations'
@@ -64,7 +65,7 @@ def unit_name(slug):
 
 
 def run_checked(args):
-    subprocess.run(args, check=True, capture_output=True, timeout=90)
+    subprocess.run(args, check=True, capture_output=True, timeout=COMMAND_TIMEOUT)
 
 
 def credential(slug):
@@ -236,20 +237,17 @@ def audio_backup(station):
     return CONFIGS / f'{slug}.liq.audio-{station.stream.audio_revision}.previous'
 
 
-def wait_audio_online(station, timeout=60):
-    import time
+def wait_audio_online(station, timeout=STARTUP_TIMEOUT):
     from app.routes.stations import observed_status
-    deadline = time.monotonic() + timeout
-    while time.monotonic() < deadline:
+    def ready():
         from app.extensions import db
         db.session.refresh(station)
         if station.desired_state != 'running':
             raise RuntimeError('Master broadcast is OFF')
         status = observed_status(station)
-        if status['playout'] == 'running' and status['stream'] == 'online':
-            return
-        time.sleep(1)
-    raise RuntimeError('Station did not resume streaming')
+        return status['playout'] == 'running' and status['stream'] == 'online'
+    if not wait_ready(ready, timeout=timeout):
+        raise RuntimeError('Station did not resume streaming')
 
 
 def restore_audio(station):

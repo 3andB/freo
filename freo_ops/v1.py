@@ -2,8 +2,10 @@
 import json
 import os
 from pathlib import Path
+import re
 import shutil
 import stat
+import sys
 import tempfile
 from . import recovery, releases
 
@@ -64,6 +66,52 @@ def check_space(url, roots, release, backup, verification):
             raise recovery.RecoveryError('Insufficient space for verified backup, restore and staging on ' + str(path))
 
 
+class IcecastDependencyError(recovery.RecoveryError):
+    """Safe operator-facing failure before building or activating Icecast."""
+
+
+def prepare_icecast_dependencies(release):
+    """Select compatible headers/runtime without changing unrelated repository policy."""
+    env = dict(os.environ, LC_ALL='C', DEBIAN_FRONTEND='noninteractive', NEEDRESTART_MODE='l')
+    guidance = (
+        'Icecast build dependencies unavailable: libigloo-dev and libigloo0 must '
+        'provide matching versions >= 0.9.4. Check apt-cache policy libigloo-dev '
+        'libigloo0, apt-mark showhold, the signed Xiph Ubuntu 24.04 source and '
+        '/etc/apt/preferences.d/freo-icecast; resolve repository/pin/hold errors '
+        'and retry. Also check dpkg-query -S "*/libigloo.so.0*" for an older '
+        'libigloo0t64 owning the runtime. No Icecast build or hosted-policy activation was performed.'
+    )
+    try:
+        recovery.run(['bash', str(release / 'scripts/configure-icecast-repository.sh')], env=env)
+        recovery.run(['apt-get', '-o', 'APT::Update::Error-Mode=any', 'update'], env=env)
+        versions = []
+        for package in ('libigloo-dev', 'libigloo0'):
+            policy = recovery.run(['apt-cache', 'policy', package], env=env).decode()
+            match = re.search(r'^\s*Candidate:\s*(\S+)', policy, re.MULTILINE)
+            if not match or match[1] == '(none)':
+                raise recovery.RecoveryError('No compatible candidate')
+            version = match[1]
+            recovery.run(['dpkg', '--compare-versions', version, 'ge', '0.9.4'], env=env)
+            versions.append(version)
+        if versions[0] != versions[1]:
+            raise recovery.RecoveryError('Development and runtime candidates differ')
+        packages = ['build-essential', 'pkg-config', 'patch',
+                    'libigloo-dev=' + versions[0], 'libigloo0=' + versions[1],
+                    'libxml2-dev', 'libxslt1-dev', 'libvorbis-dev', 'libogg-dev',
+                    'libcurl4-openssl-dev', 'librhash-dev', 'libssl-dev',
+                    'libtheora-dev', 'libspeex-dev']
+        # Resolve the complete transaction first; holds/conflicts/removals fail
+        # before installing anything. Pin only this transaction's resolved pair.
+        recovery.run(['apt-get', 'install', '--simulate', '--no-remove', '-y', *packages], env=env)
+        recovery.run(['apt-get', 'install', '--no-remove', '-y', *packages], env=env)
+        recovery.run(['pkg-config', '--atleast-version=0.9.4', 'igloo'], env=env)
+        recovery.run([sys.executable, str(release / 'scripts/check-igloo.py')], env=env)
+    except recovery.RecoveryError as error:
+        failure = IcecastDependencyError(guidance)
+        failure.private_diagnostics = getattr(error, 'private_diagnostics', b'')
+        raise failure from error
+
+
 def prepare_icecast(release, state):
     """Build from pinned upstream source without replacing the package executable."""
     archive = state / 'icecast-2.5.0.tar.gz'
@@ -72,14 +120,8 @@ def prepare_icecast(release, state):
                       '--output', str(archive), 'https://downloads.xiph.org/releases/icecast/icecast-2.5.0.tar.gz'])
     if recovery.digest(archive) != 'd9aa07c7429aec19d950ff6fd425c371f77158cd34ff220fc191b2c186c67c7a':
         raise recovery.RecoveryError('Unexpected Icecast source checksum')
-    # Share the fresh installer's scoped, fingerprint-checked repository policy.
     # Called only after a verified recovery point; package output stays private.
-    recovery.run(['bash', str(release / 'scripts/configure-icecast-repository.sh')])
-    recovery.run(['apt-get', 'update'])
-    recovery.run(['apt-get', 'install', '--no-remove', '-y', 'build-essential', 'pkg-config', 'patch',
-                  'libigloo-dev', 'libxml2-dev', 'libxslt1-dev', 'libvorbis-dev', 'libogg-dev',
-                  'libcurl4-openssl-dev', 'librhash-dev', 'libssl-dev', 'libtheora-dev', 'libspeex-dev'],
-                 env=dict(os.environ, DEBIAN_FRONTEND='noninteractive'))
+    prepare_icecast_dependencies(release)
     build = state / ('icecast-build-' + release.name)
     recovery.run(['bash', str(release / 'scripts/build-icecast-2.5.sh'), str(archive), str(build)])
     binary = build / 'src/icecast'

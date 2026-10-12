@@ -1,5 +1,4 @@
 """Root-run station administration. No mutation endpoint is exposed by Flask."""
-import time
 import json
 import click
 from flask import Blueprint
@@ -9,6 +8,7 @@ from app.models import Station
 from app.routes.stations import observed_status
 from app.services.station_runtime import render, require_root, service_action
 from app.services.stations import create_station, get_station, public_station, set_enabled
+from freo_ops.engine_readiness import wait_ready
 
 station_cli = Blueprint('station_cli', __name__)
 
@@ -188,12 +188,10 @@ def enable_command(slug):
 
 
 def wait_online(station):
-    for _ in range(30):
+    def ready():
         status = observed_status(station)
-        if status['playout'] == 'running' and status['stream'] == 'online':
-            return True
-        time.sleep(2)
-    return False
+        return status['playout'] == 'running' and status['stream'] == 'online'
+    return wait_ready(ready)
 
 
 @station_group.command('start')

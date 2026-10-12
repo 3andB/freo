@@ -16,7 +16,11 @@ expected=d9aa07c7429aec19d950ff6fd425c371f77158cd34ff220fc191b2c186c67c7a
 actual=$(sha256sum "$archive" | cut -d ' ' -f 1)
 [[ "$actual" == "$expected" ]] || { echo 'Unexpected Icecast 2.5.0 source archive' >&2; exit 1; }
 [[ ! -e "$build" ]] || { echo 'Build directory must not already exist' >&2; exit 1; }
-pkg-config --atleast-version=0.9.4 igloo || { echo 'libigloo development headers >= 0.9.4 are required' >&2; exit 1; }
+pkg-config --atleast-version=0.9.4 igloo || {
+  echo 'libigloo development headers >= 0.9.4 and matching runtime are required. Check apt-cache policy libigloo-dev libigloo0 and the scoped Xiph preferences before retrying.' >&2
+  exit 1
+}
+python3 "$repo/scripts/check-igloo.py"
 mkdir -p "$build"
 tar -xzf "$archive" --strip-components=1 -C "$build"
 cd "$build"
