@@ -37,7 +37,11 @@ def admin(*args, code=0):
 
 
 def station(*args, code=0):
-    return run(str(ROOT/'venv/bin/flask'), '--app', 'wsgi:app', 'station', *args, code=code)
+    from freo_ops.engine_readiness import COMMAND_TIMEOUT, STARTUP_TIMEOUT
+    # Creation validates both station and radio configs before a cold start.
+    # The acceptance supervisor must not interrupt those bounded operations.
+    return run(str(ROOT/'venv/bin/flask'), '--app', 'wsgi:app', 'station', *args,
+               code=code, timeout=2 * COMMAND_TIMEOUT + STARTUP_TIMEOUT + 30)
 
 
 def save(name, value):

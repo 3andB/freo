@@ -54,6 +54,18 @@ def test_station_cli_does_not_accept_running_process_without_stream(clock, monke
     assert clock.now == readiness.STARTUP_TIMEOUT
 
 
+def test_install_acceptance_allows_validation_then_cold_source_start(monkeypatch):
+    root = Path(__file__).resolve().parents[1]
+    module = runpy.run_path(str(root/'scripts/accept-install.py'))
+    elapsed = 2 * readiness.VALIDATION_TIMEOUT + 75 + 5
+    def finished(args, **kwargs):
+        if kwargs['timeout'] < elapsed:
+            raise subprocess.TimeoutExpired(args, kwargs['timeout'])
+        return SimpleNamespace(returncode=0, stdout='station online')
+    monkeypatch.setattr(module['subprocess'], 'run', finished)
+    assert module['station']('create', 'fixture', '--start') == 'station online'
+
+
 def test_audio_recovery_shares_cold_start_budget_and_honors_master_off(clock, monkeypatch):
     from app.extensions import db
     from app.routes import stations
