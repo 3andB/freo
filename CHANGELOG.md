@@ -1,5 +1,24 @@
 # Changelog
 
+## 1.0.0-rc.7 — prepared candidate; exact-kit VM acceptance pending
+
+- Retain RC6's bounded future-event scan, canonical timezone cache, retired
+  control-page response handling and earlier microphone/Studio/installer fixes.
+- Require matching libigloo development/runtime candidates >= 0.9.4, simulate
+  the required native build transaction without removals, and check the loaded
+  library before building or activating hosted Icecast.
+- Return actionable dependency failures without publishing hosted policy or
+  stopping healthy services. Keep repository priorities scoped to the required
+  packages and permit future compatible package revisions.
+- Share bounded 120-second cold-source readiness and diagnostic validation,
+  preserve maintenance/inhibition on failed hosted activation, and give the
+  installer acceptance supervisor time for validation followed by startup.
+- Include the runtime probe, readiness module and RC7 installation guide in
+  the customer archive. Schema and the 42 dependency wheels are unchanged.
+- Build new publisher-signed application and installation-kit files; retain
+  existing signed candidates. Publication and deployment require acceptance.
+
+
 ## 0.3.2 — released 30 September 2026
 
 - Publish the exact signed stable kit after fresh Ubuntu 24.04 x86_64 acceptance;
