@@ -382,3 +382,18 @@ def test_configuration_attachment_never_replaces_authority_even_when_interrupted
     assert not (destination/'admin-upgrades.json').exists()
     retained=destination.parent/('.freo-retained-'+operation['operation_id']+'-freo-newer.conf')
     assert retained.read_text()=='retained newer settings'
+
+
+@pytest.mark.parametrize('ready_at', [80, None])
+def test_operational_health_allows_shared_cold_start_and_stays_bounded(monkeypatch, ready_at):
+    elapsed = [0.]
+    monkeypatch.setattr(a, 'time', SimpleNamespace(monotonic=lambda: elapsed[0],
+        sleep=lambda seconds: elapsed.__setitem__(0, elapsed[0]+seconds)))
+    monkeypatch.setattr(a, 'health', lambda: dict(health='healthy' if ready_at is not None and elapsed[0]>=ready_at else 'degraded'))
+    if ready_at is None:
+        with pytest.raises(h.HostingError) as error: a.verified_health()
+        assert error.value.code == 'verification_failed'
+        assert elapsed[0] == a.STARTUP_TIMEOUT
+    else:
+        assert a.verified_health()['health']=='healthy'
+        assert elapsed[0] == ready_at

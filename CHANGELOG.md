@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.0.0-rc.9 — private candidate; acceptance pending
+
+- Allow the shared cold-start budget when verifying administrative service restarts and recovery.
+- Retain RC8 dependency ownership, managed-validator and upgrade deadline repairs.
+
 ## 1.0.0-rc.8 — private candidate; acceptance pending
 
 - Reject conflicting libigloo runtime ownership before dependency installation.

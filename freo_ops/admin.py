@@ -18,6 +18,7 @@ from urllib.request import build_opener, ProxyHandler, Request
 
 from . import hosting as h
 from . import recovery
+from .engine_readiness import STARTUP_TIMEOUT
 
 STATE = Path('/var/lib/freo-admin')
 UPDATES = Path('/var/lib/freo-updates')
@@ -283,7 +284,7 @@ def health():
 
 
 def verified_health():
-    deadline = time.monotonic()+60
+    deadline = time.monotonic()+STARTUP_TIMEOUT
     while True:
         value = health()
         if value['health'] in ('healthy','intentionally_suspended'):
