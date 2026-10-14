@@ -199,3 +199,20 @@ def test_first_hosting_failure_keeps_policy_and_services_unchanged(app, tmp_path
     assert not any((state / name).exists() for name in ('enabled', 'inhibit', 'transaction.json'))
     assert calls == [['systemctl', 'show', 'icecast2.service', '--property=ExecStart', '--value']]
     assert json.loads((state / 'audit.jsonl').read_text())['result']['success'] is False
+
+
+def test_existing_t64_runtime_ownership_blocks_all_package_installs(monkeypatch):
+    calls = []
+    def run(args, **kwargs):
+        calls.append(args)
+        if args[:2] == ['apt-cache', 'policy']:
+            return b'  Candidate: 0.9.5-1\n'
+        if args[:2] == ['dpkg-query', '-W']:
+            return b'libigloo0:amd64 ii \nlibigloo0t64:amd64 ii \n'
+        if args[:2] == ['dpkg-query', '-S']:
+            return b'libigloo0t64:amd64: /usr/lib/x86_64-linux-gnu/libigloo.so.0\n'
+        return b''
+    monkeypatch.setattr(recovery, 'run', run)
+    with pytest.raises(v1.IcecastDependencyError, match='libigloo0t64'):
+        v1.prepare_icecast_dependencies(ROOT)
+    assert not any(args[:2] == ['apt-get', 'install'] for args in calls)

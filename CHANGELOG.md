@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.0-rc.8 — private candidate; acceptance pending
+
+- Reject conflicting libigloo runtime ownership before dependency installation.
+- Use the shared cold-start budget during upgrades.
+- Validate managed installations using their canonical configuration file.
+
 ## 1.0.0-rc.7 — prepared candidate; exact-kit VM acceptance pending
 
 - Retain RC6's bounded future-event scan, canonical timezone cache, retired

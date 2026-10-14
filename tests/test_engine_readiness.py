@@ -145,3 +145,25 @@ def test_radio_validation_timeout_retains_previous_configuration(tmp_path,monkey
     assert (radio/'icecast.xml').read_text()==original
     assert (radio/'freo-test.liq').read_text()=='previous validated diagnostic'
     assert not list(radio.glob('.*'))
+
+
+def test_upgrade_audio_uses_shared_deadline_for_slow_response(monkeypatch):
+    from freo_ops import upgrade
+    clock = SimpleNamespace(now=0.)
+    monkeypatch.setattr(upgrade, 'time', SimpleNamespace(
+        monotonic=lambda: clock.now,
+        sleep=lambda seconds: setattr(clock, 'now', clock.now + seconds)))
+    class Response:
+        status = 200
+        headers = SimpleNamespace(get_content_type=lambda: 'audio/mpeg')
+        def __enter__(self): return self
+        def __exit__(self, *args): pass
+        def read(self, count): return b'audio'
+    def open_stream(*args, **kwargs):
+        if clock.now < 80: raise OSError('source warming')
+        return Response()
+    upgrade.wait_for_station_audio(SimpleNamespace(open=open_stream), 'fixture')
+    assert clock.now == 80
+    with pytest.raises(upgrade.recovery.RecoveryError):
+        upgrade.wait_for_station_audio(SimpleNamespace(open=lambda *a, **k: (_ for _ in ()).throw(OSError())), 'fixture')
+    assert clock.now == 80 + readiness.STARTUP_TIMEOUT

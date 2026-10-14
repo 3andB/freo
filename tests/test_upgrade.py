@@ -243,7 +243,7 @@ def test_upgrade_waits_for_station_audio_and_preserves_failure_recovery(host, mo
     else:
         with pytest.raises(recovery.RecoveryError, match='station.*audio'):
             host.execute()
-        assert 1 < len(attempts) <= 60 and elapsed[0] == 60
+        assert 1 < len(attempts) <= updater.STARTUP_TIMEOUT and elapsed[0] == updater.STARTUP_TIMEOUT
         journal = json.loads((host.state / 'journal.json').read_text())
         assert journal['phase'] == 'recovery_required' and journal['failure_phase'] == 'starting'
         assert host.active == [] and (host.state / 'maintenance').exists()

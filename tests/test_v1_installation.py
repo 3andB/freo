@@ -4,6 +4,7 @@ No packages, databases, system services, or installed Freo paths are touched.
 Actual source copying, environment generation and dependency selection still run.
 """
 import json
+import shutil
 from pathlib import Path
 import subprocess
 import sys
@@ -16,6 +17,10 @@ ROOT = Path(__file__).resolve().parents[1]
 
 @pytest.fixture
 def installer(tmp_path):
+    fixture_source = tmp_path/'source'
+    shutil.copytree(ROOT, fixture_source, ignore=shutil.ignore_patterns('.git', '__pycache__', '.pytest_cache'))
+    (fixture_source/'wheels').mkdir(exist_ok=True)
+    (fixture_source/'wheels/fixture.whl').touch()  # Command stubs never open wheel bytes.
     root = tmp_path / 'host'
     commands = tmp_path / 'commands'
     commands.mkdir()
@@ -76,10 +81,11 @@ elif name not in ('apt-get', 'systemctl', 'id', 'useradd', 'usermod', 'chown',
             FREO_DOMAIN='209.38.64.12', FREO_ENV_FILE='/dev/null',
             PYTHONDONTWRITEBYTECODE='1', INSTALL_TEST_LOG=str(log),
             INSTALL_TEST_PYTHON=sys.executable, **options)
-        result = subprocess.run(['/bin/bash', str(script_path), str(ROOT)],
+        result = subprocess.run(['/bin/bash', str(script_path), str(fixture_source)],
             env=environment, text=True, capture_output=True, timeout=30)
         calls = [json.loads(line) for line in log.read_text().splitlines()] if log.exists() else []
         return result, calls
+    run.source = fixture_source
     return run, root, installed
 
 
@@ -102,10 +108,8 @@ def test_fresh_source_install_contains_v1_and_optional_microphone(installer, mic
         assert (root / f'etc/systemd/system/{unit}.service').read_bytes() == (ROOT / f'deploy/systemd/{unit}.service').read_bytes()
     assert ['systemctl', 'enable', '--now', 'freo-production.service'] in calls
     assert (['systemctl', 'enable', '--now', 'freo-mic.service'] in calls) == (microphone == '1')
-    requirement = 'requirements-live-mic.txt' if microphone == '1' else 'requirements.txt'
-    assert ['python', '-m', 'pip', 'install', '-r', str(ROOT / requirement)] in calls
-    if microphone == '1':
-        assert ['python', '-B', '-m', 'freo_ops.dependencies', '--live-mic'] in calls
+    assert ['python', '-m', 'pip', 'install', '--no-index', '--require-hashes', '--find-links', str(run.source/'wheels'), '-r', str(run.source/'requirements.lock')] in calls
+    assert ['python', '-B', '-m', 'freo_ops.dependencies', '--live-mic'] in calls
     assert calls.index(['flask', '--app', 'wsgi:app', 'db', 'upgrade']) < calls.index(['systemctl', 'enable', '--now', 'freo-production.service'])
     assert (installed / 'scripts/recording-storage.py').is_file()
     assert (installed / 'V1_UPGRADE_NOTES.md').read_bytes() == (ROOT / 'V1_UPGRADE_NOTES.md').read_bytes()

@@ -3,9 +3,20 @@ set -euo pipefail
 
 install_dir=${FREO_INSTALL_DIR:-/opt/freo}
 # Resolve the active release after an upgrade as well as the fresh layout.
-if [[ -d "$install_dir/current" ]]; then install_dir="$install_dir/current"; fi
+managed=0
+if [[ -d "$install_dir/current" ]]; then install_dir="$install_dir/current"; managed=1; fi
+# A direct path to a managed release also uses the canonical configuration.
+if [[ $(readlink -f "$install_dir") == /opt/freo/releases/* ]]; then managed=1; fi
+if [[ -n ${FREO_ENV_FILE:-} ]]; then
+  env_file=$FREO_ENV_FILE
+elif (( managed )); then
+  env_file=/etc/freo/freo.env
+else
+  env_file=$install_dir/.env
+fi
+[[ $env_file == /* && -f $env_file ]] || { echo 'FREO_ENV_FILE must name an existing absolute configuration file.' >&2; exit 1; }
 cd "$install_dir"
-export FREO_ENV_FILE="$install_dir/.env"
+export FREO_ENV_FILE="$env_file"
 # Policy errors must fail verification, never be interpreted as self-hosted.
 restricted=$("$install_dir/venv/bin/python" - <<'PYTHON'
 from freo_ops import hosting
@@ -28,7 +39,7 @@ if [[ $(stat -c %a /var/lib/freo/media) != 751 || $(stat -c %a /var/lib/freo/pla
   echo 'Media or playlist root permissions are too broad.' >&2
   exit 1
 fi
-test -f "$install_dir/.env"
+test -f "$env_file"
 test -f /etc/systemd/system/freo-playout@.service
 test -f /etc/systemd/system/freo-automation.service
 test -f /etc/systemd/system/freo-ingest.service
@@ -50,18 +61,18 @@ if id -nG freo-ingest | tr ' ' '\n' | grep -qx freo-playout; then
   exit 1
 fi
 test -x "$install_dir/scripts/validate-station-instance.py"
-test "$(stat -c %a "$install_dir/.env")" = 640
+test "$(stat -c %a "$env_file")" = 640
 systemctl is-active --quiet postgresql nginx freo.service freo-automation.service freo-ingest.service freo-production.service
 if [[ $restricted == 0 ]]; then systemctl is-active --quiet icecast2.service; fi
 # Read the persisted choice; re-running validation need not export installer flags.
-if grep -qx 'FREO_LIVE_MIC=1' "$install_dir/.env"; then
+if grep -qx 'FREO_LIVE_MIC=1' "$env_file"; then
   (cd "$install_dir" && "$install_dir/venv/bin/python" -m freo_ops.dependencies --live-mic)
   if [[ $restricted == 0 ]]; then systemctl is-active --quiet freo-mic.service; fi
 fi
 nginx -t >/dev/null
 pg_isready -q
-current=$(cd "$install_dir" && runuser -u freo -- env FREO_ENV_FILE="$install_dir/.env" "$install_dir/venv/bin/flask" --app wsgi:app db current)
-heads=$(cd "$install_dir" && runuser -u freo -- env FREO_ENV_FILE="$install_dir/.env" "$install_dir/venv/bin/flask" --app wsgi:app db heads)
+current=$(cd "$install_dir" && runuser -u freo -- env FREO_ENV_FILE="$env_file" "$install_dir/venv/bin/flask" --app wsgi:app db current)
+heads=$(cd "$install_dir" && runuser -u freo -- env FREO_ENV_FILE="$env_file" "$install_dir/venv/bin/flask" --app wsgi:app db heads)
 if [[ $current != "$heads" ]]; then
   echo 'Database migrations are not current.' >&2
   exit 1
@@ -146,13 +157,13 @@ if [[ $(stat -c %U:%G:%a /var/lib/freo/uploads) != freo:freo-ingest:2770 ]]; the
   echo 'Web upload staging permissions are not restricted.' >&2
   exit 1
 fi
-(cd "$install_dir" && env FREO_ENV_FILE="$install_dir/.env" "$install_dir/venv/bin/python" "$install_dir/scripts/validate-admin-login.py" --external)
+(cd "$install_dir" && env FREO_ENV_FILE="$env_file" "$install_dir/venv/bin/python" "$install_dir/scripts/validate-admin-login.py" --external)
 # Enabled units and timers survive boot; station instances are reconciled by
 # freo-provision.timer from their persisted desired state.
 for unit in postgresql nginx freo.service icecast2.service freo-automation.service freo-ingest.service freo-production.service freo-central-api.service freo-stats.service freo-provision.timer freo-public-schedules.timer freo-updater.timer freo-stats-inventory.timer freo-geoip.timer; do
   systemctl is-enabled --quiet "$unit"
 done
-if grep -qx 'FREO_LIVE_MIC=1' "$install_dir/.env"; then systemctl is-enabled --quiet freo-mic.service; fi
+if grep -qx 'FREO_LIVE_MIC=1' "$env_file"; then systemctl is-enabled --quiet freo-mic.service; fi
 /usr/local/sbin/freo-admin health
 /usr/local/sbin/freo-admin hosting verify
 printf 'Freo installation verification passed. Station creation and first-use password replacement require the explicit fresh acceptance test.\n'

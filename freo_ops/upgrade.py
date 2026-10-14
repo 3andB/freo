@@ -16,9 +16,10 @@ import uuid
 from psycopg2.extensions import make_dsn, parse_dsn
 
 from . import recovery, releases
+from .engine_readiness import STARTUP_TIMEOUT
 
 
-def wait_for_station_audio(opener, slug, timeout=60):
+def wait_for_station_audio(opener, slug, timeout=STARTUP_TIMEOUT):
     """Allow an active Liquidsoap process time to connect its Icecast mount."""
     deadline = time.monotonic() + timeout
     while (remaining := deadline - time.monotonic()) > 0:

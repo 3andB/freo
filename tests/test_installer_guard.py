@@ -18,6 +18,7 @@ def test_existing_state_refuses_before_any_provisioning(tmp_path, existing):
     else:
         media.mkdir()
     source = Path('scripts/provision.sh').read_text().split('. /etc/os-release', 1)[0]
+    source = source.replace('/etc/freo/hosting.json', str(tmp_path/'hosting.json')).replace('/var/lib/freo-admin', str(tmp_path/'admin')).replace('/var/lib/freo-hosting', str(tmp_path/'hosting'))
     source = source.replace('/opt/freo', str(root)).replace('/etc/freo/freo.env', str(stable)).replace('/var/lib/freo/media', str(media))
     script = tmp_path / 'preflight.sh'
     script.write_text(source + '\nexit 97\n')
@@ -41,6 +42,7 @@ def test_https_preflight_saves_correct_scheme_and_rejects_incomplete_options(tmp
     root, stable, media = tmp_path / 'install', tmp_path / 'stable.env', tmp_path / 'media'
     # Execute the real early preflight, stopping before its first package action.
     source = Path('scripts/provision.sh').read_text().split("printf '%s\\n' 'Freo automatically reports", 1)[0]
+    source = source.replace('/etc/freo/hosting.json', str(tmp_path/'hosting.json')).replace('/var/lib/freo-admin', str(tmp_path/'admin')).replace('/var/lib/freo-hosting', str(tmp_path/'hosting'))
     source = source.replace('/opt/freo', str(root)).replace('/etc/freo/freo.env', str(stable)).replace('/var/lib/freo/media', str(media))
     script = tmp_path / 'https-preflight.sh'
     script.write_text(source + '\nprintf "%s\\n" "$public_base"\n')

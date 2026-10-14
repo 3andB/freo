@@ -95,6 +95,13 @@ def prepare_icecast_dependencies(release):
             versions.append(version)
         if versions[0] != versions[1]:
             raise recovery.RecoveryError('Development and runtime candidates differ')
+        # APT can report a new runtime installed while Ubuntu's t64 package
+        # owns the older shared object. Detect that state before any install.
+        installed = recovery.run(['dpkg-query', '-W', '-f=${binary:Package} ${db:Status-Abbrev}\n'], env=env).decode()
+        if re.search(r'^libigloo0t64(?::\S+)? ii', installed, re.MULTILINE):
+            owners = recovery.run(['dpkg-query', '-S', '*/libigloo.so.0*'], env=env).decode()
+            if re.search(r'^libigloo0t64(?::\S+)?: ', owners, re.MULTILINE):
+                raise recovery.RecoveryError('Conflicting libigloo0t64 owns the runtime; operator repair required')
         packages = ['build-essential', 'pkg-config', 'patch',
                     'libigloo-dev=' + versions[0], 'libigloo0=' + versions[1],
                     'libxml2-dev', 'libxslt1-dev', 'libvorbis-dev', 'libogg-dev',
