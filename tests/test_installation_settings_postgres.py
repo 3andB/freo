@@ -19,7 +19,8 @@ def test_upgrade_and_restored_application_preserve_settings_identity_and_audio(p
     source_url = new_database()
     monkeypatch.setenv('FREO_ENV_FILE', '/dev/null')
     params = parse_dsn(source_url)
-    source_uri = URL.create('postgresql+psycopg2', username=params['user'],
+    source_uri = URL.create('postgresql+psycopg2', username=params['user'], password=params.get('password'),
+                           port=int(params.get('port', '5432')),
                            database=params['dbname'], query={'host': params['host']})
     monkeypatch.setenv('DATABASE_URL', source_uri.render_as_string(hide_password=False))
     monkeypatch.setenv('SECRET_KEY', 'isolated-fixture-only')
@@ -108,7 +109,8 @@ def test_upgrade_and_restored_application_preserve_settings_identity_and_audio(p
     params['dbname'] = report['database']
     monkeypatch.setenv('DATABASE_URL', make_dsn(**params))
     # SQLAlchemy needs a URI, whereas psycopg2 also accepts keyword DSNs.
-    restored_uri = URL.create('postgresql+psycopg2', username=params['user'],
+    restored_uri = URL.create('postgresql+psycopg2', username=params['user'], password=params.get('password'),
+                             port=int(params.get('port', '5432')),
                              database=report['database'], query={'host': params['host']})
     monkeypatch.setenv('DATABASE_URL', restored_uri.render_as_string(hide_password=False))
     monkeypatch.setenv('FREO_MEDIA_ROOT', str(tmp_path / 'restore/root-0'))
