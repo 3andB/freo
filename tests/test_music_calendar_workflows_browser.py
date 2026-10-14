@@ -147,6 +147,9 @@ def test_source_drop_and_short_resize_handles_do_not_open_details(booth):
     driver.execute_script("document.getElementById('section-start').value='01:30:00';document.getElementById('section-end').value='01:31:00'")
     driver.find_element(By.CSS_SELECTOR,'#section-form button[type=submit]').click()
     WebDriverWait(driver,5).until(lambda d:not d.find_element(By.ID,'section-inspector').is_displayed())
+    # Autosave replaces timeline elements with the server's canonical document.
+    # Wait for its acknowledgement before addressing the new keyboard target.
+    wait_text(driver,'#save-state','Saved')
     assert driver.find_element(By.CSS_SELECTOR,'.is-short.is-selected .resize-grip.top').is_displayed()
     assert driver.find_element(By.CSS_SELECTOR,'.is-short.is-selected .resize-grip.bottom').is_displayed()
     assert driver.execute_script("return document.querySelector('.timeline-section').getBoundingClientRect().height<2")
