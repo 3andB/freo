@@ -4,6 +4,7 @@ After=network.target postgresql.service
 Wants=postgresql.service
 
 [Service]
+Slice=freo.slice
 Type=simple
 User=freo-automation
 Group=freo-automation

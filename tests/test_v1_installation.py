@@ -106,6 +106,7 @@ def test_fresh_source_install_contains_v1_and_optional_microphone(installer, mic
     assert (root / 'var/lib/freo/uploads/production').stat().st_mode & 0o7777 == 0o2770
     for unit in ('freo-production', 'freo-mic', 'freo-automation', 'freo-ingest', 'freo-provision'):
         assert (root / f'etc/systemd/system/{unit}.service').read_bytes() == (ROOT / f'deploy/systemd/{unit}.service').read_bytes()
+    assert (root/'etc/systemd/system/freo.slice').read_bytes() == (ROOT/'deploy/systemd/freo.slice').read_bytes()
     assert ['systemctl', 'enable', '--now', 'freo-production.service'] in calls
     assert (['systemctl', 'enable', '--now', 'freo-mic.service'] in calls) == (microphone == '1')
     assert ['python', '-m', 'pip', 'install', '--no-index', '--require-hashes', '--find-links', str(run.source/'wheels'), '-r', str(run.source/'requirements.lock')] in calls

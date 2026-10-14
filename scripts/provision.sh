@@ -237,6 +237,7 @@ install -m 0644 "$unit_src" "$unit_dst"
 systemctl daemon-reload
 systemctl enable --now freo.service
 systemctl restart freo.service
+install -m 0644 "$source_dir/deploy/systemd/freo.slice" /etc/systemd/system/freo.slice
 for service in icecast2 freo-playout freo-playout@ freo-automation freo-ingest freo-production freo-mic freo-provision freo-public-schedules freo-central-api freo-updater; do
   unit_src="$source_dir/deploy/systemd/$service.service"
   unit_dst="/etc/systemd/system/$service.service"

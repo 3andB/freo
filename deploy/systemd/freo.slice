@@ -1,0 +1,7 @@
+[Unit]
+Description=Freo broadcast timing services
+
+[Slice]
+# Work-conserving priority: protect clocks against media/browser CPU contention.
+# This is a relative share, not a quota or a reservation of otherwise idle CPU.
+CPUWeight=1000

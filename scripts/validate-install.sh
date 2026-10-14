@@ -63,6 +63,18 @@ fi
 test -x "$install_dir/scripts/validate-station-instance.py"
 test "$(stat -c %a "$env_file")" = 640
 systemctl is-active --quiet postgresql nginx freo.service freo-automation.service freo-ingest.service freo-production.service
+# Check both configured membership and the actual CPU controller after startup.
+mapfile -t broadcast_instances < <(systemctl list-units --state=active --no-legend --plain 'freo-playout@*.service' | awk '{print $1}')
+for unit in "${broadcast_instances[@]}" freo-automation.service freo-mic.service; do
+  [[ $(systemctl show "$unit" --property=Slice --value) == freo.slice ]] || {
+    echo 'Broadcast CPU slice is not configured. Reload the installed units before retrying.' >&2; exit 1;
+  }
+done
+broadcast_group=$(systemctl show freo.slice --property=ControlGroup --value)
+[[ $broadcast_group == */freo.slice && -r /sys/fs/cgroup$broadcast_group/cpu.weight && $(cat "/sys/fs/cgroup$broadcast_group/cpu.weight") == 1000 ]] || {
+  echo 'Broadcast CPU priority is not active. Check the CPU controller and restart the managed broadcast services after reloading units.' >&2; exit 1;
+}
+
 if [[ $restricted == 0 ]]; then systemctl is-active --quiet icecast2.service; fi
 # Read the persisted choice; re-running validation need not export installer flags.
 if grep -qx 'FREO_LIVE_MIC=1' "$env_file"; then

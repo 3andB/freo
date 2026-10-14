@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.0-rc.10 — private candidate; acceptance pending
+
+- Protect playout, microphone and automation clocks with a higher-priority CPU slice under contention.
+- Validate installed CPU-controller priority and service membership.
+- Retain RC9 libigloo, managed-validator and cold-start readiness repairs.
+
 ## 1.0.0-rc.9 — private candidate; acceptance pending
 
 - Allow the shared cold-start budget when verifying administrative service restarts and recovery.
