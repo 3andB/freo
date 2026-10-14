@@ -82,3 +82,8 @@ html:has(.visualizer-dialog[open]){overflow:hidden}
 .audio-diagnostics-actions{display:flex;gap:8px;flex-wrap:wrap}
 .audio-diagnostics-actions button{font:inherit;color:#fff;background:#28344f;border:1px solid #ffffff60;border-radius:8px;padding:10px 12px;min-height:44px;cursor:pointer}
 .visual-diagnostics textarea{flex:1;min-height:160px;width:100%;box-sizing:border-box;resize:none;background:#080d18;color:#e3ecff;border:1px solid #ffffff40;padding:10px;font:12px/1.4 monospace;user-select:text;-webkit-user-select:text}
+/* Keep status and station identity in separate rows as content wraps. */
+.radio-cover{height:auto;min-height:270px;display:grid;grid-template-columns:minmax(0,1fr);grid-template-rows:auto 1fr;gap:16px;padding:28px 6% 35px}
+.radio-live-label{position:relative;inset:auto;grid-column:1;grid-row:1;justify-self:end}
+.radio-cover-copy{position:relative;inset:auto;grid-column:1;grid-row:2;align-self:end;min-width:0}
+@media(max-width:650px){.radio-cover{padding-bottom:20px}}

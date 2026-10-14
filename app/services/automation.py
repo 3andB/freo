@@ -4,7 +4,7 @@ from app.services.availability import tracks_for
 from datetime import datetime, timezone
 
 from app.extensions import db
-from app.models import (AutomationState, ClockState, MediaCategory, Rotation, RotationCursor, RotationSlot,
+from app.models import (AutomationState, ClockState, MediaCategory, Rotation, RotationCursor, RotationSlot, Station,
                         SelectionDecision, Track)
 from app.services.media_storage import LocalMediaStorage
 from app.services.selection_policy import artist_key, choose as _choose, recent as _recent
@@ -141,10 +141,26 @@ def validate_rotation(rotation):
 def state_for(station):
     state = AutomationState.query.filter_by(station_id=station.id).first()
     if state is None:
-        state = AutomationState(station_id=station.id)
-        db.session.add(state)
-        db.session.flush()
+        # Serialize repair with other callers that may discover the same
+        # uninitialized station. Existing state is never reset.
+        db.session.query(Station.id).filter_by(id=station.id).with_for_update().one()
+        state = AutomationState.query.filter_by(station_id=station.id).first()
+        if state is None:
+            state = AutomationState(station_id=station.id, enabled=False)
+            db.session.add(state)
+            db.session.flush()
     return state
+
+
+def ensure_station_states():
+    """Repair older ready stations missing worker state without activating them."""
+    missing = (Station.query.outerjoin(AutomationState, AutomationState.station_id == Station.id)
+               .filter(Station.deleted_at.is_(None), Station.lifecycle_state == 'ready',
+                       AutomationState.station_id.is_(None)).order_by(Station.id).all())
+    for station in missing:
+        state_for(station)
+    if missing:
+        db.session.commit()
 
 
 def activate(slug, rotation_slug):

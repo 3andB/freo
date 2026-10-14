@@ -13,7 +13,7 @@ from flask import current_app
 from app import create_app
 from app.extensions import db
 from app.models import AuditEvent, AutomationHeartbeat, AutomationState, EventBlockExecution, EventBlockItemExecution, LiveControlCommand, LiveQueueSnapshot, SelectionDecision, Station, TimedEventOccurrence
-from app.services.automation import playback_started, select_next
+from app.services.automation import ensure_station_states, playback_started, select_next
 from app.services.playout_queue import push_decision, queue_depth, queued_ids, queued_order, active_ids, socket_identity, request_decision_id, skip_current, interrupt_for_event
 from app.services.schedule import resolve, usable_clock
 
@@ -1062,6 +1062,7 @@ def tick(reader, target_depth=2):
     process_deletions()
     from app.services.listener_requests import housekeeping
     housekeeping()
+    ensure_station_states()
     states = AutomationState.query.all()
     for state in states:
         from app.services.live_mic import sync_pending_microphones

@@ -187,6 +187,11 @@ def test_stream_pin_and_chart_refresh_arrival_and_departure(booth, monkeypatch):
 
 def test_player_presence_recovers_after_anonymous_cookie_expires(booth):
     app, driver, base, _ = booth
+    # Revoke the booth login before testing an anonymous visitor. Merely
+    # clearing cookies can race a late permanent-session response.
+    wait=WebDriverWait(driver,15)
+    driver.find_element(By.CSS_SELECTOR, 'form[action$="/logout"] button').click()
+    wait.until(lambda d:d.current_url==base+'/')
     driver.delete_all_cookies()
     driver.execute_cdp_cmd('Page.addScriptToEvaluateOnNewDocument', {'source': """
       window.presenceResponses=[];
@@ -198,7 +203,6 @@ def test_player_presence_recovers_after_anonymous_cookie_expires(booth):
       };
     """})
     driver.get(base+'/player/test-station')
-    wait=WebDriverWait(driver,15)
     wait.until(lambda d: d.execute_script('return presenceResponses.includes(204)'))
     driver.execute_script('window.presenceDocument=document;presenceResponses=[]')
     driver.delete_cookie(app.config['SESSION_COOKIE_NAME'])

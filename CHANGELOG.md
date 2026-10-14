@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.0.0-rc.11 — private candidate; acceptance pending
+
+- Provision recording directories, ACLs and station write access when rendering new stations. Apply the existing per-directory worker write exception when it is first added, without restarting station engines; skip redundant worker refreshes and retain original-media protection.
+
+- Initialize new stations for worker discovery and live control without legacy rotation activation; repair missing state on older ready stations without enabling playback or resetting existing controls.
+
+- Keep public-player live status clear of station identity on narrow screens and long station descriptions; let the header grow with its content.
+- Refresh the stylesheet URL so existing listeners receive the layout repair. Add real-browser overlap and clipping coverage at phone and desktop widths.
+
 ## 1.0.0-rc.10 — private candidate; acceptance pending
 
 - Protect playout, microphone and automation clocks with a higher-priority CPU slice under contention.

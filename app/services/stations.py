@@ -4,7 +4,7 @@ import re
 from flask import current_app
 from sqlalchemy import text
 from app.extensions import db
-from app.models import Station, StreamMount
+from app.models import AutomationState, Station, StreamMount
 
 SLUG_PATTERN = re.compile(r'^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$')
 RESERVED = {'admin', 'status', 'server_version', 'freo-test'}
@@ -41,6 +41,9 @@ def create_station(name, slug, description='', *, pending=False, timezone_name='
     check_expansion()
     station = Station(timezone=timezone_name, lifecycle_state='pending_create' if pending else 'ready', name=name, slug=slug, description=description, enabled=True, desired_state='stopped')
     station.stream = StreamMount(format='mp3', bitrate=min(192, max(b for b in (64,96,128,192) if b <= hosting['limits']['bitrate_kbps'])) if hosting['hosted'] else 192, enabled=True)
+    # The worker discovers stations through this row. Keep automation inactive
+    # until the operator explicitly activates programming or booth controls.
+    station.automation = AutomationState(enabled=False)
     db.session.add(station)
     db.session.flush()
     from app.services.music_tags import seed_starter_tags

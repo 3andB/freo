@@ -185,13 +185,24 @@ def test_recording_provisioning_is_narrow_and_rejects_symlinks(tmp_path, monkeyp
     monkeypatch.setattr(module.grp,'getgrnam',lambda name:SimpleNamespace(gr_gid=456))
     calls=[];monkeypatch.setattr(module.subprocess,'run',lambda args,**kwargs:calls.append(args))
     root=tmp_path/'media';root.mkdir();units=tmp_path/'units'
-    module.provision(root,'test-station',units)
+    assert module.provision(root,'test-station',units) is True
     override=(units/'freo-playout@test-station.service.d'/'recordings.conf').read_text()
     assert str(root/'test-station'/'recordings') in override
     worker=(units/'freo-automation.service.d'/'recordings-test-station.conf').read_text()
     assert worker == override
     assert 'u:freo:r-x,u:freo-automation:rwx' in calls[1][2]
     assert len(calls)==2 and all('setfacl'==c[0] for c in calls)
+    assert module.provision(root,'test-station',units) is False
+    calls.clear();module.apply_service_access(False)
+    assert calls==[['/bin/systemctl','daemon-reload']]
+    calls.clear();module.apply_service_access(True)
+    assert calls==[['/bin/systemctl','daemon-reload'],['/bin/systemctl','try-restart','freo-automation.service']]
+    monkeypatch.setattr(module,'worker_namespace_covers',lambda directory:False)
+    calls.clear();module.apply_service_access(False,root/'test-station'/'recordings')
+    assert calls[-1]==['/bin/systemctl','try-restart','freo-automation.service']
+    monkeypatch.setattr(module,'worker_namespace_covers',lambda directory:True)
+    calls.clear();module.apply_service_access(False,root/'test-station'/'recordings')
+    assert calls==[['/bin/systemctl','daemon-reload']]
     (root/'bad').symlink_to(root/'test-station')
     with pytest.raises(ValueError):module.provision(root,'bad',units)
 

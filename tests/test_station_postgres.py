@@ -229,3 +229,37 @@ def test_listener_vote_concurrency_and_publication_migration(monkeypatch):
     with app.app_context():
         assert ListenerVote.query.filter_by(station_id=station_id).count()==1
         db.session.remove();db.engine.dispose()
+
+def test_missing_station_state_initialization_serializes(monkeypatch):
+    """Worker repair and explicit activation must not race a duplicate row."""
+    from threading import local
+    from sqlalchemy import event
+    from app.models import AutomationState
+    from app.services.automation import state_for
+    monkeypatch.setenv('DATABASE_URL',os.environ['FREO_TEST_POSTGRES_URL'])
+    monkeypatch.setenv('FREO_ENV_FILE','/dev/null')
+    monkeypatch.setenv('SECRET_KEY','test-only')
+    app=create_app('testing')
+    result=app.test_cli_runner().invoke(args=['db','upgrade'])
+    assert result.exit_code==0,result.output
+    with app.app_context():
+        station=Station(name='Legacy initialization',slug='legacy-initialization')
+        db.session.add(station);db.session.commit();identifier=station.id;engine=db.engine
+    barrier=Barrier(2);seen=local()
+    def synchronize_first_read(connection,cursor,statement,parameters,context,many):
+        if 'FROM automation_states' in statement and not getattr(seen,'done',False):
+            seen.done=True;barrier.wait(timeout=10)
+    event.listen(engine,'after_cursor_execute',synchronize_first_read)
+    def initialize(_):
+        with app.app_context():
+            state=state_for(db.session.get(Station,identifier))
+            result=(state.station_id,state.enabled,state.operator_mode)
+            db.session.commit();return result
+    try:
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            assert list(pool.map(initialize,range(2)))==[(identifier,False,'AUTO')]*2
+    finally:
+        event.remove(engine,'after_cursor_execute',synchronize_first_read)
+    with app.app_context():
+        assert AutomationState.query.filter_by(station_id=identifier).count()==1
+        db.session.remove();db.engine.dispose()

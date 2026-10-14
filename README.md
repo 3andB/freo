@@ -1,7 +1,7 @@
 # Freo
 
-**Freo 1.0.0-rc.10 is a prepared release candidate.** See the
-[RC10 installation and acceptance guide](docs/v1-rc10-installation.md).
+**Freo 1.0.0-rc.11 is a prepared release candidate.** See the
+[RC10 installation and acceptance guide](docs/v1-rc11-installation.md).
 The exact signed RC7 kit still requires clean-VM installation and reboot
 acceptance before publication or deployment. The stable release remains 0.3.2.
 

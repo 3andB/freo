@@ -160,7 +160,10 @@ def render(station):
     if station.stream.format not in ('mp3','aac') or station.stream.bitrate not in (64, 96, 128, 192):
         raise ValueError('Choose a supported stream codec and bitrate')
     from app.services.media import refresh_playlist
+    from app.services.media_storage import LocalMediaStorage
     refresh_playlist(slug)
+    run_checked([sys.executable, str(SOURCE / 'scripts/recording-storage.py'),
+                 str(LocalMediaStorage().root), slug, '--apply-services'])
     password = credential(slug)
     liquidsoap = render_liquidsoap(station, password)
     snippet = (SOURCE / 'deploy/nginx/station-location.conf.template').read_text().replace('__SLUG__', slug)

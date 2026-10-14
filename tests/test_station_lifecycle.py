@@ -15,6 +15,45 @@ from tests.test_web import admin_client
 REAL_REMOVE = runtime.remove
 
 
+def test_new_station_live_control_needs_no_legacy_rotation_activation(app):
+    from app.services.live_assist import set_mode
+    with app.app_context():
+        station = create_station('New booth', 'new-booth', pending=True)
+        process_station(station)
+        assert station.desired_state == 'stopped'
+        # Runtime actions are mocked by this fixture; model the supported start.
+        station.desired_state = 'running'
+        db.session.commit()
+        state = set_mode(station, AdminUser.query.first(), 'AUTO')
+        assert state.enabled and state.operator_mode == 'AUTO'
+
+
+def test_worker_initializes_only_missing_active_station_states(app):
+    from app.models import AutomationState, StreamMount
+    from app.services.automation import ensure_station_states
+    from datetime import datetime, timezone
+    with app.app_context():
+        existing = create_station('Existing', 'existing')
+        existing.automation.enabled = True
+        existing.automation.hold = True
+        existing.automation.operator_mode = 'DJ_BOOTH'
+        legacy = Station(name='Uninitialized', slug='uninitialized',
+                         stream=StreamMount(bitrate=128), lifecycle_state='ready')
+        archived = Station(name='Archived', slug='archived',
+                           deleted_at=datetime.now(timezone.utc), lifecycle_state='deleted')
+        db.session.add_all([legacy, archived])
+        db.session.commit()
+        ensure_station_states()
+        assert legacy.automation is not None and not legacy.automation.enabled
+        assert legacy.desired_state == 'stopped'
+        assert existing.automation.enabled and existing.automation.hold
+        assert existing.automation.operator_mode == 'DJ_BOOTH'
+        assert archived.automation is None
+        count = AutomationState.query.count()
+        ensure_station_states()
+        assert AutomationState.query.count() == count
+
+
 @pytest.fixture
 def app(station_app, monkeypatch, tmp_path):
     monkeypatch.setattr(runtime, 'ROOT', tmp_path)

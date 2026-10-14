@@ -17,7 +17,7 @@ def test_real_recording_acl_separates_web_playout_and_worker(tmp_path):
     # These test-only parent directories must be traversable by the service UIDs.
     assert tmp_path.is_relative_to('/tmp')
     tmp_path.parent.chmod(0o755);tmp_path.chmod(0o755)
-    root=tmp_path/'media';root.mkdir(mode=0o755)
+    root=tmp_path/'media';root.mkdir(mode=0o755);root.chmod(0o755)
     spec=importlib.util.spec_from_file_location('recording_storage','scripts/recording-storage.py')
     module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module)
     module.provision(root,'test-station',unit_root=tmp_path/'units')
@@ -33,5 +33,14 @@ def test_real_recording_acl_separates_web_playout_and_worker(tmp_path):
     assert not path.exists()
     # Only the recordings directory is writable, not the station root.
     assert run('freo-automation',f'from pathlib import Path;Path({str(directory.parent/"unrelated")!r}).touch()').returncode!=0
+    originals=directory.parent/'originals';originals.mkdir(mode=0o750);originals.chmod(0o750)
+    import grp
+    os.chown(originals,pwd.getpwnam('freo-ingest').pw_uid,grp.getgrnam('freo-playout').gr_gid)
+    original=originals/'original.mp3';original.write_bytes(b'Keep original media')
+    os.chown(original,pwd.getpwnam('freo-ingest').pw_uid,grp.getgrnam('freo-playout').gr_gid)
+    original.chmod(0o640)
+    assert run('freo-automation',f'from pathlib import Path;assert Path({str(original)!r}).read_bytes()==b"Keep original media"').returncode==0
+    assert run('freo-automation',f'from pathlib import Path;Path({str(original)!r}).write_bytes(b"unauthorized")').returncode!=0
+    assert run('freo-automation',f'from pathlib import Path;Path({str(original)!r}).unlink()').returncode!=0
     worker=(tmp_path/'units'/'freo-automation.service.d'/'recordings-test-station.conf').read_text()
     assert worker==f'[Service]\nReadWritePaths="{directory}"\n'
