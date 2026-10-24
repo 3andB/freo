@@ -61,7 +61,8 @@ existing history and drains eligible completed hours. It records actual bounded
 observation coverage, without bridging gaps over 120 seconds. Average listeners
 uses listener-seconds divided by coverage; listener-hours uses listener-seconds
 /3600. Zero coverage sends null average and hours. Existing positive RC11 coverage
-is retained; historical records without known coverage remain unknown. Original
+is retained; historical records without known coverage remain unknown. Current listeners retains the last valid observation within its own hour; an
+unknown later observation does not erase it or borrow from another hour. Original
 metric keys stay present, with null for unknown observations. Stale/missing
 scheduler observations are unknown. Shared, nondeleted media counts describe what
 is available to each channel, so totals are not unique installation storage.

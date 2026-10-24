@@ -142,11 +142,11 @@ def test_unknown_and_partial_coverage_preserve_precision(central, monkeypatch):
     assert row.observed_seconds==60.25
     monkeypatch.setattr('app.services.central_api.metrics.observation',lambda slug:(None,None))
     sample(hour+360)
-    assert row.snapshot['current_listeners'] is None and row.snapshot['stream_running'] is None
+    assert row.snapshot['current_listeners'] == 7 and row.snapshot['stream_running'] is None
     due();reporter.tick()
     entry=payloads(api,'/v1/heartbeat')[-1]['stations'][0]
     assert entry['on_air'] is None
-    assert entry['metrics'][0]['current_listeners'] is None
+    assert entry['metrics'][0]['current_listeners'] == 7
     assert entry['metrics'][0]['observed_seconds']==60.25
     # A completed, accepted hour cannot be replaced by an older partial sample.
     original=(row.observed_seconds,row.listener_seconds,dict(row.snapshot))
@@ -252,3 +252,29 @@ def test_rejected_enrollment_never_retries_on_contract_revision_change(central):
     assert len(payloads(api,'/v1/enroll'))==1
     assert reporter.store.read()==credential
     assert not payloads(api,'/v1/register')
+
+
+def test_hour_boundary_keeps_last_valid_listener_and_library_observations(central,monkeypatch):
+    from app.models import Track
+    hour=int(time.time()//3600)*3600
+    monkeypatch.setattr('app.services.central_api.metrics.observation',lambda slug:(True,2))
+    sample(hour-30)
+    track=Track.query.first();track.file_size_bytes=2000;db.session.commit()
+    monkeypatch.setattr('app.services.central_api.metrics.observation',lambda slug:(True,9))
+    sample(hour+30)
+    previous=wire_metric(db.session.get(CentralHourlyMetric,(1,hour-3600)),True)
+    current=wire_metric(db.session.get(CentralHourlyMetric,(1,hour)),True)
+    assert previous['current_listeners']==previous['peak_listeners']==2
+    assert previous['observed_seconds']==30 and previous['average_listeners']==2
+    assert previous['library_storage_bytes']==1000
+    assert current['current_listeners']==current['peak_listeners']==9
+    assert current['observed_seconds']==30 and current['average_listeners']==2
+    assert current['library_storage_bytes']==2000
+    monkeypatch.setattr('app.services.central_api.metrics.observation',lambda slug:(None,None))
+    sample(hour+60)
+    current=wire_metric(db.session.get(CentralHourlyMetric,(1,hour)),True)
+    assert current['current_listeners']==9 and current['stream_running'] is None
+    assert current['observed_seconds']==30
+    sample(hour+3600)
+    unknown=wire_metric(db.session.get(CentralHourlyMetric,(1,hour+3600)),True)
+    assert unknown['current_listeners'] is None and unknown['observed_seconds']==0

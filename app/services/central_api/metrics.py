@@ -145,8 +145,14 @@ def sample(now):
                 if not row.sent and end > covered_from:
                     row.observed_seconds += end - covered_from
                     row.listener_seconds += previous['listeners'] * (end - covered_from)
-                    row.peak_listeners = max(row.peak_listeners, previous['listeners'], listeners)
-                    row.snapshot = dict(snapshot)
+                    row.peak_listeners = max(row.peak_listeners, previous['listeners'])
+                    if hour == int(now // 3600) * 3600:
+                        row.peak_listeners = max(row.peak_listeners, listeners)
+                        row.snapshot = dict(snapshot)
+                    elif row.snapshot.get('current_listeners') is None:
+                        # The closing observation belongs to the next hour.
+                        # Retain only facts actually observed in this interval.
+                        row.snapshot = dict(row.snapshot, current_listeners=previous['listeners'])
                     row.coverage = {'known': True, 'until': end, 'peak_known': True}
                 start = end
         # Even a wholly unknown hour has a truthful nullable snapshot and zero coverage.
@@ -154,6 +160,8 @@ def sample(now):
         if not row.sent:
             if listeners is not None:
                 row.peak_listeners = max(row.peak_listeners, listeners)
+            elif row.snapshot.get('current_listeners') is not None:
+                snapshot['current_listeners'] = row.snapshot['current_listeners']
             row.snapshot = dict(snapshot)
             row.coverage = dict(row.coverage or {}, known=True,
                                 peak_known=listeners is not None or (row.coverage or {}).get('peak_known', False))
