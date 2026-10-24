@@ -36,6 +36,8 @@ def files_usage(roots):
             info = path.lstat()
         except FileNotFoundError:
             return
+        except OSError:
+            raise hosting.HostingError('storage_unavailable', 'Customer media could not be inspected; check storage access before retrying.') from None
         if stat.S_ISLNK(info.st_mode):
             raise hosting.HostingError('storage_unavailable', 'Symlinked customer media requires administrator review.')
         identity = (info.st_dev, info.st_ino)
@@ -45,8 +47,11 @@ def files_usage(roots):
         if stat.S_ISREG(info.st_mode):
             total += info.st_size
         elif stat.S_ISDIR(info.st_mode):
-            for entry in path.iterdir():
-                visit(entry)
+            try:
+                for entry in path.iterdir():
+                    visit(entry)
+            except OSError:
+                raise hosting.HostingError('storage_unavailable', 'Customer media could not be inspected; check storage access before retrying.') from None
         else:
             raise hosting.HostingError('storage_unavailable', 'Non-regular customer media requires administrator review.')
     for root in roots:

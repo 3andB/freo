@@ -84,6 +84,25 @@ def test_hardlinks_count_once_and_existing_media(quota):
     with pytest.raises(h.HostingError):storage.usage()
 
 
+def test_unreadable_media_rejects_reservations_without_an_internal_error(quota, monkeypatch):
+    staging=quota/'private-staging';staging.mkdir()
+    original=Path.iterdir
+    def denied(path):
+        if path==staging:raise PermissionError('private storage path')
+        return original(path)
+    monkeypatch.setattr(Path,'iterdir',denied)
+    for operation in (storage.usage, lambda:storage.reserve(1).__enter__()):
+        with pytest.raises(h.HostingError) as error:operation()
+        assert error.value.code=='storage_unavailable'
+    from flask import Flask
+    from app.services.hosting_web import install
+    application=Flask(__name__);application.testing=True;install(application)
+    response=application.test_client().post('/upload',data={'agree':'yes'},content_type='multipart/form-data')
+    assert response.status_code==409 and response.json['error']=='storage_unavailable'
+    assert 'private storage path' not in response.get_data(as_text=True)
+    assert not list(storage.ROOT.glob('reservation-*'))
+
+
 def test_over_quota_cleanup_and_no_growth(quota):
     with (quota/'large').open('wb') as stream:stream.truncate(1_000_000_001)
     assert storage.usage()['over_quota']
