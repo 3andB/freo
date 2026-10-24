@@ -6,6 +6,7 @@
 - Keep a prepared return to automation when a station-ID event is waiting for DJ control to end; retain the event's existing Auto scheduling policy.
 - Preserve passwords in disposable PostgreSQL test URLs and seed historical schemas for forward migration checks. Retain provenance downgrade refusal and matched-backup recovery coverage.
 - Read streaming WAV regression recordings in bounded chunks and include the corrected transport and schema-head fixtures.
+- Keep AUTO_CUE disabled while a Cue edit is saving, including when a newer poll renders before the edit response finishes.
 - Return a controlled storage-unavailable response when hosted quota accounting cannot read customer media. Keep ordinary tests in temporary media roots.
 
 ## 1.0.0-rc.11 — private candidate; acceptance pending
