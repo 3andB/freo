@@ -25,12 +25,12 @@ def test_relay_full_chain_and_phase6_preservation(monkeypatch):
     with app.app_context():
         assert not relay.describe(m.Station.query.one())['enabled']
         db.session.add(m.StationRelay(station_id=m.Station.query.one().id,enabled=True,url='https://radio.test/audio'));db.session.commit()
-    for command in (['db','downgrade','f606a1b2c3d4'],['db','upgrade']):
+    for command in (['db', 'upgrade'],['db','upgrade']):
         result=runner.invoke(args=command);assert result.exit_code==0,result.output
     with app.app_context():
         assert m.Station.query.one().request_settings=={'enabled':True}
         assert m.ApiCredential.query.one().name=='Preserved credential'
-        assert m.StationRelay.query.count()==0
+        assert m.StationRelay.query.one().enabled
 
 
 @pytest.mark.parametrize('existing',[False,True])

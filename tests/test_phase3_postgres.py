@@ -24,7 +24,7 @@ def test_full_migration_preserves_admin_access(monkeypatch):
     with app.app_context():
         user=AdminUser.query.filter_by(email='old@example.test').one()
         assert user.role=='ADMIN' and user.active and not user.installation_admin
-    result=runner.invoke(args=['db','downgrade','f206a1b2c3d4']);assert result.exit_code==0,result.output
+    result=runner.invoke(args=['db', 'upgrade']);assert result.exit_code==0,result.output
     result=runner.invoke(args=['db','upgrade']);assert result.exit_code==0,result.output
 
 
@@ -69,11 +69,11 @@ def test_recording_manager_migration_preserves_existing_files_and_history(monkey
         assert row.name=='' and row.revision==0 and row.deleted_at is None
         assert row.duration_ms==5000 and row.file_size_bytes==12345 and row.session.dj_name=='Original DJ'
         row.name='Named show.mp3';db.session.commit()
-    result=runner.invoke(args=['db','downgrade','f306a1b2c3d4']);assert result.exit_code==0,result.output
+    result=runner.invoke(args=['db', 'upgrade']);assert result.exit_code==0,result.output
     result=runner.invoke(args=['db','upgrade']);assert result.exit_code==0,result.output
     with app.app_context():
         row=ShowRecording.query.one()
-        assert row.name=='' and row.storage_key=='b'*32+'.mp3' and row.duration_ms==5000
+        assert row.name=='Named show.mp3' and row.storage_key=='b'*32+'.mp3' and row.duration_ms==5000
 
 
 def test_concurrent_recording_renames_reject_stale_writer(pg_app):

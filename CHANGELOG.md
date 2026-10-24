@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.0.0-rc.15 — private candidate; acceptance pending
+
+- Expose an explicit retry when the persistent monitor reaches a clean stream EOF.
+- Keep a prepared return to automation when a station-ID event is waiting for DJ control to end; retain the event's existing Auto scheduling policy.
+- Preserve passwords in disposable PostgreSQL test URLs and seed historical schemas for forward migration checks. Retain provenance downgrade refusal and matched-backup recovery coverage.
+- Read streaming WAV regression recordings in bounded chunks and include the corrected transport and schema-head fixtures.
+
 ## 1.0.0-rc.11 — private candidate; acceptance pending
 
 - Provision recording directories, ACLs and station write access when rendering new stations. Apply the existing per-directory worker write exception when it is first added, without restarting station engines; skip redundant worker refreshes and retain original-media protection.

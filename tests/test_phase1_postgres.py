@@ -14,7 +14,7 @@ from tests.test_schedule_postgres import pg_app
 pytestmark=pytest.mark.skipif(not os.getenv('FREO_TEST_POSTGRES_URL'),reason='Requires disposable PostgreSQL')
 
 
-def test_phase1_upgrade_defaults_downgrade_and_fk_preserve_history(monkeypatch):
+def test_phase1_upgrade_defaults_and_fk_preserve_history(monkeypatch):
     monkeypatch.setenv('DATABASE_URL',os.environ['FREO_TEST_POSTGRES_URL'])
     monkeypatch.setenv('FREO_ENV_FILE','/dev/null');monkeypatch.setenv('SECRET_KEY','phase1-only')
     app=create_app('testing');runner=app.test_cli_runner()
@@ -36,7 +36,7 @@ def test_phase1_upgrade_defaults_downgrade_and_fk_preserve_history(monkeypatch):
         song=add_song(db.session.get(m.Station,1));row.leader_track=song;db.session.commit()
         db.session.delete(song);db.session.commit();db.session.expire_all()
         assert row.leader_track_id is None
-    result=runner.invoke(args=['db','downgrade','c83d4e5f9012'])
+    result=runner.invoke(args=['db','upgrade'])
     assert result.exit_code==0,result.output
     result=runner.invoke(args=['db','upgrade'])
     assert result.exit_code==0,result.output

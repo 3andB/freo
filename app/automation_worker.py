@@ -928,7 +928,12 @@ def prepare_dj_return(station, reader, mixer, cue_active=False):
         eligible = eligible and not TimedEventOccurrence.query.filter(
             TimedEventOccurrence.station_id==station.id,
             TimedEventOccurrence.state.in_(('PENDING','READY','QUEUED','STARTED')),
-            TimedEventOccurrence.scheduled_for_utc <= now+timedelta(seconds=max(0,remaining)+1)).first()
+            TimedEventOccurrence.scheduled_for_utc <= now+timedelta(seconds=max(0,remaining)+1),
+            # A normal station ID waits for AUTO; it does not own the DJ bus.
+            # Cancelling continuity for that waiting event leaves nothing
+            # prepared at EOF. Its normal AUTO policy still runs after return.
+            db.or_(TimedEventOccurrence.event.has(interrupt_dj=True),
+                   TimedEventOccurrence.state.in_(('QUEUED','STARTED')))).first()
     else:
         eligible = False
     if not eligible:

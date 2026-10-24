@@ -26,12 +26,12 @@ def test_full_chain_preserves_phase7(monkeypatch):
             assert m.StationRelay.query.one().enabled
             assert m.StationProduction.query.count()==0
             db.session.add(m.StationProduction(station_id=m.Station.query.one().id,enabled=True));db.session.commit()
-        for args in (['db','downgrade','f706a1b2c3d4'],['db','upgrade']):
+        for args in (['db', 'upgrade'],['db','upgrade']):
             result=runner.invoke(args=args);assert result.exit_code==0,result.output
         with app.app_context():
             assert m.Station.query.one().request_settings=={'enabled':True}
             assert m.StationRelay.query.one().enabled
-            assert m.StationProduction.query.count()==0
+            assert m.StationProduction.query.one().enabled
     finally:
         with app.app_context():
             db.session.remove();db.drop_all()

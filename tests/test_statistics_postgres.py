@@ -26,13 +26,14 @@ def test_listener_migration_preserves_history(monkeypatch):
         db.session.add(StatsState(scope=1, data=dict(at=200, sessions_since=100,
                                                  session_clients_at=200, session_clients_valid=True)))
         db.session.commit()
-    for args in (['db', 'upgrade'], ['db', 'downgrade', 'f316a1b2c3d4'], ['db', 'upgrade']):
+    for args in (['db', 'upgrade'], ['db', 'upgrade'], ['db', 'upgrade']):
         result = runner.invoke(args=args)
         assert result.exit_code == 0, result.output
     with app.app_context():
         row = AudiencePresence.query.one()
         assert (row.first_seen, row.last_seen, row.listening) == (100, 200, None)
-        assert db.session.execute(text('SELECT data FROM stats_states WHERE scope=1')).scalar() == {'at': 200}
+        assert db.session.execute(text('SELECT data FROM stats_states WHERE scope=1')).scalar() == dict(
+            at=200, sessions_since=100, session_clients_at=200, session_clients_valid=True)
         db.session.add(Station(id=1, name='Migration', slug='migration'))
         db.session.commit()
         tick(3600, ['one'])

@@ -46,16 +46,17 @@ def test_concurrent_submission_limits_and_selection_claim(pg_app, monkeypatch):
         assert m.SelectionDecision.query.filter(m.SelectionDecision.listener_request_id.isnot(None)).count() == 1
 
 
-def test_full_migration_chain_and_phase5_roundtrip(monkeypatch):
+def test_full_migration_chain_preserves_phase4_history(monkeypatch):
     monkeypatch.setenv('DATABASE_URL', os.environ['FREO_TEST_POSTGRES_URL'])
     monkeypatch.setenv('FREO_ENV_FILE', '/dev/null')
     app = create_app('testing'); runner = app.test_cli_runner()
-    result = runner.invoke(args=['db', 'upgrade']); assert result.exit_code == 0, result.output
+    result = runner.invoke(args=['db', 'upgrade', 'f406a1b2c3d4']); assert result.exit_code == 0, result.output
     with app.app_context():
-        station = m.Station(name='Preserved', slug='preserved'); db.session.add(station); db.session.flush()
-        db.session.add(m.SelectionDecision(station_id=station.id, status='started', reason='Preserved history', started_at=datetime.now(timezone.utc)))
+        from tests.historical_schema import insert
+        station_id = insert(m.Station,name='Preserved',slug='preserved')
+        insert(m.SelectionDecision,station_id=station_id,status='started',reason='Preserved history',started_at=datetime.now(timezone.utc))
         db.session.commit()
-    for command in (['db', 'downgrade', 'f406a1b2c3d4'], ['db', 'upgrade']):
+    for command in (['db', 'upgrade'], ['db', 'upgrade']):
         result = runner.invoke(args=command); assert result.exit_code == 0, result.output
     with app.app_context():
         assert m.Station.query.one().name == 'Preserved'

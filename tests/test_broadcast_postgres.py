@@ -13,12 +13,13 @@ def test_fresh_and_baseline_upgrade(monkeypatch):
     monkeypatch.setenv('DATABASE_URL',os.environ['FREO_TEST_POSTGRES_URL'])
     monkeypatch.setenv('FREO_ENV_FILE','/dev/null');monkeypatch.setenv('SECRET_KEY','test-only')
     app=create_app('testing');runner=app.test_cli_runner()
-    result=runner.invoke(args=['db','upgrade']);assert result.exit_code==0,result.output
+    result=runner.invoke(args=['db','upgrade','f906a1b2c3d4']);assert result.exit_code==0,result.output
     with app.app_context():
-        station=Station(name='Existing',slug='existing',description='',desired_state='stopped')
-        station.stream=StreamMount(bitrate=96,audio_processing=dict(agc=True),pending_audio=None)
-        db.session.add(station);db.session.commit()
-    for args in [('db','downgrade','f906a1b2c3d4'),('db','upgrade')]:
+        from tests.historical_schema import insert
+        station_id=insert(Station,name='Existing',slug='existing',description='',desired_state='stopped')
+        insert(StreamMount,station_id=station_id,bitrate=96,audio_processing=dict(agc=True),pending_audio=None)
+        db.session.commit()
+    for args in [('db','upgrade'),('db','upgrade')]:
         result=runner.invoke(args=args);assert result.exit_code==0,result.output
     with app.app_context():
         station=Station.query.one();assert station.stream.bitrate==96 and station.stream.audio_processing['agc']

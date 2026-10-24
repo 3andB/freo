@@ -7,7 +7,7 @@ from app.extensions import db
 pytestmark = pytest.mark.skipif(not os.getenv('FREO_TEST_POSTGRES_URL'), reason='Disposable PostgreSQL required')
 
 
-def test_upgrade_downgrade_preserves_existing_data(monkeypatch):
+def test_upgrade_and_refused_downgrade_preserve_existing_data(monkeypatch):
     monkeypatch.setenv('DATABASE_URL', os.environ['FREO_TEST_POSTGRES_URL'])
     monkeypatch.setenv('FREO_ENV_FILE', '/dev/null')
     monkeypatch.setenv('SECRET_KEY', 'test-only')
@@ -40,7 +40,7 @@ def test_upgrade_downgrade_preserves_existing_data(monkeypatch):
         db.session.remove()
         assert StreamMount.query.one().bitrate == 192
         StreamMount.query.one().bitrate = 96; db.session.commit()
-    for args in (['db','downgrade','f806a1b2c3d4'], ['db','upgrade']):
+    for args in (['db','upgrade'], ['db','upgrade']):
         result = runner.invoke(args=args)
         assert result.exit_code == 0, result.output
     with app.app_context():

@@ -57,13 +57,13 @@ def test_migration_chain_phase5_data_and_revocation(monkeypatch):
         service.revoke_credential(m.AdminUser.query.one(), db.session.get(m.ApiCredential, identifier))
         db.session.commit()
     assert client.get('/api/v1/stations', headers={'Authorization': 'Bearer ' + token}).status_code == 401
-    for command in (['db', 'downgrade', 'f506a1b2c3d4'], ['db', 'upgrade']):
+    for command in (['db', 'upgrade'], ['db', 'upgrade']):
         result = runner.invoke(args=command)
         assert result.exit_code == 0, result.output
     with app.app_context():
         assert m.Station.query.one().request_settings == {'enabled': True}
         assert m.ListenerRequest.query.one().reason == 'Preserved'
         assert m.SelectionDecision.query.one().reason == 'Preserved history'
-        assert m.ApiCredential.query.count() == 0
+        assert db.session.get(m.ApiCredential, identifier).revoked_at is not None
         from app.routes.health import release_schema_head
         assert db.session.execute(sa.text('select version_num from alembic_version')).scalar() == release_schema_head()

@@ -19,7 +19,7 @@ def pg_app(monkeypatch,tmp_path):
     schema='import_test_'+uuid.uuid4().hex
     engine=sa.create_engine(url)
     with engine.begin() as c:c.execute(sa.text(f'CREATE SCHEMA {schema}'))
-    monkeypatch.setenv('DATABASE_URL',str(sa.engine.make_url(url).update_query_dict({'options':f'-csearch_path={schema}'})))
+    monkeypatch.setenv('DATABASE_URL',sa.engine.make_url(url).update_query_dict({'options':f'-csearch_path={schema}'}).render_as_string(hide_password=False))
     monkeypatch.setenv('SECRET_KEY','test-only')
     app=create_app('testing')
     with app.app_context():

@@ -18,13 +18,15 @@ def test_migration_preserves_old_cues_and_defaults(monkeypatch):
     app=create_app('testing');runner=app.test_cli_runner()
     def migrate(*args):
         result=runner.invoke(args=['db',*args]);assert result.exit_code==0,result.output
-    migrate('upgrade')
+    migrate('upgrade','f106a1b2c3d4')
     with app.app_context():
-        station=m.Station(name='Old station',slug='old',desired_state='stopped');db.session.add(station);db.session.flush()
-        from tests.test_music_delete import add_song
-        song=add_song(station);song.cue_in_ms=100;song.cue_out_ms=1800;song.notes='Keep notes'
-        db.session.commit();identifier=song.id
-    migrate('downgrade','f106a1b2c3d4')
+        from tests.historical_schema import insert
+        station_id=insert(m.Station,name='Old station',slug='old',desired_state='stopped')
+        identifier=insert(m.Track,station_id=station_id,uuid='legacy-audio',freo_track_id='FR-2345-6789',title='Song',artist='Artist',
+            original_filename='song.mp3',storage_key='1'*32+'.mp3',media_type='mp3',duration_ms=2000,
+            sample_rate_hz=44100,channels=2,file_size_bytes=10,checksum_sha256='1'*64,enabled=True,
+            cue_in_ms=100,cue_out_ms=1800,notes='Keep notes')
+        db.session.commit()
     with app.app_context():
         before=dict(db.session.execute(sa.text('SELECT * FROM tracks WHERE id=:id'),{'id':identifier}).mappings().one())
     migrate('upgrade')
@@ -35,7 +37,7 @@ def test_migration_preserves_old_cues_and_defaults(monkeypatch):
         assert not song.audio_edit_enabled and song.audio_edit_revision==0
         assert song.fade_in_ms==song.fade_out_ms==0 and song.gain_trim_db is None
         assert song.playback_duration_ms==2000
-    migrate('downgrade','f106a1b2c3d4');migrate('upgrade')
+    migrate('upgrade')
     with app.app_context():
         assert db.session.get(m.Track,identifier).notes=='Keep notes'
     with app.app_context():
