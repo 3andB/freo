@@ -101,7 +101,8 @@ def test_link_during_page_loading_reaches_latest_destination(booth, held_stage):
     assert driver.execute_script('return keptMonitor === FreoMonitor.audio')
     driver.back()
     if held_stage == 'response':
-        wait.until(lambda d: d.find_elements(By.ID, 'dj-booth') and not d.execute_script('return document.documentElement.classList.contains("is-navigating")'))
+        # Returning to the booth reloads its scripts as well as the document.
+        WebDriverWait(driver,30).until(lambda d: d.find_elements(By.ID, 'dj-booth') and not d.execute_script('return document.documentElement.classList.contains("is-navigating")'))
     else:
         wait.until(lambda d: d.current_url.endswith('/categories') and d.find_elements(By.CSS_SELECTOR, '[data-category-row]') and not d.execute_script('return document.documentElement.classList.contains("is-navigating")'))
     driver.forward()

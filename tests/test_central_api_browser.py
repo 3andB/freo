@@ -15,6 +15,8 @@ def test_installation_setup_and_station_location(booth):
     driver.find_element(By.CSS_SELECTOR, '.admin-nav a[href="/admin/installation"]').click()
     wait_text(driver, '.admin-content h1', 'Freo installation')
     wait_text(driver, '.admin-content', 'Freo automatically contacts api.freo.live')
+    WebDriverWait(driver, 10).until(lambda d: d.execute_script(
+        "return !document.documentElement.classList.contains('is-navigating')"))
     assert not driver.find_elements(By.NAME, 'manager_email')
     driver.find_element(By.NAME, 'activation_code').send_keys('FREO-7K4P-M9Q2')
     driver.find_element(By.CSS_SELECTOR, '.admin-content button[type=submit]').click()

@@ -25,7 +25,9 @@ def test_playlist_music_bubbles_editor_undo_and_schedule(booth):
     Select(driver.find_element(By.CSS_SELECTOR,'#playlist-form [name=mode]')).select_by_value('RANDOM')
     driver.find_element(By.CSS_SELECTOR,'#playlist-form button[type=submit]').click()
     wait_text(driver,'#playlist-list','Friday Drive')
-    driver.find_element(By.CSS_SELECTOR,'.playlist-song .preview-button').click()
+    # Saving refreshes both panels; the playlist name can precede song rendering.
+    WebDriverWait(driver,10,ignored_exceptions=(StaleElementReferenceException,)).until(
+        lambda d:d.find_element(By.CSS_SELECTOR,'.playlist-song .preview-button').click() is None)
     WebDriverWait(driver,8).until(lambda d:d.execute_script('return !document.getElementById("music-audio").paused'))
     driver.find_element(By.CSS_SELECTOR,'.playlist-song button[aria-label^="Remove"]').click()
     wait_text(driver,'#playlist-count','0 songs')

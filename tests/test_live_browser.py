@@ -218,6 +218,8 @@ def test_file_picker_and_drop_import_results(booth):
     shutil.rmtree(upload_dir)
     with app.app_context():assert MusicImportItem.query.count()==1 and MediaIngestJob.query.count()==0
     driver.execute_script("const data=new DataTransfer();data.items.add(new File(['drop audio'],'dropped.mp3',{type:'audio/mpeg'}));document.querySelector('.drop-zone').dispatchEvent(new DragEvent('drop',{dataTransfer:data,bubbles:true,cancelable:true}));")
+    wait_text(driver,'#selected-files','dropped.mp3')
+    WebDriverWait(driver,8).until(lambda d:len(d.find_elements(By.CSS_SELECTOR,'.import-card'))==2)
     wait_text(driver,'.import-card:last-child','Uploaded')
     with app.app_context():assert MusicImportItem.query.count()==2
     driver.refresh()

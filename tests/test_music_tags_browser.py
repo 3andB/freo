@@ -62,6 +62,8 @@ def test_quick_toggles_management_and_album(booth):
     driver.set_window_size(1600, 1200)
     driver.find_element(By.LINK_TEXT, 'Tags').click()
     wait_text(driver, '#tag-manager', 'Create tag')
+    WebDriverWait(driver, 15).until(lambda d: not d.execute_script(
+        'return document.documentElement.classList.contains("is-navigating")'))
     form = driver.find_element(By.ID, 'tag-create')
     form.find_element(By.NAME, 'name').send_keys('ROAD TRIP')
     form.find_element(By.NAME, 'description').send_keys('Open road songs')

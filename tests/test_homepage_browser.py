@@ -58,6 +58,7 @@ def test_website_editor_publish_preview_and_workspace_monitor(booth):
     assert driver.execute_script('return originalAudio===FreoMonitor.audio && !FreoMonitor.audio.paused')
     driver.execute_script('FreoWorkspace.navigate(arguments[0])',base+'/admin/website')
     wait.until(lambda d:d.find_elements(By.CSS_SELECTOR,'[data-website-editor]'))
+    wait.until(lambda d:not d.execute_script('return document.documentElement.classList.contains("is-navigating")'))
     assert driver.execute_script('return originalAudio===FreoMonitor.audio && !FreoMonitor.audio.paused')
     name=driver.find_element(By.NAME,'name');name.clear();name.send_keys('Sunroom Radio')
     tagline=driver.find_element(By.NAME,'tagline');tagline.clear();tagline.send_keys('For the love of listening.')
