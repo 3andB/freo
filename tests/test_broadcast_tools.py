@@ -165,7 +165,13 @@ def test_real_off_matches_baseline_and_constructor_failure_bypasses(tmp_path,fai
     result=subprocess.run(['liquidsoap',str(script)],capture_output=True,text=True,timeout=90)
     assert result.returncode==0,result.stdout+result.stderr
     with wave.open(str(base)) as a,wave.open(str(off)) as b:
-        assert a.readframes(a.getnframes())==b.readframes(b.getnframes())
+        # Liquidsoap emits streaming WAV headers with an unknown frame count.
+        # Bound allocation by the real file, while still comparing every sample.
+        original=a.readframes(base.stat().st_size//(a.getnchannels()*a.getsampwidth()))
+        bypassed=b.readframes(off.stat().st_size//(b.getnchannels()*b.getsampwidth()))
+        assert a.getparams()[:3]==b.getparams()[:3]
+        assert len(original)>=a.getframerate()*a.getnchannels()*a.getsampwidth()
+        assert original==bypassed
 
 
 def test_file_fetch_decodes_locally_and_removes_partial_files(tmp_path,monkeypatch):

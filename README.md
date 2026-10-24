@@ -48,6 +48,9 @@ acceptance. See the [acceptance record](docs/0.3.2-acceptance.md) for test scope
 Local development needs a Python 3.12 venv, `requirements-dev.txt`, a private
 `.env`, and `flask --app wsgi:app db upgrade`; run `pytest` for tests. Root, a
 domain, and radio services are not required for unit tests.
+The full regression suite also uses Node.js with its built-in test runner,
+FFmpeg, Liquidsoap, and Chromium with a matching ChromeDriver. Install these
+test prerequisites before interpreting missing executable errors as failures.
 
 Freo is source-available under the [Freo Source-Available License](LICENSE). Up to three stations total per owner are free, including commercial use. US$99 one time covers unlimited stations across all installations owned by the purchaser and all future updates. Contact [info@3andB.com](mailto:info@3andB.com) for a Stripe invoice.
 
