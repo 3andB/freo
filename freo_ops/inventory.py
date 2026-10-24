@@ -20,6 +20,7 @@ OPERATOR_DOCS = {
     'v1-rc10-installation.md',
     'v1-rc11-installation.md',
     'v1-rc12-installation.md',
+    'v1-rc13-installation.md', 'mothership-reporting.md',
     'v1-rc1-installation.md', 'v1-rc2-installation.md', 'v1-rc3-installation.md', 'v1-rc4-installation.md', 'freo-studio-hosting-integration.md', 'studio-release-api.md',
     'installation.md', '0.3.2-rc.2-installation.md', 'recovery-and-upgrades.md', 'security.md', 'license-agreement.md',
     'audio-import-and-processing.md', 'appearance.md', 'automation.md', 'channel-management.md',

@@ -1270,6 +1270,9 @@ class CentralHourlyMetric(db.Model):
     listener_seconds = db.Column(db.Float, nullable=False, default=0)
     peak_listeners = db.Column(db.BigInteger, nullable=False, default=0)
     snapshot = db.Column(db.JSON, nullable=False, default=dict)
+    # Sampling provenance is separate from the wire snapshot. Older reporters
+    # serialize snapshot keys directly; never put private bookkeeping in it.
+    coverage = db.Column(db.JSON)
     sent = db.Column(db.Boolean, nullable=False, default=False)
 
 # Visual scheduling models share the application's metadata and station identities.

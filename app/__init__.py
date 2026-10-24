@@ -46,6 +46,9 @@ def create_app(config_name=None):
             values.setdefault('v', VERSION)
 
     app.config.from_object(configs[name])
+    for key in ('FREO_DEPLOYMENT_LABEL', 'FREO_INSTALLATION_LIFECYCLE'):
+        if key in os.environ:
+            app.config[key] = os.environ[key]
     for key in ("FREO_PROVIDER_ENCRYPTION_KEY", "FREO_PRODUCTION_ROOT", "FREO_RELAY_PRIVATE_NETWORKS", "FREO_RELAY_TRANSPORT_PORT", "SECRET_KEY", "PUBLIC_BASE_URL", "FREO_DOMAIN", "FREO_INSTALLATION_HOSTS", "FREO_DOMAIN_TARGET_HOST", "FREO_DOMAIN_TARGET_IPS", "FREO_MEDIA_ROOT", "LOG_LEVEL", "FREO_API_URL", "FREO_API_STATE_DIR", "FREO_INSTALL_TYPE", "FREO_GEOIP_DATABASE", "FREO_STATS_STATE_DIR"):
         if key in os.environ:
             app.config[key] = os.environ[key]

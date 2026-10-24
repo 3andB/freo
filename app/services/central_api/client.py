@@ -1,4 +1,4 @@
-"""Base wire contract: freo-live/api/docs/contract.md at 506a3ee.
+"""Reporting contract 2026-10-v1.1, with explicit legacy 506a3ee fallback.
 
 Includes public release discovery and optional heartbeat update fields.
 The reporter persists retry scheduling; legacy registration is non-idempotent.
@@ -13,6 +13,7 @@ from urllib.parse import urlsplit
 from uuid import UUID
 
 MAX_BYTES = 256 * 1024
+CONTRACT_REVISION = '2026-10-v1.1'
 
 
 class APIError(Exception):
@@ -91,17 +92,18 @@ class Client:
                 or self.url.query or self.url.fragment or self.url.path not in ('', '/')):
             raise ValueError('Central API must be an HTTPS origin')
         self.token = token
+        self.contract_revision = None
 
     def request(self, method, path, payload=None):
-        if path not in ('/v1/enroll', '/v1/register', '/v1/activate', '/v1/stations/sync', '/v1/heartbeat', '/v1/license', '/v1/releases/latest'):
+        if path not in ('/health', '/v1/enroll', '/v1/register', '/v1/activate', '/v1/stations/sync', '/v1/heartbeat', '/v1/license', '/v1/releases/latest'):
             raise ValueError('Unknown central API endpoint')
-        if path == '/v1/releases/latest' and (method != 'GET' or payload is not None):
+        if path in ('/health', '/v1/releases/latest') and (method != 'GET' or payload is not None):
             raise ValueError('Release discovery requires GET without a payload')
         body = None if payload is None else json.dumps(payload, allow_nan=False, separators=(',', ':')).encode()
         if body is not None and len(body) > MAX_BYTES:
             raise APIError('payload_too_large', status=413)
         headers = {'Accept': 'application/json', 'Content-Type': 'application/json'}
-        if self.token and path != '/v1/releases/latest':
+        if self.token and path not in ('/health', '/v1/releases/latest'):
             headers['Authorization'] = 'Bearer ' + self.token
         connection = http.client.HTTPSConnection(self.url.hostname, self.url.port or 443,
                                                  timeout=5, context=ssl.create_default_context())
@@ -130,11 +132,18 @@ class Client:
                 raise APIError(code, status=response.status, retry_after=max(0, retry))
             if path == '/v1/heartbeat' and response.status != 200:
                 raise APIError('invalid_heartbeat_status')
+            if path == '/health' and response.status != 200:
+                raise APIError('invalid_health_response')
             if len(raw) > MAX_BYTES:
                 raise APIError('response_too_large')
             data = json.loads(raw)
             if not isinstance(data, dict):
                 raise APIError('invalid_response')
+            if path == '/health':
+                if data.get('status') != 'ok':
+                    raise APIError('invalid_health_response')
+                revision = response.getheader('X-Freo-Contract-Revision')
+                self.contract_revision = revision if isinstance(revision, str) and len(revision) <= 128 else None
             return data
         except APIError:
             raise

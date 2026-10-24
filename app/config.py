@@ -15,6 +15,8 @@ class BaseConfig:
     FREO_API_URL = 'https://api.freo.live'
     FREO_API_STATE_DIR = '/var/lib/freo/central-api'
     FREO_INSTALL_TYPE = 'self-hosted'
+    FREO_DEPLOYMENT_LABEL = None
+    FREO_INSTALLATION_LIFECYCLE = None
     DMCA_REPORTS_PER_HOUR = 5
     DMCA_TRUSTED_PROXY_IPS = ()
     FREO_GEOIP_DATABASE = '/var/lib/freo/geoip/City.mmdb'
