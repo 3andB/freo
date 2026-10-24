@@ -96,6 +96,11 @@
   audio.addEventListener('playing', () => {if (wanted) {state = 'listening'; render();}});
   audio.addEventListener('waiting', () => {if (wanted) {state = 'connecting'; render();}});
   audio.addEventListener('error', () => {if (wanted) {wanted = false; state = 'unavailable — press to retry'; render();}});
+  audio.addEventListener('ended', () => {
+    if (wanted && audio.ended) {
+      attempt++; wanted = false; state = 'unavailable — press to retry'; render();
+    }
+  });
   document.addEventListener('play', event => {if (event.target !== audio && event.target instanceof HTMLMediaElement) stop();}, true);
   let nowTimer, nowRequest, nowVersion = 0, lastPlaying = null;
   const showNow = (label, item) => {
