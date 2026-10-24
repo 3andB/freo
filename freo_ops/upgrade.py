@@ -303,12 +303,19 @@ def _upgrade(artifact, signature, keyring, env_file, backup, passphrase, verific
                 v1.check_runtime(current, release_environment(values, env_file))
                 v1.check_space(values['DATABASE_URL'], roots, release, backup, verification_directory)
                 v1.check_icecast_overrides(Path('/etc/systemd/system/icecast2.service.d'))
+            from . import proxy_ipv6
+            proxy_transition = False
             for directory in (() if adopting_v1 or adopting_hosting else ('liquidsoap', 'icecast', 'nginx')):
                 for path in (release / 'deploy' / directory).rglob('*'):
                     if path.is_file():
                         old = current / path.relative_to(release)
                         if not old.is_file() or recovery.digest(old) != recovery.digest(path):
+                            if (str(path.relative_to(release)) in proxy_ipv6.TEMPLATES and old.is_file()
+                                    and proxy_ipv6.allowed_template_change(path.relative_to(release), old.read_text(), path.read_text())):
+                                proxy_transition = True
+                                continue
                             raise recovery.RecoveryError('Radio/proxy template changes require a separately tested maintenance procedure')
+            proxy_changes = proxy_ipv6.plan() if proxy_transition else {}
             for override in Path('/etc/systemd/system').glob('freo*.service.d/*.conf'):
                 if any(line.startswith(('ExecStart=', 'ExecStartPre=', 'WorkingDirectory=', 'EnvironmentFile='))
                        for line in override.read_text().splitlines()):
@@ -439,6 +446,8 @@ def _upgrade(artifact, signature, keyring, env_file, backup, passphrase, verific
                 if microphone and journal['previous_units'].get('/etc/systemd/system/freo-mic.service') is None:
                     recovery.run(['systemctl', 'enable', 'freo-mic.service'])
                     journal['active_units'].append('freo-mic.service')
+            proxy_ipv6.apply(proxy_changes)
+            journal['ipv6_proxy_files'] = [str(path) for path in proxy_changes]
             switch_pointer(root, release)
             recovery.run(['systemctl', 'daemon-reload'])
             journal['phase'] = 'starting'

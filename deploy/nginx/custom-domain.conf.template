@@ -2,6 +2,7 @@
 # Enable this site, nginx -t, reload, then use the existing Certbot --nginx flow.
 server {
     listen 80;
+    listen [::]:80;
     server_name FREO_CUSTOM_HOSTNAME;
     include /etc/nginx/snippets/freo-stream.conf;
     include /etc/nginx/snippets/freo-stations/*.conf;

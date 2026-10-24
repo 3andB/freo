@@ -125,6 +125,44 @@ def test_upgrade_orders_backup_restore_migration_preservation_and_activation(hos
     assert all('dropdb' not in str(call) and '--clean' not in str(call) for call in host.calls)
 
 
+@pytest.mark.parametrize('unrelated_change', [False, True])
+def test_ipv6_proxy_transition_is_narrow_and_runs_after_verified_backup(host, monkeypatch, unrelated_change):
+    from freo_ops import proxy_ipv6
+    relative = Path('deploy/nginx/freo.conf.template')
+    old = 'server {\n    listen 80;\n    server_name radio.example;\n}\n'
+    (host.root/relative).parent.mkdir(parents=True)
+    (host.root/relative).write_text(old)
+    site = host.root/'site.conf';site.write_text(old)
+    changes = {site: (old, proxy_ipv6.with_ipv6(old))}
+    monkeypatch.setattr(proxy_ipv6, 'plan', lambda: changes)
+    extract = updater.releases.extract_verified
+    def candidate(artifact, directory, **kwargs):
+        manifest = extract(artifact, directory, **kwargs)
+        (directory/relative).parent.mkdir(parents=True)
+        body = proxy_ipv6.with_ipv6(old)
+        if unrelated_change:
+            body = body.replace('radio.example', 'other.example')
+        (directory/relative).write_text(body)
+        return manifest
+    monkeypatch.setattr(updater.releases, 'extract_verified', candidate)
+    def proxy_run(command):
+        assert 'restore-verified' in host.calls
+        assert 'preservation-verified' in host.calls
+        assert not host.active
+        host.calls.append(command)
+    monkeypatch.setattr(proxy_ipv6, 'run', proxy_run)
+    if unrelated_change:
+        with pytest.raises(recovery.RecoveryError, match='Radio/proxy template'):
+            host.execute()
+        assert 'backup' not in host.calls
+        assert site.read_text() == old
+    else:
+        assert host.execute()['status'] == 'complete'
+        assert site.read_text() == proxy_ipv6.with_ipv6(old)
+        assert ['nginx', '-t'] in host.calls
+        assert ['systemctl', 'reload', 'nginx'] in host.calls
+
+
 def test_bad_dependencies_never_stop_services_or_migrate(host):
     host.info['failure'] = 'dependencies'
     with pytest.raises(recovery.RecoveryError, match='Dependency smoke check failed'):

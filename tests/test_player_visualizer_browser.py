@@ -4,6 +4,7 @@ import io
 import wave
 import pytest
 from flask import jsonify, Response
+from selenium.common.exceptions import TimeoutException
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.support.ui import Select, WebDriverWait
@@ -260,10 +261,14 @@ def test_real_frequency_bands_silence_and_external_fallback(booth, monkeypatch):
     import struct
     app, driver, base, tmp = booth
     buffer=io.BytesIO()
+    # Each phase must outlast both eight-second waits. Four-second phases
+    # could change frequency or end playback before the assertion observed it.
+    phase_seconds = 30
     with wave.open(buffer,'wb') as output:
         output.setnchannels(1);output.setsampwidth(2);output.setframerate(48000)
         for hz in (80,1000,6000,0):
-            output.writeframes(b''.join(struct.pack('<h',int(7000*math.sin(2*math.pi*hz*n/48000))) for n in range(48000*4)))
+            second=b''.join(struct.pack('<h',int(7000*math.sin(2*math.pi*hz*n/48000))) for n in range(48000))
+            output.writeframes(second*phase_seconds)
     from flask import send_file
     monkeypatch.setitem(app.view_functions,'test_monitor_stream',lambda:send_file(io.BytesIO(buffer.getvalue()),mimetype='audio/wav',conditional=True))
     driver.get(base+'/player/test-station')
@@ -273,21 +278,35 @@ def test_real_frequency_bands_silence_and_external_fallback(booth, monkeypatch):
     driver.find_element(By.ID,'play-button').click();playing(driver)
     driver.find_element(By.ID,'visualizer-open').click()
     WebDriverWait(driver,8).until(lambda d:js(d,'return !!FreoAudioAnalysis.read(document.getElementById("station-audio"))?.analyser'))
-    for position, hz in ((.5,80),(4.5,1000),(8.5,6000),(12.5,0)):
+    for index, hz in enumerate((80,1000,6000,0)):
+        position = index*phase_seconds+.5
         js(driver,f'document.getElementById("station-audio").currentTime={position}')
         def sample(d):
-            return js(d,'''const g=FreoAudioAnalysis.read(document.getElementById('station-audio'));
-              if(!g?.analyser)return null;const data=new Uint8Array(g.analyser.frequencyBinCount);g.analyser.getByteFrequencyData(data);
-              const peak=Math.max(...data);return {peak,hz:data.indexOf(peak)*g.context.sampleRate/g.analyser.fftSize};''')
+            return js(d,'''const a=document.getElementById('station-audio'),g=FreoAudioAnalysis.read(a);
+              const data=g?.analyser?new Uint8Array(g.analyser.frequencyBinCount):null;
+              if(data)g.analyser.getByteFrequencyData(data);
+              const peak=data?Math.max(...data):null;
+              return {peak,hz:data?data.indexOf(peak)*g.context.sampleRate/g.analyser.fftSize:null,
+                scene:window.sceneBands,context:g?.context?.state,
+                audio:{time:a.currentTime,paused:a.paused,ended:a.ended,seeking:a.seeking,duration:a.duration}};''')
+        def in_phase(value):
+            audio=value['audio']
+            return (not audio['paused'] and not audio['ended'] and not audio['seeking']
+                    and position <= audio['time'] < (index+1)*phase_seconds)
         try:
-            WebDriverWait(driver,8).until(lambda d:(lambda v:v and (v['peak']==0 if not hz else v['peak']>50 and abs(v['hz']-hz)<65))(sample(d)))
-        except Exception:
-            pytest.fail(str(dict(position=position,expected_hz=hz,sample=sample(driver),audio=js(driver,'const a=document.getElementById("station-audio");return {time:a.currentTime,paused:a.paused,duration:a.duration,seekable:a.seekable.length}'))))
-        if hz:
-            band={80:'bass',1000:'mids',6000:'treble'}[hz]
-            WebDriverWait(driver,8).until(lambda d:js(d,f'return sceneBands?.measured && sceneBands.{band}>.05 && sceneBands.{band}>=Math.max(...Object.entries(sceneBands).filter(([k])=>["bass","mids","treble"].includes(k)).map(([,v])=>v))'))
-        else:
-            WebDriverWait(driver,8).until(lambda d:js(d,'return sceneBands?.measured && sceneBands.energy<.005'))
+            WebDriverWait(driver,8).until(lambda d:(lambda v:in_phase(v) and v['peak'] is not None and
+                (v['peak']==0 if not hz else v['peak']>50 and abs(v['hz']-hz)<65))(sample(d)))
+            def rendered(d):
+                value=sample(d); scene=value['scene']
+                if not in_phase(value) or not scene or not scene['measured']:
+                    return False
+                if not hz:
+                    return scene['energy']<.005
+                band={80:'bass',1000:'mids',6000:'treble'}[hz]
+                return scene[band]>.05 and scene[band]>=max(scene[k] for k in ('bass','mids','treble'))
+            WebDriverWait(driver,8).until(rendered)
+        except TimeoutException:
+            pytest.fail(str(dict(position=position,expected_hz=hz,sample=sample(driver))))
     driver.find_element(By.ID,'visualizer-close').click()
     # Unknown cross-origin media must never be attached to Safari's audible graph.
     js(driver,'''window.externalAudio=new Audio('https://example.invalid/radio.mp3');

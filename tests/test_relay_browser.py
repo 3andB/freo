@@ -15,12 +15,12 @@ def test_relay_settings_status_and_safe_metadata(booth):
     driver.find_element(By.NAME,'relay_url').send_keys('http://127.0.0.1:9000/audio')
     driver.find_element(By.NAME,'relay_enabled').click()
     driver.find_element(By.CSS_SELECTOR,'#relay-settings button').click()
-    WebDriverWait(driver,10).until(lambda d:'Enabled' in d.find_element(By.ID,'relay-status').text)
+    WebDriverWait(driver,10,ignored_exceptions=(StaleElementReferenceException,)).until(lambda d:'Enabled' in d.find_element(By.ID,'relay-status').text)
     with app.app_context():
         row=StationRelay.query.one();row.applied_revision=row.revision;row.observed_at=datetime.now(timezone.utc)
         row.observation=dict(connected=True,ready=True,selected=True,source='relay',title='<img src=x onerror=alert(1)>',artist='Stream artist')
         db.session.commit()
-    WebDriverWait(driver,10).until(lambda d:'Connected' in d.find_element(By.ID,'relay-status').text)
+    WebDriverWait(driver,10,ignored_exceptions=(StaleElementReferenceException,)).until(lambda d:'Connected' in d.find_element(By.ID,'relay-status').text)
     assert '<img' in driver.find_element(By.ID,'relay-metadata').text
     assert not driver.find_elements(By.CSS_SELECTOR,'#relay-metadata img')
     driver.set_window_size(390,844)
