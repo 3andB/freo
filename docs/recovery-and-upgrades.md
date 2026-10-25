@@ -297,3 +297,17 @@ verified bootstrap source. Supply all normal upgrade backup, isolated restore,
 signature and keyring arguments, plus `--radio-maintenance`. The candidate
 remains subject to signature verification again inside the updater. Do not edit
 the installed release or disable its template guard to bootstrap this procedure.
+
+### Bounded web request concurrency
+
+The managed web service runs two Gunicorn processes with four threads each.
+Gunicorn selects its threaded worker for this setting. Waiting requests can
+share a worker while other requests proceed, so two slow requests no longer
+occupy all request handling capacity and block a trivial health request. The
+broadcast slice keeps its existing CPU priority. This is bounded concurrency,
+not a reservation of CPU or a guarantee against an exhausted database or host.
+
+An upgrade installs the managed unit and restarts the previously active web
+service. Custom execution overrides still require adoption review. The real
+Gunicorn regression runs the production unit arguments with two waiting
+requests and requires a separate health request to complete before those waits.
