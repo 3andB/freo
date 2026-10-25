@@ -158,7 +158,8 @@ def test_invalid_microphone_flag_refuses_before_host_actions(installer):
 def test_v1_migration_chain_has_one_complete_head():
     from alembic.script import ScriptDirectory
     scripts = ScriptDirectory(str(ROOT / 'migrations'))
-    assert scripts.get_heads() == ['fd17b2c3d4e5']
+    assert scripts.get_heads() == ['fe28c3d4e5f6']
+    assert scripts.get_revision('fe28c3d4e5f6').down_revision == 'fd17b2c3d4e5'
     chain = {revision.revision for revision in scripts.walk_revisions()}
     assert {f'f{phase}06a1b2c3d4' for phase in range(1, 10)} <= chain
     assert 'f316a1b2c3d4' in chain  # Recording-manager permission/history migration.

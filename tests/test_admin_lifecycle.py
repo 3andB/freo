@@ -1,10 +1,23 @@
 """Administrative boundary and interruption regressions; no live host mutations."""
 import json
+import os
 from pathlib import Path
 from types import SimpleNamespace
 from contextlib import nullcontext
 import pytest
 from freo_ops import admin as a, admin_backup as b, admin_upgrade as u, hosting as h
+
+
+@pytest.fixture(autouse=True)
+def preserve_runner_environment():
+    # The privileged CLI deliberately clears FREO_/PYTHON variables. In-process
+    # CLI tests must restore the test runner's contract and isolation settings.
+    original = dict(os.environ)
+    try:
+        yield
+    finally:
+        os.environ.clear()
+        os.environ.update(original)
 
 
 @pytest.fixture
