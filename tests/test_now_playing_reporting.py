@@ -247,3 +247,31 @@ def test_unrelated_legacy_settings_submission_preserves_consent(app):
     assert response.status_code == 302
     with app.app_context():
         assert Station.query.first().directory_opt_in
+
+
+def test_optional_endpoint_rejection_does_not_defer_hourly_reporting(sharing):
+    reporter, api, clock, station, snapshot = sharing
+    api.fail['/v1/now-playing'] = APIError('http_404', status=404)
+    reporter.fast_tick()
+    row = installation()
+    reporter.save_state(row, report={'due': clock[0] + 1}, license={'due': clock[0] + 1})
+    refresh(snapshot, clock, 5)
+    before = sum(path == '/v1/heartbeat' for _, path, _, _ in api.calls)
+    outcome = reporter.tick()
+    assert outcome['heartbeat']
+    assert sum(path == '/v1/heartbeat' for _, path, _, _ in api.calls) == before + 1
+
+
+def test_cached_rc15_full_settings_form_can_still_explicitly_opt_out(app):
+    import re
+    from tests.test_web import admin_client
+    client = admin_client(app)
+    page = client.get('/admin/stations/test-station/settings')
+    token = re.search(r'name="settings_token" value="([^"]+)"', page.text)[1]
+    response = client.post('/admin/stations/test-station/settings', data=dict(
+        csrf='test-admin-csrf-token', combined='yes', settings_token=token,
+        name='Test Station', public_slug='test-station', timezone='UTC'))
+    assert response.status_code == 302
+    with app.app_context():
+        station = Station.query.first()
+        assert not station.directory_opt_in and station.directory_consent_source == 'explicit'

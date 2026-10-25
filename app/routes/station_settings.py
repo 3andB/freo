@@ -184,7 +184,8 @@ def page(slug):
             for key,value in fields.items():
                 setattr(station,key,value)
             station.directory_categories = list(dict.fromkeys(categories))
-            if request.form.get('directory_consent_present') == 'yes' or 'directory_opt_in' in request.form:
+            if (request.form.get('directory_consent_present') == 'yes' or 'directory_opt_in' in request.form
+                    or request.form.get('combined') == 'yes'):
                 consent = request.form.get('directory_opt_in') == 'yes'
                 if consent != station.directory_opt_in or station.directory_consent_source != 'explicit':
                     from app.services.admin_media import audit

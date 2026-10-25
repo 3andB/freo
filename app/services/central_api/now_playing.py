@@ -115,6 +115,12 @@ def fast_tick(reporter, now):
     row = installation()
     if not row.installation_id or row.registration_state == 'credentials_rejected':
         return
+    probe_at = row.state.get('now_playing_probe_at', 0)
+    if probe_at and now >= probe_at:
+        # Recheck optional support only when its own retry is due. A rejected
+        # song report must not block due heartbeats behind a shared probe timer.
+        reporter.contract_checked = False
+        reporter.save_state(row, now_playing_probe_at=0)
     if not reporter.detect_contract(row, now):
         return
     try:
@@ -191,11 +197,12 @@ def fast_tick(reporter, now):
                     station = Station.query.filter_by(freo_station_id=entry['station_id']).one()
                     station_state(station).synced_digest = None
                 db.session.commit()
-            if error.status in (404, 405):
-                reporter.now_playing_supported = False
             if error.status in (400, 404, 405, 409, 413):
-                reporter.contract_checked = False
-                reporter.save_state(row, contract_probe={'due': now + 60, 'failures': 1})
+                reporter.now_playing_supported = False
+                capability = dict(row.state.get('now_playing_capability', {}),
+                                  supported=False, paused_reason=error.code)
+                reporter.save_state(row, now_playing_probe_at=now + 60,
+                                    now_playing_capability=capability)
             retry(reporter, row, 'now_playing', now, error)
             return
         for entry in outgoing:
