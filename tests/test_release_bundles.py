@@ -171,3 +171,35 @@ def test_real_signature_verification_rejects_tampering_before_extraction(source,
         assert not (tmp_path / 'rejected').exists()
     finally:
         recovery.run(['gpgconf', '--homedir', str(home), '--kill', 'gpg-agent'])
+
+@pytest.mark.parametrize('build_umask',[0o022,0o077],ids=['public','private'])
+def test_candidate_dependency_permissions_survive_restrictive_build_umask(source,tmp_path,monkeypatch,build_umask):
+    (source/'LICENSE').write_text('Fixture license\n')
+    script=source/'scripts/install-python.sh';script.parent.mkdir();script.write_text('#!/bin/sh\n');script.chmod(0o755)
+    recovery.run(['git','-C',str(source),'add','LICENSE','scripts/install-python.sh'])
+    recovery.run(['git','-C',str(source),'-c','user.name=Fixture','-c','user.email=fixture@example.test','commit','--quiet','-m','Build fixture'])
+    monkeypatch.setattr(releases.platform,'machine',lambda:'x86_64')
+    monkeypatch.setattr(releases.platform,'python_version_tuple',lambda:('3','12','3'))
+    monkeypatch.setattr(releases.platform,'freedesktop_os_release',lambda:{'ID':'ubuntu','VERSION_ID':'24.04'})
+    wheelhouse=tmp_path/'wheels';wheelhouse.mkdir()
+    with zipfile.ZipFile(wheelhouse/'fixture-1.0-py3-none-any.whl','w') as wheel:
+        wheel.writestr('fixture-1.0.dist-info/METADATA','Name: fixture\nVersion: 1.0\n')
+    original=releases.run;validated=[]
+    def run(command,**kwargs):
+        if command[0]=='bash':
+            assert command[-1]=='--offline' and not Path(command[-2]).exists()
+            validated.append(True);return b''
+        return original(command,**kwargs)
+    monkeypatch.setattr(releases,'run',run)
+    target=tmp_path/'candidate.tar.gz';previous=os.umask(build_umask)
+    try:
+        releases.build(source,target,candidate=True,wheelhouse=wheelhouse)
+        manifest=releases._extract_trusted(target,tmp_path/'installed',allow_candidate=True)
+    finally:
+        os.umask(previous)
+    assert validated==[True]
+    with tarfile.open(target) as archive:
+        for name in ('requirements.lock','release.json','wheels/fixture-1.0-py3-none-any.whl'):
+            assert archive.getmember(name).mode==0o644
+        assert archive.getmember('scripts/install-python.sh').mode==0o755
+    assert all(row['mode'] in (0o644,0o755) for row in manifest['files'].values())

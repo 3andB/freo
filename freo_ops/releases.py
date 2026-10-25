@@ -152,6 +152,11 @@ def build(root, destination, *, development=False, wheelhouse=None, candidate=Fa
             if inventory != {str(p.relative_to(payload)): digest(p)
                              for p in payload.rglob('*') if p.is_file()}:
                 raise RecoveryError('Dependency validation modified release payload')
+        # Generated locks and copied/downloaded wheels also inherit the builder's
+        # umask. Record the canonical modes enforced by the trusted extractor.
+        for path in payload.rglob('*'):
+            if path.is_file():
+                path.chmod(0o755 if path.stat().st_mode & 0o111 else 0o644)
         manifest = dict(format=1, version=version, commit=commit, development=development,
                         platform='ubuntu-24.04-x86_64', python='3.12',
                         schema_head=migration_head(root),
@@ -167,6 +172,7 @@ def build(root, destination, *, development=False, wheelhouse=None, candidate=Fa
                     sha256=digest(path), size=path.stat().st_size,
                     mode=stat.S_IMODE(path.stat().st_mode))
         (payload / 'release.json').write_text(json.dumps(manifest, sort_keys=True, indent=2) + '\n')
+        (payload / 'release.json').chmod(0o644)
         with tempfile.TemporaryDirectory(prefix='.freo-release-', dir=destination.parent) as output:
             archive_path = Path(output) / 'release.tar.gz'
             with tarfile.open(archive_path, 'w:gz') as archive:
