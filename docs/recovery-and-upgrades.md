@@ -300,6 +300,14 @@ the installed release or disable its template guard to bootstrap this procedure.
 
 ### Bounded web request concurrency
 
+Before accepting requests, the WSGI entry point configures ORM mappers and fills
+the existing process-local IANA validation and timezone-choice caches. This
+read-only work opens no database connection. It prevents concurrent first-use
+requests from repeating the filesystem scan or waiting for mapper setup during
+traffic. Timezone validation rules and cache contents are unchanged; a metadata
+read failure refuses worker startup. Restart services after updating tzdata, as
+required by the existing process-local caches.
+
 During upgrade activation, a previously active web service starts first and must
 pass the existing readiness check before background workers, playout processes
 and timers start. This avoids competing cold starts during application imports.
