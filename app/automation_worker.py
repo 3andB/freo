@@ -982,6 +982,8 @@ def prepare_auto_successor(station, reader, mixer, current_signature=None):
         if SelectionDecision.query.filter_by(station_id=station.id,reason='programming_refresh_pending',status='queued').first():
             _command(slug, 'freo_mixer.return_cancel')
             return
+        queued_before = {value for (value,) in db.session.query(SelectionDecision.id).filter_by(
+            station_id=station.id, status='queued')}
         refill_station(slug, reader, 1)
         # Observe the queue before current: the decoder can move the replacement
         # between these reads, and either observation must retain its identity.
@@ -992,6 +994,20 @@ def prepare_auto_successor(station, reader, mixer, current_signature=None):
             target = None
         if target is None:
             target = request_decision_id(slug, future[0]) if future else None
+        if target is None:
+            # A decoder can remove its accepted request from the future queue
+            # before exposing it as current. Retain the exact push acknowledged
+            # by this refill; the engine still proves readiness before handoff.
+            accepted = SelectionDecision.query.filter(
+                SelectionDecision.station_id==station.id, SelectionDecision.status=='queued',
+                SelectionDecision.id.notin_(queued_before),
+                SelectionDecision.admin_user_id.is_(None),
+                SelectionDecision.programming_signature==current_signature,
+                SelectionDecision.socket_identity==socket_identity(slug),
+                SelectionDecision.liquidsoap_request_id.isnot(None),
+                db.or_(SelectionDecision.reason.is_(None),
+                       SelectionDecision.reason!='programming_refresh_pending')).order_by(SelectionDecision.id).first()
+            target = accepted.id if accepted else None
     return target
 
 
