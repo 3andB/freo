@@ -16,6 +16,7 @@
     if(!response.headers.get('content-type')?.includes('application/json'))throw new Error('Session expired. Sign in again; the station will return to AUTO.');
     const result=await response.json();if(!response.ok)throw new Error(result.message||'Microphone service unavailable');return result;
   }
+  const uncertainNetwork=error=>['TimeoutError','AbortError','TypeError'].includes(error?.name);
   function paint(){
     if(disposed)return;
     root.dataset.micActive=String(active()||goPending||returnPending);
@@ -76,12 +77,20 @@
           }
           // The gateway cuts speech and retains silent PCM while the existing
           // worker restores the interrupted feed, even if this page disappears.
-          await api('disconnect');stopCapture();returnPending=true;goPending=false;
+          try{await api('disconnect');}
+          catch(error){if(!uncertainNetwork(error))throw error;}
+          // A lost response can follow a successful disconnect. Keep its token
+          // and confirm status; never replay the disconnect or guess success.
+          stopCapture();returnPending=true;goPending=false;
           const deadline=Date.now()+16000;
           while(!disposed){
-            const state=await api('status');
-            phase=state.phase||'OFF AIR';paint();
-            if(!state.leaving&&!['FADING','LIVE','RETURNING'].includes(phase)&&state.desired!=='LIVE')break;
+            let state=null;
+            try{state=await api('status');}
+            catch(error){if(!uncertainNetwork(error))throw error;}
+            if(state){
+              phase=state.phase||'OFF AIR';paint();
+              if(!state.leaving&&!['FADING','LIVE','RETURNING'].includes(phase)&&state.desired!=='LIVE')break;
+            }
             if(Date.now()>deadline)throw new Error('Microphone return is not confirmed yet. Stay here and retry.');
             await new Promise(resolve=>setTimeout(resolve,200));
           }

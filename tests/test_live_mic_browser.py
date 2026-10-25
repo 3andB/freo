@@ -335,3 +335,62 @@ def test_live_mic_logout_with_delayed_response_in_another_tab(booth, monkeypatch
     finally:
         release.set()
         app.after_request_funcs[None].remove(hold_response)
+
+
+def lose_mic_response(driver,action):
+    driver.execute_script('''
+      const fetch=window.fetch;
+      window.micLostReply={disconnectSeen:false,count:0};
+      window.fetch=async function(input,options){
+        const path=new URL(input instanceof Request?input.url:input,location.href).pathname;
+        const wasDisconnect=path.endsWith('/live-mic/disconnect');
+        if(wasDisconnect)micLostReply.disconnectSeen=true;
+        const eligible=micLostReply.disconnectSeen;
+        const drop=eligible&&((path.endsWith('/live-mic/'+window.micLostAction)&&micLostReply.count===0)||
+          (window.micLostAction==='all-status'&&path.endsWith('/live-mic/status')));
+        const response=await fetch.call(this,input,options);
+        if(drop){
+          micLostReply.count++;
+          if(window.micLostAction==='all-status')await new Promise(resolve=>setTimeout(resolve,4000));
+          throw new DOMException('signal timed out','TimeoutError');
+        }
+        return response;
+      };
+      window.micLostAction=arguments[0];
+    ''',action)
+
+
+@pytest.mark.parametrize('lost_action',['disconnect','status'])
+def test_navigation_reconciles_lost_mic_response_without_repeating_disconnect(booth,monkeypatch,lost_action):
+    _,driver,base,tmp_path=booth
+    state,calls=connected_mic(booth,monkeypatch)
+    lose_mic_response(driver,lost_action)
+    driver.execute_script('FreoWorkspace.navigate(arguments[0])',base+'/admin/stations/test-station/media')
+    wait=WebDriverWait(driver,30)
+    wait.until(lambda d:d.find_elements(By.CSS_SELECTOR,'.freo-dialog[open]'))
+    driver.find_element(By.CSS_SELECTOR,'.freo-dialog .admin-primary').click()
+    try:
+        wait.until(lambda d:d.current_url.endswith('/media'))
+    except Exception as error:
+        import json
+        diagnostic=driver.execute_script('return {path:location.pathname,message:document.getElementById("mic-message")?.textContent,capture:micFixtureTrack.readyState,lost:micLostReply}')
+        diagnostic.update(gateway_state=state,gateway_calls=calls)
+        (tmp_path/'mic-network-before.json').write_text(json.dumps(diagnostic,indent=2))
+        error.add_note(json.dumps(diagnostic));raise
+    assert driver.execute_script('return micLostReply.count')==1
+    assert driver.execute_script('return micFixtureTrack.readyState')=='ended'
+    assert calls.count('disconnect')==1 and state['phase']=='OFF AIR'
+
+
+def test_unconfirmed_mic_return_keeps_navigation_blocked(booth,monkeypatch):
+    _,driver,base,_=booth
+    _,calls=connected_mic(booth,monkeypatch)
+    lose_mic_response(driver,'all-status')
+    driver.execute_script('FreoWorkspace.navigate(arguments[0])',base+'/admin/stations/test-station/media')
+    wait=WebDriverWait(driver,30)
+    wait.until(lambda d:d.find_elements(By.CSS_SELECTOR,'.freo-dialog[open]'))
+    driver.find_element(By.CSS_SELECTOR,'.freo-dialog .admin-primary').click()
+    wait.until(lambda d:'not confirmed' in d.find_element(By.ID,'mic-message').text)
+    assert driver.current_url==base+'/admin/stations/test-station/live'
+    assert driver.execute_script('return micFixtureTrack.readyState')=='ended'
+    assert calls.count('disconnect')==1
