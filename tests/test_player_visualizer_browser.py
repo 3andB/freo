@@ -439,37 +439,63 @@ def test_pending_safari_resume_can_retry_in_a_new_gesture(booth, long_player_str
 
 
 def test_spectrum_equal_level_tones_have_distinct_bands_and_heights(booth, monkeypatch):
-    import math,struct
+    import json,math,struct
     app,driver,base,tmp=booth
-    buffer=io.BytesIO();rate=44100
-    with wave.open(buffer,'wb') as wav:
-        wav.setnchannels(1);wav.setsampwidth(2);wav.setframerate(rate)
-        for hz in (80,1000,6000,0):
-            wav.writeframes(b''.join(struct.pack('<h',int(7000*math.sin(2*math.pi*hz*i/rate))) for i in range(rate*5)))
+    rate=44100;streams={};selected=[80]
+    # Keep each input steady even when a busy browser delays the sample. The
+    # former five-second sections could advance into another tone during a wait.
+    for hz in (80,1000,6000):
+        buffer=io.BytesIO()
+        with wave.open(buffer,'wb') as wav:
+            wav.setnchannels(1);wav.setsampwidth(2);wav.setframerate(rate)
+            second=b''.join(struct.pack('<h',int(7000*math.sin(2*math.pi*hz*i/rate))) for i in range(rate))
+            wav.writeframes(second*120)
+            if hz==6000:wav.writeframes(bytes(rate*2*30))
+        streams[hz]=buffer.getvalue()
     from flask import send_file
-    monkeypatch.setitem(app.view_functions,'test_monitor_stream',lambda:send_file(io.BytesIO(buffer.getvalue()),mimetype='audio/wav',conditional=True))
-    driver.get(base+'/player/test-station')
-    js(driver,'''window.spectrumHeights={};const fill=CanvasRenderingContext2D.prototype.fillRect;
-      CanvasRenderingContext2D.prototype.fillRect=function(x,y,w,h){const c=document.getElementById('player-visual');
-        if(this.canvas===c && c.dataset.mode==='spectrum' && Math.abs(w-c.width*.82/64*.62)<.01 && y<c.height*.77 && h>2){spectrumHeights[Math.round((x-c.width*.09)/(c.width*.82/64))]=h/c.height/.57;}
-        return fill.call(this,x,y,w,h)};''')
-    driver.find_element(By.ID,'play-button').click();playing(driver)
-    driver.find_element(By.ID,'visualizer-open').click();Select(driver.find_element(By.ID,'visual-mode')).select_by_value('spectrum')
-    maxima=[];positions=[]
-    for position in (1,6,11):
-        js(driver,f'document.getElementById("station-audio").currentTime={position};spectrumHeights={{}}')
-        driver.execute_async_script('setTimeout(arguments[0],1400)')
-        data=js(driver,'return spectrumHeights')
-        assert data
+    monkeypatch.setitem(app.view_functions,'test_monitor_stream',lambda:send_file(io.BytesIO(streams[selected[0]]),mimetype='audio/wav',conditional=True))
+    def rendered_sample(minimum_time,maximum_time,after_frame,signal):
+        def ready(d):
+            sample=js(d,'''const a=document.getElementById('station-audio'),c=document.getElementById('player-visual');
+              return {...spectrumProbe,audioTime:a.currentTime,seeking:a.seeking,paused:a.paused,
+                ready:a.readyState,analysis:c.dataset.analysis};''')
+            return sample if (sample['frames']>=after_frame+12 and len(sample['heights'])==64
+                and minimum_time<=sample['frameTime']<maximum_time and sample['ready']>=2
+                and not sample['seeking'] and not sample['paused']
+                and (not signal or sample['analysis']=='live')) else False
+        return WebDriverWait(driver,20).until(ready)
+    maxima=[];positions=[];evidence=[]
+    for hz in (80,1000,6000):
+        selected[0]=hz
+        driver.get(base+'/player/test-station')
+        js(driver,'''window.spectrumProbe={frames:0,heights:{},frameTime:0};
+          const clear=CanvasRenderingContext2D.prototype.clearRect,fill=CanvasRenderingContext2D.prototype.fillRect;
+          CanvasRenderingContext2D.prototype.clearRect=function(...args){const c=document.getElementById('player-visual');
+            if(this.canvas===c && c.dataset.mode==='spectrum'){spectrumProbe.frames++;spectrumProbe.heights={};
+              spectrumProbe.frameTime=document.getElementById('station-audio').currentTime;}
+            return clear.apply(this,args)};
+          CanvasRenderingContext2D.prototype.fillRect=function(x,y,w,h){const c=document.getElementById('player-visual');
+            if(this.canvas===c && c.dataset.mode==='spectrum' && Math.abs(w-c.width*.82/64*.62)<.01
+                && Math.abs(y+h-c.height*.77)<.01){spectrumProbe.heights[Math.round((x-c.width*.09)/(c.width*.82/64))]=h/c.height/.57;}
+            return fill.call(this,x,y,w,h)};''')
+        driver.find_element(By.ID,'play-button').click();playing(driver)
+        driver.find_element(By.ID,'visualizer-open').click()
+        Select(driver.find_element(By.ID,'visual-mode')).select_by_value('spectrum')
+        if hz==1000:
+            # Reproduce a delayed render without letting the known input change.
+            js(driver,'const end=performance.now()+4500;while(performance.now()<end){}')
+        frame=js(driver,'return spectrumProbe.frames')
+        sample=rendered_sample(1.4,120,frame,True);data=sample['heights']
         best=max(data,key=lambda k:data[k]);positions.append(int(best));maxima.append(data[best])
         assert sum(v>maxima[-1]-.08 for v in data.values())<=4, data
+        evidence.append(dict(hz=hz,frame_time=sample['frameTime'],frames=sample['frames'],peak_band=int(best),height=data[best]))
     assert positions==sorted(set(positions)),positions
     assert max(maxima)-min(maxima)<.08,maxima
-    js(driver,'document.getElementById("station-audio").currentTime=16;spectrumHeights={}')
-    driver.execute_async_script('setTimeout(arguments[0],1800)')
-    js(driver,'spectrumHeights={}')
-    driver.execute_async_script('setTimeout(arguments[0],500)')
-    assert max(js(driver,'return Object.values(spectrumHeights)') or [0])<.05
+    frame=js(driver,'document.getElementById("station-audio").currentTime=121;return spectrumProbe.frames')
+    sample=rendered_sample(122.4,150,frame,False)
+    assert max(sample['heights'].values())<.05,sample
+    evidence.append(dict(hz=0,frame_time=sample['frameTime'],frames=sample['frames'],height=max(sample['heights'].values())))
+    (tmp/'spectrum-samples.json').write_text(json.dumps(evidence,indent=2))
 
 
 
