@@ -48,7 +48,7 @@ def test_denied_microphone_permission_never_enables_go_live(booth, monkeypatch):
         assert LiveControlCommand.query.count() == 0
 
 
-def connected_mic(booth, monkeypatch, *, go=True):
+def connected_mic(booth, monkeypatch, *, go=True, return_delay=.5):
     app, driver, base, tmp_path = booth
     state={'phase':'OFF AIR'}
     calls=[]
@@ -60,7 +60,7 @@ def connected_mic(booth, monkeypatch, *, go=True):
             return {'token':'a'*32,'sdp':'fixture','type':'answer'}
         if action=='go':state.update(phase='LIVE', desired='LIVE')
         if action=='disconnect':
-            state.update(phase='RETURNING', desired='END', leaving=True, until=time.monotonic()+.5)
+            state.update(phase='RETURNING', desired='END', leaving=True, until=time.monotonic()+return_delay)
         if action in ('status','heartbeat') and state.get('until',float('inf'))<time.monotonic():
             state.clear();state.update(phase='OFF AIR')
         return copy.deepcopy(state)
@@ -134,17 +134,36 @@ def test_leave_warning_cancel_then_resume_previous_feed(booth, monkeypatch):
 
 
 def test_signout_waits_for_mic_return(booth, monkeypatch):
-    _,driver,base,_=booth
-    state,calls=connected_mic(booth,monkeypatch)
+    _,driver,base,tmp_path=booth
+    # The application allows 16 seconds to confirm return. Exercise a valid
+    # slow return instead of requiring completion within a shorter CI deadline.
+    state,calls=connected_mic(booth,monkeypatch,return_delay=12)
+    began=time.monotonic()
     driver.find_element(By.CSS_SELECTOR,'form[action="/admin/logout"] button').click()
     wait=WebDriverWait(driver,10)
     wait.until(lambda d:d.find_elements(By.CSS_SELECTOR,'.freo-dialog[open]'))
     driver.find_element(By.CSS_SELECTOR,'.freo-dialog .admin-primary').click()
-    wait.until(lambda d:d.current_url==base+'/')
+    try:
+        WebDriverWait(driver,30).until(lambda d:d.current_url==base+'/')
+    except Exception as error:
+        import json
+        diagnostic=driver.execute_script('''return {path:location.pathname,
+          micState:document.getElementById('mic-state')?.textContent,
+          message:document.getElementById('mic-message')?.textContent,
+          capture:window.micFixtureTrack?.readyState,ready:document.readyState};''')
+        diagnostic.update(gateway_state=state,gateway_calls=calls)
+        (tmp_path/'mic-signout-error.json').write_text(json.dumps(diagnostic,indent=2))
+        driver.save_screenshot(str(tmp_path/'mic-signout-error.png'))
+        error.add_note('Microphone sign-out: '+json.dumps(diagnostic))
+        raise
+    returned_after=time.monotonic()-began
+    assert returned_after>=12
     assert calls.count('disconnect')==1 and state['phase']=='OFF AIR'
     driver.get(base+'/admin/software')
     wait.until(lambda d:d.current_url.endswith('/admin/login') and d.find_elements(By.CSS_SELECTOR,'.login-card'))
     assert driver.current_url.endswith('/admin/login')
+    import json
+    (tmp_path/'mic-signout-proof.json').write_text(json.dumps(dict(return_delay=12,returned_after=returned_after,disconnects=calls.count('disconnect'),phase=state['phase'],logged_out=True)))
 
 
 def test_back_cancel_restores_url_and_keeps_microphone_live(booth, monkeypatch):
