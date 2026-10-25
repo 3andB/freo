@@ -69,7 +69,7 @@ def host(tmp_path, monkeypatch):
         if command[:2] == ['systemctl', 'start']:
             if info['failure'] == 'start':
                 raise recovery.RecoveryError('Injected service failure')
-            active[:] = command[2:]
+            active.extend(unit for unit in command[2:] if unit not in active)
         if command[-2:] == ['db', 'upgrade']:
             info['revision'] = 'd02f9a41c830'
             if info['failure'] == 'migration':
@@ -123,6 +123,45 @@ def test_upgrade_orders_backup_restore_migration_preservation_and_activation(hos
     journal = json.loads((host.state / 'journal.json').read_text())
     assert journal['phase'] == 'complete' and len(journal['previous_units']) == 2
     assert all('dropdb' not in str(call) and '--clean' not in str(call) for call in host.calls)
+
+
+def test_web_readiness_precedes_background_worker_start(host, monkeypatch):
+    class Ready:
+        status = 200
+        def __enter__(self): return self
+        def __exit__(self, *args): pass
+    def ready(*args, **kwargs):
+        assert host.active == ['freo.service'], 'Background startup must wait for the web application'
+        host.calls.append('web-ready')
+        return Ready()
+    monkeypatch.setattr(updater, 'build_opener', lambda *args: SimpleNamespace(open=ready))
+    assert host.execute()['status'] == 'complete'
+    background = next(i for i, call in enumerate(host.calls) if isinstance(call, list)
+                      and call[:2] == ['systemctl', 'start'] and 'freo-automation.service' in call[2:])
+    assert host.calls.index('web-ready') < background
+    assert host.active == ['freo.service', 'freo-automation.service']
+
+
+def test_failed_web_readiness_never_starts_background_workers(host, monkeypatch):
+    def unavailable(*args, **kwargs):
+        raise OSError('Web application is still initializing')
+    monkeypatch.setattr(updater, 'build_opener', lambda *args: SimpleNamespace(open=unavailable))
+    monkeypatch.setattr(updater.time, 'sleep', lambda seconds: None)
+    with pytest.raises(recovery.RecoveryError, match='New application did not become ready'):
+        host.execute()
+    assert not any(isinstance(call, list) and call[:2] == ['systemctl', 'start']
+                   and 'freo-automation.service' in call[2:] for call in host.calls)
+    assert not host.active and (host.state/'maintenance').exists()
+    assert json.loads((host.state/'journal.json').read_text())['phase'] == 'recovery_required'
+
+
+def test_background_only_baseline_does_not_start_web(host, monkeypatch):
+    host.active.remove('freo.service')
+    def unexpected(*args, **kwargs):
+        pytest.fail('An inactive web service must not be started or polled')
+    monkeypatch.setattr(updater, 'build_opener', lambda *args: SimpleNamespace(open=unexpected))
+    assert host.execute()['status'] == 'complete'
+    assert host.active == ['freo-automation.service']
 
 
 @pytest.mark.parametrize('unrelated_change', [False, True])

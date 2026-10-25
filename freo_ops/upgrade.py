@@ -468,10 +468,11 @@ def _upgrade(artifact, signature, keyring, env_file, backup, passphrase, verific
             journal['phase'] = 'starting'
             atomic_json(journal_path, journal)
             set_maintenance(state, False)
-            if journal['active_units']:
-                recovery.run(['systemctl', 'start', *journal['active_units']])
             opener = build_opener(ProxyHandler({}))
             if 'freo.service' in journal['active_units']:
+                # Cold application imports must not compete with every worker
+                # and playout process before the unchanged readiness deadline.
+                recovery.run(['systemctl', 'start', 'freo.service'])
                 for attempt in range(30):
                     try:
                         with opener.open('http://127.0.0.1:8000/ready', timeout=2) as response:
@@ -482,6 +483,9 @@ def _upgrade(artifact, signature, keyring, env_file, backup, passphrase, verific
                     time.sleep(1)
                 else:
                     raise recovery.RecoveryError('New application did not become ready')
+            background = [unit for unit in journal['active_units'] if unit != 'freo.service']
+            if background:
+                recovery.run(['systemctl', 'start', *background])
             for unit in journal['active_units']:
                 # Timers and long-lived processes must return; one-shot services may finish.
                 if unit.endswith('.timer') or unit in ('freo.service', 'freo-automation.service', 'freo-ingest.service',

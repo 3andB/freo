@@ -300,6 +300,13 @@ the installed release or disable its template guard to bootstrap this procedure.
 
 ### Bounded web request concurrency
 
+During upgrade activation, a previously active web service starts first and must
+pass the existing readiness check before background workers, playout processes
+and timers start. This avoids competing cold starts during application imports.
+The readiness attempts and timeouts are unchanged. A readiness failure keeps
+background services stopped and retains the maintenance guard and recovery
+journal. A previously inactive web service remains inactive.
+
 The managed web service runs two Gunicorn processes with sixteen threads each.
 Gunicorn selects its threaded worker for this setting. Waiting requests can
 share a worker while other requests proceed. The pool leaves room for health
