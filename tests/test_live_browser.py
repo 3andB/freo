@@ -21,12 +21,18 @@ from tests.test_web import app as app_fixture
 
 
 @pytest.fixture
+def sustained_preview():
+    """Manual preview toggles need audio that outlasts the allowed UI waits."""
+
+
+@pytest.fixture
 def booth(app_fixture, monkeypatch, tmp_path, request):
     app=app_fixture
     monkeypatch.setenv('FREO_MEDIA_ROOT',str(tmp_path/'media'))
     originals=tmp_path/'media'/'test-station'/'originals';originals.mkdir(parents=True)
     import subprocess
-    subprocess.run(['ffmpeg','-v','error','-f','lavfi','-i','sine=frequency=440:duration=4','-y',str(originals/('a'*32+'.mp3'))],check=True)
+    duration=120 if 'sustained_preview' in request.fixturenames else 4
+    subprocess.run(['ffmpeg','-v','error','-f','lavfi','-i',f'sine=frequency=440:duration={duration}','-y',str(originals/('a'*32+'.mp3'))],check=True)
     uploads=tmp_path/'uploads';uploads.mkdir();app.config['FREO_UPLOAD_ROOT']=str(uploads)
     with app.app_context():
         station=Station.query.filter_by(slug='test-station').first()
@@ -153,6 +159,7 @@ def apply_browser_command(app, operation, deck):
         command.status='sent';snapshot.mixer=mixer;snapshot.observed_at=datetime.now(timezone.utc);db.session.commit()
 
 
+@pytest.mark.usefixtures('sustained_preview')
 def test_picker_load_clear_and_artwork_drag(booth):
     app,driver,base,tmp_path=booth
     assert not driver.find_elements(By.ID,'broadcast-fader')

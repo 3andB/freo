@@ -330,3 +330,10 @@ Gunicorn regression runs the production unit arguments with two and thirteen
 waiting requests and requires a separate health request to complete before
 those waits. This reproduces pool exhaustion without claiming it was the sole
 cause of the original installed timeout.
+
+Private RC15 qualification also covers slow browser initialization. Navigation
+keeps focus in an input when editing starts before destination scripts finish.
+The optional visualizer keeps an established tempo when delayed rendering misses
+a transient whose interval matches a whole number of beats. Audio ownership and
+playback remain with the native player; tempo and navigation tests retain their
+existing deadlines and tolerances.

@@ -85,3 +85,28 @@ def test_settings_navigation_and_persistence(booth):
     driver.get(base+'/player/harbour-radio')
     wait_text(driver,'.radio-description','Music by the sea')
     assert 'private@example.test' not in driver.page_source
+
+
+def test_settings_navigation_keeps_focus_when_editing_before_scripts_finish(booth, monkeypatch):
+    """A late script response must not take focus from an edit already begun."""
+    import threading
+    app,driver,base,tmp_path=booth
+    loading=threading.Event();release=threading.Event()
+    original=app.send_static_file
+    def delayed(filename):
+        if filename=='station_settings.js':
+            loading.set()
+            assert release.wait(15)
+        return original(filename)
+    monkeypatch.setattr(app,'send_static_file',delayed)
+    driver.find_element(By.LINK_TEXT,'Station settings').click()
+    try:
+        assert loading.wait(10)
+        name=driver.find_element(By.CSS_SELECTOR,'#station-settings-form input[name=name]')
+        name.clear();name.send_keys('Harbour Radio')
+        assert driver.execute_script('return document.activeElement===arguments[0]',name)
+    finally:
+        release.set()
+    WebDriverWait(driver,10).until(lambda d:not d.execute_script("return document.documentElement.classList.contains('is-navigating')"))
+    assert driver.execute_script('return document.activeElement===arguments[0]',name)
+    assert name.get_attribute('value')=='Harbour Radio'

@@ -5,7 +5,7 @@ from selenium.webdriver.support.ui import WebDriverWait
 from app.extensions import db
 from app.models import AdminUser, DJStationAssignment, LiveSession, LiveQueueSnapshot, Station
 from app.services.live_sessions import claim, now
-from tests.test_live_browser import booth, app_fixture
+from tests.test_live_browser import booth, app_fixture, sustained_preview
 
 
 def test_record_choice_and_end_show_use_existing_booth(booth):
@@ -117,6 +117,7 @@ import pytest
 
 
 @pytest.mark.parametrize('scenario', ['decks', 'cue', 'carts', 'mic'])
+@pytest.mark.usefixtures('sustained_preview')
 def test_existing_booth_workflows_with_real_dj_login(booth, scenario):
     from tests.test_recording_manager import login, token, PASSWORD
     from tests import test_live_browser, test_cue_browser, test_booth_state_browser, test_live_mic_browser

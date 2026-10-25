@@ -25,7 +25,10 @@
       const blend=1-Math.exp(-dt*2);mean+=delta*blend;variance+=(delta*delta-variance)*blend;
       if(onset){
         if(last>=0){let interval=time-last;
-          if(bpm && interval>1.1)interval/=Math.max(1,Math.round(interval*bpm/60));
+          // A delayed render can miss a transient. Keep an established period
+          // when the gap is close to a whole number of beats.
+          if(bpm){const period=60/bpm,beats=Math.round(interval/period);
+            if(beats>=2 && Math.abs(interval/beats-period)<period*.18)interval/=beats;}
           if(interval>=.28 && interval<=1.03){intervals.push(interval);if(intervals.length>8)intervals.shift();
             if(intervals.length>=3){const sorted=[...intervals].sort((a,b)=>a-b),median=sorted[Math.floor(sorted.length/2)];
               const stable=sorted.filter(v=>Math.abs(v-median)<median*.18);

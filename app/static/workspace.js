@@ -321,7 +321,9 @@
       for (const src of scripts) await new Promise((resolve, reject) => {
         const script = document.createElement('script'); script.src = src; script.onload = resolve; script.onerror = reject; document.body.append(script);
       });
-      document.querySelector('#main')?.setAttribute('tabindex', '-1'); document.querySelector('#main')?.focus({preventScroll: true});
+      document.querySelector('#main')?.setAttribute('tabindex', '-1');
+      // A user can begin editing while the destination scripts are loading.
+      if (document.activeElement === document.body) document.querySelector('#main')?.focus({preventScroll: true});
       if (destination.hash) document.getElementById(decodeURIComponent(destination.hash.slice(1)))?.scrollIntoView();
       else window.scrollTo(0, options.pop ? history.state?.scroll || 0 : 0);
     } catch (_) {
