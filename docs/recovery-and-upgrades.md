@@ -300,14 +300,18 @@ the installed release or disable its template guard to bootstrap this procedure.
 
 ### Bounded web request concurrency
 
-The managed web service runs two Gunicorn processes with four threads each.
+The managed web service runs two Gunicorn processes with sixteen threads each.
 Gunicorn selects its threaded worker for this setting. Waiting requests can
-share a worker while other requests proceed, so two slow requests no longer
-occupy all request handling capacity and block a trivial health request. The
+share a worker while other requests proceed. The pool leaves room for health
+requests alongside thirteen waiting requests, even if they reach one worker.
+Thirteen requests were observed in flight during an installed stress-test
+readiness timeout with the earlier eight-slot pool. The
 broadcast slice keeps its existing CPU priority. This is bounded concurrency,
 not a reservation of CPU or a guarantee against an exhausted database or host.
 
 An upgrade installs the managed unit and restarts the previously active web
 service. Custom execution overrides still require adoption review. The real
-Gunicorn regression runs the production unit arguments with two waiting
-requests and requires a separate health request to complete before those waits.
+Gunicorn regression runs the production unit arguments with two and thirteen
+waiting requests and requires a separate health request to complete before
+those waits. This reproduces pool exhaustion without claiming it was the sole
+cause of the original installed timeout.

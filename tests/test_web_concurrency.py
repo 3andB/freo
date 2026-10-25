@@ -7,10 +7,12 @@ import socket
 import subprocess
 import sys
 import time
+import pytest
 from urllib.request import urlopen
 
 
-def test_production_web_keeps_health_available_while_two_requests_wait(tmp_path):
+@pytest.mark.parametrize('waiting_requests', [2, 13])
+def test_production_web_keeps_health_available_while_requests_wait(tmp_path, waiting_requests):
     unit=Path(__file__).resolve().parents[1]/'deploy/systemd/freo.service'
     command=shlex.split(next(line.split('=',1)[1] for line in unit.read_text().splitlines() if line.startswith('ExecStart=')))
     with socket.socket() as available:
@@ -35,16 +37,19 @@ def test_production_web_keeps_health_available_while_two_requests_wait(tmp_path)
                     time.sleep(.05)
             def hold(name):
                 with urlopen(base+'/hold/'+name,timeout=15) as response:return response.status
-            with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
-                pending=[pool.submit(hold,name) for name in ['first','second']]
+            names=[str(i) for i in range(waiting_requests)]
+            with concurrent.futures.ThreadPoolExecutor(max_workers=waiting_requests) as pool:
+                pending=[pool.submit(hold,name) for name in names]
                 deadline=time.monotonic()+10
-                while not all((tmp_path/(name+'.entered')).exists() for name in ['first','second']):
+                # Eight entered requests fill the old two-by-four pool. Keep
+                # the rest queued so health faces the observed 13-request load.
+                while sum((tmp_path/(name+'.entered')).exists() for name in names)<min(waiting_requests,8):
                     assert time.monotonic()<deadline
                     time.sleep(.01)
                 began=time.monotonic()
                 with urlopen(base+'/health',timeout=2) as response:assert response.read()==b'ok'
                 assert time.monotonic()-began<2
-                assert [future.result() for future in pending]==[200,200]
+                assert [future.result() for future in pending]==[200]*waiting_requests
         finally:
             process.terminate()
             try:process.wait(timeout=15)
