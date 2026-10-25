@@ -103,7 +103,9 @@ def retry(reporter, row, key, now, error):
     old = row.state.get(key, {})
     failures = min(old.get('failures', 0) + 1, 8)
     delay = max(error.retry_after, min(60, 5 * 2 ** (failures - 1)) + random.uniform(0, 1))
-    reporter.save_state(row, **{key: dict(old, failures=failures, due=now + delay, error=error.code)})
+    # Retry-After starts at receipt, not the earlier sampling/request time.
+    failed_at = max(now, time.time())
+    reporter.save_state(row, **{key: dict(old, failures=failures, due=failed_at + delay, error=error.code)})
     if error.status == 401:
         row.registration_state = 'credentials_rejected'
         row.last_error = key + ':unauthorized'
@@ -140,7 +142,7 @@ def fast_tick(reporter, now):
         except APIError as error:
             retry(reporter, row, 'directory_sync', now, error)
             if error.retry_after:
-                reporter.save_state(row, retry_after=now + error.retry_after)
+                reporter.save_state(row, retry_after=time.time() + error.retry_after)
             if error.status == 401:
                 return
     state = row.state.get('now_playing', {})

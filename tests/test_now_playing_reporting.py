@@ -275,3 +275,40 @@ def test_cached_rc15_full_settings_form_can_still_explicitly_opt_out(app):
     with app.app_context():
         station = Station.query.first()
         assert not station.directory_opt_in and station.directory_consent_source == 'explicit'
+
+
+def test_retry_after_starts_when_response_arrives(sharing):
+ reporter,api,clock,station,snapshot=sharing
+ original=reporter.client_factory
+ def factory(url,token=None):
+  connection=original(url,token);request=connection.request
+  def delayed(method,path,payload=None):
+   if path=='/v1/now-playing':clock[0]+=12
+   return request(method,path,payload)
+  connection.request=delayed
+  return connection
+ reporter.client_factory=factory
+ api.fail['/v1/now-playing']=APIError('http_429',status=429,retry_after=35)
+ reporter.fast_tick()
+ assert installation().state['now_playing']['due']>=clock[0]+35
+
+
+def test_directory_withdrawal_retry_after_starts_after_slow_response(sharing):
+    reporter, api, clock, station, snapshot = sharing
+    station.directory_opt_in = False
+    db.session.commit()
+    original = reporter.client_factory
+    def factory(url, token=None):
+        connection = original(url, token)
+        request = connection.request
+        def delayed(method, path, payload=None):
+            if path == '/v1/stations/sync':
+                clock[0] += 12
+            return request(method, path, payload)
+        connection.request = delayed
+        return connection
+    reporter.client_factory = factory
+    api.fail['/v1/stations/sync'] = APIError('http_429', status=429, retry_after=35)
+    reporter.fast_tick()
+    assert installation().state['directory_sync']['due'] >= clock[0] + 35
+    assert installation().state['retry_after'] >= clock[0] + 35

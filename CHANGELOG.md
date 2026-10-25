@@ -1,3 +1,8 @@
+# 1.0.0-rc.17
+
+- Measure optional reporting and directory-sync Retry-After deadlines from response receipt, including slow responses.
+- Round HTTP-date retry deadlines up so requests never resume before the advertised time.
+
 # 1.0.0-rc.16
 
 - Default station listing and current-song sharing on, preserving legacy opt-out evidence and explicit choices.

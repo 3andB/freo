@@ -98,3 +98,27 @@ def test_errors_retry_after_and_no_redirects(endpoint, status, code):
         Client(url, 'freo_' + 'x' * 43).request('POST', '/v1/now-playing', payload())
     assert error.value.code == code and error.value.retry_after == 25
     assert len(state['calls']) == 1
+
+
+def test_http_date_retry_after_rounds_up(monkeypatch):
+    from types import SimpleNamespace
+    import app.services.central_api.client as client_module
+    fixed = datetime(2026, 10, 25, 12, 0, 0, 200000, tzinfo=timezone.utc)
+    class Response:
+        status = 429
+        def read(self, limit):
+            return b'{}'
+        def getheader(self, name, default=None):
+            return 'Sun, 25 Oct 2026 12:00:05 GMT' if name == 'Retry-After' else default
+    class Connection:
+        def __init__(self, *args, **kwargs):
+            self.sock = SimpleNamespace(settimeout=lambda timeout: None)
+        def connect(self): pass
+        def request(self, *args, **kwargs): pass
+        def getresponse(self): return Response()
+        def close(self): pass
+    monkeypatch.setattr(client_module, 'datetime', SimpleNamespace(now=lambda zone: fixed))
+    monkeypatch.setattr(client_module.http.client, 'HTTPSConnection', Connection)
+    with pytest.raises(APIError) as error:
+        Client('https://api.example.org', 'freo_' + 'x' * 43).request('POST', '/v1/now-playing', payload())
+    assert error.value.retry_after == 5  # 4.8 seconds must not be truncated to four.

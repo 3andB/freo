@@ -5,6 +5,7 @@ The reporter persists retry scheduling; legacy registration is non-idempotent.
 """
 import http.client
 import json
+import math
 import re
 import ssl
 from datetime import datetime, timezone
@@ -118,7 +119,7 @@ class Client:
             if not 200 <= response.status < 300:
                 retry = response.getheader('Retry-After', '')
                 try:
-                    retry = int(retry) if retry.isdigit() else max(0, int(
+                    retry = int(retry) if retry.isdigit() else max(0, math.ceil(
                         (parsedate_to_datetime(retry) - datetime.now(timezone.utc)).total_seconds()))
                 except (ValueError, TypeError, OverflowError):
                     retry = 0
