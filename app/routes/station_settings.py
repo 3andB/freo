@@ -184,7 +184,15 @@ def page(slug):
             for key,value in fields.items():
                 setattr(station,key,value)
             station.directory_categories = list(dict.fromkeys(categories))
-            station.directory_opt_in = request.form.get('directory_opt_in') == 'yes'
+            if request.form.get('directory_consent_present') == 'yes' or 'directory_opt_in' in request.form:
+                consent = request.form.get('directory_opt_in') == 'yes'
+                if consent != station.directory_opt_in or station.directory_consent_source != 'explicit':
+                    from app.services.admin_media import audit
+                    audit('directory_consent_changed', user_id=current_admin().id, station_id=station.id,
+                          target_type='station', target_id=station.slug,
+                          summary='Public listing and now-playing sharing ' + ('enabled' if consent else 'disabled'))
+                station.directory_opt_in = consent
+                station.directory_consent_source = 'explicit'
             station.publish_contact = request.form.get('publish_contact') == 'yes'
             if images:
                 station.logo = station.logo or StationLogo(station_id=station.id)

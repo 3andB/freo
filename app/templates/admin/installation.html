@@ -27,6 +27,11 @@
 <label>Activation code<input name="activation_code" type="password" autocomplete="off" maxlength="14" required placeholder="FREO-XXXX-XXXX"></label>
 <button type="submit">Connect Freo Live</button></form>{% endif %}
 {% if error %}<p class="admin-notice error" role="alert">{{ error }}</p>{% endif %}
+{% set sharing = installation.state.get('now_playing', {}) %}
+{% set syncing = installation.state.get('directory_sync', {}) %}
+<p>Freo Live now-playing: {{ 'supported' if installation.state.get('now_playing_capability', {}).get('supported') else 'unavailable or awaiting capability check' }}.</p>
+{% if sharing.get('server_time') %}<p>Last accepted now-playing report: <time>{{ sharing.server_time }}</time>.</p>{% endif %}
+{% if sharing.get('error') or syncing.get('error') %}<p class="admin-notice error">Public sharing needs attention: {{ syncing.get('error') or sharing.get('error') }}. Pending directory changes retry in the background.</p>{% endif %}
 {% if installation.last_error %}<p class="admin-notice error">Connection needs attention: {{ installation.last_error }}. Existing broadcasts remain available.</p>{% endif %}
 {% if installation.installation_id %}
 <p>Installation ID: <code>{{ installation.installation_id }}</code></p>

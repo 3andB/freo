@@ -14,6 +14,7 @@ from uuid import UUID
 
 MAX_BYTES = 256 * 1024
 CONTRACT_REVISION = '2026-10-v1.1'
+NOW_PLAYING_REVISION = '2026-10-v1'
 
 
 class APIError(Exception):
@@ -93,9 +94,10 @@ class Client:
             raise ValueError('Central API must be an HTTPS origin')
         self.token = token
         self.contract_revision = None
+        self.now_playing_revision = None
 
     def request(self, method, path, payload=None):
-        if path not in ('/health', '/v1/enroll', '/v1/register', '/v1/activate', '/v1/stations/sync', '/v1/heartbeat', '/v1/license', '/v1/releases/latest'):
+        if path not in ('/health', '/v1/enroll', '/v1/register', '/v1/activate', '/v1/stations/sync', '/v1/heartbeat', '/v1/license', '/v1/releases/latest', '/v1/now-playing'):
             raise ValueError('Unknown central API endpoint')
         if path in ('/health', '/v1/releases/latest') and (method != 'GET' or payload is not None):
             raise ValueError('Release discovery requires GET without a payload')
@@ -109,7 +111,7 @@ class Client:
                                                  timeout=5, context=ssl.create_default_context())
         try:
             connection.connect()
-            connection.sock.settimeout(30)
+            connection.sock.settimeout(10 if path == '/v1/now-playing' else 30)
             connection.request(method, path, body=body, headers=headers)
             response = connection.getresponse()
             raw = response.read(MAX_BYTES + 1)
@@ -125,11 +127,13 @@ class Client:
                 if response.status == 409:
                     try:
                         candidate = json.loads(raw)['error']['code']
-                        if candidate in ('station_not_synced', 'station_conflict'):
+                        if candidate in ('station_not_synced', 'station_conflict', 'directory_not_enabled'):
                             code = candidate
                     except (ValueError, KeyError, TypeError):
                         pass
                 raise APIError(code, status=response.status, retry_after=max(0, retry))
+            if path == '/v1/now-playing' and response.status != 200:
+                raise APIError('invalid_now_playing_status')
             if path == '/v1/heartbeat' and response.status != 200:
                 raise APIError('invalid_heartbeat_status')
             if path == '/health' and response.status != 200:
@@ -144,6 +148,8 @@ class Client:
                     raise APIError('invalid_health_response')
                 revision = response.getheader('X-Freo-Contract-Revision')
                 self.contract_revision = revision if isinstance(revision, str) and len(revision) <= 128 else None
+                revision = response.getheader('X-Freo-Now-Playing-Revision')
+                self.now_playing_revision = revision if isinstance(revision, str) and len(revision) <= 128 else None
             return data
         except APIError:
             raise

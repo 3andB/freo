@@ -26,8 +26,9 @@ def installed(postgres, monkeypatch):
     _, new_database, _ = postgres
     source = new_database()
     params = parse_dsn(source)
-    uri = URL.create('postgresql+psycopg2', username=params['user'], database=params['dbname'],
-                     query={'host': params['host']})
+    uri = URL.create('postgresql+psycopg2', username=params.get('user'), password=params.get('password'),
+                     host=params.get('host'), port=int(params['port']) if params.get('port') else None,
+                     database=params['dbname'])
     monkeypatch.setenv('FREO_ENV_FILE', '/dev/null')
     monkeypatch.setenv('DATABASE_URL', uri.render_as_string(hide_password=False))
     monkeypatch.setenv('SECRET_KEY', 'isolated-primary-admin-test')

@@ -129,3 +129,9 @@ For Freo World, verify its seven existing UUIDs against the local database. Afte
 the deleted-channel backlog has cleared, observe at least a full hour with no new
 hourly records for the five deleted fixtures. HTTP success alone does not complete
 acceptance. Reporting acceptance does not authorize publication of public v1.
+
+## RC16 public listing and song sharing
+
+See [Public listing and now-playing sharing](now-playing-reporting.md) for the
+2026-10-v1.3 optional endpoint, default-ON consent migration and failure behavior.
+Hourly telemetry and licensing remain unchanged.

@@ -2,7 +2,7 @@
 
 import logging
 
-VERSION = '1.0.0-rc.15'
+VERSION = '1.0.0-rc.16'
 
 # Keep the wire value nonempty without inventing a release if build metadata is bad.
 if not isinstance(VERSION, str) or not VERSION.strip() or len(VERSION) > 128:

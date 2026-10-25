@@ -1,3 +1,8 @@
+# 1.0.0-rc.16
+
+- Default station listing and current-song sharing on, preserving legacy opt-out evidence and explicit choices.
+- Sync consent promptly and share confirmed current playback through the optional Freo Live API, with independent retries and no audio-path networking.
+
 # Changelog
 
 ## 1.0.0-rc.15 — private candidate; acceptance pending

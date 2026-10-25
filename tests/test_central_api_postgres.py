@@ -40,7 +40,7 @@ def test_station_uuid_migration_and_schema(monkeypatch):
         identity = station.freo_station_id
         assert UUID(identity).version == 4
         assert station.desired_state == 'running' and station.enabled
-        assert not station.directory_opt_in and station.country == ''
+        assert station.directory_opt_in and station.country == ''
         station.name = 'Renamed'
         db.session.commit()
     migrate('upgrade')
@@ -112,13 +112,17 @@ def test_reporting_provenance_migration_preserves_existing_identity_and_hours(mo
     identity = 'cbeb636f-2565-4876-8d1a-80294d663c8c'
     hour = int(time.time() // 3600) * 3600 - 3600
     with application.app_context():
-        station = Station(name='Retained reporting fixture', slug='retained-reporting')
-        db.session.add(station)
+        # Seed the historical schema without the current ORM's new consent column.
+        from uuid import uuid4
+        station_uuid = str(uuid4())
+        station_id = db.session.execute(text("""INSERT INTO stations
+            (name,slug,description,enabled,desired_state,timezone,target_lufs,created_at,updated_at,freo_station_id)
+            VALUES ('Retained reporting fixture','retained-reporting','',true,'stopped','UTC',-16,now(),now(),:uuid)
+            RETURNING id"""), {'uuid': station_uuid}).scalar_one()
         db.session.add(CentralInstallation(id=1, installation_id=identity,
             registration_state='enrolled', state={'report': {'due': 123}, 'owner_profile_id': 'retained-owner'},
             license_cache={'fixture': 'retain exactly'}))
         db.session.flush()
-        station_id, station_uuid = station.id, station.freo_station_id
         snapshot = json.dumps(dict(current_listeners=2, stream_running=True))
         for offset, coverage in ((0, 60), (3600, 0)):
             db.session.execute(text('INSERT INTO central_hourly_metrics '

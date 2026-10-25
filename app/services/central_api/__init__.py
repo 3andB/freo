@@ -94,6 +94,8 @@ class Reporter:
         self.startup = True
         self.contract_checked = False
         self.extended = False
+        self.now_playing_supported = False
+        self.now_playing_startup = True
 
     def detect_contract(self, row, now):
         if self.contract_checked and not self.due(row, 'contract_probe', now):
@@ -105,6 +107,7 @@ class Reporter:
         if not self.reserve_calls(row, now, 1):
             return False
         connection = self.client_factory(current_app.config['FREO_API_URL'])
+        now_playing_revision = None
         try:
             response = connection.request('GET', '/health')
             if response.get('status') != 'ok':
@@ -119,6 +122,10 @@ class Reporter:
                 return False
         else:
             revision = getattr(connection, 'contract_revision', None)
+            now_playing_revision = getattr(connection, 'now_playing_revision', None)
+        self.now_playing_supported = now_playing_revision == '2026-10-v1'
+        self.save_state(row, now_playing_capability=dict(supported=self.now_playing_supported,
+                        revision=now_playing_revision, checked_at=now))
         previous = row.state.get('contract', {}).get('revision')
         self.contract_checked, self.extended = True, revision == CONTRACT_REVISION
         self.save_state(row, contract={'revision': revision, 'supported': self.extended, 'checked_at': now})
@@ -284,7 +291,7 @@ class Reporter:
                                 row.installation_id, receipt['server_time'],
                                 receipt['stations_accepted'], receipt['metrics_accepted'])
 
-    def report(self, row, client, now, on_air):
+    def sync_metadata(self, row, client, now, reserve=False):
         stations = Station.query.order_by(Station.id).all()
         calls = 0
         if self.extended and now >= row.state.get('reconcile_due', 0):
@@ -296,9 +303,12 @@ class Reporter:
                  if self.extended or channel_lifecycle(station) not in ('deleted', 'retired')]
         dirty = [(station, payload) for station, payload in dirty
                  if station_state(station).synced_digest != digest(payload)]
+        dirty.sort(key=lambda item: item[1]['directory_opt_in'])
         for batch in sync_batches(dirty):
             if calls >= 6:
                 break
+            if reserve and not self.reserve_calls(row, now, 1):
+                raise APIError('metadata_rate_limited')
             db.session.commit()
             response = client.request('POST', '/v1/stations/sync', {'stations': [payload for _, payload in batch]})
             calls += 1
@@ -321,6 +331,11 @@ class Reporter:
                 'installation_id': row.installation_id, 'freo_version': VERSION,
                 'contract_revision': row.state.get('contract', {}).get('revision'),
                 'stations_accepted': len(batch), 'station_ids': sorted(returned)})
+        return calls
+
+    def report(self, row, client, now, on_air):
+        calls = self.sync_metadata(row, client, now)
+        stations = Station.query.order_by(Station.id).all()
         # Rotate batches fairly across installations larger than one request.
         cursor = row.state.get('station_cursor', 0)
         eligible = [station for station in stations if station_state(station).synced_digest]
@@ -526,3 +541,8 @@ class Reporter:
                 if error.status == 401 or error.retry_after:
                     break
         return outcome
+
+    def fast_tick(self, now=None):
+        # Same installation process lock as telemetry; never called by playout.
+        from .now_playing import fast_tick
+        return fast_tick(self, time.time() if now is None else now)

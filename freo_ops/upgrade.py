@@ -149,8 +149,10 @@ def verify_preservation(source_url, restored_url):
         # never the actual upgraded row. Same-schema recovery stays byte-exact.
         primary_admin_grant = (
             recovery.schema_revision(old) == 'f39c8210b7de'
-            and recovery.schema_revision(new) in ('a64f09e2b731', 'b72e19d4c603', 'c83d4e5f9012')
+            and recovery.schema_revision(new) in ('a64f09e2b731', 'b72e19d4c603', 'c83d4e5f9012', 'fe28c3d4e5f6')
         )
+        consent_migration = (recovery.schema_revision(new) == 'fe28c3d4e5f6'
+                             and recovery.schema_revision(old) != 'fe28c3d4e5f6')
         with old.cursor() as cursor:
             cursor.execute("SELECT tablename FROM pg_tables WHERE schemaname='public' AND tablename!='alembic_version' ORDER BY tablename")
             tables = [row[0] for row in cursor.fetchall()]
@@ -174,6 +176,24 @@ def verify_preservation(source_url, restored_url):
                     if column == 'installation_admin' else sql.Identifier(column)
                     for column in columns
                 ]
+                expected_query = sql.SQL(
+                    'SELECT value FROM (SELECT row_to_json(t)::text AS value FROM '
+                    '(SELECT {} FROM public.{}) t) rows ORDER BY value COLLATE "C"'
+                ).format(sql.SQL(',').join(expected_columns), sql.Identifier(table))
+            if consent_migration and table in ('stations', 'central_station_state'):
+                # Evaluate only the reviewed transformation against backup data.
+                # Never derive an expected consent value from the upgraded row.
+                expected_columns = []
+                for column in columns:
+                    if table == 'stations' and column == 'directory_opt_in':
+                        expression = sql.SQL("CASE WHEN directory_opt_in OR NOT EXISTS "
+                            "(SELECT 1 FROM audit_events a WHERE a.station_id = stations.id "
+                            "AND a.action = 'station_details_updated') THEN true ELSE false END AS directory_opt_in")
+                    elif table == 'central_station_state' and column == 'synced_digest':
+                        expression = sql.SQL('NULL::varchar AS synced_digest')
+                    else:
+                        expression = sql.Identifier(column)
+                    expected_columns.append(expression)
                 expected_query = sql.SQL(
                     'SELECT value FROM (SELECT row_to_json(t)::text AS value FROM '
                     '(SELECT {} FROM public.{}) t) rows ORDER BY value COLLATE "C"'
