@@ -268,3 +268,32 @@ Browser-local drafts/layout preferences, a dedicated restricted migration
 database role, incremental backup and automatic retention are not implemented.
 Saved schedules, server-side import drafts, paid licenses, account permissions
 and database settings are included in the complete database backup.
+
+### Same-schema station-engine maintenance
+
+`upgrade --radio-maintenance` explicitly permits a signed change to
+`deploy/liquidsoap/station.liq.template` when the database schema is unchanged.
+Other radio template changes retain their normal refusal. This operation stops
+and restores the precise previously active service list, including station
+engines; arrange a broadcast maintenance window.
+
+Preflight compares existing station engines with the installed renderer and
+refuses operator modifications. After stopping writers, it checks again, creates
+the matched encrypted backup and verifies an isolated restore. Before migration,
+it renders every existing managed station engine into a temporary file beside
+its destination and runs Liquidsoap validation as `freo-playout`. It then installs
+the validated engine files during guarded activation. Station credentials,
+hosting policy, proxy configuration and stopped station states are preserved.
+Compiler failure restores the previous services. Failure after migration retains
+the maintenance marker and requires recovery with the matched backup; never
+rewind only the source or attempt a protected schema downgrade.
+
+An older updater will still refuse template changes. To perform this transition,
+first use that installation's `freo_ops.releases.extract_verified` and its
+independently trusted publisher keyring to extract the candidate into a new
+root-only bootstrap directory. Run the verified candidate's management CLI with
+the installed interpreter, setting `PYTHONPATH` and the working directory to the
+verified bootstrap source. Supply all normal upgrade backup, isolated restore,
+signature and keyring arguments, plus `--radio-maintenance`. The candidate
+remains subject to signature verification again inside the updater. Do not edit
+the installed release or disable its template guard to bootstrap this procedure.

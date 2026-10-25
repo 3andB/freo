@@ -99,10 +99,10 @@ def host(tmp_path, monkeypatch):
         def __enter__(self): return self
         def __exit__(self, *args): pass
     monkeypatch.setattr(updater, 'build_opener', lambda *args: SimpleNamespace(open=lambda *a, **k: Ready()))
-    def execute(check=False):
+    def execute(check=False, **kwargs):
         return updater.upgrade('artifact', 'signature', 'trusted-keyring', environment,
                                tmp_path / 'backup.gpg', b'fixture-passphrase', environment,
-                               tmp_path / 'verification', check=check)
+                               tmp_path / 'verification', check=check, **kwargs)
     return SimpleNamespace(execute=execute, calls=calls, active=active, info=info,
                            root=root, units=units, state=state, template=template)
 
@@ -375,3 +375,65 @@ def test_unprivileged_upgrade_environment_does_not_reopen_root_only_secrets(tmp_
     assert env['FREO_ENV_FILE']=='/dev/null'
     assert env['DATABASE_URL']=='fixture' and env['SECRET_KEY']=='preserved'
     assert secret.stat().st_mode & 0o777 == 0o600
+
+
+@pytest.mark.parametrize('mode', ['default-refused', 'schema-refused', 'other-template-refused', 'compile-failed', 'success', 'activation-failed'])
+def test_explicit_radio_maintenance_is_validated_backed_up_and_fail_closed(host, monkeypatch, mode):
+    from freo_ops import radio_maintenance, v1
+    relative=Path(radio_maintenance.TEMPLATE)
+    (host.root/relative).parent.mkdir(parents=True)
+    (host.root/relative).write_text('old native template')
+    extract=updater.releases.extract_verified
+    def candidate(artifact,directory,**kwargs):
+        manifest=extract(artifact,directory,**kwargs)
+        if mode!='schema-refused':manifest['schema_head']=host.info['revision']
+        (directory/relative).parent.mkdir(parents=True)
+        (directory/relative).write_text('new native template')
+        if mode=='other-template-refused':
+            (directory/relative.parent/'bulletin.liq').write_text('unreviewed change')
+        return manifest
+    monkeypatch.setattr(updater.releases,'extract_verified',candidate)
+    monkeypatch.setattr(v1,'check_runtime',lambda *args:host.calls.append('matched-old-runtime'))
+    def stage(*args):
+        assert not host.active
+        assert 'restore-verified' in host.calls
+        assert not any(isinstance(c,list) and c[-2:]==['db','upgrade'] for c in host.calls)
+        host.calls.append('radio-compile')
+        if mode=='compile-failed':raise recovery.RecoveryError('Invalid native configuration')
+        return {'fixture':{'temporary':'fixture'}}
+    monkeypatch.setattr(radio_maintenance,'stage',stage)
+    monkeypatch.setattr(radio_maintenance,'discard',lambda changes:host.calls.append('discard-radio'))
+    def apply(changes):
+        if not changes:return
+        assert not host.active and 'preservation-verified' in host.calls
+        host.calls.append('radio-activate')
+        if mode=='activation-failed':raise recovery.RecoveryError('Native activation failed')
+    monkeypatch.setattr(radio_maintenance,'apply',apply)
+    run=recovery.run
+    def migrate(command,**kwargs):
+        result=run(command,**kwargs)
+        if command[-2:]==['db','upgrade'] and mode!='schema-refused':host.info['revision']='a71d25b609ef'
+        return result
+    monkeypatch.setattr(recovery,'run',migrate)
+    if mode.endswith('refused'):
+        with pytest.raises(recovery.RecoveryError,match='Radio/proxy template'):
+            host.execute(radio_maintenance=mode!='default-refused')
+        assert 'backup' not in host.calls and 'radio-compile' not in host.calls
+        assert host.active==['freo.service','freo-automation.service']
+    elif mode=='compile-failed':
+        with pytest.raises(recovery.RecoveryError,match='Invalid native'):
+            host.execute(radio_maintenance=True)
+        assert host.active==['freo.service','freo-automation.service']
+        assert not (host.state/'maintenance').exists()
+        assert 'radio-activate' not in host.calls
+    elif mode=='activation-failed':
+        with pytest.raises(recovery.RecoveryError,match='Native activation'):
+            host.execute(radio_maintenance=True)
+        assert not host.active and (host.state/'maintenance').exists()
+        assert json.loads((host.state/'journal.json').read_text())['phase']=='recovery_required'
+    else:
+        assert host.execute(radio_maintenance=True)['status']=='complete'
+        assert host.calls.count('matched-old-runtime')==2
+        assert host.calls.index('backup')<host.calls.index('restore-verified')<host.calls.index('radio-compile')
+        assert host.calls.index('radio-compile')<host.calls.index('preservation-verified')<host.calls.index('radio-activate')
+        assert json.loads((host.state/'journal.json').read_text())['radio_maintenance_files']==['fixture']

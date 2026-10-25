@@ -200,7 +200,7 @@ def verify_preservation(source_url, restored_url):
         new.close()
 
 
-def _upgrade(artifact, signature, keyring, env_file, backup, passphrase, verification_env_file, verification_directory, *, check=False, allow_candidate=False, verification_create_database=None):
+def _upgrade(artifact, signature, keyring, env_file, backup, passphrase, verification_env_file, verification_directory, *, check=False, allow_candidate=False, verification_create_database=None, radio_maintenance=False):
     from .__main__ import configuration, inventory, active_units
     if os.geteuid() != 0:
         raise recovery.RecoveryError('Upgrades require root; the web application cannot perform upgrades')
@@ -255,6 +255,7 @@ def _upgrade(artifact, signature, keyring, env_file, backup, passphrase, verific
         atomic_json(journal_path, journal)
         migrated = False
         stopped = False
+        radio_changes = {}
         try:
             manifest = releases.extract_verified(artifact, release, signature=signature, keyring=keyring, allow_candidate=allow_candidate)
             if manifest['platform'] != 'ubuntu-24.04-x86_64' or manifest['python'] != '3.12':
@@ -303,18 +304,25 @@ def _upgrade(artifact, signature, keyring, env_file, backup, passphrase, verific
                 v1.check_runtime(current, release_environment(values, env_file))
                 v1.check_space(values['DATABASE_URL'], roots, release, backup, verification_directory)
                 v1.check_icecast_overrides(Path('/etc/systemd/system/icecast2.service.d'))
-            from . import proxy_ipv6
+            from . import proxy_ipv6, radio_maintenance as radio
             proxy_transition = False
+            radio_transition = False
             for directory in (() if adopting_v1 or adopting_hosting else ('liquidsoap', 'icecast', 'nginx')):
                 for path in (release / 'deploy' / directory).rglob('*'):
                     if path.is_file():
                         old = current / path.relative_to(release)
                         if not old.is_file() or recovery.digest(old) != recovery.digest(path):
+                            if (radio_maintenance and str(path.relative_to(release)) == radio.TEMPLATE
+                                    and old.is_file() and revision == manifest['schema_head']):
+                                radio_transition = True
+                                continue
                             if (str(path.relative_to(release)) in proxy_ipv6.TEMPLATES and old.is_file()
                                     and proxy_ipv6.allowed_template_change(path.relative_to(release), old.read_text(), path.read_text())):
                                 proxy_transition = True
                                 continue
                             raise recovery.RecoveryError('Radio/proxy template changes require a separately tested maintenance procedure')
+            if radio_transition:
+                v1.check_runtime(current, release_environment(values, env_file))
             proxy_changes = proxy_ipv6.plan() if proxy_transition else {}
             for override in Path('/etc/systemd/system').glob('freo*.service.d/*.conf'):
                 if any(line.startswith(('ExecStart=', 'ExecStartPre=', 'WorkingDirectory=', 'EnvironmentFile='))
@@ -363,6 +371,8 @@ def _upgrade(artifact, signature, keyring, env_file, backup, passphrase, verific
                 recovery.run(['systemctl', 'stop', *journal['active_units']])
             if active_units():
                 raise recovery.RecoveryError('Freo units remain active; refusing backup/migration')
+            if radio_transition:
+                v1.check_runtime(current, release_environment(values, env_file))
             journal['phase'] = 'backup'
             atomic_json(journal_path, journal)
             recovery.create(values['DATABASE_URL'], roots, backup, passphrase, version=old_version,
@@ -372,6 +382,10 @@ def _upgrade(artifact, signature, keyring, env_file, backup, passphrase, verific
             verified = recovery.restore(backup, passphrase, target_values['DATABASE_URL'], verification_directory, create_database=verification_create_database)
             journal['verification_database'] = verified['database']
             journal['verification_directory'] = str(verification_directory)
+            if radio_transition:
+                radio_changes = radio.stage(release, release_environment(values, env_file))
+                journal['radio_maintenance_files'] = list(radio_changes)
+                atomic_json(journal_path, journal)
             if adopting_v1 or adopting_hosting:
                 journal['phase'] = 'dependencies'
                 atomic_json(journal_path, journal)
@@ -448,6 +462,7 @@ def _upgrade(artifact, signature, keyring, env_file, backup, passphrase, verific
                     journal['active_units'].append('freo-mic.service')
             proxy_ipv6.apply(proxy_changes)
             journal['ipv6_proxy_files'] = [str(path) for path in proxy_changes]
+            radio.apply(radio_changes)
             switch_pointer(root, release)
             recovery.run(['systemctl', 'daemon-reload'])
             journal['phase'] = 'starting'
@@ -486,6 +501,8 @@ def _upgrade(artifact, signature, keyring, env_file, backup, passphrase, verific
             return dict(status='complete', version=manifest['version'], backup=journal['backup'],
                         verification_database=verified['database'])
         except Exception as error:
+            from . import radio_maintenance as radio
+            radio.discard(radio_changes)
             journal['failure_phase'] = journal['phase']
             journal['failure_type'] = type(error).__name__
             diagnostics = getattr(error, 'private_diagnostics', None)
