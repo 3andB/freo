@@ -42,8 +42,21 @@ def test_back_during_page_script_loading_restores_booth_and_forward(booth, forwa
         window.addEventListener('popstate', () => window.historyPops++);
     ''')
     driver.find_element(By.CSS_SELECTOR, '.admin-nav a[href$="/categories"]').click()
+    # Wait for the setup interception before measuring history behavior. Keep
+    # the subsequent Back/Forward deadlines and all history assertions intact.
     wait = WebDriverWait(driver, 10)
-    wait.until(lambda d: d.execute_script('return typeof releasePageScript === "function"'))
+    try:
+        WebDriverWait(driver,30).until(lambda d: d.execute_script('return typeof releasePageScript === "function"'))
+    except Exception as error:
+        import json
+        diagnostic=driver.execute_script('''return {url:location.href,
+          navigating:document.documentElement.classList.contains('is-navigating'),
+          notice:document.querySelector('.admin-notice')?.textContent,
+          dialog:document.querySelector('dialog[open]')?.textContent,
+          ready:document.readyState};''')
+        (tmp_path/'history-setup-error.json').write_text(json.dumps(diagnostic,indent=2))
+        error.add_note('History interception setup: '+json.dumps(diagnostic))
+        raise
     assert driver.execute_script('return document.documentElement.classList.contains("is-navigating")')
     driver.back()
     wait.until(lambda d: d.execute_script('return historyPops === 1'))

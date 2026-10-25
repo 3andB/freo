@@ -98,9 +98,12 @@ def test_session_devices_retention_and_csv_in_browser(booth):
     assert not [r for r in driver.get_log('browser') if r['level'] == 'SEVERE' and 'favicon.ico' not in r['message']]
 
 
-def test_statistics_dashboard_and_world_map(booth):
+def test_statistics_dashboard_and_world_map(booth, monkeypatch):
+    import json
     app,driver,base,tmp_path=booth
-    now=int(time.time())
+    # The browser can spend longer than the collector freshness TTL compiling
+    # its map. Model a running collector rather than relying on a one-off tick.
+    now=int(time.time())-60
     with app.app_context():
         collect.tick({1:dict(online=True,listeners=3,bytes=100,epoch='e',source_epoch='s',clients=[]),
                       2:dict(online=False,listeners=0,clients=[])},now-15)
@@ -108,6 +111,20 @@ def test_statistics_dashboard_and_world_map(booth):
                       2:dict(online=False,listeners=0,clients=[])},now)
         collect.presence(1,'website','browser',dict(place='perth',country='Australia',country_code='AU',city='Perth',region='Western Australia',lat=-31.95,lon=115.86),now)
         db.session.commit()
+    collector={'bytes':30100};served=[]
+    endpoint=next(r.endpoint for r in app.url_map.iter_rules() if r.rule=='/admin/stats/data')
+    original=app.view_functions[endpoint]
+    def current_collector(*args,**kwargs):
+        at=int(time.time())
+        collect.tick({1:dict(online=True,listeners=4,bytes=collector['bytes'],epoch='e',source_epoch='s',clients=[]),
+                      2:dict(online=False,listeners=0,clients=[])},at)
+        collect.presence(1,'website','browser',dict(place='perth',country='Australia',country_code='AU',city='Perth',region='Western Australia',lat=-31.95,lon=115.86),at)
+        db.session.commit()
+        response=original(*args,**kwargs)
+        data=response.get_json()
+        served.append(dict(collected_at=at,response_at=data['current']['at'],fresh=data['fresh']))
+        return response
+    monkeypatch.setitem(app.view_functions,endpoint,current_collector)
     driver.get(base+'/admin/stats')
     wait_text(driver,'#stats-freshness','Updated')
     assert len(driver.find_elements(By.CSS_SELECTOR,'.stats-metric'))==8
@@ -133,6 +150,7 @@ def test_statistics_dashboard_and_world_map(booth):
     # The screenshot/navigation exercise can exceed the 45-second freshness TTL.
     # Model the running collector before asking the new page for a fresh sample.
     with app.app_context():
+        collector['bytes']=60100
         collect.tick({1:dict(online=True,listeners=4,bytes=60100,epoch='e',source_epoch='s',clients=[]),
                       2:dict(online=False,listeners=0,clients=[])},int(time.time()))
     previous=driver.find_element(By.ID,'statistics')
@@ -141,6 +159,9 @@ def test_statistics_dashboard_and_world_map(booth):
     WebDriverWait(driver,15).until(EC.staleness_of(previous))
     wait_text(driver,'#stats-freshness','Updated')
     assert 'Test Station' in driver.find_element(By.CSS_SELECTOR,'.stats-heading').text
+    assert served and all(row['fresh'] for row in served)
+    (tmp_path/'statistics-collector-proof.json').write_text(json.dumps(dict(initial_tick=now,
+        initial_age_seconds=int(time.time())-now,served=served),indent=2))
     errors=[r for r in driver.get_log('browser') if r['level']=='SEVERE' and 'favicon.ico' not in r['message']]
     assert not errors,errors
 

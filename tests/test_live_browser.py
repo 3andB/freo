@@ -46,9 +46,16 @@ def booth(app_fixture, monkeypatch, tmp_path, request):
     app.add_url_rule('/stream/test-station','test_monitor_stream',lambda:Response(audio_bytes.getvalue(),mimetype='audio/wav'))
     # This fixture supplies stable engine observations; audio is tested separately.
     from flask import request as flask_request
+    bootstrap_delay = getattr(request, 'param', {}).get('initial_live_status_delay', 0)
+    bootstrap_ready_at = None
     @app.before_request
     def fixture_observer_heartbeat():
+        nonlocal bootstrap_ready_at
         if flask_request.path.endswith('/live-status'):
+            if bootstrap_delay:
+                import time
+                if bootstrap_ready_at is None:bootstrap_ready_at=time.monotonic()+bootstrap_delay
+                time.sleep(max(0,bootstrap_ready_at-time.monotonic()))
             LiveQueueSnapshot.query.update({'observed_at':datetime.now(timezone.utc)})
             db.session.commit()
     server=make_server('127.0.0.1',0,app,threaded=True)
@@ -87,17 +94,27 @@ def booth(app_fixture, monkeypatch, tmp_path, request):
         driver.get(base+'/admin/stations/test-station/live')
         # The initial HTML can already say EMPTY on deck B while the client
         # still has no engine snapshot. Wait for confirmed playback to render.
-        wait_text(driver, '#morph-text', 'Verified Test Track')
+        wait_text(driver, '#morph-text', 'Verified Test Track', timeout=30)
+        WebDriverWait(driver,30).until(lambda d:d.execute_script("return !!window.FreoWorkspace && !!window.FreoPage?.beforeNavigate && !document.documentElement.classList.contains('is-navigating')"))
         yield app,driver,base,tmp_path
-    except Exception:
+    except Exception as error:
         driver.save_screenshot("/tmp/freo-browser-failure.png")
+        try:
+            import json
+            diagnostic=driver.execute_script('''return {path:location.pathname,ready:document.readyState,
+              title:document.getElementById('morph-text')?.textContent,
+              state:document.getElementById('live-state')?.textContent,
+              navigating:document.documentElement.classList.contains('is-navigating'),scope:!!window.FreoPage};''')
+            (tmp_path/'booth-bootstrap-error.json').write_text(json.dumps(diagnostic,indent=2))
+            error.add_note('Booth fixture readiness: '+json.dumps(diagnostic))
+        except Exception:pass
         raise
     finally:
         driver.quit();server.shutdown();thread.join(timeout=3);shutil.rmtree(profile,ignore_errors=True)
 
 
-def wait_text(driver, selector, text):
-    WebDriverWait(driver,8,ignored_exceptions=(StaleElementReferenceException,)).until(lambda d:text in d.find_element(By.CSS_SELECTOR,selector).text)
+def wait_text(driver, selector, text, *, timeout=8):
+    WebDriverWait(driver,timeout,ignored_exceptions=(StaleElementReferenceException,)).until(lambda d:text in d.find_element(By.CSS_SELECTOR,selector).text)
 
 
 def apply_browser_command(app, operation, deck):
