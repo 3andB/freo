@@ -27,6 +27,11 @@ def handoff_stack(monkeypatch, tmp_path, request):
     recording = tmp_path/'handoff.wav'
     def render(*args, **kwargs):
         source = original(*args, **kwargs)
+        # Model a delayed background timer independently of the audio clock.
+        delay=request.node.callspec.params.get('timer_delay',0)
+        if delay:
+            source=source.replace('thread.run(delay=max(0.0, 2.0-(time()-since)),',
+                f'thread.run(delay={delay}+max(0.0, 2.0-(time()-since)),')
         return source.replace('output.icecast(', f'output.file(%wav, "{recording}", radio)\noutput.icecast(')
     monkeypatch.setattr(station_runtime, 'render_liquidsoap', render)
     duration = getattr(request, 'param', 30 if request.node.callspec.params.get('operation')=='lease-expiry' else 12)
@@ -410,3 +415,58 @@ worker.main()
     gap=(first-last-1)/20
     (stack.evidence/'cold-restart-result.json').write_text(json.dumps(dict(deck=deck,gap_seconds=gap)))
     assert gap<=.25, f'Cold worker restart left {gap:.2f}s without programme'
+
+@pytest.mark.parametrize('timer_delay',[0,1.25])
+@pytest.mark.parametrize('deck',['A','B'])
+@pytest.mark.parametrize('operation',['CLEAR','PAUSE'])
+@pytest.mark.parametrize('handoff_stack',[78],indirect=True)
+def test_early_stop_returns_before_backup_threshold(handoff_stack,deck,operation,timer_delay):
+    """Stop before EOF lookahead has already warmed the AUTO decoder."""
+    stack=handoff_stack
+    def station():return Station.query.filter_by(slug=stack.slug).one()
+    wait_for(lambda:stack.query(lambda:program_decision_id(stack.slug)))
+    stack.query(lambda:set_mode(station(),AdminUser.query.first(),'DJ_BOOTH'))
+    wait_for(lambda:stack.query(lambda:mixer_state(stack.slug)['mode']=='DJ_BOOTH'))
+    identifier=stack.query(lambda:request_deck(station(),AdminUser.query.first(),deck,'LOAD',stack.track_uuids[2],
+        '',str(uuid.uuid4()),fade_seconds=0,play_on_load=True).target_decision_id)
+    wait_for(lambda:stack.query(lambda:program_decision_id(stack.slug)==identifier))
+    wait_for(lambda:stack.query(lambda:mixer_state(stack.slug)[deck.lower()+'_elapsed']>=3))
+    assert stack.query(lambda:mixer_state(stack.slug)[deck.lower()+'_elapsed'])<30
+    command=stack.query(lambda:request_deck(station(),AdminUser.query.first(),deck,operation,None,
+        str(identifier),str(uuid.uuid4())).id)
+    wait_for(lambda:stack.query(lambda:db.session.get(LiveControlCommand,command).status=='sent'))
+    stack.stop_worker()
+    wait_for(lambda:stack.query(lambda:mixer_state(stack.slug)['mode']=='AUTO'))
+    stack.start_worker()
+    wait_for(lambda:stack.query(lambda:station().automation.operator_mode=='AUTO'))
+    wait_for(lambda:stack.query(lambda:program_decision_id(stack.slug) not in (None,identifier)))
+    time.sleep(2)
+    stack.stop_worker();stop_process(stack.engine)
+    windows=tone_windows(stack.evidence/'handoff.wav')
+    last=max(i for i,(dj,_) in enumerate(windows) if dj>500)
+    first=next(i for i in range(last+1,len(windows)) if windows[i][1]>500)
+    gap=(first-last-1)/20
+    (stack.evidence/'early-stop-result.json').write_text(json.dumps(dict(deck=deck,operation=operation,timer_delay=timer_delay,audio_gap=gap)))
+    assert gap<=2.75,f'{deck} {operation}: {gap:.2f}s exceeds the 2s operator grace plus recovery allowance'
+
+
+@pytest.mark.parametrize('deck',['A','B'])
+@pytest.mark.parametrize('handoff_stack',[78],indirect=True)
+def test_resuming_paused_deck_revokes_stopped_return(handoff_stack,deck):
+    stack=handoff_stack
+    def station():return Station.query.filter_by(slug=stack.slug).one()
+    wait_for(lambda:stack.query(lambda:program_decision_id(stack.slug)))
+    stack.query(lambda:set_mode(station(),AdminUser.query.first(),'DJ_BOOTH'))
+    wait_for(lambda:stack.query(lambda:mixer_state(stack.slug)['mode']=='DJ_BOOTH'))
+    identifier=stack.query(lambda:request_deck(station(),AdminUser.query.first(),deck,'LOAD',stack.track_uuids[2],
+        '',str(uuid.uuid4()),fade_seconds=0,play_on_load=True).target_decision_id)
+    wait_for(lambda:stack.query(lambda:program_decision_id(stack.slug)==identifier))
+    def control(operation):
+        command=stack.query(lambda:request_deck(station(),AdminUser.query.first(),deck,operation,None,
+            str(identifier),str(uuid.uuid4()),fade_seconds=0).id)
+        wait_for(lambda:stack.query(lambda:db.session.get(LiveControlCommand,command).status=='sent'))
+    control('PAUSE');control('PLAY')
+    time.sleep(3)
+    assert stack.query(lambda:mixer_state(stack.slug)['mode'])=='DJ_BOOTH'
+    assert stack.query(lambda:program_decision_id(stack.slug))==identifier
+    assert stack.query(lambda:station().automation.operator_mode)=='DJ_BOOTH'

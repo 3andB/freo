@@ -89,7 +89,8 @@ return_until = ref(0.0)
 return_completed = ref("")
 stopped_source = ref("")
 stopped_at = ref(0.0)
-def cancel_return() = return_source := ""; return_until := 0.0; stopped_source := "" end
+stopped_target = ref("")
+def cancel_return() = return_source := ""; return_until := 0.0; stopped_source := ""; stopped_target := "" end
 b_play = ref(false)
 cart_takeover = ref(false)
 duck = ref(0.5)
@@ -491,28 +492,29 @@ server.register(namespace="freo_mixer", "return_discard", fun (target) -> begin
     "OK"
   end
 end)
-# Authorize the existing two-second stopped-deck grace once. Manual operations
-# revoke the captured identity; worker polling cannot extend the silent interval.
+# Authorize the existing stopped-deck grace once. Complete it on the audio
+# clock: a delayed background timer must not lengthen the rendered silence.
 server.register(namespace="freo_mixer", "return_stopped", fun (target) -> begin
-  source = stopped_source()
-  since = stopped_at()
-  if mode() != "DJ_BOOTH" or source == "" then "BUSY"
-  else
-    thread.run(delay=max(0.0, 2.0-(time()-since)), fun () -> begin
-      future = queue.queue()
-      current = queue.current()
-      ready = (null.defined(current) and decision(request.metadata(null.get(current))) == target) or
-        (list.length(future) > 0 and decision(request.metadata(list.hd(future))) == target)
-      if mode() == "DJ_BOOTH" and stopped_source() == source and stopped_at() == since and time()-since < 15.0 and
-          not a_play() and not b_play() and not mic_active() and not cart.is_ready() and event_token() == "" and ready then
-        ignore(set_mode("AUTO"))
-        transition_duration := 0.0; auto_to := 1.0; a_to := 0.0; b_to := 0.0
-        return_completed := source
-      end
-    end)
-    "OK"
-  end
+  if mode() != "DJ_BOOTH" or stopped_source() == "" then "BUSY"
+  else stopped_target := target; "OK" end
 end)
+def complete_stopped_return()
+  source = stopped_source()
+  target = stopped_target()
+  elapsed = time()-stopped_at()
+  if mode() == "DJ_BOOTH" and source != "" and target != "" and elapsed >= 2.0 and elapsed < 15.0 and
+      not a_play() and not b_play() and not mic_active() and not cart.is_ready() and event_token() == "" then
+    future = queue.queue()
+    current = queue.current()
+    ready = (null.defined(current) and decision(request.metadata(null.get(current))) == target) or
+      (list.length(future) > 0 and decision(request.metadata(list.hd(future))) == target)
+    if ready and stopped_source() == source and stopped_target() == target then
+      ignore(set_mode("AUTO"))
+      transition_duration := 0.0; auto_to := 1.0; a_to := 0.0; b_to := 0.0
+      return_completed := source
+    end
+  end
+end
 def dj_finished(deck, remaining, metadata)
   cue_finished(remaining, metadata)
   event_boundary(deck)
@@ -742,6 +744,7 @@ program = blank.detect(max_blank=3.0, min_noise=0.1, threshold=-55.0, start_blan
 # audible. Making the already-safe mixer unavailable would stall its clock.
 backup = amplify({if tone_active() then 1.0 else 0.0 end}, tone)
 radio = add(normalize=false, [program, backup])
+radio = source.on_frame(radio, complete_stopped_return)
 def broadcasting_tone() = tone_active() end
 radio = limit(attack=1.0, release=100.0, threshold=-1.5, ratio=100.0, gain=0.0, radio)
 def current_auto()
