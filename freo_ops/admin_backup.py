@@ -353,7 +353,7 @@ def adopt_restored_release(metadata,release):
     """Use Phase A's canonical deployment paths for a restored direct installation."""
     from .upgrade import rewrite_unit,sync_directory
     environment=Path(metadata['env_file'])
-    recovered_env=release/environment.relative_to('/opt/freo') if environment.is_relative_to('/opt/freo') else environment
+    recovered_env=release/environment.relative_to(metadata['source']) if environment.is_relative_to(metadata['source']) else environment
     destination=Path('/etc/freo/freo.env')
     from .recovery_layout import canonical_environment
     canonical_environment(recovered_env, destination)

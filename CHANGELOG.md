@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.1-rc.1 — recovery candidate
+
+- Fix restrictive-umask release parent creation, repeated launcher relocation on resume, and canonical environment ownership/mode.
+- Add filesystem and interruption regressions; keep schema fe28c3d4e5f6 unchanged.
+- See [candidate recovery notes](docs/release-1.0.1-rc.1.md) for root causes, operator guidance and acceptance limits.
+
 ## 1.0.0 — 28 October 2026
 
 - Promote human-accepted RC17 to stable with unchanged application behavior, schema and dependencies.
