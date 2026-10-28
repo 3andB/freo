@@ -18,7 +18,7 @@ ROOT = Path(__file__).resolve().parents[1]
 @pytest.fixture
 def installer(tmp_path):
     fixture_source = tmp_path/'source'
-    shutil.copytree(ROOT, fixture_source, ignore=shutil.ignore_patterns('.git', '__pycache__', '.pytest_cache'))
+    shutil.copytree(ROOT, fixture_source, ignore=shutil.ignore_patterns('.git', '__pycache__', '.pytest_cache', 'venv', '.venv'))
     (fixture_source/'wheels').mkdir(exist_ok=True)
     (fixture_source/'wheels/fixture.whl').touch()  # Command stubs never open wheel bytes.
     root = tmp_path / 'host'
@@ -59,13 +59,13 @@ elif name == 'bash' and Path(args[0]).name == 'install-python.sh':
 elif name == 'git':
     print('test-source')
 elif name not in ('apt-get', 'systemctl', 'id', 'useradd', 'usermod', 'chown',
-                  'nginx', 'certbot', 'flask', 'bash', 'python', 'python3'):
+                  'nginx', 'certbot', 'flask', 'bash', 'python', 'python3', 'dpkg-query'):
     raise SystemExit('Unexpected host command: ' + name)
 ''')
     stub.chmod(0o755)
     for command in ('apt-get', 'systemctl', 'id', 'useradd', 'usermod', 'chown',
                     'nginx', 'certbot', 'bash', 'python3', 'runuser', 'install',
-                    'openssl', 'git'):
+                    'openssl', 'git', 'dpkg-query'):
         (commands / command).symlink_to(stub)
     for command in ('python', 'flask'):
         (installed / 'venv/bin' / command).symlink_to(stub)
