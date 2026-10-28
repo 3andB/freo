@@ -1,0 +1,119 @@
+# Fresh Ubuntu 24.04 acceptance test
+
+For **0.3.2**, fresh Ubuntu 24.04 x86_64 HTTP/public-IP installation and
+full-VM reboot/recovery acceptance passed on the exact signed stable kit.
+See the [completed acceptance record](0.3.2-acceptance.md) and
+[public installation guide](stable-installation.md). The following checklist
+remains useful for additional environments and future releases.
+Confirm separate LOCAL APPLICATION VALIDATION and EXTERNAL ACCESS VALIDATION
+results and the exact admin URL. Local Nginx/CSRF/login failures remain fatal;
+external/hairpin failures are reported independently. The package runner now
+requires Nginx and OpenSSL and tests real vhosts on temporary loopback ports,
+including hostname TLS/SNI with a trusted fixture certificate. Its PostgreSQL,
+Gunicorn and Nginx instances never use installed state or system services.
+The earlier acceptance records below remain historical.
+
+For **0.3.1**, use the [new kit instructions](0.3.1-installation.md) on a virgin
+Ubuntu 24.04 x86_64 VM. Save the kit SHA256, installed version, installer log and
+`scripts/validate-install.sh` output. Confirm `venv/bin/python -m pip check`,
+`venv/bin/python -m freo_ops.dependencies --live-mic`, migrations at
+`c83d4e5f9012`, `/health`, `/ready`, first login/password replacement, station
+playback and reboot persistence. Also complete HTTPS/microphone checks if used.
+Record the exact installed dependency versions with `venv/bin/python -m pip freeze`.
+The automated disposable database tests are package checks, not VM acceptance.
+
+Maintainers can reproduce those package checks without touching installed state:
+
+```bash
+bash /path/to/extracted-kit/scripts/install-python.sh /path/to/extracted-kit /tmp/freo-package-venv --offline
+sudo python3 /path/to/source-checkout/scripts/test-install-postgres.py /path/to/extracted-kit /tmp/freo-package-venv /tmp/freo-package-evidence
+```
+
+Use new output/venv directories. The runner requires PostgreSQL tools, curl and
+the system `postgres` account. It creates and removes its own UTF-8 PostgreSQL
+cluster under `/tmp`, tests all three PostgreSQL URL forms, and records migration,
+bootstrap, HTTP readiness and Gunicorn restart results. It never sources `.env`.
+
+The following candidate/phase records are historical:
+
+For RC6, start with the [current readiness audit](rc6-release-readiness-2026-09-23.md)
+and its outstanding VM acceptance gates. RC6 is still in development. The rc.3,
+0.2.0, and phase-specific references below are historical checks, not an RC6
+acceptance record. Use a separate disposable VM, never the preserved accepted
+RC5 VM. Every installer rerun must refuse existing state without changes;
+populated installations use the signed-bundle upgrade workflow instead.
+
+For rc.3 use the signed package and [current installation instructions](install-candidate.md).
+Fresh installations create `admin` / `IAmOnTheAir`; complete the mandatory browser
+password replacement before administration. No initial CLI account creation is
+required. Test HTTP and HTTPS login, logout, default-password rejection and host
+reboot before marking this checklist passed.
+
+For the 0.2.0 candidate, installer reruns in this historical checklist must now
+refuse safely with no changes. Perform actual upgrades with the signed bundle
+workflow in [recovery and upgrades](recovery-and-upgrades.md). In addition to the
+feature checks below, test upgrade interruption at each journal phase, old/new
+worker versions, backup disk exhaustion, signature rejection, and restore on a
+separate replacement VM with service-account/ACL mapping. Record actual stream
+interruption and verify every preserved original file hash and saved setting.
+
+This test must run on a separate, disposable, fresh Ubuntu 24.04 VM before Freo claims third-party installation support. Record OS image, commit, package versions, results, and defects. Do not use the production Freo database.
+
+1. Create the VM, obtain and verify the signed candidate using the current installation guide, and run its installer.
+2. Confirm the installer finishes; `/opt/freo/venv` exists; Python dependencies import; PostgreSQL is active; the `freo` role/database exist; and `flask db current` and `flask db heads` agree (both at the latest revision).
+3. Confirm `freo.service` is active and its Gunicorn master/workers run as non-root `freo`. Confirm Nginx is the web entry point and Gunicorn binds only localhost. Confirm PostgreSQL does not listen publicly.
+4. Confirm `/health` and `/ready` succeed locally and through Nginx. Validate an IP-only HTTP install first.
+5. On a separate domain pointing to the VM, test domain HTTP installation, then optional Certbot HTTPS. Confirm TLS and HTTP redirect. Ensure the application is reachable on the domain.
+6. Reboot and confirm PostgreSQL, Nginx, and Freo return automatically. Rerun the installer and verify no database reset, secret rotation, or `.env` overwrite; confirm services and endpoints still work.
+7. Check secret files are not world-readable; no generated secrets, private keys, media, logs, or database dumps appear in tracked files. Check the `freo` account has no broad sudo rights.
+8. Practice rollback of application code and the backed-up systemd/Nginx configuration. Database rollback requires an operator backup; uninstall must never delete data automatically.
+
+The current production server is not a substitute for this clean-install test. Record a signed-off result in a future release checklist before marking installation supported.
+
+For the web UI, verify `/`, `/stations`, and `/player/<station-slug>` render without demo data or invented listener metrics. Confirm the player begins audio only after a user gesture, handles an unavailable stream, and shows confirmed history with an accurate observation label. Confirm `/admin` and admin media routes redirect to login before login. Sign in with the first-use account and complete password replacement; confirm successful sign-in, failed-password handling, CSRF rejection, and logout. Verify `/admin`, station detail, Media, Categories, Rotations, Clocks, Schedule, History and System render real station data and keep stations separate. Upload a generated MP3 through the browser, wait for the non-root ingest worker, review metadata, assign a category, verify and enable, then disable without restarting playout. Confirm duplicate and invalid uploads, cross-station rejection, audit entries, no raw-media URL, and the 128 MB limit. Rerun the installer and confirm it neither creates nor resets an admin account. Verify no account password or hash is committed to Git.
+
+## Phase 2 additions
+
+On the fresh VM, also confirm `liquidsoap` and `icecast2` install and record their versions; `freo-playout` and `icecast2` exist as non-login, non-root identities; `/etc/freo/secrets/engine.json` is restricted; rendered configs and control socket are private; Icecast listens only on localhost; and Liquidsoap connects to the test mount. Verify `/health/icecast`, `/health/playout`, and `/health/stream`. Read bounded bytes from the public test stream and confirm `audio/mpeg` and nonzero payload, rather than relying on HTTP status alone. After reboot and installer rerun, confirm the stream recovers, credentials did not rotate, and no runtime config or secret entered Git.
+
+## Phase 3 additions
+
+On the separate fresh VM, create a managed station through the root-run CLI, confirm its row and stream relationship, render and validate config, start its templated non-root unit, check its private socket, and read public audio bytes. Stop it and verify its mount disappears; start it and verify return. Create a second station, restart the first, and verify the second and diagnostic fixture remain online. Reboot and confirm only desired-running station instances return. Rerun the installer without rotating credentials or destroying station data. Confirm generated station configs, secrets, sockets, and exact route snippets are outside Git and permission-restricted.
+
+## Phase 4 additions
+
+On the separate fresh VM, confirm `/usr/bin/ffprobe` exists and record the `ffmpeg` package version. Confirm `/var/lib/freo/media` and `/var/lib/freo/playlists` are mode 0750 and not world-writable. Generate a short legal MP3 test tone with ffmpeg; ingest it through `flask media ingest`, confirm checksum, metadata, station ownership, UUID storage key, and `flask media verify`. Check duplicate binary ingest returns the same track in one station while another station remains separate. Start the station, identify test metadata and tone in Icecast and the public stream, then disable the track and confirm fallback. Re-enable it and confirm playback returns. Reboot and verify the database row, file, playlist, and stream recover. Rerun the installer and verify no media or credentials changed. Check no media, playlists, or generated fixtures entered Git.
+
+## Phase 5 additions
+
+On the separate fresh VM, verify the `freo-automation` non-login account and service, PostgreSQL heartbeat, `/health/automation`, managed socket mode 0660, and denial of socket access to the `freo` web account. Generate and ingest several distinct legal MP3 fixtures through the CLI; create station-scoped categories, assign tracks, define an explicit rotation, preview without database mutation, activate and enable automation. Confirm at least ten actual start events and their category sequence, metadata changes, artist/track separation or audited relaxation, bounded empty-slot skip, queue refill, and stable HTTPS stream. Restart the worker and one station instance separately; confirm recovery and diagnostic isolation. Corrupt a copied test fixture only with automatic restoration and confirm failed-request history and fallback continuity. Reboot, rerun installer, and confirm no secret rotation, data destruction, or public control socket. Record this independent VM result before claiming supported one-command installation.
+
+## Phase 6 additions
+
+On the separate fresh VM, assign an IANA timezone to a station, create two reusable clocks with `CATEGORY` and `ROTATION` slots, validate them, and add weekly local-time assignments. Check a schedule preview and the next UTC transition, including Sunday-to-Monday carry, spring-forward, fall-back, and a non-DST timezone. Enable automation and confirm actual Liquidsoap starts carry the correct clock/slot/assignment context. Move a temporary transition a few minutes ahead; confirm the on-air track finishes, later selections switch clocks, and no Liquidsoap restart occurs. Restart the worker and station instance separately; verify cursor recovery, stream continuity, and the diagnostic stream. Reboot and confirm the intended weekly state resumes. Rerun the installer; verify no demo schedule was seeded and no existing schedule was overwritten.
+
+## Phase 8 browser programming additions
+
+After admin login, create a category and assign an accepted track; create a rotation, add and reorder category slots, validate and preview it, then activate it. Create a clock with category and rotation slots, reorder and preview it. Assign that clock on a station-local weekday and time, preview the next day and week, and confirm the active clock and next transition. Try an invalid weekday, unsupported slot type, missing CSRF token, and cross-station reference; all must fail without changing programming. Verify audit entries and actual confirmed starts after a controlled boundary, with no Liquidsoap or automation restart. Change timezone only on a test station, then restore it.
+
+## Phase 9 imaging additions
+
+Upload a generated legal MP3 as a station ID through Admin → Imaging. Confirm it is accepted disabled, verify and enable it, and check a same-station duplicate and a renamed invalid file. Create an imaging group, assign the asset, and add both an IMAGING_GROUP and CART clock slot. Preview without cursor/history/queue mutation. Observe music → imaging → music confirmed starts and Icecast metadata while both test and managed streams stay online. Remove temporary slots, disable the asset, verify future group selection excludes it, and decommission it without deleting confirmed history. Check missing CSRF, cross-station references, path secrecy, oversized upload handling, and rerun installer. Record fresh-VM results before public installability is claimed.
+
+## Phase 10 Live Assist additions
+
+Log in, open a running station's Live Assist page, confirm real Now/Next/Recent, hold automation and observe that existing queue items may finish while refill stops. Queue an enabled generated music track and cart, confirm each actual start and manual history attribution, skip a controlled item, then resume and confirm current scheduled programming refills without service restart. Test a schedule boundary during hold, worker restart with a pending request, Liquidsoap restart reconciliation, queue idempotency and limit, CSRF/IDOR, and web socket denial. Verify both streams remain online and restore normal automation. Fresh-VM validation remains the public installation gate.
+
+## Phase 11 timed-event additions
+
+Create an exact generated imaging event through Admin → Events and preview its occurrence. Test HARD within a predeclared tolerance against interruptible automated music, SOFT without skip, NON_INTERRUPTING against protected content, SKIP miss, PLAY_LATE, same-time priority, worker restart, and Liquidsoap failure reconciliation. Confirm a real `on_track` start and offset, unchanged clock/rotation cursors, separation/recurrence effects, the Live Assist countdown, DST spring shift and fall single occurrence, CSRF/IDOR, both streams, and no new port. Remove or disable test events and restore normal programming. Do not claim public installability before the separate fresh-VM run.
+
+## Phase 12 block checks
+
+Create a disabled stopset, add approved imaging and track items, reorder, validate, and enable it. Schedule it from a timed event and confirm contiguous starts with no automatic music between items. Repeat from an EVENT_BLOCK clock slot and Live Assist Queue Block. Restart the worker mid-block and verify the durable snapshot continues once. Exercise skip-failed and abort policies, history, stream continuity, CSRF, and cross-station rejection.
+
+## Phase 13 traffic checks
+
+Create a COMMERCIAL imaging asset, advertiser, active campaign, creative, weekday/daypart rule, and stopsets with commercial inventory. Generate a draft and verify deterministic distribution, capacity, separation, and unscheduled demand. Finalize explicitly, confirm EventBlock materialization, then verify AIRED only after Liquidsoap confirmation. Export CSV, exercise a missed placement and makegood, test CSRF/IDOR, and confirm both streams remain live.
+
+Acceptance tooling and fixtures run from the source checkout. They are excluded from the customer archive and installed application. The package smoke test accepts the extracted customer source and its separately installed venv.

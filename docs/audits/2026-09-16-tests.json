@@ -1,0 +1,62 @@
+{
+  "main": {
+    "tests": 363,
+    "passed": 346,
+    "failed": [],
+    "skipped": 17,
+    "browser_cases_passed": 35
+  },
+  "postgres": {
+    "tests": 5,
+    "passed": 5,
+    "failed": [],
+    "skipped": 0
+  },
+  "engine": {
+    "tests": 19,
+    "passed": 17,
+    "failed": [
+      "tests.test_deck_engine.test_actual_worker_load_play_pause_repeat_clear_and_mode",
+      "tests.test_deck_engine.test_soft_insert_preserves_current_song_and_all_future_requests"
+    ],
+    "skipped": 0
+  },
+  "engine_recheck": {
+    "tests": 2,
+    "passed": 1,
+    "failed": [
+      "tests.test_deck_engine.test_actual_worker_load_play_pause_repeat_clear_and_mode"
+    ],
+    "skipped": 0
+  },
+  "player_after": {
+    "tests": 4,
+    "passed": 4,
+    "failed": [],
+    "skipped": 0
+  },
+  "engine_fixed": {
+    "tests": 20,
+    "passed": 20,
+    "failed": [],
+    "skipped": 0
+  },
+  "engine_unit_fixed": {
+    "tests": 54,
+    "passed": 54,
+    "failed": [],
+    "skipped": 0
+  },
+  "player_v2": {
+    "tests": 4,
+    "passed": 4,
+    "failed": [],
+    "skipped": 0
+  },
+  "player_v2_final_regression": {
+    "tests": 1,
+    "passed": 1,
+    "failed": [],
+    "skipped": 0
+  }
+}
