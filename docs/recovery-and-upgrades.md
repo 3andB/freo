@@ -2,10 +2,9 @@
 
 The management tools are implemented and tested with disposable PostgreSQL
 databases, real encrypted bundles and signatures, plus simulated service failures.
-The private 0.3.2 → V1 bridge has now exercised real Ubuntu/systemd installation,
+The 0.3.2 → V1 bridge has now exercised real Ubuntu/systemd installation,
 upgrade and recovery on the disposable VM; see the [verified procedure](../V1_UPGRADE_NOTES.md)
-and [test report](v1-upgrade-test-report-2026-10-08.md). Public distribution still
-requires the [VM acceptance test](clean-install-test.md) for the exact release artifact.
+and [test report](v1-upgrade-test-report-2026-10-08.md). Each stable release requires acceptance of its exact signed artifact; see the [1.0.0 release notes](release-1.0.0.md).
 This document describes the implemented commands, not the proposed interfaces in
 the original [design plan](upgrade-and-distribution-plan.md).
 

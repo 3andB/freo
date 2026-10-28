@@ -14,6 +14,7 @@ SCRIPTS = {
     'validate-admin-login.py', 'validate-install.sh', 'validate-station-instance.py',
 }
 OPERATOR_DOCS = {
+    'stable-installation.md', 'release-1.0.0.md',
     'v1-rc7-installation.md',
     'v1-rc8-installation.md',
     'v1-rc9-installation.md',

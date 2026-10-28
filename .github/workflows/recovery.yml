@@ -1,0 +1,69 @@
+name: Recovery and release checks
+
+on:
+  pull_request:
+  push:
+  workflow_dispatch:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  recovery:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      FREO_ENV_FILE: /dev/null
+      FLASK_ENV: testing
+      DATABASE_URL: 'sqlite://'
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Install isolated test dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y python3-venv nginx postgresql postgresql-client gnupg acl ffmpeg
+          sudo groupadd --system freo-playout
+          sudo useradd --system --user-group --no-create-home freo-ingest
+          python3 -m venv venv
+          venv/bin/pip install -r requirements-dev.txt
+      - name: Settings, artifact and failure-injection tests
+        run: venv/bin/pytest -q --junitxml="$RUNNER_TEMP/settings-tests.xml" tests/test_dependencies.py tests/test_installation_settings.py tests/test_release_bundles.py tests/test_upgrade.py tests/test_installer_guard.py tests/test_distribution.py tests/test_central_api.py tests/test_station_location.py tests/test_live_mic.py tests/test_license_agreement.py tests/test_versions.py tests/test_admin_setup.py tests/test_logout_sessions.py tests/test_rc4.py tests/test_station_runtime_permissions.py tests/test_rc6_settings.py tests/test_statistics.py tests/test_homepage.py tests/test_sound_room.py tests/test_catalog_editor.py tests/test_airplay.py tests/test_app.py tests/test_connection_check.py tests/test_music_delete.py tests/test_live_stress_runner.py tests/test_dj_return.py tests/test_studio_releases.py
+      - name: V1 installer and local administration boundaries
+        run: |
+          sudo env FREO_ENV_FILE=/dev/null FLASK_ENV=testing DATABASE_URL=sqlite:// PYTHONDONTWRITEBYTECODE=1 venv/bin/pytest -q --junitxml="$RUNNER_TEMP/v1-install-tests.xml" tests/test_v1_installation.py tests/test_rc1_acceptance.py tests/test_hosting.py tests/test_hosting_ui.py tests/test_admin_lifecycle.py
+      - name: Make root-run fixture evidence readable by the uploader
+        if: always()
+        run: |
+          if [ -f "$RUNNER_TEMP/v1-install-tests.xml" ]; then
+            sudo chown "$(id -u):$(id -g)" "$RUNNER_TEMP/v1-install-tests.xml"
+          fi
+      - name: Summarize settings and regression checks
+        if: always()
+        run: python3 scripts/summarize-tests.py "$RUNNER_TEMP/settings-tests.xml"
+      - name: Real browser first-use setup over HTTP and HTTPS
+        run: |
+          export FREO_TEST_CHROME="$(command -v google-chrome || command -v chromium-browser)"
+          export FREO_TEST_CHROMEDRIVER="$(command -v chromedriver)"
+          sudo env FREO_ENV_FILE=/dev/null FLASK_ENV=testing DATABASE_URL=sqlite:// FREO_TEST_CHROME="$FREO_TEST_CHROME" FREO_TEST_CHROMEDRIVER="$FREO_TEST_CHROMEDRIVER" venv/bin/pytest -q --junitxml="$RUNNER_TEMP/browser-tests.xml" tests/test_first_login_browser.py tests/test_admin_validation.py tests/test_admin_validation_nginx.py tests/test_rc4_browser.py tests/test_rc5_browser.py tests/test_rc6_browser.py tests/test_statistics_browser.py tests/test_import_flow_browser.py tests/test_import_review_browser.py tests/test_station_location_browser.py tests/test_live_mic_browser.py
+      - name: Summarize browser checks
+        if: always()
+        run: python3 scripts/summarize-tests.py "$RUNNER_TEMP/browser-tests.xml"
+      - name: Real PostgreSQL migrations and encrypted restore
+        run: bash scripts/test-recovery-postgres.sh
+      - name: Build source review artifact
+        run: venv/bin/python scripts/build-release.py --development --output "$RUNNER_TEMP/freo-review.tar.gz"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: always()
+        with:
+          name: freo-source-review
+          path: |
+            ${{ runner.temp }}/freo-review.tar.gz
+            ${{ runner.temp }}/settings-tests.xml
+            ${{ runner.temp }}/browser-tests.xml
+            ${{ runner.temp }}/v1-install-tests.xml
+          if-no-files-found: error
+          retention-days: 14

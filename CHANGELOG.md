@@ -1,3 +1,13 @@
+# Changelog
+
+## 1.0.0 — 28 October 2026
+
+- Promote human-accepted RC17 to stable with unchanged application behavior, schema and dependencies.
+- Include V1 station operations, scheduling, DJ/live microphone workflows, public players, hosted lifecycle controls, signed upgrades and recovery.
+- Include optional Freo Live consent and confirmed now-playing reporting, with Retry-After handling.
+- Preserve installation identity, media, accounts, saved settings and licensing through supported upgrades.
+- See [release notes](docs/release-1.0.0.md) for validation scope and installation instructions.
+
 # 1.0.0-rc.17
 
 - Measure optional reporting and directory-sync Retry-After deadlines from response receipt, including slow responses.
@@ -8,7 +18,6 @@
 - Default station listing and current-song sharing on, preserving legacy opt-out evidence and explicit choices.
 - Sync consent promptly and share confirmed current playback through the optional Freo Live API, with independent retries and no audio-path networking.
 
-# Changelog
 
 ## 1.0.0-rc.15 — private candidate; acceptance pending
 

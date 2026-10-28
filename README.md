@@ -1,15 +1,8 @@
 # Freo
 
-**Freo 1.0.0-rc.11 is a prepared release candidate.** See the
-[RC10 installation and acceptance guide](docs/v1-rc11-installation.md).
-The exact signed RC7 kit still requires clean-VM installation and reboot
-acceptance before publication or deployment. The stable release remains 0.3.2.
+**Freo 1.0.0** — radio automation and station management for Ubuntu 24.04 x86_64.
 
-
-**Freo 0.3.2 is available. Fresh installation and reboot recovery are tested
-and passed on Ubuntu 24.04 x86_64.**
-
-[Install Freo](docs/stable-installation.md) · [Download the signed installation kit](https://github.com/3andB/freo/releases/download/v0.3.2/freo-v0.3.2-install-kit.tar) · [Release notes](docs/release-0.3.2.md) · [Acceptance results](docs/0.3.2-acceptance.md)
+[Install Freo](docs/stable-installation.md) · [Signed installation kit](https://github.com/3andB/freo/releases/download/v1.0.0/freo-v1.0.0-install-kit.tar) · [Release notes](docs/release-1.0.0.md)
 
 [Recovery and upgrades](docs/recovery-and-upgrades.md): existing installations
 use the signed updater with a verified backup/recovery point. The fresh installer
@@ -37,14 +30,6 @@ The live [diagnostic stream](https://freo.world/stream/freo-test) tests the Liqu
 
 The stack is Python 3.12, Flask, Gunicorn, PostgreSQL, Nginx, systemd, Liquidsoap, Icecast, and ffprobe on Ubuntu 24.04. Timed events can execute durable [event blocks and stopsets](docs/event-blocks.md): ordered Track/ImagingAsset snapshots that exclude normal music between items. Authenticated [traffic planning](docs/traffic.md) manages advertisers, campaigns, commercial creatives, stopset inventory, finalized daily logs, as-run reconciliation, and makegood relationships. Accounting and invoicing are not included. See [clocks](docs/clocks.md), [scheduling](docs/scheduling.md), [rotations](docs/rotations.md), [automation](docs/automation.md), [media library](docs/media-library.md), [stations](docs/stations.md), [radio engine](docs/radio-engine.md), [architecture](docs/architecture.md), [installation](docs/installation.md), and the [fresh-VM acceptance test](docs/clean-install-test.md).
 
-The [0.3.2 installation kit](docs/stable-installation.md) includes automatic
-PostgreSQL driver installation and separate local application/external access
-validation. The exact published signed kit passed independent fresh Ubuntu 24.04
-x86_64 HTTP/public-IP installation, music processing and playlist playback,
-full-VM reboot and automatic broadcast recovery. Installed validators exited 0
-before and after reboot, with no failed systemd units. It was not rebuilt after
-acceptance. See the [acceptance record](docs/0.3.2-acceptance.md) for test scope.
-
 Local development needs a Python 3.12 venv, `requirements-dev.txt`, a private
 `.env`, and `flask --app wsgi:app db upgrade`; run `pytest` for tests. Root, a
 domain, and radio services are not required for unit tests.
@@ -56,7 +41,7 @@ Freo is source-available under the [Freo Source-Available License](LICENSE). Up 
 
 Created by Lee Eyerman. Copyright © 2026 3andB.
 
-[Installation](docs/stable-installation.md) · [VM acceptance](docs/0.3.2-acceptance.md) · [freo.live team handoff](docs/freo-live-distribution-handoff.md)
+[Installation](docs/stable-installation.md) · [Release acceptance](docs/release-1.0.0.md) · [freo.live team handoff](docs/freo-live-distribution-handoff.md)
 
 [Station Control and DJ Booth system tests](docs/station-system-testing.md) provide accelerated scheduling simulations, connected browser/worker/audio checks, and unattended endurance runs with isolated streams and retained evidence.
 
