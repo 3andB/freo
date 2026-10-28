@@ -21,12 +21,18 @@ from tests.test_web import app as app_fixture
 
 
 @pytest.fixture
+def sustained_preview():
+    """Manual preview toggles need audio that outlasts the allowed UI waits."""
+
+
+@pytest.fixture
 def booth(app_fixture, monkeypatch, tmp_path, request):
     app=app_fixture
     monkeypatch.setenv('FREO_MEDIA_ROOT',str(tmp_path/'media'))
     originals=tmp_path/'media'/'test-station'/'originals';originals.mkdir(parents=True)
     import subprocess
-    subprocess.run(['ffmpeg','-v','error','-f','lavfi','-i','sine=frequency=440:duration=4','-y',str(originals/('a'*32+'.mp3'))],check=True)
+    duration=120 if 'sustained_preview' in request.fixturenames else 4
+    subprocess.run(['ffmpeg','-v','error','-f','lavfi','-i',f'sine=frequency=440:duration={duration}','-y',str(originals/('a'*32+'.mp3'))],check=True)
     uploads=tmp_path/'uploads';uploads.mkdir();app.config['FREO_UPLOAD_ROOT']=str(uploads)
     with app.app_context():
         station=Station.query.filter_by(slug='test-station').first()
@@ -46,15 +52,30 @@ def booth(app_fixture, monkeypatch, tmp_path, request):
     app.add_url_rule('/stream/test-station','test_monitor_stream',lambda:Response(audio_bytes.getvalue(),mimetype='audio/wav'))
     # This fixture supplies stable engine observations; audio is tested separately.
     from flask import request as flask_request
+    bootstrap_delay = getattr(request, 'param', {}).get('initial_live_status_delay', 0)
+    bootstrap_ready_at = None
     @app.before_request
     def fixture_observer_heartbeat():
+        nonlocal bootstrap_ready_at
         if flask_request.path.endswith('/live-status'):
+            if bootstrap_delay:
+                import time
+                if bootstrap_ready_at is None:bootstrap_ready_at=time.monotonic()+bootstrap_delay
+                time.sleep(max(0,bootstrap_ready_at-time.monotonic()))
             LiveQueueSnapshot.query.update({'observed_at':datetime.now(timezone.utc)})
             db.session.commit()
     server=make_server('127.0.0.1',0,app,threaded=True)
     thread=threading.Thread(target=server.serve_forever,daemon=True);thread.start()
     profile=tempfile.mkdtemp(prefix='freo-browser-',dir='/tmp')
     options=Options();options.binary_location=os.environ.get('FREO_TEST_CHROME','/usr/bin/chromium-browser')
+    # Chromium permits native PWA installation automation over a local pipe.
+    if 'pwa_desktop' in request.fixturenames:
+        options.add_argument('--remote-debugging-pipe')
+        options.add_experimental_option('windowTypes',['page','app'])
+    if 'software_graphics' in request.fixturenames:
+        options.add_argument('--enable-unsafe-swiftshader')  # Isolated graphics failure tests only.
+    if 'eager_navigation' in request.fixturenames:
+        options.page_load_strategy = 'eager'
     if 'native_prompts' in request.fixturenames:
         # ChromeDriver otherwise auto-accepts beforeunload, even when the app
         # correctly requests a warning. Explicitly exercise the actual dialog.
@@ -79,17 +100,27 @@ def booth(app_fixture, monkeypatch, tmp_path, request):
         driver.get(base+'/admin/stations/test-station/live')
         # The initial HTML can already say EMPTY on deck B while the client
         # still has no engine snapshot. Wait for confirmed playback to render.
-        wait_text(driver, '#morph-text', 'Verified Test Track')
+        wait_text(driver, '#morph-text', 'Verified Test Track', timeout=30)
+        WebDriverWait(driver,30).until(lambda d:d.execute_script("return !!window.FreoWorkspace && !!window.FreoPage?.beforeNavigate && !document.documentElement.classList.contains('is-navigating')"))
         yield app,driver,base,tmp_path
-    except Exception:
+    except Exception as error:
         driver.save_screenshot("/tmp/freo-browser-failure.png")
+        try:
+            import json
+            diagnostic=driver.execute_script('''return {path:location.pathname,ready:document.readyState,
+              title:document.getElementById('morph-text')?.textContent,
+              state:document.getElementById('live-state')?.textContent,
+              navigating:document.documentElement.classList.contains('is-navigating'),scope:!!window.FreoPage};''')
+            (tmp_path/'booth-bootstrap-error.json').write_text(json.dumps(diagnostic,indent=2))
+            error.add_note('Booth fixture readiness: '+json.dumps(diagnostic))
+        except Exception:pass
         raise
     finally:
         driver.quit();server.shutdown();thread.join(timeout=3);shutil.rmtree(profile,ignore_errors=True)
 
 
-def wait_text(driver, selector, text):
-    WebDriverWait(driver,8,ignored_exceptions=(StaleElementReferenceException,)).until(lambda d:text in d.find_element(By.CSS_SELECTOR,selector).text)
+def wait_text(driver, selector, text, *, timeout=8):
+    WebDriverWait(driver,timeout,ignored_exceptions=(StaleElementReferenceException,)).until(lambda d:text in d.find_element(By.CSS_SELECTOR,selector).text)
 
 
 def apply_browser_command(app, operation, deck):
@@ -128,6 +159,7 @@ def apply_browser_command(app, operation, deck):
         command.status='sent';snapshot.mixer=mixer;snapshot.observed_at=datetime.now(timezone.utc);db.session.commit()
 
 
+@pytest.mark.usefixtures('sustained_preview')
 def test_picker_load_clear_and_artwork_drag(booth):
     app,driver,base,tmp_path=booth
     assert not driver.find_elements(By.ID,'broadcast-fader')
@@ -199,7 +231,8 @@ def test_file_picker_and_drop_import_results(booth):
     # Snap Chromium has a private /tmp namespace.
     browser_tmp=Path('/tmp/snap-private-tmp/snap.chromium/tmp')
     browser_binary = Path(os.environ.get('FREO_TEST_CHROME', '/usr/bin/chromium-browser'))
-    snap_browser = browser_tmp.exists() and (str(browser_binary).startswith('/snap/') or browser_binary == Path('/usr/bin/chromium-browser'))
+    # Launching the native binary under /snap/ does not enter Snap's namespace.
+    snap_browser = browser_tmp.exists() and browser_binary in (Path('/snap/bin/chromium'), Path('/usr/bin/chromium-browser'))
     upload_dir=Path(tempfile.mkdtemp(prefix='freo-upload-',dir=browser_tmp if snap_browser else tmp_path))
     audio=upload_dir/'picked.mp3';audio.write_bytes(b'fixture upload')
     browser_audio=Path('/tmp')/upload_dir.name/audio.name if snap_browser else audio
@@ -209,6 +242,8 @@ def test_file_picker_and_drop_import_results(booth):
     shutil.rmtree(upload_dir)
     with app.app_context():assert MusicImportItem.query.count()==1 and MediaIngestJob.query.count()==0
     driver.execute_script("const data=new DataTransfer();data.items.add(new File(['drop audio'],'dropped.mp3',{type:'audio/mpeg'}));document.querySelector('.drop-zone').dispatchEvent(new DragEvent('drop',{dataTransfer:data,bubbles:true,cancelable:true}));")
+    wait_text(driver,'#selected-files','dropped.mp3')
+    WebDriverWait(driver,8).until(lambda d:len(d.find_elements(By.CSS_SELECTOR,'.import-card'))==2)
     wait_text(driver,'.import-card:last-child','Uploaded')
     with app.app_context():assert MusicImportItem.query.count()==2
     driver.refresh()

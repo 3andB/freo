@@ -121,3 +121,36 @@ def test_availability_shortcuts_save_and_editor_layout(booth):
     click('#media-editor .section-title a')
     wait_text(driver,'#room-songs','Verified Test Track')
     assert not driver.find_elements(By.CSS_SELECTOR,'.freo-dialog[open]')
+
+
+def test_processing_completion_preserves_open_song_menu(booth,monkeypatch):
+    """A completed processing request must preserve an already-open song menu."""
+    import threading
+    app,driver,base,tmp_path=booth
+    with app.app_context():
+        Station.query.filter_by(slug='test-station').one().desired_state='stopped';db.session.commit()
+    driver.get(base+'/admin/stations/test-station/media')
+    wait_text(driver,'#room-songs','Verified Test Track')
+    pending=threading.Event();release=threading.Event();original=app.view_functions['sound_room.catalog']
+    def delayed_catalog(slug):
+        pending.set()
+        assert release.wait(10)
+        return original(slug)
+    monkeypatch.setitem(app.view_functions,'sound_room.catalog',delayed_catalog)
+    try:
+        driver.find_element(By.CSS_SELECTOR,'.room-song input').click()
+        driver.find_element(By.ID,'process-selected').click()
+        wait_text(driver,'#room-message-text','priority processing')
+        assert pending.wait(5)
+        driver.find_element(By.CSS_SELECTOR,'.song-menu summary').click()
+        WebDriverWait(driver,5).until(lambda d:d.execute_script("return !!document.querySelector('.song-menu[open]')"))
+        driver.execute_script("window.processingMenuBefore=document.querySelector('.song-menu')")
+        release.set()
+        WebDriverWait(driver,5).until(lambda d:d.execute_script("return document.querySelector('.song-menu')!==window.processingMenuBefore"))
+        assert driver.execute_script("return !!document.querySelector('.song-menu[open]')"), 'Processing completion closed the menu'
+        assert driver.execute_script("return document.activeElement===document.querySelector('.song-menu summary')"), 'Processing completion lost menu focus'
+        driver.find_element(By.CSS_SELECTOR,'.song-menu[open] .delete-song').click()
+        driver.find_element(By.CSS_SELECTOR,'.freo-dialog .dialog-actions button').click()
+        with app.app_context():assert MediaIngestJob.query.filter_by(kind='delete').count()==0
+    finally:
+        release.set()

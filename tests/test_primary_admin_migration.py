@@ -26,8 +26,9 @@ def installed(postgres, monkeypatch):
     _, new_database, _ = postgres
     source = new_database()
     params = parse_dsn(source)
-    uri = URL.create('postgresql+psycopg2', username=params['user'], database=params['dbname'],
-                     query={'host': params['host']})
+    uri = URL.create('postgresql+psycopg2', username=params.get('user'), password=params.get('password'),
+                     host=params.get('host'), port=int(params['port']) if params.get('port') else None,
+                     database=params['dbname'])
     monkeypatch.setenv('FREO_ENV_FILE', '/dev/null')
     monkeypatch.setenv('DATABASE_URL', uri.render_as_string(hide_password=False))
     monkeypatch.setenv('SECRET_KEY', 'isolated-primary-admin-test')
@@ -68,8 +69,8 @@ def rows(source):
         con.close()
 
 
-def migrate(app):
-    result = app.test_cli_runner().invoke(args=['db', 'upgrade'])
+def migrate(app, revision='head'):
+    result = app.test_cli_runner().invoke(args=['db', 'upgrade', revision])
     assert result.exit_code == 0, result.output
 
 
@@ -85,9 +86,9 @@ def test_only_installer_primary_receives_grant_and_other_values_survive(installe
     for row in expected:
         if row['username'] == 'admin':
             row['installation_admin'] = True
-    migrate(app)
+    migrate(app, NEW_REVISION)
     assert rows(source) == expected
-    migrate(app)  # Alembic does not run the migration again.
+    migrate(app, NEW_REVISION)  # Alembic does not run the migration again.
     assert rows(source) == expected
     # The SQL itself is idempotent as well.
     module = importlib.import_module('migrations.versions.a64f09e2b731_primary_installation_admin')
@@ -97,6 +98,9 @@ def test_only_installer_primary_receives_grant_and_other_values_survive(installe
     assert rows(source) == expected
 
     if options.get('primary', True):
+        # Current login handlers require the later V1 columns. Keep their
+        # additions outside the historical account-preservation assertion.
+        migrate(app)
         client = app.test_client()
         client.get('/admin/login')
         with client.session_transaction() as session:
@@ -211,4 +215,8 @@ def test_restored_backup_allows_only_exact_primary_grant(installed, postgres, tm
 
 
 def test_release_schema_includes_primary_admin_migration():
-    assert releases.migration_head(Path(__file__).resolve().parents[1]) == NEW_REVISION
+    from alembic.script import ScriptDirectory
+    root = Path(__file__).resolve().parents[1]
+    head = releases.migration_head(root)
+    scripts = ScriptDirectory(str(root / 'migrations'))
+    assert NEW_REVISION in {revision.revision for revision in scripts.walk_revisions(head=head)}

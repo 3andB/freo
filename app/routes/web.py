@@ -4,7 +4,7 @@ import hmac
 import secrets
 import time
 
-from flask import Blueprint, flash, abort, redirect, render_template, request, session, url_for, jsonify, current_app
+from flask import Blueprint, flash, abort, redirect, render_template, request, session, url_for, jsonify, current_app, g
 from werkzeug.security import check_password_hash
 from werkzeug.security import generate_password_hash
 from sqlalchemy.exc import SQLAlchemyError
@@ -40,6 +40,10 @@ def station_or_404(slug, require_enabled=True):
         station = None
     if station is None or station.lifecycle_state in ('pending_delete', 'delete_failed') or (require_enabled and not station.enabled):
         abort(404)
+    from app.services.admin_auth import can_access_station
+    user = current_admin()
+    if user and not can_access_station(user, station):
+        abort(403)
     return station
 
 
@@ -78,7 +82,12 @@ def dashboard(slug):
 
 
 def admin_stations():
-    return Station.query.filter_by(deleted_at=None).order_by(Station.name, Station.id).all()
+    query = Station.query.filter_by(deleted_at=None)
+    user = current_admin()
+    if user and user.role == 'DJ':
+        from app.models import DJStationAssignment
+        query = query.join(DJStationAssignment, DJStationAssignment.station_id == Station.id).filter(DJStationAssignment.admin_user_id == user.id)
+    return query.order_by(Station.name, Station.id).all()
 
 
 def selected_station(stations):
@@ -95,10 +104,15 @@ def selected_station(stations):
     return next((station for station in stations if station.desired_state == 'running' and station.enabled), stations[0] if stations else None)
 
 
+@web_blueprint.get('/admin/')
 @web_blueprint.get('/admin')
 @login_required
 def admin_home():
     stations = admin_stations()
+    if current_admin().role == 'DJ':
+        if stations:
+            return redirect(url_for('admin_live.page', slug=stations[0].slug))
+        return render_template('admin/dj_empty.html', stations=[], selected=None, page='live')
     from app.services.operations import snapshot
     from app.services.stations import deletion_impact
     from app.services.software_license import unlimited
@@ -118,6 +132,8 @@ def admin_station_list():
 @login_required
 def switch_station():
     station = station_or_404(request.args.get('station', ''), require_enabled=False)
+    if current_admin().role == 'DJ':
+        return redirect(url_for('admin_live.page', slug=station.slug))
     return redirect(url_for('schedule_studio.page', slug=station.slug, view='control'))
 
 
@@ -172,6 +188,41 @@ def admin_section(section):
                            data=data, extra=extra, page=section, section=section)
 
 
+@web_blueprint.get('/admin/stations/<slug>/history.csv')
+@login_required
+def history_csv(slug):
+    import csv
+    import io
+    from flask import Response, stream_with_context
+    from app.services.admin_view import history_entries
+
+    station = station_or_404(slug, require_enabled=False)
+    columns = ['decision_id', 'station', 'timezone', 'started_at_utc', 'started_at_local',
+               'title', 'artist', 'source', 'event', 'timing_mode', 'scheduled_at_utc',
+               'scheduled_at_local', 'clock', 'slot', 'slot_type', 'rotation',
+               'timing_offset_seconds', 'relaxation']
+
+    def generate():
+        output = io.StringIO()
+        writer = csv.writer(output)
+
+        def write(values):
+            output.seek(0)
+            output.truncate(0)
+            writer.writerow(["'" + value if isinstance(value, str) and
+                             value.lstrip().startswith(('=', '+', '-', '@')) else value
+                             for value in values])
+            return output.getvalue()
+
+        yield write(columns)
+        for row in history_entries(station):
+            yield write([row[key] for key in columns])
+
+    return Response(stream_with_context(generate()), content_type='text/csv; charset=utf-8', headers={
+        'Content-Disposition': f'attachment; filename="{station.slug}-history.csv"',
+        'Cache-Control': 'private, no-store'})
+
+
 @web_blueprint.get('/admin/api/stations/<slug>/snapshot')
 @login_required
 def admin_snapshot(slug):
@@ -203,9 +254,9 @@ def admin_now(slug):
     station = station_or_404(slug, require_enabled=False)
     rows = latest_rows(station, 1)
     row = rows[0] if rows else None
-    return jsonify(now_playing=({'title': row.track.title if row.track else row.imaging_asset.name if row.imaging_asset else None,
+    return jsonify(now_playing=({'title': row.track.title if row.track else row.imaging_asset.name if row.imaging_asset else (row.performance_snapshot or {}).get('title'),
                                  'artist': row.track.artist if row.track else None,
-                                 'kind': 'imaging' if row.imaging_asset else 'music',
+                                 'kind': 'bulletin' if row.selection_method == 'bulletin' and not row.track else 'imaging' if row.imaging_asset else 'music',
                                  'imaging_type': row.imaging_asset.asset_type if row.imaging_asset else None,
                                  'started_at': iso(row.started_at),
                                  'category': row.category.name if row.category else None}
@@ -229,9 +280,10 @@ def login():
         return show_form('Your sign-in form expired. Please sign in again.', 400)
     if session.get('login_lock_until', 0) > time.time():
         return show_form('Try again later.', 429)
-    email = request.form.get('email', '').strip().lower()[:254]
+    identity = request.form.get('email', '').strip()[:254]
+    email = identity.lower()
     password = request.form.get('password', '')
-    user = AdminUser.query.filter(AdminUser.active.is_(True), db.or_(AdminUser.email == email, AdminUser.username == email)).first()
+    user = AdminUser.query.filter(AdminUser.active.is_(True), db.or_(AdminUser.email == email, AdminUser.username == identity, AdminUser.username == email)).first()
     # The dummy hash reduces timing differences for unknown accounts.
     valid = check_password_hash(user.password_hash if user else _DUMMY_HASH, password)
     if not user or not valid:
@@ -314,6 +366,14 @@ def page_security_headers(response):
             "default-src 'self'; img-src 'self' data:; style-src 'self'; "
             "script-src 'self'; media-src 'self' blob:; connect-src 'self'; "
             "base-uri 'self'; frame-ancestors 'none'")
+        if request.endpoint in ('web.player', 'web.homepage', 'web.stations'):
+            response.headers['Content-Security-Policy'] = (
+                "default-src 'self'; img-src 'self' data: https:; style-src 'self' 'unsafe-inline'; "
+                "script-src 'self' https://securepubads.g.doubleclick.net https://pagead2.googlesyndication.com https://tpc.googlesyndication.com https://www.googletagservices.com; "
+                "frame-src 'self' https:; media-src 'self' blob:; connect-src 'self' https:; "
+                "base-uri 'self'; frame-ancestors 'none'; object-src 'none'")
+        if request.endpoint == 'listener_requests.page':
+            response.headers['Content-Security-Policy'] = response.headers['Content-Security-Policy'].replace("frame-ancestors 'none'", "frame-ancestors *")
         if request.endpoint == 'website.preview':
             response.headers['Content-Security-Policy'] = response.headers['Content-Security-Policy'].replace("frame-ancestors 'none'", "frame-ancestors 'self'")
         response.headers['X-Content-Type-Options'] = 'nosniff'

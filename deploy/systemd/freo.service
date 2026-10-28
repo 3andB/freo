@@ -4,12 +4,13 @@ After=network-online.target postgresql.service
 Wants=network-online.target
 
 [Service]
+ExecCondition=/usr/bin/python3 /usr/local/lib/freo-hosting/guard.py --web
 Type=simple
 User=freo
 Group=freo
 WorkingDirectory=/opt/freo
 EnvironmentFile=/opt/freo/.env
-ExecStart=/opt/freo/venv/bin/gunicorn --workers 2 --no-control-socket --bind 127.0.0.1:8000 wsgi:app
+ExecStart=/opt/freo/venv/bin/gunicorn --workers 2 --threads 16 --no-control-socket --bind 127.0.0.1:8000 wsgi:app
 Restart=on-failure
 RestartSec=3
 NoNewPrivileges=true

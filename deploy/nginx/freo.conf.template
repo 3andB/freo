@@ -1,6 +1,7 @@
 # Render FREO_SERVER_NAME to a validated domain or the server IP.
 server {
     listen 80;
+    listen [::]:80;
     server_name FREO_SERVER_NAME;
     include /etc/nginx/snippets/freo-stream.conf;
     include /etc/nginx/snippets/freo-stations/*.conf;

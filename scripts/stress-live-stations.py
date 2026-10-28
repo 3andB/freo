@@ -279,7 +279,7 @@ class LiveStress:
         options.binary_location = '/usr/bin/chromium-browser'
         for flag in ['--headless=new', '--no-sandbox', '--disable-dev-shm-usage', '--window-size=1440,1100',
                      '--disable-background-timer-throttling', '--disable-renderer-backgrounding',
-                     '--autoplay-policy=no-user-gesture-required', '--user-data-dir='+str(self.root/'chrome')]:
+                     '--autoplay-policy=no-user-gesture-required', '--user-data-dir=/tmp/freo-v1-campaign-live-chrome-20261010']:
             options.add_argument(flag)
         options.set_capability('goog:loggingPrefs', {'browser':'ALL'})
         self.driver = webdriver.Chrome(service=Service('/usr/bin/chromedriver'), options=options)
@@ -699,7 +699,7 @@ class LiveStress:
             started=datetime.now(timezone.utc)
             self.metrics.update(status='running',monitor_started_at=started.isoformat(),
                 expected_finish_utc=(started+timedelta(seconds=self.args.seconds)).isoformat(),
-                commit=subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip())
+                commit=json.loads((Path(__file__).resolve().parents[1]/'release.json').read_text())['commit'])
             due={s:began+(920 if self.args.seconds>=7200 else 10)+i*20 for i,s in enumerate(self.args.stations)}
             phases={s:(1 if self.args.seconds>=7200 else 0) for s in self.args.stations}
             next_browser=began+20

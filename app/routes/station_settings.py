@@ -1,4 +1,6 @@
 """Station identity, public branding and private contact details."""
+from freo_ops.hosting_storage import run_media, reserve
+
 import hashlib
 import json
 import re
@@ -9,7 +11,7 @@ from flask import Blueprint, abort, flash, redirect, render_template, request, R
 from app.extensions import db
 from app.models import StationLogo
 from app.routes.web import admin_stations, station_or_404
-from app.services.admin_auth import admin_required, current_admin, require_csrf
+from app.services.admin_auth import admin_required, current_admin, require_csrf, can_access_station
 from app.services.programming import clean_text
 from app.services.stations import update_station, public_station_for
 from app.services.station_domains import preferred_url
@@ -62,7 +64,7 @@ def directory_stream(slug):
     return response
 
 
-def decode_logo(upload, output_limit=None):
+def decode_logo(upload, output_limit=None, accepted_sizes=None):
     raw = upload.read(10 * 1024 * 1024 + 1)
     if len(raw) > 10 * 1024 * 1024:
         raise ValueError('Logo must be at most 10 MB')
@@ -70,7 +72,7 @@ def decode_logo(upload, output_limit=None):
             (raw.startswith(b'RIFF') and raw[8:12] == b'WEBP')):
         raise ValueError('Choose a JPEG, PNG or WebP logo')
     try:
-        with tempfile.TemporaryDirectory(prefix='freo-logo-') as folder:
+        with reserve(80*1024*1024), tempfile.TemporaryDirectory(prefix='freo-logo-') as folder:
             source = Path(folder) / 'upload'
             source.write_bytes(raw)
             result = subprocess.run(['ffprobe','-v','error','-select_streams','v:0','-show_entries',
@@ -78,12 +80,15 @@ def decode_logo(upload, output_limit=None):
             stream = json.loads(result.stdout)['streams'][0]
             if not (1 <= stream['width'] <= 3000 and 1 <= stream['height'] <= 3000):
                 raise ValueError('Logo dimensions must be at most 3000 × 3000 pixels')
+            if accepted_sizes and (stream['width'], stream['height']) not in accepted_sizes:
+                accepted = ', '.join(f'{w} × {h} px' for w, h in accepted_sizes)
+                raise ValueError(f"Uploaded image is {stream['width']} × {stream['height']} px. Accepted sizes: {accepted}.")
             images = []
             original_scale=['-vf',f"scale=w='min({output_limit},iw)':h='min({output_limit},ih)':force_original_aspect_ratio=decrease"] if output_limit else []
             for name, scale in [('original',original_scale),('thumbnail',['-vf',"scale=w='min(512,iw)':h='min(512,ih)':force_original_aspect_ratio=decrease"])]:
                 target = Path(folder) / (name + '.png')
-                subprocess.run(['ffmpeg','-v','error','-threads','1','-i',str(source),'-frames:v','1',
-                    '-map_metadata','-1',*scale,'-threads','1',str(target)],capture_output=True,check=True,timeout=20)
+                run_media(['ffmpeg','-v','error','-threads','1','-i',str(source),'-frames:v','1',
+                    '-map_metadata','-1',*scale,'-threads','1',str(target)],max_output_bytes=32*1024*1024,capture_output=True,check=True,timeout=20)
                 images.append(target.read_bytes())
             return images
     except (subprocess.SubprocessError, KeyError, IndexError, json.JSONDecodeError) as error:
@@ -97,6 +102,7 @@ def settings_token(station):
               'genre', 'contact_email', 'phone', 'directory_categories', 'directory_opt_in',
               'publish_contact')
     value = {key: getattr(station, key) for key in fields}
+    value['listener_requests'] = station.request_settings
     value.update(directory=station.internet_radio_pending if station.internet_radio_pending is not None else station.internet_radio_enabled, logo=station.logo.version if station.logo else None,
                  audio_revision=station.stream.audio_revision,
                  playlist=row.default_playlist_id if row else None)
@@ -113,6 +119,8 @@ def save_combined(station):
         db.session.refresh(row)
     if request.form.get('settings_token') != settings_token(station):
         raise ValueError('Settings changed in another window. Your edits are still here. Open this page in a new tab to compare before trying again.')
+    from app.services.listener_requests import save_settings
+    save_settings(station, request.form)
     # Queue durable work in this transaction; workers see it only after commit.
     if 'bitrate' in request.form:
         values = from_form(request.form)
@@ -176,7 +184,16 @@ def page(slug):
             for key,value in fields.items():
                 setattr(station,key,value)
             station.directory_categories = list(dict.fromkeys(categories))
-            station.directory_opt_in = request.form.get('directory_opt_in') == 'yes'
+            if (request.form.get('directory_consent_present') == 'yes' or 'directory_opt_in' in request.form
+                    or request.form.get('combined') == 'yes'):
+                consent = request.form.get('directory_opt_in') == 'yes'
+                if consent != station.directory_opt_in or station.directory_consent_source != 'explicit':
+                    from app.services.admin_media import audit
+                    audit('directory_consent_changed', user_id=current_admin().id, station_id=station.id,
+                          target_type='station', target_id=station.slug,
+                          summary='Public listing and now-playing sharing ' + ('enabled' if consent else 'disabled'))
+                station.directory_opt_in = consent
+                station.directory_consent_source = 'explicit'
             station.publish_contact = request.form.get('publish_contact') == 'yes'
             if images:
                 station.logo = station.logo or StationLogo(station_id=station.id)
@@ -194,8 +211,10 @@ def page(slug):
             error = str(exc)
             if request.accept_mimetypes.best == 'application/json':
                 return jsonify(error=error), 400
+    from app.services.relay import describe as relay_status
     from app.services.station_audio import active_settings
-    return render_template('admin/station_settings.html',selected=station,stations=admin_stations(),page='settings',error=error,public_url=preferred_url(station),settings_token=settings_token(station),playback_policy=policy(station),audio_values=station.stream.pending_audio or active_settings(station.stream)), 400 if error else 200
+    from app.services.listener_requests import settings as request_settings, FIELDS
+    return render_template('admin/station_settings.html',selected=station,stations=admin_stations(),page='settings',error=error,public_url=preferred_url(station),settings_token=settings_token(station),request_values=request_settings(station),request_fields=FIELDS,relay_status=relay_status(station),playback_policy=policy(station),audio_values=station.stream.pending_audio or active_settings(station.stream)), 400 if error else 200
 
 
 @station_settings.route('/admin/stations/<slug>/settings/audio', methods=['GET', 'POST'])
@@ -228,10 +247,32 @@ def logo(slug):
     except ValueError:
         abort(404)
     # Admin previews also work for stations that are stopped or disabled.
-    if not station or (not station.enabled and not current_admin()) or not station.logo:
+    if not station or (not station.enabled and not can_access_station(current_admin(), station)) or not station.logo:
         abort(404)
     full = request.args.get('size') == 'original'
     response = Response(station.logo.image if full else station.logo.thumbnail,mimetype='image/png')
     response.set_etag(station.logo.version + ('-original' if full else '-thumbnail'))
     response.headers['Cache-Control'] = 'public, max-age=300' if station.enabled else 'private, no-store'
     return response.make_conditional(request)
+
+
+@station_settings.route('/admin/stations/<slug>/settings/relay', methods=['GET', 'POST'])
+@admin_required
+def relay(slug):
+    station = station_or_404(slug, require_enabled=False)
+    from app.services.relay import describe, save
+    if request.method == 'POST':
+        require_csrf()
+        try:
+            save(station, request.form, current_admin())
+            db.session.commit()
+            flash('Relay changes queued for the station engine.', 'success')
+        except ValueError as error:
+            db.session.rollback()
+            if request.accept_mimetypes.best == 'application/json':
+                return jsonify(error=str(error)), 400
+            flash(str(error), 'error')
+        return redirect(url_for('.page', slug=slug) + '#relay-settings', code=303)
+    response = jsonify(describe(station))
+    response.headers['Cache-Control'] = 'private, no-store'
+    return response

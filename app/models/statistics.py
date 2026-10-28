@@ -37,6 +37,15 @@ class AudiencePresence(db.Model):
     first_seen = db.Column(db.BigInteger, nullable=False)
     last_seen = db.Column(db.BigInteger, nullable=False, index=True)
     geo = db.Column(db.JSON, nullable=False, default=dict)
+    # Temporary stream measurement state; never contains raw client identifiers.
+    listening = db.Column(db.JSON)
+
+
+class SessionBucket(db.Model):
+    __tablename__ = 'stats_session_buckets'
+    scope = db.Column(db.Integer, primary_key=True)
+    at = db.Column(db.BigInteger, primary_key=True, index=True)
+    data = db.Column(db.JSON, nullable=False, default=dict)
 
 
 class GeoBucket(db.Model):

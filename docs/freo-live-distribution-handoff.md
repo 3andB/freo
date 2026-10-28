@@ -1,10 +1,8 @@
-# freo.live team: distribution handoff
+# freo.live: Freo 1.0.0 distribution handoff
 
-Status: Freo 0.3.2 passed fresh-VM installation and reboot/recovery acceptance;
-the owner authorized publication of its exact signed bytes on 30 September 2026.
-Use [the current installation guide](stable-installation.md),
-[release notes](release-0.3.2.md), and [acceptance record](0.3.2-acceptance.md). The software repository is **https://github.com/3andB/freo**. The
-freo.live website/API is separately managed; this repository does not deploy it.
+The website/API is separately managed. Publish only after final signed-package acceptance and GitHub asset verification. Serve the accompanying `latest.json` unchanged from `GET https://api.freo.live/v1/releases/latest` and point downloads to the same approved artifact.
+
+Application SHA-256: `884ae9df1b02e49b7e82c49327be123e5be206f3fb09d088312007ede91b83ea`. Release notes: https://github.com/3andB/freo/releases/tag/v1.0.0. Ubuntu 24.04 x86_64, Python 3.12, schema `fe28c3d4e5f6`. Keep existing API response fields and publish assets before updating stable metadata.
 
 ## Pages and copy to implement
 

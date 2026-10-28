@@ -236,7 +236,7 @@ def preview_clock(slug, clock_slug, count=10, storage=None, at=None):
     """Simulate selections without advancing either durable cursor or history."""
     from types import SimpleNamespace
     from app.models import ClockState, RotationCursor, SelectionDecision
-    from app.services.automation import _choose, _exists
+    from app.services.automation import _choose, _exists, _recent
     from app.services.media_storage import LocalMediaStorage
     station = require_station(slug)
     clock = clock_for(slug, clock_slug)
@@ -246,23 +246,35 @@ def preview_clock(slug, clock_slug, count=10, storage=None, at=None):
         raise ValueError('Automation state is not configured')
     storage = storage or LocalMediaStorage()
     now = at or datetime.now(timezone.utc)
-    history = SelectionDecision.query.filter_by(station_id=station.id).order_by(SelectionDecision.id.desc()).limit(500).all()
+    history = _recent(station, state, now)
+    # Imaging group rehearsal still needs its own existing playback history.
+    history += SelectionDecision.query.filter(SelectionDecision.station_id == station.id,
+        SelectionDecision.imaging_asset_id.isnot(None)).order_by(SelectionDecision.id.desc()).limit(500).all()
     live_cursor = db.session.get(ClockState, station.id)
     clock_index = live_cursor.next_slot_index if live_cursor and live_cursor.clock_id == clock.id else 0
     rotation_indexes = {}
     playlist_states = {}
+    leader_seen = set()
     output = []
     for _ in range(count):
         slot = slots[clock_index % len(slots)]
         clock_index += 1
         if slot.slot_type == 'PLAYLIST':
-            from app.services.playlists import playable_tracks, advance
+            from app.services.playlists import playable_tracks, advance, leader_track
             tracks = playable_tracks(slot.playlist, station.id, storage)
             track = None
-            if tracks:
-                track, playlist_states[slot.id] = advance(slot.playlist, tracks, playlist_states.get(slot.id, {}))
+            result = dict(candidate_count=len(tracks), relaxation='none')
+            if slot.playlist.id not in leader_seen and leader_track(slot.playlist, storage):
+                track = leader_track(slot.playlist, storage)
+                leader_seen.add(slot.playlist.id)
+                clock_index -= 1
+            elif tracks:
+                track, playlist_states[slot.id] = advance(slot.playlist, tracks, playlist_states.get(slot.id, {}),
+                    history=history, now=now, automation=state, result=result)
+            if track:
+                history.insert(0, SimpleNamespace(track=track, track_id=track.id, status='selected', selected_at=now, started_at=None))
             output.append(dict(clock_slot=slot.position, type=slot.slot_type, track=track.uuid if track else None,
-                               artist=track.artist if track else None, candidate_count=len(tracks), relaxation='none'))
+                               artist=track.artist if track else None, **result))
             continue
         if slot.slot_type == 'EVENT_BLOCK':
             output.append({'clock_slot': slot.position, 'type': slot.slot_type,

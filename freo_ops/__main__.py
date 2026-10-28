@@ -29,6 +29,9 @@ def inventory(env_file, values):
     roots = [Path(env_file).absolute(), Path('/var/lib/freo'), Path('/etc/freo'),
              Path(values.get('FREO_MEDIA_ROOT') or '/var/lib/freo/media'),
              Path(values.get('FREO_UPLOAD_ROOT') or '/var/lib/freo/uploads')]
+    # These V1 storage roots do not exist on an untouched 0.3.2 installation.
+    roots.extend(p for p in (Path(values.get('FREO_PRODUCTION_ROOT') or str(roots[4]/'production')),
+                             Path(values.get('FREO_BULLETIN_ROOT') or '/var/lib/freo/bulletins')) if p.exists())
     for key in ('FREO_API_STATE_DIR', 'FREO_STATS_STATE_DIR', 'FREO_GEOIP_DATABASE'):
         if values.get(key):
             roots.append(Path(values[key]))
@@ -36,7 +39,7 @@ def inventory(env_file, values):
         if Path(path).exists():
             roots.append(Path(path))
     for pattern in ('freo*', 'icecast2.service', 'icecast2.service.d'):
-        roots.extend(p for p in Path('/etc/systemd/system').glob(pattern) if not p.is_symlink())
+        roots.extend(p for p in Path('/etc/systemd/system').glob(pattern) if not p.is_symlink() and '.freo-retained-' not in p.name and '.freo-restoring-' not in p.name)
     return recovery.normalize_roots(roots)
 
 
@@ -45,7 +48,7 @@ def active_units(*, include_updater=False):
                         '--type=service', '--type=timer', 'freo*'])
     return [row['unit'] for row in json.loads(raw)
             if row['active'] not in ('inactive', 'failed')
-            and (include_updater or row['unit'] not in ('freo-updater.service', 'freo-updater.timer'))]
+            and (include_updater or row['unit'] != 'freo-updater.service')]
 
 
 def installed_version():
@@ -102,6 +105,8 @@ def main(argv=None):
     upgrade.add_argument('--verification-directory', required=True)
     upgrade.add_argument('--passphrase-file')
     upgrade.add_argument('--check', action='store_true')
+    upgrade.add_argument('--allow-candidate', action='store_true', help='Explicitly allow a privately signed test candidate')
+    upgrade.add_argument('--radio-maintenance', action='store_true', help='Validate and replace managed station engines during a same-schema maintenance upgrade')
     commands.add_parser('upgrade-status', help='Read the private upgrade journal without starting the application')
     args = parser.parse_args(argv)
     os.umask(0o077)
@@ -114,7 +119,8 @@ def main(argv=None):
             from .upgrade import upgrade as apply_upgrade
             result = apply_upgrade(args.artifact, args.signature, args.keyring, args.env_file,
                                    args.backup, b'' if args.check else passphrase(args.passphrase_file, confirm=True),
-                                   args.verification_env_file, args.verification_directory, check=args.check)
+                                   args.verification_env_file, args.verification_directory, check=args.check, allow_candidate=args.allow_candidate,
+                                   radio_maintenance=args.radio_maintenance)
         elif args.command in ('inventory', 'backup'):
             values = configuration(args.env_file)
             roots = inventory(args.env_file, values)

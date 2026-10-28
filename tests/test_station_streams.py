@@ -14,6 +14,7 @@ import tempfile
 import time
 from urllib.request import ProxyHandler, build_opener
 import pytest
+from freo_ops.engine_readiness import STARTUP_TIMEOUT, COMMAND_TIMEOUT
 from app.extensions import db
 from app.models import Track, SelectionDecision
 from app.services.stations import create_station, request_delete
@@ -60,7 +61,7 @@ def test_stream_survives_other_station_creation_deletion_and_owner_removal(stati
         def wait_for_stream(slug):
             # Cold Liquidsoap initialization competes with browser/encoder
             # checks on CI. Bound wall time and fail immediately on process exit.
-            deadline=time.monotonic()+120
+            deadline=time.monotonic()+STARTUP_TIMEOUT
             while time.monotonic()<deadline:
                 try:stream(slug);return
                 except OSError:
@@ -94,7 +95,7 @@ def test_stream_survives_other_station_creation_deletion_and_owner_removal(stati
             elif args[:2]==['/usr/sbin/nginx','-t']:pass
             elif args[:2]==['/bin/systemctl','reload']:
                 if args[-1]=='icecast2.service':os.killpg(icecast.pid,signal.SIGHUP)
-            else:subprocess.run(args,check=True,capture_output=True,timeout=90)
+            else:subprocess.run(args,check=True,capture_output=True,timeout=COMMAND_TIMEOUT)
         monkeypatch.setattr(runtime,'run_checked',checked)
         original_process = process_station
         def provision(station):

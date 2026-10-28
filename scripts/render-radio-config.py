@@ -63,6 +63,11 @@ def main():
     if '<!DOCTYPE' in icecast.upper() or '<!ENTITY' in icecast.upper():
         raise SystemExit('XML entities are not supported in radio configuration.')
     root = ET.fromstring(icecast, parser=ET.XMLParser(target=ET.TreeBuilder(insert_comments=True)))
+    import sys
+    sys.path.insert(0, str(SOURCE))
+    from freo_ops.hosting_admin import render_listener_limit
+    from freo_ops.engine_readiness import VALIDATION_TIMEOUT
+    render_listener_limit(root)
     mounts = []
     station_secrets = SECRETS / 'stations'
     if station_secrets.exists():
@@ -97,7 +102,7 @@ def main():
     icecast_tmp = stage(icecast_path, icecast, 'root', 'icecast', 0o640)
     liquidsoap_tmp = stage(liquidsoap_path, liquidsoap, 'root', 'freo-playout', 0o640)
     try:
-        result = subprocess.run(['liquidsoap', '--check', str(liquidsoap_tmp)], capture_output=True, timeout=45)
+        result = subprocess.run(['liquidsoap', '--check', str(liquidsoap_tmp)], capture_output=True, timeout=VALIDATION_TIMEOUT)
         if result.returncode:
             raise SystemExit('Liquidsoap validation failed; previous configuration retained. Inspect a private validation run.')
         for path, tmp in ((icecast_path, icecast_tmp), (liquidsoap_path, liquidsoap_tmp)):

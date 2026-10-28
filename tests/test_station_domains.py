@@ -62,6 +62,9 @@ def test_routing_and_existing_urls(app):
     assert client.get('/listen/second-station', headers={'Host': 'rock.example.test'}).status_code == 404
     assert client.get('/station-assets/second-station/logo.png', headers={'Host': 'rock.example.test'}).status_code == 404
     assert client.get('/player/test-station', headers={'Host': 'rock.example.test'}).status_code == 200
+    assert client.get('/player/test-station/manifest.webmanifest', headers={'Host': 'rock.example.test'}).status_code == 200
+    assert client.get('/player/second-station/manifest.webmanifest', headers={'Host': 'rock.example.test'}).status_code == 404
+    assert client.get('/player/test-station/manifest.webmanifest', headers={'Host': 'unknown.example.test'}).status_code == 404
     assert client.get('/stations', headers={'Host': 'rock.example.test'}).text.find('data-station="test-station"') >= 0
     assert client.get('/').status_code == 200
     assert client.get('/player/test-station').status_code == 200

@@ -80,6 +80,5 @@ def test_station_text_is_quoted_in_liquidsoap(station_app):
         assert 'Bad\\"); system(\\"whoami\\")' in rendered
         assert 'password="' + ('a' * 64) + '"' in rendered
         assert 'mode = ref("AUTO")' in rendered
-        from app.models import AutomationState
-        station.automation = AutomationState(operator_mode='DJ_BOOTH')
+        station.automation.operator_mode = 'DJ_BOOTH'
         assert 'mode = ref("DJ_BOOTH")' in render_liquidsoap(station, 'a' * 64)

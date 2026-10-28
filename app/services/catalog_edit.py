@@ -92,6 +92,9 @@ def validate_metadata(station_id, data):
 
 def apply_metadata(song, data, station_id=None):
     station_id = station_id or song.station_id
+    if song.station_id != station_id and (not isinstance(data, dict) or set(data) - {'tags', 'categories', 'playlists'}):
+        from app.services.polish import require_owner
+        require_owner(song, station_id)
     if isinstance(data, dict) and data.get('isrc') == song.isrc:
         data = {key: value for key, value in data.items() if key != 'isrc'}
     data = validate_metadata(station_id, data)
@@ -119,8 +122,11 @@ def apply_metadata(song, data, station_id=None):
     if 'title' in data: song.title = data['title']
     for key in ('track_number', 'disc_number', 'release_year'):
         if key in data: setattr(song, key, data[key])
-    if song.catalog_album: song.album_artist = song.catalog_album.artist.name
+    if song.catalog_album and song.station_id == station_id: song.album_artist = song.catalog_album.artist.name
     if 'cover_id' in data:
+        if song.catalog_album:
+            from app.services.polish import require_owner
+            require_owner(song.catalog_album, station_id)
         if song.catalog_album: song.catalog_album.cover_id = data['cover_id']
         else: song.cover_id = data['cover_id']
     for key, model in [('tags', MusicTag), ('categories', MediaCategory)]:

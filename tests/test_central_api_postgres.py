@@ -40,7 +40,7 @@ def test_station_uuid_migration_and_schema(monkeypatch):
         identity = station.freo_station_id
         assert UUID(identity).version == 4
         assert station.desired_state == 'running' and station.enabled
-        assert not station.directory_opt_in and station.country == ''
+        assert station.directory_opt_in and station.country == ''
         station.name = 'Renamed'
         db.session.commit()
     migrate('upgrade')
@@ -91,3 +91,57 @@ def test_license_channel_limit_serializes_concurrent_enables(monkeypatch):
         assert sorted(pool.map(enable, ids)) == [False, True]
     with application.app_context():
         assert Station.query.filter_by(enabled=True).count() == 3
+
+
+def test_reporting_provenance_migration_preserves_existing_identity_and_hours(monkeypatch):
+    import json
+    import time
+    from app.models import CentralInstallation, CentralHourlyMetric
+    from app.services.central_api.metrics import wire_metric
+    monkeypatch.setenv('DATABASE_URL', os.environ['FREO_TEST_POSTGRES_URL'])
+    monkeypatch.setenv('FREO_ENV_FILE', '/dev/null')
+    monkeypatch.setenv('SECRET_KEY', 'test-only')
+    application = create_app('testing')
+    runner = application.test_cli_runner()
+    with application.app_context():
+        db.drop_all()
+        db.session.execute(text('DROP TABLE IF EXISTS alembic_version'))
+        db.session.commit()
+    result = runner.invoke(args=['db', 'upgrade', 'fc06a1b2c3d4'])
+    assert result.exit_code == 0, result.output
+    identity = 'cbeb636f-2565-4876-8d1a-80294d663c8c'
+    hour = int(time.time() // 3600) * 3600 - 3600
+    with application.app_context():
+        # Seed the historical schema without the current ORM's new consent column.
+        from uuid import uuid4
+        station_uuid = str(uuid4())
+        station_id = db.session.execute(text("""INSERT INTO stations
+            (name,slug,description,enabled,desired_state,timezone,target_lufs,created_at,updated_at,freo_station_id)
+            VALUES ('Retained reporting fixture','retained-reporting','',true,'stopped','UTC',-16,now(),now(),:uuid)
+            RETURNING id"""), {'uuid': station_uuid}).scalar_one()
+        db.session.add(CentralInstallation(id=1, installation_id=identity,
+            registration_state='enrolled', state={'report': {'due': 123}, 'owner_profile_id': 'retained-owner'},
+            license_cache={'fixture': 'retain exactly'}))
+        db.session.flush()
+        snapshot = json.dumps(dict(current_listeners=2, stream_running=True))
+        for offset, coverage in ((0, 60), (3600, 0)):
+            db.session.execute(text('INSERT INTO central_hourly_metrics '
+                '(station_id, period_start, observed_seconds, listener_seconds, peak_listeners, snapshot, sent) '
+                'VALUES (:station, :hour, :coverage, :listeners, 2, CAST(:snapshot AS JSON), false)'),
+                dict(station=station_id, hour=hour-offset, coverage=coverage, listeners=coverage*2, snapshot=snapshot))
+        db.session.commit()
+        before = db.session.execute(text('SELECT * FROM central_installation')).one()
+    result = runner.invoke(args=['db', 'upgrade'])
+    assert result.exit_code == 0, result.output
+    result = runner.invoke(args=['db', 'check'])
+    assert result.exit_code == 0, result.output
+    with application.app_context():
+        assert db.session.execute(text('SELECT * FROM central_installation')).one() == before
+        assert db.session.get(Station, station_id).freo_station_id == station_uuid
+        known = db.session.get(CentralHourlyMetric, (station_id, hour))
+        unknown = db.session.get(CentralHourlyMetric, (station_id, hour-3600))
+        assert known.coverage is None and unknown.coverage is None
+        assert wire_metric(known, True)['observed_seconds'] == 60
+        assert wire_metric(unknown, True)['observed_seconds'] is None
+        assert known.snapshot == unknown.snapshot == json.loads(snapshot)
+        assert known.listener_seconds == 120 and not known.sent and not unknown.sent

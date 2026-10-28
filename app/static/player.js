@@ -4,8 +4,11 @@
   const scope = window.FreoPage, $ = id => document.getElementById(id);
   const base = `/api/stations/${encodeURIComponent(root.dataset.station)}`;
   let audio = $('station-audio');
+  let volumeLevel=.8,muted=false;
   const play = $('play-button'), message = $('audio-message');
   const stream = audio.getAttribute('src');
+  const debugQuery = new URLSearchParams(location.search);
+  const corsComparison = debugQuery.get('audio_debug') === '1' && debugQuery.get('audio_cors') === '1';
   const zone = root.dataset.timezone, canVote = root.dataset.voting === 'yes';
   const storage = {get(key) {try {return localStorage.getItem(key);} catch {return null;}}, set(key,value) {try {localStorage.setItem(key,value);} catch {}}};
   const el = (tag, text, className) => {const node = document.createElement(tag); if (text !== undefined) node.textContent = text; if (className) node.className = className; return node;};
@@ -19,16 +22,12 @@
   const time = value => new Intl.DateTimeFormat([], {timeZone:zone,hour:'2-digit',minute:'2-digit'}).format(new Date(value));
   const dateKey = value => {const parts=new Intl.DateTimeFormat('en-CA',{timeZone:zone,year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(new Date(value));const part=type=>parts.find(p=>p.type===type).value;return `${part('year')}-${part('month')}-${part('day')}`;};
   const shift = (day, days) => {const value=new Date(day+'T12:00:00Z');value.setUTCDate(value.getUTCDate()+days);return value.toISOString().slice(0,10);};
-  const artwork=$('playing-artwork');
+  const artwork=$('playing-artwork'), recordArtwork=$('record-artwork'), visualArtwork=$('visualizer-artwork');
   let artworkKey='';
   let wanted=false, connecting=false, retryAt=0, retries=0, currentKey='', recentKey='', busyRefresh=false;
   let audioAttempt=0, connectingSince=0;
   let audioEvents=new AbortController();
   let currentTitle=root.querySelector('h1').textContent, currentArtist='Live radio';
-  let motionReduced=storage.get('freo-motion') === 'reduced' || root.dataset.motion!=='yes';
-  function motion() {root.classList.toggle('low-motion',motionReduced);$('motion-button').setAttribute('aria-pressed',String(motionReduced));}
-  motion();
-  $('motion-button').addEventListener('click',()=>{motionReduced=!motionReduced;storage.set('freo-motion',motionReduced?'reduced':'full');motion();});
   const announcement=root.querySelector('.radio-announcement');
   if (announcement) {
     const key='freo-message-'+announcement.dataset.messageKey;
@@ -54,14 +53,19 @@
     // element's playback permission. Neither path reuses a cached stream URL.
     if(!retry){
       const previous=audio;
+      if(!window.FreoAudioAnalysis?.read(previous)?.source){volumeLevel=nativeVolumeSupported?previous.volume:1;muted=previous.muted;}
       audioEvents.abort();
       audio=document.createElement('audio');
-      audio.id='station-audio';audio.preload='none';audio.setAttribute('playsinline','');
-      audio.volume=previous.volume;audio.muted=previous.muted;
+      audio.id='station-audio';audio.preload='none';audio.setAttribute('playsinline','');audio.dataset.stream=stream;
+      // Explicit diagnostic comparison: configure CORS before assigning any src.
+      if(corsComparison)audio.crossOrigin='anonymous';
+      audio.dataset.requestMode=corsComparison?'cors-comparison':'default';
+      audio.volume=volumeLevel;audio.muted=muted;
       previous.pause();previous.removeAttribute('src');previous.load();
       previous.replaceWith(audio);
       bindAudio();
     }
+    window.FreoAudioAnalysis?.prepare(audio,volumeLevel,muted);
     const source=new URL(stream,location.href);
     source.searchParams.set('_freo',`${Date.now()}-${attempt}`);
     audio.src=source.href;
@@ -106,14 +110,41 @@
     if(wanted && connecting && Date.now()-connectingSince>=15000)reconnect();
     if(retryAt && Date.now()>=retryAt){retryAt=0;start(true);}
   },1000);
-  audio.volume=.8;
-  $('volume').addEventListener('input',event=>{audio.volume=Number(event.target.value)/100;audio.muted=false;$('mute-button').setAttribute('aria-pressed','false');$('mute-button').setAttribute('aria-label','Mute');});
-  $('mute-button').addEventListener('click',()=>{audio.muted=!audio.muted;$('mute-button').setAttribute('aria-pressed',String(audio.muted));$('mute-button').setAttribute('aria-label',audio.muted?'Unmute':'Mute');});
+  function applyVolume(){
+    if(!window.FreoAudioAnalysis?.setVolume(audio,volumeLevel,muted)){
+      try{audio.volume=volumeLevel;}catch{}
+      audio.muted=muted;
+    }
+    $('mute-button').setAttribute('aria-pressed',String(muted));$('mute-button').setAttribute('aria-label',muted?'Unmute':'Mute');
+  }
+  // Probe before playback. iPadOS may identify as a Mac; do not rely on UA alone.
+  let nativeVolumeSupported=false;
+  try {audio.volume=.37;nativeVolumeSupported=Math.abs(audio.volume-.37)<.001;}catch{}
+  const appleTouch=/iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform==='MacIntel' && navigator.maxTouchPoints>1);
+  // Some Apple builds echo assignments without applying them to native output.
+  nativeVolumeSupported=nativeVolumeSupported && !appleTouch;
+  if(!nativeVolumeSupported)volumeLevel=1;
+  $('volume').disabled=!nativeVolumeSupported;
+  $('volume').closest('.radio-volume').hidden=!nativeVolumeSupported;
+  $('volume-help').hidden=nativeVolumeSupported;
+  applyVolume();
+  $('volume').addEventListener('input',event=>{if(!nativeVolumeSupported)return;volumeLevel=Number(event.target.value)/100;muted=false;applyVolume();});
+  $('mute-button').addEventListener('click',()=>{muted=!muted;applyVolume();});
   $('share-button').addEventListener('click',async()=>{try{if(navigator.share)await navigator.share({title:root.querySelector('h1').textContent,url:location.href});else{await navigator.clipboard.writeText(location.href);$('share-button').textContent='Link copied';}}catch(error){if(error.name!=='AbortError')$('share-button').textContent='Share this page’s URL';}});
   scope.listen(document,'visibilitychange',()=>root.classList.toggle('tab-hidden',document.hidden));
   if ('mediaSession' in navigator) {
     try {navigator.mediaSession.setActionHandler('play',()=>start());navigator.mediaSession.setActionHandler('pause',pause);}catch{}
     scope.cleanup(()=>{navigator.mediaSession.setActionHandler('play',null);navigator.mediaSession.setActionHandler('pause',null);navigator.mediaSession.metadata=null;});
+  }
+  const requestDialog=$('request-dialog');
+  if(requestDialog){
+    $('request-open').addEventListener('click',event=>{
+      event.preventDefault();const frame=requestDialog.querySelector('iframe');
+      if(!frame.src)frame.src=frame.dataset.src;
+      requestDialog.showModal();
+    });
+    $('request-close').addEventListener('click',()=>requestDialog.close());
+    requestDialog.addEventListener('close',()=>{$('request-open')?.focus();});
   }
   const sentinel=el('div');$('radio-transport').before(sentinel);
   const sticky=new IntersectionObserver(entries=>{const entry=entries[0];$('radio-transport').classList.toggle('transport-sticky',!entry.isIntersecting&&matchMedia('(max-width:650px)').matches);});
@@ -151,9 +182,25 @@
     dialog.querySelectorAll('[data-vote]').forEach(node=>node.addEventListener('click',()=>submitVote(Number(node.dataset.vote))));
     $('feedback-form').addEventListener('submit',event=>{event.preventDefault();if(feedback)submitVote(feedback.vote.value,$('feedback-comment')?.value);});
   }
+  function discovery(host, links) {
+    host.replaceChildren();
+    for(const link of links || []) {
+      try {const url=new URL(link.url);if(!['http:','https:'].includes(url.protocol))continue;}catch{continue;}
+      const anchor=el('a',link.label);anchor.href=link.url;anchor.target='_blank';anchor.rel='noopener noreferrer';host.append(anchor);
+    }
+    host.hidden=!host.childElementCount;
+  }
+  function profile(host, data) {
+    host.replaceChildren();host.hidden=!data;if(!data)return;
+    host.append(el('h3',data.name));
+    if(data.image){const img=el('img');img.src=data.image;img.alt=data.name;img.width=80;img.addEventListener('error',()=>img.remove(),{once:true});host.append(img);}
+    if(data.bio)host.append(el('p',data.bio));
+    if(data.links?.length){const links=el('nav',undefined,'discovery-links');discovery(links,data.links);host.append(links);}
+  }
   function renderCurrent(rows,fresh){
     const key=JSON.stringify([rows,fresh]);if(key===currentKey)return;currentKey=key;
     const song=rows[0];
+    discovery($('track-discovery'), fresh ? song?.discovery_links : []);
     $('copyright-identification').hidden=!(fresh && song?.freo_track_id);
     $('freo-track-id').textContent=song?.freo_track_id?`FREO TRACK · ${song.freo_track_id}`:'';
     $('copyright-report').href=(fresh && song?.report_url)||$('copyright-report').dataset.fallbackUrl;
@@ -162,10 +209,12 @@
     $('playing-artist').textContent=song?.artist||'Keep listening. We’ll bring you the details.';
     $('playing-detail').textContent=rows.length>1?`Also on air: ${rows.slice(1).map(row=>row.title).join(' · ')}`:song?'Live stream timing may vary slightly on your device.':fresh?'No confirmed song is currently on air.':'Recent plays are available below.';
     currentTitle=song?.title||root.querySelector('h1').textContent;currentArtist=song?.artist||'Live radio';
+    $('visualizer-title').textContent=currentTitle;
     if((song?.artwork||'')!==artworkKey){
-      artworkKey=song?.artwork||'';artwork.replaceChildren();artwork.hidden=true;
+      artworkKey=song?.artwork||'';
+      for(const host of [artwork,recordArtwork,visualArtwork]){host.replaceChildren();host.hidden=true;}
       if(artworkKey){const key=artworkKey,img=el('img');img.alt=`Cover artwork for ${song.title}`;img.width=144;img.height=144;
-        img.addEventListener('load',()=>{if(key===artworkKey){artwork.replaceChildren(img);artwork.hidden=false;}},{once:true});img.src=key;}
+        img.addEventListener('load',()=>{if(key===artworkKey){for(const host of [artwork,recordArtwork,visualArtwork]){host.replaceChildren(img.cloneNode());host.hidden=false;}}},{once:true});img.src=key;}
     }
     if('mediaSession' in navigator && 'MediaMetadata' in window) navigator.mediaSession.metadata=new MediaMetadata({title:currentTitle,artist:currentArtist,album:root.querySelector('h1').textContent});
     const controls=$('current-feedback');controls.replaceChildren();
@@ -177,12 +226,12 @@
     const key=JSON.stringify(rows);if(key===recentKey)return;recentKey=key;
     const list=$('recent-history');list.replaceChildren();
     if(!rows.length){list.append(el('li','The first play is still ahead.'));return;}
-    for(const song of rows){const item=el('li'),copy=el('div',undefined,'recent-copy');copy.append(el('strong',song.title),el('span',song.artist));const when=el('time',time(song.started_at));when.dateTime=song.started_at;item.append(copy,when);if(canVote&&song.votable)item.append(button('Vote',()=>openFeedback(song),'recent-vote'));list.append(item);}
+    for(const song of rows){const item=el('li'),copy=el('div',undefined,'recent-copy');copy.append(el('strong',song.title),el('span',song.artist));if(song.discovery_links?.length){const links=el('nav',undefined,'discovery-links');discovery(links,song.discovery_links);copy.append(links);}const when=el('time',time(song.started_at));when.dateTime=song.started_at;item.append(copy,when);if(canVote&&song.votable)item.append(button('Vote',()=>openFeedback(song),'recent-vote'));list.append(item);}
   }
   async function refresh(){
     if(busyRefresh)return;busyRefresh=true;
-    try{const data=await get(`${base}/player`);renderCurrent(data.current,data.fresh);renderRecent(data.recent);$('station-clock').textContent=data.program;$('next-program').textContent=data.next_program?`Scheduled next · ${data.next_program.title} · ${new Intl.DateTimeFormat([],{timeZone:zone,month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}).format(new Date(data.next_program.start))}`:'';$('station-time').textContent=new Intl.DateTimeFormat([],{timeZone:zone,weekday:'long',hour:'2-digit',minute:'2-digit'}).format(new Date())+' · '+zone;const online=data.stream_online;$('stream-status').textContent=online===true?'Broadcast live':online===false?'Signal offline':'Signal unconfirmed';$('stream-status').classList.toggle('online',online===true);}
-    catch{renderCurrent([],false);$('stream-status').textContent='Signal unconfirmed';$('stream-status').classList.remove('online');}
+    try{const data=await get(`${base}/player`);renderCurrent(data.current,data.fresh);renderRecent(data.recent);profile($('live-dj-profile'),data.dj_profile);$('station-clock').textContent=data.program;$('next-program').textContent=data.next_program?`Scheduled next · ${data.next_program.title} · ${new Intl.DateTimeFormat([],{timeZone:zone,month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}).format(new Date(data.next_program.start))}`:'';$('station-time').textContent=new Intl.DateTimeFormat([],{timeZone:zone,weekday:'long',hour:'2-digit',minute:'2-digit'}).format(new Date())+' · '+zone;const online=data.stream_online;$('stream-status').textContent=online===true?'Broadcast live':online===false?'Signal offline':'Signal unconfirmed';$('stream-status').classList.toggle('online',online===true);}
+    catch{renderCurrent([],false);profile($('live-dj-profile'),null);$('stream-status').textContent='Signal unconfirmed';$('stream-status').classList.remove('online');}
     finally{busyRefresh=false;}
   }
   refresh();scope.interval(()=>{if(!document.hidden)refresh();},5000);
@@ -192,7 +241,7 @@
   const dateInput=$('schedule-date');
   const length=()=>view==='day'?1:view==='week'?7:new Date(Number(dateInput.value.slice(0,4)),Number(dateInput.value.slice(5,7)),0).getDate();
   function today(){return dateKey(new Date());}
-  function programNode(entry,day){const node=el('article',undefined,'schedule-program');node.classList.toggle('is-current',new Date(entry.start)<=new Date()&&new Date(entry.end)>new Date());node.append(el('time',`${dateKey(entry.start)<day?'00:00':time(entry.start)} – ${dateKey(entry.end)>day?'24:00':time(entry.end)}`),el('strong',entry.title));if(entry.description)node.append(el('p',entry.description));return node;}
+  function programNode(entry,day){const node=el('article',undefined,'schedule-program');node.classList.toggle('is-current',new Date(entry.start)<=new Date()&&new Date(entry.end)>new Date());node.append(el('time',`${dateKey(entry.start)<day?'00:00':time(entry.start)} – ${dateKey(entry.end)>day?'24:00':time(entry.end)}`),el('strong',entry.title));if(entry.description)node.append(el('p',entry.description));if(entry.dj_profile){const host=el('div',undefined,'dj-profile');profile(host,entry.dj_profile);node.append(host);}return node;}
   async function loadSchedule(){
     if(!dateInput?.value)return;const generation=++scheduleGeneration;
     if(view==='month')dateInput.value=dateInput.value.slice(0,8)+'01';

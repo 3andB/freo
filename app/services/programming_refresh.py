@@ -16,7 +16,7 @@ def signature(station,now=None):
     from app.services.schedule import resolve
     programming=resolve(station,now)
     state=station.automation
-    values=[station.timezone,station.target_lufs,programming.occurrence_key,
+    values=[station.timezone,station.target_lufs,station.request_settings,programming.occurrence_key,
             state.active_rotation_id,state.default_clock_id,state.track_separation_seconds,state.artist_separation_seconds]
     schedule=db.session.get(m.ChannelSchedule,station.id)
     if schedule:
@@ -45,10 +45,18 @@ def signature(station,now=None):
             visual_scope = m.Track.artist_id.in_(visual_ref.get('artists', [identifier]))
         elif kind == 'album':
             visual_scope = m.Track.album_id == identifier
+    if m.Playlist.query.filter_by(station_id=station.id, smart_enabled=True, deleted_at=None).first():
+        visual_scope = db.true()
+    tags=m.song_tags
+    values.append([list(row) for row in db.session.execute(select(tags).join(m.Track,m.Track.id==tags.c.track_id).where(track_scope(station.id)).order_by(tags.c.track_id,tags.c.tag_id))])
     tracks=db.session.query(m.Track.id,m.Track.enabled,m.Track.decommissioned_at,m.Track.ingest_status,m.Track.storage_key,
         m.Track.artist,m.Track.title,m.Track.duration_ms,m.Track.loudness_lufs,m.Track.true_peak_db,
+        m.Track.genre,m.Track.bpm,m.Track.release_year,m.Track.album,
+        m.Track.audio_edit_enabled,m.Track.audio_edit_revision,m.Track.cue_in_ms,m.Track.cue_out_ms,
+        m.Track.fade_in_ms,m.Track.fade_out_ms,m.Track.gain_trim_db,m.Track.analysis_status,
         m.Track.audio_kind,m.Track.artist_id,m.Track.album_id,m.Track.disc_number,m.Track.track_number).filter(track_scope(station.id),db.or_(
             visual_scope,
+            m.Track.id.in_(select(m.Playlist.leader_track_id).where(m.Playlist.station_id==station.id)),
             m.Track.id.in_(select(m.PlaylistItem.track_id).join(m.Playlist,m.Playlist.id==m.PlaylistItem.playlist_id).where(m.Playlist.station_id==station.id)),
             m.Track.categories.any(m.MediaCategory.station_id==station.id),
             m.Track.id.in_(select(m.EventBlockItem.track_id).join(m.EventBlock,m.EventBlock.id==m.EventBlockItem.event_block_id).where(m.EventBlock.station_id==station.id)),
@@ -76,22 +84,32 @@ def restore(station,saved):
     for key,prior in saved.get('visual',{}).items():
         row=db.session.get(m.ScheduleCursor,(station.id,key))
         if row:row.state=prior
-    if state.active_rotation_id==saved['rotation']:state.next_slot_index=saved['index']
+    if 'rotation' in saved and 'index' in saved and state.active_rotation_id==saved['rotation']:
+        state.next_slot_index=saved['index']
     clock=db.session.get(m.ClockState,station.id)
     prior=saved.get('clock')
-    if clock:
+    if clock and 'clock' in saved:
         if prior and clock.clock_id==prior['id'] and clock.occurrence_key==prior['occurrence']:
             clock.next_slot_index=prior['index']
         else:
             clock.next_slot_index=0
-    for row in m.PlaylistCursor.query.filter_by(station_id=station.id):
+    for row in (m.PlaylistCursor.query.filter_by(station_id=station.id) if 'playlists' in saved else []):
         prior=saved.get('playlists',{}).get(str(row.clock_slot_id))
         row.state=prior['state'] if prior and (row.occurrence_key==prior['occurrence'] or prior['state'].get('mode')=='RANDOM') else {}
-    for row in m.RotationCursor.query.filter_by(station_id=station.id):
+    for row in (m.RotationCursor.query.filter_by(station_id=station.id) if 'rotations' in saved else []):
         row.next_slot_index=saved.get('rotations',{}).get(str(row.rotation_id),0)
 
 
-def refresh(station,reader,current_signature, *, prepared_auto_id=None):
+def _restore_before(station, first):
+    later_started=m.SelectionDecision.query.filter(m.SelectionDecision.station_id==station.id,
+        m.SelectionDecision.id>first.id,m.SelectionDecision.status=='started',m.SelectionDecision.admin_user_id.is_(None),
+        ~m.SelectionDecision.selection_method.in_(('timed_event','event_block','schedule_insert')),m.SelectionDecision.playback_bus=='A').first()
+    later_block=m.EventBlockExecution.query.filter(m.EventBlockExecution.station_id==station.id,
+        m.EventBlockExecution.source=='CLOCK',m.EventBlockExecution.created_at>=first.selected_at).first()
+    if not later_started and not later_block:restore(station,first.cursor_checkpoint)
+
+
+def refresh(station,reader,current_signature, *, prepared_auto_id=None, prefill=False):
     from app.services.playout_queue import queued_ids,active_ids,socket_identity,remove_future,request_decision_id
     reader.collect(station.slug)
     rows=m.SelectionDecision.query.filter(m.SelectionDecision.station_id==station.id,
@@ -119,8 +137,46 @@ def refresh(station,reader,current_signature, *, prepared_auto_id=None):
     db.session.commit()
     if prepared:
         from app.services.playout_queue import _command
-        _command(station.slug, f'freo_mixer.return_discard {prepared.id}')
+        from app.services.relay import describe as relay_status
+        namespace = 'freo_relay.discard' if relay_status(station)['selected'] else 'freo_mixer.return_discard'
+        _command(station.slug, f'{namespace} {prepared.id}')
     ids=[row.liquidsoap_request_id for row in candidates if row.socket_identity==identity and row.liquidsoap_request_id in future]
+    restored = False
+    if prefill and ids and prepared is None:
+        # Resolve a successor while the old queue still protects an imminent EOF.
+        # Removing first leaves a worker/decoder-sized hole at calendar boundaries.
+        # Existing durable refresh intent also lets a restarted worker finish the
+        # removal without selecting a duplicate successor or rewinding its cursor.
+        reader.collect(station.slug)
+        obsolete = [row for row in candidates if row.status!='started']
+        obsolete += [row for row in rows if row.status=='selected' and row.liquidsoap_request_id is None]
+        first = min(obsolete or candidates, key=lambda row: row.id)
+        possible = m.SelectionDecision.query.filter(
+            m.SelectionDecision.station_id==station.id, m.SelectionDecision.id>first.id,
+            m.SelectionDecision.admin_user_id.is_(None), m.SelectionDecision.playback_bus=='A',
+            m.SelectionDecision.programming_signature==current_signature,
+            m.SelectionDecision.status.in_(('selected','submitting','queued','started','failed'))).all()
+        live_requests = queued_ids(station.slug) | active_ids(station.slug)
+        successor = next((row for row in possible if row.socket_identity==identity and
+            row.liquidsoap_request_id in live_requests), None)
+        if successor is None and possible:
+            # Recover an accepted push even if the worker died before saving its
+            # request ID. Database intent alone is not proof of prepared audio.
+            possible_by_id = {row.id: row for row in possible}
+            for request_id in live_requests:
+                row = possible_by_id.get(request_decision_id(station.slug, request_id))
+                if row:
+                    row.liquidsoap_request_id=request_id;row.socket_identity=identity
+                    if row.status!='started':row.status='queued'
+                    db.session.commit();successor=row;break
+        if successor is None:
+            if first.status!='started':_restore_before(station, first)
+            db.session.commit()
+            reader.starved_until.pop(station.slug, None)
+            from app.automation_worker import refill_station
+            from app.services.playout_queue import queue_depth
+            refill_station(station.slug, reader, queue_depth(station.slug)+1)
+        restored = True
     if ids:remove_future(station.slug,ids)
     reader.collect(station.slug)
     live=queued_ids(station.slug)|active_ids(station.slug)
@@ -130,12 +186,7 @@ def refresh(station,reader,current_signature, *, prepared_auto_id=None):
     if not removed:return False
     removed.sort(key=lambda row:row.id)
     first=removed[0]
-    later_started=m.SelectionDecision.query.filter(m.SelectionDecision.station_id==station.id,
-        m.SelectionDecision.id>first.id,m.SelectionDecision.status=='started',m.SelectionDecision.admin_user_id.is_(None),
-        ~m.SelectionDecision.selection_method.in_(('timed_event','event_block','schedule_insert')),m.SelectionDecision.playback_bus=='A').first()
-    later_block=m.EventBlockExecution.query.filter(m.EventBlockExecution.station_id==station.id,
-        m.EventBlockExecution.source=='CLOCK',m.EventBlockExecution.created_at>=first.selected_at).first()
-    if not later_started and not later_block:restore(station,first.cursor_checkpoint)
+    if not restored:_restore_before(station,first)
     for row in removed:row.status='failed';row.reason='programming_changed'
     db.session.commit()
     reader.starved_until.pop(station.slug,None)

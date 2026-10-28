@@ -1,4 +1,5 @@
 """Real-browser station creation/deletion and all-channel library controls."""
+import pytest
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from app.extensions import db
@@ -8,6 +9,7 @@ from tests.test_live_browser import booth, wait_text
 from tests.test_web import app as app_fixture
 
 
+@pytest.mark.parametrize('booth', [pytest.param({'initial_live_status_delay':12}, id='slow-bootstrap')], indirect=True)
 def test_add_limit_delete_and_share_in_browser(booth):
     app,driver,base,tmp_path=booth
     driver.get(base+'/admin/stations')

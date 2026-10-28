@@ -7,7 +7,7 @@ import time
 import uuid
 import wave
 from array import array
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
@@ -27,6 +27,11 @@ def handoff_stack(monkeypatch, tmp_path, request):
     recording = tmp_path/'handoff.wav'
     def render(*args, **kwargs):
         source = original(*args, **kwargs)
+        # Model a delayed background timer independently of the audio clock.
+        delay=request.node.callspec.params.get('timer_delay',0)
+        if delay:
+            source=source.replace('thread.run(delay=max(0.0, 2.0-(time()-since)),',
+                f'thread.run(delay={delay}+max(0.0, 2.0-(time()-since)),')
         return source.replace('output.icecast(', f'output.file(%wav, "{recording}", radio)\noutput.icecast(')
     monkeypatch.setattr(station_runtime, 'render_liquidsoap', render)
     duration = getattr(request, 'param', 30 if request.node.callspec.params.get('operation')=='lease-expiry' else 12)
@@ -37,6 +42,13 @@ def handoff_stack(monkeypatch, tmp_path, request):
             subprocess.run(['ffmpeg','-v','error','-y','-f','lavfi','-i',f'sine=frequency=880:duration={duration}',
                             str(stack.media/stack.slug/'originals'/track.storage_key)], check=True)
             track.duration_ms = duration*1000
+            if request.node.callspec.params.get('boundary') == 'calendar-slow-bookkeeping':
+                from app.services import visual_schedule as vs
+                policy = vs.policy(Station.query.filter_by(slug=stack.slug).one())
+                rule = dict(frequency='daily', anchor=datetime.now(timezone.utc).date().isoformat())
+                policy.mode = 'CALENDAR'
+                policy.calendar = vs.clean_document(policy.station, [dict(id='0', start=0, end=86400,
+                    source=policy.live_simple, rule=rule)])
             db.session.commit()
         stack.start()
         yield stack
@@ -45,7 +57,7 @@ def handoff_stack(monkeypatch, tmp_path, request):
 
 
 @pytest.mark.parametrize('deck', ['A','B'])
-@pytest.mark.parametrize('boundary', [False, True, 'underestimated'], ids=['ordinary','calendar-window','duration-underestimate'])
+@pytest.mark.parametrize('boundary', [False, True, 'underestimated', 'waiting-event'], ids=['ordinary','calendar-window','duration-underestimate','waiting-event'])
 def test_natural_dj_end_has_continuous_programme(handoff_stack, deck, boundary):
     stack = handoff_stack
     if boundary=='underestimated':
@@ -76,6 +88,14 @@ def test_natural_dj_end_has_continuous_programme(handoff_stack, deck, boundary):
             policy.mode = 'CALENDAR'
             db.session.commit()
         stack.query(schedule)
+    if boundary == 'waiting-event':
+        def waiting_event():
+            from app.services.timed_events import save_event
+            due=datetime.now(timezone.utc)+timedelta(seconds=1)
+            save_event(stack.slug,name='Waiting station ID',timing_mode='SOFT',recurrence_type='ONE_TIME',
+                content_type='TRACK',content_identifier=stack.track_uuids[0],local_date=due.date().isoformat(),
+                local_time=due.strftime('%H:%M:%S'),late_tolerance_seconds=60,interrupt_policy='NEVER')
+        stack.query(waiting_event)
     wait_for(lambda: stack.query(lambda: station().automation.operator_mode=='AUTO'), timeout=35)
     wait_for(lambda: stack.query(lambda: program_decision_id(stack.slug) not in (None,identifier)), timeout=35)
     time.sleep(2)
@@ -205,7 +225,11 @@ def test_prepared_return_respects_deck_changes_and_worker_lifetime(handoff_stack
 def tone_windows(path):
     with wave.open(str(path)) as recording:
         rate, channels = recording.getframerate(), recording.getnchannels()
-        audio = array('h', recording.readframes(recording.getnframes()))[::channels]
+        audio = array('h')
+        # Streaming WAV headers can advertise 0xffffffff bytes even after the
+        # engine exits. Read actual PCM in bounded chunks, never that header size.
+        while frames := recording.readframes(65536):
+            audio.extend(array('h', frames)[::channels])
     # 50 ms separates 400 Hz backup from the 440/660/880 Hz programme tones.
     size = rate//20
     windows = []
@@ -221,10 +245,31 @@ def tone_windows(path):
 
 @pytest.mark.parametrize('boundary,lead_seconds', [
     ('calendar',12), ('calendar',14), ('calendar',16),
+    ('calendar-slow-bookkeeping',17),
     ('hard-event',14), ('soft-event',14)])
-def test_auto_does_not_run_empty_inside_boundary_window(handoff_stack,boundary,lead_seconds):
+def test_auto_does_not_run_empty_inside_boundary_window(handoff_stack,monkeypatch,boundary,lead_seconds):
     stack=handoff_stack
     wait_for(lambda: stack.query(lambda: program_decision_id(stack.slug)))
+    delays = []
+    if boundary == 'calendar-slow-bookkeeping':
+        wait_for(lambda: stack.query(lambda: db.session.get(SelectionDecision,
+            program_decision_id(stack.slug)).started_at))
+        from app import automation_worker as worker
+        from app.services import programming_refresh
+        refresh, events = programming_refresh.refresh, worker.process_timed_events
+        pending = []
+        def refreshed(*args, **kwargs):
+            result = refresh(*args, **kwargs)
+            if result: pending.append(True)
+            return result
+        def slow_bookkeeping(*args, **kwargs):
+            if pending:
+                pending.clear()
+                delays.append(True)
+                time.sleep(4.25)
+            return events(*args, **kwargs)
+        monkeypatch.setattr(programming_refresh, 'refresh', refreshed)
+        monkeypatch.setattr(worker, 'process_timed_events', slow_bookkeeping)
     def configure():
         from datetime import timedelta
         from app.services import visual_schedule as vs
@@ -232,7 +277,10 @@ def test_auto_does_not_run_empty_inside_boundary_window(handoff_stack,boundary,l
         station=Station.query.filter_by(slug=stack.slug).one()
         now=datetime.now(timezone.utc)
         due=now+timedelta(seconds=lead_seconds)
-        if boundary=='calendar':
+        if boundary.startswith('calendar'):
+            if boundary == 'calendar-slow-bookkeeping':
+                row = db.session.get(SelectionDecision, program_decision_id(stack.slug))
+                due = row.started_at.replace(tzinfo=timezone.utc) + timedelta(seconds=lead_seconds)
             policy=vs.policy(station)
             second=due.hour*3600+due.minute*60+due.second
             assert due.date()==now.date(), 'Retry fixture outside the last minute of UTC day'
@@ -250,6 +298,8 @@ def test_auto_does_not_run_empty_inside_boundary_window(handoff_stack,boundary,l
     time.sleep(27)
     stack.stop_worker()
     stop_process(stack.engine)
+    if boundary == 'calendar-slow-bookkeeping':
+        assert delays, 'The fixture must refresh queued audio at the calendar boundary'
     windows=tone_windows(stack.evidence/'handoff.wav')
     present=[music>500 for _,music in windows]
     first=present.index(True)
@@ -265,7 +315,7 @@ def test_auto_does_not_run_empty_inside_boundary_window(handoff_stack,boundary,l
 @pytest.mark.parametrize('handoff_stack', [60], indirect=True)
 @pytest.mark.parametrize('operation', ['PAUSE','CLEAR'])
 @pytest.mark.parametrize('deck', ['A','B'])
-@pytest.mark.parametrize('followup', ['worker-stall','manual-take'])
+@pytest.mark.parametrize('followup', ['worker-stall','manual-take','waiting-event'])
 def test_early_stop_loads_auto_during_grace(handoff_stack, monkeypatch, operation, deck, followup):
     from app import automation_worker as worker
     stack=handoff_stack
@@ -277,6 +327,15 @@ def test_early_stop_loads_auto_during_grace(handoff_stack, monkeypatch, operatio
         '',str(uuid.uuid4()),fade_seconds=0,play_on_load=True).target_decision_id)
     wait_for(lambda: stack.query(lambda: program_decision_id(stack.slug)==identifier))
     wait_for(lambda: stack.query(lambda: mixer_state(stack.slug)[deck.lower()+'_elapsed']>2))
+    if followup=='waiting-event':
+        def waiting_event():
+            from app.services.timed_events import save_event
+            due=datetime.now(timezone.utc)+timedelta(seconds=1)
+            save_event(stack.slug,name='ID waiting for stopped DJ',timing_mode='SOFT',recurrence_type='ONE_TIME',
+                content_type='TRACK',content_identifier=stack.track_uuids[0],local_date=due.date().isoformat(),
+                local_time=due.strftime('%H:%M:%S'),late_tolerance_seconds=90,interrupt_policy='NEVER')
+        stack.query(waiting_event)
+        time.sleep(1.2)
     refill=worker.refill_station
     delays=[]
     def slow_refill(slug,reader,depth):
@@ -356,3 +415,58 @@ worker.main()
     gap=(first-last-1)/20
     (stack.evidence/'cold-restart-result.json').write_text(json.dumps(dict(deck=deck,gap_seconds=gap)))
     assert gap<=.25, f'Cold worker restart left {gap:.2f}s without programme'
+
+@pytest.mark.parametrize('timer_delay',[0,1.25])
+@pytest.mark.parametrize('deck',['A','B'])
+@pytest.mark.parametrize('operation',['CLEAR','PAUSE'])
+@pytest.mark.parametrize('handoff_stack',[78],indirect=True)
+def test_early_stop_returns_before_backup_threshold(handoff_stack,deck,operation,timer_delay):
+    """Stop before EOF lookahead has already warmed the AUTO decoder."""
+    stack=handoff_stack
+    def station():return Station.query.filter_by(slug=stack.slug).one()
+    wait_for(lambda:stack.query(lambda:program_decision_id(stack.slug)))
+    stack.query(lambda:set_mode(station(),AdminUser.query.first(),'DJ_BOOTH'))
+    wait_for(lambda:stack.query(lambda:mixer_state(stack.slug)['mode']=='DJ_BOOTH'))
+    identifier=stack.query(lambda:request_deck(station(),AdminUser.query.first(),deck,'LOAD',stack.track_uuids[2],
+        '',str(uuid.uuid4()),fade_seconds=0,play_on_load=True).target_decision_id)
+    wait_for(lambda:stack.query(lambda:program_decision_id(stack.slug)==identifier))
+    wait_for(lambda:stack.query(lambda:mixer_state(stack.slug)[deck.lower()+'_elapsed']>=3))
+    assert stack.query(lambda:mixer_state(stack.slug)[deck.lower()+'_elapsed'])<30
+    command=stack.query(lambda:request_deck(station(),AdminUser.query.first(),deck,operation,None,
+        str(identifier),str(uuid.uuid4())).id)
+    wait_for(lambda:stack.query(lambda:db.session.get(LiveControlCommand,command).status=='sent'))
+    stack.stop_worker()
+    wait_for(lambda:stack.query(lambda:mixer_state(stack.slug)['mode']=='AUTO'))
+    stack.start_worker()
+    wait_for(lambda:stack.query(lambda:station().automation.operator_mode=='AUTO'))
+    wait_for(lambda:stack.query(lambda:program_decision_id(stack.slug) not in (None,identifier)))
+    time.sleep(2)
+    stack.stop_worker();stop_process(stack.engine)
+    windows=tone_windows(stack.evidence/'handoff.wav')
+    last=max(i for i,(dj,_) in enumerate(windows) if dj>500)
+    first=next(i for i in range(last+1,len(windows)) if windows[i][1]>500)
+    gap=(first-last-1)/20
+    (stack.evidence/'early-stop-result.json').write_text(json.dumps(dict(deck=deck,operation=operation,timer_delay=timer_delay,audio_gap=gap)))
+    assert gap<=2.75,f'{deck} {operation}: {gap:.2f}s exceeds the 2s operator grace plus recovery allowance'
+
+
+@pytest.mark.parametrize('deck',['A','B'])
+@pytest.mark.parametrize('handoff_stack',[78],indirect=True)
+def test_resuming_paused_deck_revokes_stopped_return(handoff_stack,deck):
+    stack=handoff_stack
+    def station():return Station.query.filter_by(slug=stack.slug).one()
+    wait_for(lambda:stack.query(lambda:program_decision_id(stack.slug)))
+    stack.query(lambda:set_mode(station(),AdminUser.query.first(),'DJ_BOOTH'))
+    wait_for(lambda:stack.query(lambda:mixer_state(stack.slug)['mode']=='DJ_BOOTH'))
+    identifier=stack.query(lambda:request_deck(station(),AdminUser.query.first(),deck,'LOAD',stack.track_uuids[2],
+        '',str(uuid.uuid4()),fade_seconds=0,play_on_load=True).target_decision_id)
+    wait_for(lambda:stack.query(lambda:program_decision_id(stack.slug)==identifier))
+    def control(operation):
+        command=stack.query(lambda:request_deck(station(),AdminUser.query.first(),deck,operation,None,
+            str(identifier),str(uuid.uuid4()),fade_seconds=0).id)
+        wait_for(lambda:stack.query(lambda:db.session.get(LiveControlCommand,command).status=='sent'))
+    control('PAUSE');control('PLAY')
+    time.sleep(3)
+    assert stack.query(lambda:mixer_state(stack.slug)['mode'])=='DJ_BOOTH'
+    assert stack.query(lambda:program_decision_id(stack.slug))==identifier
+    assert stack.query(lambda:station().automation.operator_mode)=='DJ_BOOTH'

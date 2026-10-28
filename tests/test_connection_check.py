@@ -304,7 +304,7 @@ def test_queue_polling_preserves_minute_ticks_and_backs_off_on_errors(app, monke
     from contextlib import nullcontext
     from types import SimpleNamespace
     import app.routes.central_api as routes
-    clock, polls, ticks = [0], [], []
+    clock, polls, ticks, sharing = [0], [], [], []
     class Worker:
         store = SimpleNamespace(lock=nullcontext)
         def process_connection_check(self):
@@ -314,6 +314,8 @@ def test_queue_polling_preserves_minute_ticks_and_backs_off_on_errors(app, monke
             return clock[0] == 4
         def tick(self):
             ticks.append(clock[0])
+        def fast_tick(self):
+            sharing.append(clock[0])
     def sleep(seconds):
         clock[0] += seconds
         if clock[0] >= 126:
@@ -325,4 +327,5 @@ def test_queue_polling_preserves_minute_ticks_and_backs_off_on_errors(app, monke
     assert result.exit_code == 1  # Controlled loop termination.
     assert ticks == [0, 64]  # Manual work at t=4 defers the next regular sample.
     assert polls == list(range(0, 68, 2))
+    assert sharing == list(range(0, 61, 6))
     assert clock[0] == 126  # Infrastructure errors retain the previous 60-second backoff.

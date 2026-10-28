@@ -1,134 +1,142 @@
-# Install Freo 0.3.2
+# Freo 1.0.0 installation
 
-**Fresh installation and reboot recovery: tested and passed on Ubuntu 24.04
-x86_64.** The published installation kit is the exact signed kit accepted on a
-fresh VM, without rebuilding. Freo installed its own dependencies, processed
-music uploads, played a playlist through Simple scheduling, and automatically
-returned to broadcasting after reboot. Installer and before/after-reboot
-validators exited 0; no systemd units failed.
+Ubuntu 24.04 x86_64, Python 3.12. Existing installations must use the signed upgrade workflow with a current verified encrypted backup; never run the fresh installer over existing state.
 
-Use a fresh Ubuntu 24.04 x86_64 server with SSH access and inbound HTTP port 80
-(or ports 80/443 for HTTPS). Allow disk space for music and protected backups.
-Python dependencies are bundled and hash-locked. Network access is required for
-Ubuntu/Xiph system packages. No manual Python/PostgreSQL setup is needed.
+## Verify the handoff
 
-Existing installations: use the [upgrade and recovery guide](https://github.com/3andB/freo/releases/download/v0.3.2/recovery-and-upgrades.md).
-Do not run the fresh installer over an existing or partially installed station.
+Obtain these named files through the trusted release handoff:
 
-## Download and verify
+- `freo-v1.0.0-install-kit.tar`
+- `freo-v1.0.0-install-kit.tar.asc`
+- `freo-v1.0.0-install-kit.sha256` and its `.asc` signature
+- `publisher.gpg`
 
-Run these commands on the new server. Use `sudo` as shown, or omit it when
-already root. Install download/verification tools first if needed:
+Confirm this publisher fingerprint through an independently trusted channel:
 
-```bash
-sudo apt-get update
-sudo apt-get install -y ca-certificates curl gnupg
-mkdir -p "$HOME/freo-install-0.3.2"
-cd "$HOME/freo-install-0.3.2"
-curl --fail --location --proto '=https' --proto-redir '=https' \
-  --output freo-v0.3.2-install-kit.tar \
-  https://github.com/3andB/freo/releases/download/v0.3.2/freo-v0.3.2-install-kit.tar
-printf '%s  %s\n' \
-  '2488f8784243fd5bfed4116ea4aff6c0ee6b15f619361379650b7405a269b91a' \
-  'freo-v0.3.2-install-kit.tar' | sha256sum --check
-```
+`B835B40E7E1A5838390256751AB72B63BEB716C3`
 
-Stop if any command or verification fails. After the outer checksum passes:
+From an empty, root-owned staging directory, verify before extraction:
 
-```bash
-tar -xf freo-v0.3.2-install-kit.tar
-cd freo-test-kit
-sha256sum --check SHA256SUMS
+```sh
 gpg --show-keys --with-fingerprint publisher.gpg
+gpgv --keyring "$PWD/publisher.gpg" freo-v1.0.0-install-kit.tar.asc freo-v1.0.0-install-kit.tar
+gpgv --keyring "$PWD/publisher.gpg" freo-v1.0.0-install-kit.sha256.asc freo-v1.0.0-install-kit.sha256
+sha256sum --check freo-v1.0.0-install-kit.sha256
+mkdir freo-kit
+tar -xf freo-v1.0.0-install-kit.tar -C freo-kit
+cd freo-kit
+sha256sum --check SHA256SUMS
+gpgv --keyring "$PWD/publisher.gpg" freo-v1.0.0.tar.gz.asc freo-v1.0.0.tar.gz
+mkdir source
+tar -xzf freo-v1.0.0.tar.gz -C source
 ```
 
-Confirm the publisher fingerprint against this independently published value:
+Stop on any verification failure. Never execute an archive's own scripts to
+authenticate it. The bundled wheels install offline with required hashes;
+Ubuntu/Xiph system packages still need network access. Existing signed release files
+must remain unchanged.
 
-**B835 B40E 7E1A 5838 3902 5675 1AB7 2B63 BEB7 16C3**
+## Fresh installation
 
-```bash
-gpgv --keyring "$PWD/publisher.gpg" freo-v0.3.2.tar.gz.asc freo-v0.3.2.tar.gz
-mkdir freo-v0.3.2
-tar -xzf freo-v0.3.2.tar.gz -C freo-v0.3.2
-cd freo-v0.3.2
-```
+Use the fresh installer only on an empty, disposable Ubuntu 24.04 x86_64 VM.
+Replace `YOUR_SERVER_PUBLIC_IP` with its public IPv4 address or hostname:
 
-Expect a good signature from `3andB Freo Releases <info@3andB.com>`.
-The directory name `freo-test-kit` and preparation-time notices inside the kit
-are retained to preserve its tested bytes. The public release notes and
-`ACCEPTANCE.md` record the subsequent completed acceptance and publication
-approval. GitHub's automatically generated source ZIP/tar downloads do not
-contain the bundled installation dependencies; use the named installation kit.
-
-## Install once
-
-For HTTP, replace `YOUR_SERVER_PUBLIC_IP` with the server's public IPv4 address
-(or your configured hostname):
-
-```bash
+```sh
+cd source
 sudo env FREO_DOMAIN=YOUR_SERVER_PUBLIC_IP bash scripts/install.sh
+sudo bash /opt/freo/scripts/validate-install.sh
+sudo freo-admin status
+sudo freo-admin health
 ```
 
-This explicitly selects the public URL and Nginx virtual host. Leaving it unset
-uses the first local address, which may be private on a server with multiple
-interfaces.
+For HTTPS, instead supply `FREO_DOMAIN=radio.example.com`,
+`FREO_ENABLE_HTTPS=1` and `FREO_CERTBOT_EMAIL=operator@example.com` with actual
+DNS, inbound ports and operator email. Supply `FREO_LIVE_MIC=1` if microphone
+acceptance is required. The Studio release API requires HTTPS and independently
+approved inventory and hash-only key configuration; ordinary installation does
+not publish a release inventory or issue a Studio key.
 
-For HTTPS, point a real hostname at the VM, allow ports 80/443, and run this
-**instead**, replacing the hostname and email:
+The installer creates the first-use `admin` account with the documented
+bootstrap password `IAmOnTheAir`. Complete setup immediately with an operator
+email and private password. Reinstalling over existing customer data is refused;
+use the verified backup/restore upgrade workflow instead.
 
-```bash
-sudo env FREO_DOMAIN=radio.example.com FREO_ENABLE_HTTPS=1 \
-  FREO_CERTBOT_EMAIL=you@example.com bash scripts/install.sh
-```
+Hosted Icecast needs matching libigloo headers/runtime >= 0.9.4. Preparation
+selects a compatible pair from the signed scoped Xiph source, simulates the
+build transaction without removals and checks the actual loaded library. Failed
+dependency/build preparation preserves service health and does not publish
+hosted policy. See [dependency troubleshooting](icecast-upgrade.md).
 
-HTTPS requires public DNS and successful certificate issuance. Remote browser
-microphone access requires HTTPS. Automated TLS/Host/SNI/certificate checks
-passed; the final owner VM acceptance used HTTP/public IP. Verify public
-certificate issuance and `sudo certbot renew --dry-run` on your HTTPS server.
+## Exact-kit acceptance
 
-The installer configures PostgreSQL, migrations, Nginx, Gunicorn and radio
-services. It reports:
+Record the kit/application digests, source commit, OS image and package/runtime
+versions. Use the built kit without rebuilding during acceptance.
 
-- **LOCAL APPLICATION VALIDATION**: Freo, Nginx and the admin login path on the VM.
-- **EXTERNAL ACCESS VALIDATION**: public reachability from that VM, reported
-  separately so blocked hairpin routing cannot falsely fail a working local app.
+The installed acceptance helper changes only an explicitly confirmed disposable
+installation. It claims setup and creates two generated-audio test stations.
+Replace `YOUR_DISPOSABLE_HOSTNAME` with the exact output of `hostname`:
 
-A successful install prints the exact address to open, for example:
-`http://YOUR_SERVER_PUBLIC_IP/admin/login`. Check it from another device.
-If installation exits nonzero, preserve its output and investigate before rerunning.
-
-## First broadcast
-
-Sign in as **admin** with **IAmOnTheAir**. Immediately complete mandatory setup
-with your email and a new password, then accept the license agreement. Freo
-starts without demo stations or music. Create your station, upload audio you
-are permitted to broadcast, wait for processing, create a playlist and assign
-it in Simple scheduling. Turn broadcasting on and open the public player.
-The primary administrator manages upgrades and licenses. Registration is optional.
-
-```bash
+```sh
 cd /opt/freo
-venv/bin/python -c 'from app.version import VERSION; print(VERSION)'
-sudo bash scripts/validate-install.sh
-systemctl --failed --no-pager
+sudo venv/bin/python scripts/accept-install.py fresh --confirm-hostname YOUR_DISPOSABLE_HOSTNAME
+sudo venv/bin/python scripts/accept-install.py hosted --confirm-hostname YOUR_DISPOSABLE_HOSTNAME
 ```
 
-Expect version `0.3.2`, successful local/service/database checks and no failed
-units. Leave broadcast on, reboot when convenient, and confirm automatic
-playback recovery and retained station/media/settings. Run the validator again.
+Retain the root-only acceptance JSON under `/var/lib/freo-admin/rc1-acceptance`;
+the historical directory name is part of the existing helper contract. Keep its
+private credentials file out of public handoff evidence. Also decode the two
+real streams with FFmpeg and verify the native listener cap across mounts.
+Cold engine checks use bounded readiness; HTTP 200 or an active process alone
+does not prove live audio.
 
-## Reporting, licensing and recovery
+Reboot the VM, then run the installed validator and administrative health and
+hosting verification. Check persisted accounts, policy, programming/media and
+desired station states, both decoded streams, service restart inhibition while
+restricted, and explicit recovery after suspension/maintenance. Verify the
+installer rerun refuses before changing state and dependency setup is repeatable.
+HTTPS, microphone and signed-upgrade acceptance must be recorded separately
+when required by the release's intended scope.
 
-Freo automatically reports installation identity, version, machine facts,
-station metadata and hourly aggregate listener/library totals to api.freo.live.
-It does not send listener identities/IPs or music metadata. Directory listing
-requires a separate opt-in. Registration is optional.
+Existing installations use the [signed upgrade/recovery workflow](recovery-and-upgrades.md)
+with a verified encrypted backup/restore. The
+[RC1 restricted SSH contract](v1-rc1-installation.md) and
+[Studio release API contract](studio-release-api.md) remain in force.
 
-Freo is source-available. Up to three stations total per owner are free,
-including commercial use; US$99 once covers unlimited stations across that
-owner's installations and future updates. See the bundled LICENSE.
+Publication, Studio inventory approval and deployment follow acceptance of
+these exact publisher-signed bytes.
 
-Arrange protected off-server backups and verify a matched recovery point using
-the [recovery guide](https://github.com/3andB/freo/releases/download/v0.3.2/recovery-and-upgrades.md).
-Use the supported signed updater for existing installations. Never try to
-reverse the security migration as a recovery shortcut.
+## Existing Ubuntu runtime conflicts
+
+Icecast requires libigloo >= 0.9.4 at build time; Freo also probes the loaded
+runtime before building. Matching development/runtime candidates are selected
+dynamically (currently 0.9.5-1), rather than held to a permanent exact version.
+APT metadata alone is insufficient: libigloo0t64 can own older shared objects
+while libigloo0 is marked installed. The installer refuses this state before
+installing dependencies or publishing hosted policy.
+
+Inspect apt-cache policy, dpkg-query -S '*/libigloo.so.0*' and installed reverse
+dependencies. Reproduce the transaction on disposable Ubuntu before repairing
+an existing host. Any targeted removal of the conflicting t64 package requires
+operator approval, no installed dependents, a reviewed simulation and recovery
+backup. Never use forced overwrites or broad autoremove. Reinstall the selected
+matching pair, rerun scripts/check-igloo.py and rebuild/restart Icecast under a
+controlled maintenance window. Repeating dependency setup must pass unchanged.
+
+For a managed layout, validate with scripts/validate-install.sh from the active
+release; it selects /etc/freo/freo.env. FREO_ENV_FILE can explicitly select an
+existing absolute configuration path. No duplicate secret file is required.
+
+## Broadcast CPU priority
+
+Playout, microphone and automation services use freo.slice with CPUWeight=1000.
+The relative share protects broadcast clocks while CPU-heavy media or other
+work runs. Idle CPU remains available to other services; this does not add CPU
+capacity or impose a hard background quota. The installer installs the slice,
+and the managed updater deploys it with the service templates. Validation checks
+service membership and the active cgroup v2 cpu.weight after startup.
+
+After an upgrade or reboot, systemctl show freo.slice --property=CPUWeight
+should report 1000. Each managed broadcast service's Slice property must be
+freo.slice. Run scripts/validate-install.sh and verify actual decoded stream
+pacing under bounded concurrent CPU load. HTTP health alone cannot establish
+that audio is delivered in real time.

@@ -6,13 +6,24 @@ from pathlib import PurePosixPath
 
 DIRECTORIES = ('app', 'freo_ops', 'migrations', 'deploy', 'scripts', 'docs')
 FILES = ('wsgi.py', 'requirements.txt', 'requirements-live-mic.txt', '.env.example',
-         'README.md', 'SECURITY.md', 'CHANGELOG.md', 'LICENSE')
+         'README.md', 'SECURITY.md', 'CHANGELOG.md', 'LICENSE', 'V1_UPGRADE_NOTES.md')
 SCRIPTS = {
-    'install.sh', 'provision.sh', 'install-python.sh', 'install-statistics.sh',
+    'accept-install.py', 'admin-maintenance.py', 'hosting-guard.py', 'hosting-recording.py', 'hosting-admin.py', 'hosting-admin-launcher.py', 'install-hosting.py', 'studio-api-key.py',
+    'build-icecast-2.5.sh', 'check-igloo.py', 'recording-storage.py', 'install.sh', 'provision.sh', 'install-python.sh', 'install-statistics.sh',
     'configure-icecast-repository.sh', 'media-web-access.sh', 'render-radio-config.py',
     'validate-admin-login.py', 'validate-install.sh', 'validate-station-instance.py',
 }
 OPERATOR_DOCS = {
+    'stable-installation.md', 'release-1.0.0.md',
+    'v1-rc7-installation.md',
+    'v1-rc8-installation.md',
+    'v1-rc9-installation.md',
+    'v1-rc10-installation.md',
+    'v1-rc11-installation.md',
+    'v1-rc12-installation.md',
+    'v1-rc13-installation.md', 'mothership-reporting.md',
+    'v1-rc14-installation.md',
+    'v1-rc1-installation.md', 'v1-rc2-installation.md', 'v1-rc3-installation.md', 'v1-rc4-installation.md', 'freo-studio-hosting-integration.md', 'studio-release-api.md',
     'installation.md', '0.3.2-rc.2-installation.md', 'recovery-and-upgrades.md', 'security.md', 'license-agreement.md',
     'audio-import-and-processing.md', 'appearance.md', 'automation.md', 'channel-management.md',
     'clocks.md', 'copyright-and-dmca.md', 'custom-domains.md', 'dj-booth-cue.md',
@@ -22,7 +33,7 @@ OPERATOR_DOCS = {
     'public-radio-directories.md', 'radio-engine.md', 'rotations.md', 'scheduling.md',
     'sound-room.md', 'station-location-reporting.md', 'station-settings-and-review.md',
     'station-website.md', 'stations.md', 'statistics.md', 'timed-events.md', 'traffic.md',
-    'ui.md', 'version-awareness-client.md',
+    'ui.md', 'version-awareness-client.md', 'public-api-v1.md',
 }
 
 

@@ -270,9 +270,9 @@ def test_confirmed_manual_music_start_affects_automation_separation():
     from types import SimpleNamespace
     from app.services.automation import _choose
     now = datetime.now(timezone.utc)
-    manual = SimpleNamespace(id=1, artist='Manual Artist')
-    same_artist = SimpleNamespace(id=2, artist='Manual Artist')
-    other = SimpleNamespace(id=3, artist='Other Artist')
+    manual = SimpleNamespace(id=1, artist='Manual Artist', audio_kind='MUSIC')
+    same_artist = SimpleNamespace(id=2, artist='Manual Artist', audio_kind='MUSIC')
+    other = SimpleNamespace(id=3, artist='Other Artist', audio_kind='MUSIC')
     history = [SimpleNamespace(track=manual, track_id=manual.id, status='started',
         selection_method='manual_track', started_at=now, selected_at=now)]
     chosen, relaxation, _ = _choose([manual, same_artist, other], history, now, 300, 300)

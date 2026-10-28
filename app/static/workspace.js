@@ -1,16 +1,6 @@
 /* Persistent listening and document navigation. Page scripts own disposable work. */
 (() => {
   if (window.FreoWorkspace) return;
-  // randomUUID requires HTTPS (except localhost). getRandomValues also works
-  // on the IP-only HTTP installation workflow, without weakening randomness.
-  window.FreoUUID = () => {
-    if (typeof crypto.randomUUID === 'function') return crypto.randomUUID();
-    const bytes = crypto.getRandomValues(new Uint8Array(16));
-    bytes[6] = (bytes[6] & 0x0f) | 0x40;
-    bytes[8] = (bytes[8] & 0x3f) | 0x80;
-    const hex = Array.from(bytes, value => value.toString(16).padStart(2, '0')).join('');
-    return `${hex.slice(0,8)}-${hex.slice(8,12)}-${hex.slice(12,16)}-${hex.slice(16,20)}-${hex.slice(20)}`;
-  };
   const makeScope = () => {
     const controller = new AbortController(), timers = new Set(), frames = new Set(), cleanups = [];
     return {
@@ -106,6 +96,11 @@
   audio.addEventListener('playing', () => {if (wanted) {state = 'listening'; render();}});
   audio.addEventListener('waiting', () => {if (wanted) {state = 'connecting'; render();}});
   audio.addEventListener('error', () => {if (wanted) {wanted = false; state = 'unavailable — press to retry'; render();}});
+  audio.addEventListener('ended', () => {
+    if (wanted && audio.ended) {
+      attempt++; wanted = false; state = 'unavailable — press to retry'; render();
+    }
+  });
   document.addEventListener('play', event => {if (event.target !== audio && event.target instanceof HTMLMediaElement) stop();}, true);
   let nowTimer, nowRequest, nowVersion = 0, lastPlaying = null;
   const showNow = (label, item) => {
@@ -292,14 +287,19 @@
       }
     } else if (dirtyForms.size && !options.submitted && !await FreoDialog.confirm({title: 'Leave unsaved changes?', message: 'Your edits on this page have not been saved. Leave this page and discard them?', confirmLabel: 'Leave page'})) return;
     if(navigating)return navigate(url, options);
+    // Public player ad vendors must not persist into authenticated interfaces,
+    // and public CSP must be delivered by a full document response.
+    if (!options.request && (document.body.classList.contains('player-page') || new URL(url, location.href).pathname.startsWith('/player/'))) {location.assign(url); return;}
     navigating = true; document.documentElement.classList.add('is-navigating');
     try {
       const response = await fetch(url, {credentials: 'same-origin', ...options.request});
       if (!response.headers.get('content-type')?.includes('text/html')) {location.assign(url); return;}
       const destination = new URL(response.url);
+      if (destination.pathname.startsWith('/player/')) {location.assign(destination); return;}
       const requestedHash = new URL(url, location.href).hash;
       if (requestedHash) destination.hash = requestedHash;
       const next = new DOMParser().parseFromString(await response.text(), 'text/html');
+      if (next.body.classList.contains('player-page')) {location.assign(destination); return;}
       if (!next.querySelector('#main')) throw new Error('Page unavailable');
       if (pendingNavigation) return;
       if (!options.pop) remember();
@@ -321,7 +321,9 @@
       for (const src of scripts) await new Promise((resolve, reject) => {
         const script = document.createElement('script'); script.src = src; script.onload = resolve; script.onerror = reject; document.body.append(script);
       });
-      document.querySelector('#main')?.setAttribute('tabindex', '-1'); document.querySelector('#main')?.focus({preventScroll: true});
+      document.querySelector('#main')?.setAttribute('tabindex', '-1');
+      // A user can begin editing while the destination scripts are loading.
+      if (document.activeElement === document.body) document.querySelector('#main')?.focus({preventScroll: true});
       if (destination.hash) document.getElementById(decodeURIComponent(destination.hash.slice(1)))?.scrollIntoView();
       else window.scrollTo(0, options.pop ? history.state?.scroll || 0 : 0);
     } catch (_) {

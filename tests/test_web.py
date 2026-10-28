@@ -23,10 +23,10 @@ def app(monkeypatch, request, tmp_path):
     with application.app_context():
         db.create_all()
         station = Station(name='Test Station', slug='test-station', description='Test stream', desired_state='running')
-        station.stream = StreamMount()
+        station.stream = StreamMount(bitrate=64)  # Existing station settings survive default changes.
         db.session.add(station)
         second = Station(name='Second Station', slug='second-station', description='Separate station', desired_state='stopped')
-        second.stream = StreamMount()
+        second.stream = StreamMount(bitrate=64)
         db.session.add(second)
         db.session.add(AdminUser(email='admin@example.test', password_hash=generate_password_hash('test-password-long-enough')))
         db.session.commit()

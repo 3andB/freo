@@ -235,6 +235,10 @@ def test_serialized_authenticated_sync_uses_stored_coordinates(central, monkeypa
 
         status = 200
 
+        def getheader(self, name, default=None):
+            # This fixture exercises serialization against a legacy server.
+            return default
+
         def read(self, maximum):
             return json.dumps(self.response).encode()
 

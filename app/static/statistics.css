@@ -3,3 +3,24 @@
 @media(max-width:700px){.stats-heading{display:block}.stats-freshness{margin-top:20px}.stats-heading h1 span{display:block;margin-left:0}.stats-card{padding:18px}.stats-two{grid-template-columns:1fr;gap:0}.stats-metrics{gap:10px}.stats-metric{padding:16px}.stats-metric strong{font-size:26px}.stats-map-layout{grid-template-columns:1fr}#stats-map{height:290px}.stats-map-aside{max-height:200px;border-left:0;border-top:1px solid var(--theme-border)}.stats-filters{gap:12px;padding:14px}.stats-filters label{flex:1;min-width:120px}.stats-filters select,.stats-filters input:not([type=checkbox]){width:100%;max-width:none}.stats-tabs button{padding:14px 12px}.stats-map-controls{width:100%}.stats-chart{height:190px}.stats-insights{gap:20px}.stats-filters .stats-compare{min-width:100%}}
 
 #statistics [data-tab]{scroll-margin-top:190px}
+
+/* Session evidence stays readable at every width and in both workspace themes. */
+#statistics .stats-session-summary{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:12px;padding:8px 0 20px}
+#statistics .stats-session-summary div{min-width:0;padding:18px 16px;border:1px solid var(--theme-border);border-radius:12px;background:var(--theme-canvas)}
+#statistics .stats-session-summary div:nth-child(3){border-color:#7863e466;background:linear-gradient(135deg,var(--theme-canvas),#7863e40c)}
+#statistics .stats-session-summary strong{font-variant-numeric:tabular-nums;line-height:1.25}
+#statistics .stats-session-summary small{line-height:1.5}
+#statistics .stats-share{display:grid;gap:7px;min-width:85px;font-variant-numeric:tabular-nums}
+#statistics .stats-share-track{display:block;height:5px;border-radius:4px;background:var(--theme-hover);overflow:hidden}
+#statistics .stats-share-track i{display:block;height:100%;border-radius:4px;background:linear-gradient(90deg,var(--stats-accent),var(--stats-blue))}
+#statistics .admin-table th button{font:inherit;color:inherit;background:none;border:0;padding:3px 0;text-align:left}
+#statistics .admin-table th[aria-sort=ascending] button::after{content:' ↑';color:var(--stats-accent)}
+#statistics .admin-table th[aria-sort=descending] button::after{content:' ↓';color:var(--stats-accent)}
+#statistics .admin-table td{font-variant-numeric:tabular-nums}
+@media(max-width:1100px){#statistics .stats-session-summary{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media(max-width:700px){#statistics .stats-session-summary{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}#statistics .stats-session-summary div{padding:14px 12px}#statistics .stats-session-summary div:nth-child(3){grid-column:1/-1;grid-row:1}}
+@media(max-width:700px){#statistics .stats-share{min-width:44px}#statistics .admin-table{min-width:0;width:100%}#statistics .admin-table th{white-space:normal;line-height:1.5}#statistics .admin-table th,#statistics .admin-table td{padding-left:8px;padding-right:8px}#statistics #session-bands td:first-child{white-space:nowrap}}
+[data-theme=night] #statistics #stats-map{background:#142b35}
+[data-theme=night] #statistics .maplibregl-ctrl-group{background:var(--theme-surface)}
+[data-theme=night] #statistics .maplibregl-ctrl-group button+button{border-top-color:var(--theme-border)}
+[data-theme=night] #statistics .maplibregl-ctrl-icon{filter:invert(1)}

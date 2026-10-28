@@ -60,7 +60,7 @@ function assigned(day){const rows=assignments.filter(a=>matches(a.rule,day)),dat
 function duration(){return composing?composition.duration:86400;}
 let blockHourHeight=48;
 function fallbackLabel(){return state.fallback?'Default: '+state.fallback.name:'No default playlist configured';}
-function height(hour){if(composing&&duration()<3600)return 180*3600/duration();return accordion?(expanded.has(hour)?180:28):(view==='blocks'?blockHourHeight:84);}
+function height(hour){if(view==='shows'&&!accordion)return Math.max(240,480*3600/duration());if(composing&&duration()<3600)return 180*3600/duration();return accordion?(expanded.has(hour)?180:28):(view==='blocks'?blockHourHeight:84);}
 function yFor(second){let y=0;for(let h=0;h<Math.floor(second/3600);h++)y+=height(h);return y+(second%3600)/3600*height(Math.floor(second/3600));}
 function secondFor(y){y=Math.max(0,y);let h=0;while(y>height(h)&&h<23){y-=height(h);h++;}return Math.min(duration(),h*3600+y/height(h)*3600);}
 function snap(second){const step=Number($('timeline-snap')?.value||900);return Math.round(second/step)*step;}

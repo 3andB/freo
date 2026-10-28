@@ -44,7 +44,9 @@ Package: icecast2
 Pin: version 2.5.*
 Pin-Priority: 700
 
-Package: libigloo0
+# The hosted Icecast build needs headers from the same source as the runtime.
+# Ubuntu 24.04's libigloo-dev is 0.9.2, below Icecast 2.5's 0.9.4 minimum.
+Package: libigloo0 libigloo-dev
 Pin: origin download.opensuse.org
 Pin-Priority: 700
 

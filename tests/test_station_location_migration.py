@@ -32,13 +32,17 @@ def test_both_migrations_preserve_station_identity_and_restart_state(installed):
                      'New York' if index == 0 else '', 'NY' if index == 0 else '', 'US' if index == 0 else ''))
             cur.execute('SELECT row_to_json(s) FROM stations s ORDER BY id')
             original = [row[0] for row in cur.fetchall()]
-        migrate(app)
+        migrate(app, 'c83d4e5f9012')
         with con.cursor() as cur:
             cur.execute('SELECT version_num FROM alembic_version')
             assert cur.fetchone()[0] == 'c83d4e5f9012'
             cur.execute('SELECT row_to_json(s) FROM stations s ORDER BY id')
             assert [r[0] for r in cur.fetchall()] == [dict(r, latitude=None, longitude=None) for r in original]
         assert next(r for r in rows(source) if r['username'] == 'admin')['installation_admin']
+        # Release the historical SELECT's table lock before applying later
+        # schema additions required by current metadata and ORM checks.
+        con.commit()
+        migrate(app)
         with app.app_context():
             # Compare this migration's table. The historical full schema has an
             # unrelated ix_event_due index absent from TimedEventOccurrence metadata.
@@ -80,7 +84,8 @@ def test_location_migration_follows_approved_admin_migration():
     cfg = Config()
     cfg.set_main_option('script_location', 'migrations')
     script = ScriptDirectory.from_config(cfg)
-    assert script.get_heads() == ['c83d4e5f9012']
+    assert len(script.get_heads()) == 1
+    assert 'c83d4e5f9012' in {revision.revision for revision in script.walk_revisions()}
     assert script.get_revision('c83d4e5f9012').down_revision == 'b72e19d4c603'
     assert script.get_revision('b72e19d4c603').down_revision == 'a64f09e2b731'
     assert script.get_revision('a64f09e2b731').down_revision == 'f39c8210b7de'
@@ -96,7 +101,7 @@ def test_upgrade_from_admin_migration_does_not_regrant_a_revoked_permission(inst
         with con, con.cursor() as cur:
             cur.execute("UPDATE admin_users SET installation_admin=false WHERE username='admin'")
         before = rows(source)
-        migrate(app)
+        migrate(app, 'c83d4e5f9012')
         assert rows(source) == before
     finally:
         con.close()

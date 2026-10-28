@@ -14,14 +14,14 @@ def test_existing_schema_gains_empty_revocation_table_without_account_changes(in
     before = rows(source)
     with app.app_context():
         assert 'admin_login_sessions' not in inspect(db.engine).get_table_names()
-    result = runner.invoke(args=['db', 'upgrade'])
+    result = runner.invoke(args=['db', 'upgrade', 'c83d4e5f9012'])
     assert result.exit_code == 0, result.output
     assert rows(source) == before
     with app.app_context():
         assert db.session.execute(text('SELECT version_num FROM alembic_version')).scalar() == 'c83d4e5f9012'
         assert db.session.query(AdminLoginSession).count() == 0
         assert 'ix_admin_login_sessions_expires_at' in {i['name'] for i in inspect(db.engine).get_indexes('admin_login_sessions')}
-    assert runner.invoke(args=['db', 'upgrade']).exit_code == 0
+    assert runner.invoke(args=['db', 'upgrade', 'c83d4e5f9012']).exit_code == 0
     assert rows(source) == before
 
 

@@ -30,3 +30,7 @@ Managed stations now use Liquidsoap `request.queue` with a two-request lookahead
 # Time-aware programming
 
 The Phase 6 scheduler chooses a station clock from recurring local weekly assignments. Its slots ask Freo's existing selector for approved tracks, and the worker pushes requests through the private station socket. Liquidsoap remains the audio engine and does not interpret schedules or restart at hour boundaries. See [scheduling](scheduling.md).
+
+## Cold startup and recovery
+
+Ubuntu 24.04's Liquidsoap 2.2.4 typechecks the standard library and station graph at each start. Station start/restart, audio recovery and hosted activation share a bounded 120-second readiness window. Success requires actual stream readiness; a running process alone is insufficient. Radio configuration validation uses 120 seconds, with a longer enclosing command budget so the parent does not interrupt a valid check. A failed hosted activation still inhibits broadcasting and enters maintenance.

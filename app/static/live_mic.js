@@ -11,10 +11,12 @@
   async function api(action,data={}){
     const timeout=AbortSignal.timeout(action==='offer'?22000:4000);
     const signal=action==='offer'?timeout:AbortSignal.any([scope.signal,timeout]);
-    const response=await scope.fetch(panel.dataset.micUrl.replace('ACTION',action),{method:'POST',credentials:'same-origin',signal,body:new URLSearchParams({csrf:root.dataset.csrf,token,...data})});
+    if(!['status','config'].includes(action)&&root.dataset.showLocked==='true')throw new Error('This show is controlled by another DJ.');
+    const response=await scope.fetch(panel.dataset.micUrl.replace('ACTION',action),{method:'POST',credentials:'same-origin',signal,body:new URLSearchParams({csrf:root.dataset.csrf,token,record_show:(document.getElementById('record-show')?.checked&&!document.getElementById('record-show')?.disabled)?'yes':'no',...data})});
     if(!response.headers.get('content-type')?.includes('application/json'))throw new Error('Session expired. Sign in again; the station will return to AUTO.');
     const result=await response.json();if(!response.ok)throw new Error(result.message||'Microphone service unavailable');return result;
   }
+  const uncertainNetwork=error=>['TimeoutError','AbortError','TypeError'].includes(error?.name);
   function paint(){
     if(disposed)return;
     root.dataset.micActive=String(active()||goPending||returnPending);
@@ -26,9 +28,9 @@
     }
     $('state').textContent=phase==='LIVE'?(muted?'ON AIR · MUTED':'ON AIR'):phase;
     $('go').textContent=phase==='LIVE'?'ON AIR':phase==='FADING'?'FADING FEED…':'GO LIVE';
-    $('go').disabled=busy||leaving||root.dataset.board!=='LIVE_MIC'||!token||!lastReady||phase!=='READY';
+    $('go').disabled=root.dataset.showLocked==='true'||busy||leaving||root.dataset.board!=='LIVE_MIC'||!token||!lastReady||phase!=='READY';
     $('end').disabled=busy||!token||!['LIVE','FADING'].includes(phase);
-    $('connect').disabled=!available||busy||!!pc||!!token||returnPending; $('device').disabled=busy||!!pc||!!token;
+    $('connect').disabled=root.dataset.showLocked==='true'||!available||busy||!!pc||!!token||returnPending; $('device').disabled=busy||!!pc||!!token;
     $('disconnect').disabled=busy||(!pc&&!token)||(active()&&!returnPending); $('mute').disabled=!stream;
     root.querySelectorAll('.mode-button').forEach(button=>button.classList.toggle('active',button.dataset.mode===(root.dataset.board==='LIVE_MIC'||active()?root.dataset.board:root.dataset.mode)));
   }
@@ -75,12 +77,20 @@
           }
           // The gateway cuts speech and retains silent PCM while the existing
           // worker restores the interrupted feed, even if this page disappears.
-          await api('disconnect');stopCapture();returnPending=true;goPending=false;
+          try{await api('disconnect');}
+          catch(error){if(!uncertainNetwork(error))throw error;}
+          // A lost response can follow a successful disconnect. Keep its token
+          // and confirm status; never replay the disconnect or guess success.
+          stopCapture();returnPending=true;goPending=false;
           const deadline=Date.now()+16000;
           while(!disposed){
-            const state=await api('status');
-            phase=state.phase||'OFF AIR';paint();
-            if(!state.leaving&&!['FADING','LIVE','RETURNING'].includes(phase)&&state.desired!=='LIVE')break;
+            let state=null;
+            try{state=await api('status');}
+            catch(error){if(!uncertainNetwork(error))throw error;}
+            if(state){
+              phase=state.phase||'OFF AIR';paint();
+              if(!state.leaving&&!['FADING','LIVE','RETURNING'].includes(phase)&&state.desired!=='LIVE')break;
+            }
             if(Date.now()>deadline)throw new Error('Microphone return is not confirmed yet. Stay here and retry.');
             await new Promise(resolve=>setTimeout(resolve,200));
           }

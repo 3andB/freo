@@ -1,7 +1,9 @@
+{% set station_limit = hosting_summary.limits.stations if hosting_summary else station_limit %}
+{% set stations_used = hosting_summary.stations_used if hosting_summary else stations|length %}
 {% from 'admin/_timezone.html' import timezone_select with context %}
 <section class="admin-card station-create" id="add-station">
-  <div class="station-create-heading"><div><h2>Add station</h2><p>A new home for your next great sound.</p></div><span class="station-capacity">{{ stations|length }} / {{ station_limit or 'unlimited' }} stations</span></div>
-  {% if not station_limit or stations|length < station_limit %}
+  <div class="station-create-heading"><div><h2>Add station</h2><p>A new home for your next great sound.</p></div><span class="station-capacity">{{ stations_used }} / {{ station_limit or 'unlimited' }} stations</span></div>
+  {% if not station_limit or stations_used < station_limit %}
   <form method="post" action="{{ url_for('web.create_station_page') }}">
     <input type="hidden" name="csrf" value="{{ csrf_token() }}">
     <div class="station-create-grid">
@@ -12,5 +14,5 @@
     </div>
     <div class="form-actions"><button class="ui-primary" type="submit">Add station</button></div>
   </form>
-  {% else %}<p>Station limit reached. Delete a station to free a slot.</p>{% endif %}
+  {% else %}<p>{% if hosting_summary %}Your hosting plan supports {{ station_limit }} stations. Upgrade your plan to add more.{% else %}Station limit reached. Delete a station to free a slot.{% endif %}</p>{% endif %}
 </section>

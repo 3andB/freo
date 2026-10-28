@@ -1,5 +1,13 @@
 # DJ Booth and AUTO
 
+V1 Phase 3 preserves this booth and adds station-assigned DJ access, one show owner,
+confirmed live/automation status and optional program recording. Select “Record this
+show” before entering DJ mode or GO LIVE. Completed recordings are available from
+the booth; DJs can access only their own recordings on currently assigned stations.
+Administrators manage assignments at `/admin/djs` and can end an owned show. See
+`V1_UPGRADE_NOTES.md` for schema, storage/ACL and Liquidsoap activation requirements.
+The historical deployment records below do not describe a V1 deployment.
+
 DJ mode is controlled by the buttons on the two decks. There is no broadcast crossfader, Playing Next panel, Queue button, or queue drop target in DJ. AUTO displays schedule status and monitoring without song details or a song browser. Shared Hot Carts, Station IDs and Sweepers work in either mode.
 
 ## Deck buttons
@@ -108,3 +116,14 @@ with software gain, meters, mute, and the same carts and station IDs. Opening th
 board leaves the current feed playing; only **GO LIVE** fades it out and opens the
 mic. See [LIVE MIC setup and behavior](live-mic.md) for the optional audio gateway,
 activation steps, return behavior, and connection recovery.
+
+The **Show recordings** page (labelled **My recordings** for DJs) manages local
+MP3 captures. Play or download completed/partial recordings, search by name or DJ,
+filter by status, sort, or rename the downloaded file. DJs can manage only their
+own recordings on stations they are currently assigned to. Administrators can
+manage recordings across the stations they administer.
+
+To remove a recording, select **Permanently delete this MP3** and press **Delete**.
+Downloads are disabled immediately; the automation worker removes the file and
+retains show history. Refresh the page to see completion or a retryable storage
+error. Active shows and unfinished recordings cannot be renamed or deleted.

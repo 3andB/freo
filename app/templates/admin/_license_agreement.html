@@ -5,8 +5,10 @@
   <div class="license-agreement-copy">
     <p>This agreement summarizes the bundled Freo Source-Available License. See the <a href="{{ agreement.url }}" target="_blank" rel="noopener noreferrer">Freo Live licensing page ↗</a> for purchase information.</p>
     <h3>Software licensing</h3>
+    {% if hosting_summary %}<p>Station capacity is assigned by your hosting provider.</p>{% else %}
     <p>Freo runs on infrastructure you provide. Up to three stations total per person or company are free, including commercial use, across all installations. This combined limit is honor-based and registration is optional.</p>
     <p>More than three stations requires a US$99 one-time license from 3andB. It covers unlimited stations across all installations you own, works offline after activation, and includes all future updates, including major versions. Email <a href="mailto:info@3andB.com">info@3andB.com</a> for a Stripe invoice and license after payment.</p>
+    {% endif %}
     <h3>Broadcasting and copyright</h3>
     <p>A Freo software entitlement does not grant music or other content broadcast rights. You are responsible for obtaining permission for the material you broadcast.</p>
     <p class="license-copyright"><strong>You may not broadcast copyrighted material without permission. Doing so is a direct violation of this license.</strong></p>

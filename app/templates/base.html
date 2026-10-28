@@ -6,9 +6,17 @@
   <meta name="theme-color" content="#f7f8f4">
   <link rel="icon" href="{{ url_for('static', filename='favicon.svg') }}" type="image/svg+xml">
   <script src="{{ url_for('static', filename='theme.js',v='forms-20260916') }}"></script>
+  {% if request.path.startswith('/admin') %}
+  <link rel="manifest" href="/admin/studio.webmanifest">
+  <link rel="apple-touch-icon" href="/static/studio-180.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Freo Studio">
+  <script defer src="{{ url_for('static',filename='studio-pwa.js') }}"></script>
+  {% endif %}
   <title>{% block title %}Freo{% endblock %}</title>
-  <link rel="stylesheet" href="{{ url_for('static', filename='freo.css',v='rc5') }}">
-  <script defer src="{{ url_for('static', filename='workspace.js',v='mic-exit-1') }}"></script>
+  <link rel="stylesheet" href="{{ url_for('static', filename='freo.css',v='v1-audio-visuals-4') }}">
+  <script defer src="{{ url_for('static', filename='uuid.js',v='v1-http') }}"></script>
+  <script defer src="{{ url_for('static', filename='workspace.js',v='rc15-edit-focus-1') }}"></script>
   {% block head %}{% endblock %}
   <link rel="stylesheet" href="{{ url_for('static', filename='theme.css',v='forms-20260916') }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='forms.css',v='forms-20260916') }}">

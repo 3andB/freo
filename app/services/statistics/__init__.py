@@ -61,6 +61,8 @@ def aggregate(scope, start, end, now=None):
     chart_step = max(step, math.ceil((end - start) / 180 / step) * step)
     for row in rows:
         bucket_end = min(row.at + step, observed_until)
+        if bucket_end < start:
+            continue  # A stale sample in the same bucket is outside this report.
         overlap = max(0, min(end, bucket_end) - max(start, row.at)) / max(1, bucket_end - row.at)
         # Edge allocation is explicitly approximate at the retained resolution.
         data = {k: getattr(row, k) * overlap for k in total if k != 'peak'}
@@ -69,15 +71,17 @@ def aggregate(scope, start, end, now=None):
         total['peak'] = max(total['peak'], row.peak)
         at = int((row.at - start) // chart_step) * chart_step + start
         at = max(start, at)
-        point = points.setdefault(at, dict(at=at, observed=0, listener_seconds=0, peak=0, bytes=0))
+        point = points.setdefault(at, dict(at=at, observed=0, listener_seconds=0, peak=0, bytes=0, transfer_observed=0))
         point['observed'] += data['observed_seconds']
         point['listener_seconds'] += data['listener_seconds']
         point['peak'] = max(point['peak'], row.peak)
         point['bytes'] += data['bytes_sent']
+        point['transfer_observed'] += data['transfer_seconds']
     timeline = []
     for at in range(start, end, chart_step):
-        point = points.get(at, dict(at=at, observed=0, listener_seconds=0, peak=0, bytes=0))
+        point = points.get(at, dict(at=at, observed=0, listener_seconds=0, peak=0, bytes=0, transfer_observed=0))
         point['average'] = point.pop('listener_seconds') / point['observed'] if point['observed'] else None
+        point['transfer_bytes'] = point['bytes'] if point['transfer_observed'] or point['bytes'] else None
         timeline.append(point)
     total.update(average=total['listener_seconds'] / total['observed_seconds'] if total['observed_seconds'] else None,
         listener_hours=total['listener_seconds'] / 3600,
@@ -194,6 +198,7 @@ def geography(scope, source, mode, start, end, now):
 
 
 def dashboard(scope, args, now=None):
+    from . import sessions
     now = int(time.time()) if now is None else now
     station = db.session.get(Station, scope) if scope else None
     period = window(args, station.timezone if station else 'UTC', now)
@@ -206,6 +211,8 @@ def dashboard(scope, args, now=None):
     fresh = bool(current.get('at') and 0 <= now - current['at'] <= 45)
     stats = aggregate(scope, start, end, now)
     previous = aggregate(scope, start - (end - start), start, now) if args.get('compare') == '1' else None
+    listening = sessions.report(scope, start, end, now)
+    listening['sessions']['previous'] = sessions.report(scope, start - (end - start), start, now)['sessions'] if previous else None
     music = ranking(scope, start, end)
     latest_storage = StorageSnapshot.query.filter_by(scope=scope).order_by(StorageSnapshot.at.desc()).first()
     storage_history = StorageSnapshot.query.filter_by(scope=scope).filter(StorageSnapshot.at >= start, StorageSnapshot.at < end).order_by(StorageSnapshot.at).all()
@@ -224,7 +231,8 @@ def dashboard(scope, args, now=None):
         incidents = incidents.filter_by(scope=scope)
     names = {s.id: s.name for s in Station.query.all()}
     channels = []
-    for s in Station.query.filter_by(deleted_at=None).order_by(Station.name):
+    channel_query = Station.query.filter_by(id=scope) if scope else Station.query.filter_by(deleted_at=None)
+    for s in channel_query.order_by(Station.name):
         row = db.session.get(StatsState, s.id)
         data = row.data if row else {}
         value = aggregate(s.id, start, end, now)['total']
@@ -242,12 +250,12 @@ def dashboard(scope, args, now=None):
         if scope:
             query = query.filter(model.station_id == scope)
         outcomes[name] = dict(query.group_by(column).all())
-    return dict(period=period, now=now, current=current, fresh=fresh, stats=stats,
+    return dict(period=period, now=now, current=current, fresh=fresh, stats=stats, **listening,
         previous=previous['total'] if previous else None, previous_timeline=previous['timeline'] if previous else None,
         music=music, geography=geography(scope, source, mode, start, end, now), transfer=transfer,
         storage=dict(at=latest_storage.at, **latest_storage.data) if latest_storage else None,
         storage_history=[dict(at=r.at, bytes=r.data.get('total', 0)) for r in storage_history[::stride]],
-        channels=channels, incidents=[dict(kind=r.kind, station=names.get(r.scope, 'Archived channel'),
+        channels=channels, incident_count=incidents.count(), incidents=[dict(kind=r.kind, station=names.get(r.scope, 'Archived channel'),
             started_at=r.started_at, ended_at=r.ended_at, detail=r.detail) for r in incidents.order_by(BroadcastIncident.started_at.desc()).limit(100)],
         failed_plays=failures.count(), outcomes=outcomes, timezone=period['timezone'])
 

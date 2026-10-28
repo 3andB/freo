@@ -16,9 +16,10 @@ import uuid
 from psycopg2.extensions import make_dsn, parse_dsn
 
 from . import recovery, releases
+from .engine_readiness import STARTUP_TIMEOUT
 
 
-def wait_for_station_audio(opener, slug, timeout=60):
+def wait_for_station_audio(opener, slug, timeout=STARTUP_TIMEOUT):
     """Allow an active Liquidsoap process time to connect its Icecast mount."""
     deadline = time.monotonic() + timeout
     while (remaining := deadline - time.monotonic()) > 0:
@@ -78,7 +79,9 @@ def release_environment(values, env_file):
            if not key.startswith(('FREO_', 'FLASK_', 'PG', 'MAX_MEDIA_'))
            and key not in ('DATABASE_URL', 'SECRET_KEY', 'PUBLIC_BASE_URL', 'LOG_LEVEL', 'PYTHONPATH', 'PYTHONHOME')}
     env.update({key: value for key, value in values.items() if value is not None})
-    env.update(FREO_ENV_FILE=str(env_file), FLASK_ENV='production', PYTHONNOUSERSITE='1')
+    # Root has already parsed the explicit file without ambient interpolation.
+    # Unprivileged migration/runtime probes must not reopen root-only secrets.
+    env.update(FREO_ENV_FILE='/dev/null', FLASK_ENV='production', PYTHONNOUSERSITE='1')
     return env
 
 
@@ -146,8 +149,10 @@ def verify_preservation(source_url, restored_url):
         # never the actual upgraded row. Same-schema recovery stays byte-exact.
         primary_admin_grant = (
             recovery.schema_revision(old) == 'f39c8210b7de'
-            and recovery.schema_revision(new) in ('a64f09e2b731', 'b72e19d4c603', 'c83d4e5f9012')
+            and recovery.schema_revision(new) in ('a64f09e2b731', 'b72e19d4c603', 'c83d4e5f9012', 'fe28c3d4e5f6')
         )
+        consent_migration = (recovery.schema_revision(new) == 'fe28c3d4e5f6'
+                             and recovery.schema_revision(old) != 'fe28c3d4e5f6')
         with old.cursor() as cursor:
             cursor.execute("SELECT tablename FROM pg_tables WHERE schemaname='public' AND tablename!='alembic_version' ORDER BY tablename")
             tables = [row[0] for row in cursor.fetchall()]
@@ -175,6 +180,24 @@ def verify_preservation(source_url, restored_url):
                     'SELECT value FROM (SELECT row_to_json(t)::text AS value FROM '
                     '(SELECT {} FROM public.{}) t) rows ORDER BY value COLLATE "C"'
                 ).format(sql.SQL(',').join(expected_columns), sql.Identifier(table))
+            if consent_migration and table in ('stations', 'central_station_state'):
+                # Evaluate only the reviewed transformation against backup data.
+                # Never derive an expected consent value from the upgraded row.
+                expected_columns = []
+                for column in columns:
+                    if table == 'stations' and column == 'directory_opt_in':
+                        expression = sql.SQL("CASE WHEN directory_opt_in OR NOT EXISTS "
+                            "(SELECT 1 FROM audit_events a WHERE a.station_id = stations.id "
+                            "AND a.action = 'station_details_updated') THEN true ELSE false END AS directory_opt_in")
+                    elif table == 'central_station_state' and column == 'synced_digest':
+                        expression = sql.SQL('NULL::varchar AS synced_digest')
+                    else:
+                        expression = sql.Identifier(column)
+                    expected_columns.append(expression)
+                expected_query = sql.SQL(
+                    'SELECT value FROM (SELECT row_to_json(t)::text AS value FROM '
+                    '(SELECT {} FROM public.{}) t) rows ORDER BY value COLLATE "C"'
+                ).format(sql.SQL(',').join(expected_columns), sql.Identifier(table))
             # Compare the original columns as a sorted multiset. New columns,
             # tables and seed rows are allowed; every prior row must survive.
             with old.cursor(name='old_' + uuid.uuid4().hex) as prior, new.cursor(name='new_' + uuid.uuid4().hex) as current:
@@ -197,7 +220,7 @@ def verify_preservation(source_url, restored_url):
         new.close()
 
 
-def upgrade(artifact, signature, keyring, env_file, backup, passphrase, verification_env_file, verification_directory, *, check=False):
+def _upgrade(artifact, signature, keyring, env_file, backup, passphrase, verification_env_file, verification_directory, *, check=False, allow_candidate=False, verification_create_database=None, radio_maintenance=False):
     from .__main__ import configuration, inventory, active_units
     if os.geteuid() != 0:
         raise recovery.RecoveryError('Upgrades require root; the web application cannot perform upgrades')
@@ -222,6 +245,11 @@ def upgrade(artifact, signature, keyring, env_file, backup, passphrase, verifica
             previous = json.loads(journal_path.read_text())
             if previous['phase'] not in ('complete', 'preflight_failed', 'preflight_passed', 'failed_before_migration'):
                 raise recovery.RecoveryError('Previous upgrade is unfinished; inspect the journal and recovery guide before proceeding')
+            history = state / 'history'
+            history.mkdir(mode=0o700, exist_ok=True)
+            require_root_directory(history, private=True)
+            identifier = uuid.UUID(previous['operation']).hex
+            atomic_json(history / (identifier + '.json'), previous)
         values = configuration(env_file)
         target_values = configuration(verification_env_file)
         roots = inventory(env_file, values)
@@ -229,6 +257,14 @@ def upgrade(artifact, signature, keyring, env_file, backup, passphrase, verifica
         if (root / 'current').exists() and not (root / 'current').is_symlink():
             raise recovery.RecoveryError('Release pointer is not a symlink; explicit adoption review required')
         current = (root / 'current').resolve() if (root / 'current').is_symlink() else root
+        from .hosting import read as hosting_policy
+        installed_hosting = hosting_policy()
+        from .inventory import DIRECTORIES, FILES
+        # Include the matched executable source and venv, never the new staged
+        # release. Recovery must not depend on a later download being available.
+        roots = recovery.normalize_roots(roots + [current / name for name in
+            (*DIRECTORIES, *FILES, 'venv', 'release.json') if (current / name).exists()]
+            + ([root / 'engines'] if (root / 'engines').exists() else []))
         operation = uuid.uuid4().hex
         release = root / 'releases' / operation
         release.parent.mkdir(mode=0o755, exist_ok=True)
@@ -239,8 +275,9 @@ def upgrade(artifact, signature, keyring, env_file, backup, passphrase, verifica
         atomic_json(journal_path, journal)
         migrated = False
         stopped = False
+        radio_changes = {}
         try:
-            manifest = releases.extract_verified(artifact, release, signature=signature, keyring=keyring)
+            manifest = releases.extract_verified(artifact, release, signature=signature, keyring=keyring, allow_candidate=allow_candidate)
             if manifest['platform'] != 'ubuntu-24.04-x86_64' or manifest['python'] != '3.12':
                 raise recovery.RecoveryError('Release platform is incompatible')
             connection = recovery.connect(values['DATABASE_URL'])
@@ -270,12 +307,43 @@ def upgrade(artifact, signature, keyring, env_file, backup, passphrase, verifica
                 raise recovery.RecoveryError('Downgrades require a separately reviewed recovery procedure')
             if old_version == manifest['version'] and revision != manifest['schema_head']:
                 raise recovery.RecoveryError('Installed code and schema do not form a matched baseline; recover/adopt explicitly before upgrading')
-            for directory in ('liquidsoap', 'icecast', 'nginx'):
+            if releases.migration_head(current) != revision:
+                raise recovery.RecoveryError('Installed source and schema do not match; recover the baseline first')
+            from . import v1
+            adopting_v1 = v1.transition(current, release, revision, manifest['version'])
+            adopting_hosting = v1.hosting_transition(current, release, revision)
+            if adopting_hosting:
+                v1.check_services()
+                v1.check_runtime(current, release_environment(values, env_file))
+                v1.check_space(values['DATABASE_URL'], roots, release, backup, verification_directory)
+            if installed_hosting['hosted'] and not (release / 'freo_ops/hosting.py').is_file():
+                raise recovery.RecoveryError('Hosted installations cannot upgrade to code without hosting enforcement')
+            if adopting_v1:
+                v1.check_services()
+                v1.check_legacy_templates(current)
+                v1.check_runtime(current, release_environment(values, env_file))
+                v1.check_space(values['DATABASE_URL'], roots, release, backup, verification_directory)
+                v1.check_icecast_overrides(Path('/etc/systemd/system/icecast2.service.d'))
+            from . import proxy_ipv6, radio_maintenance as radio
+            proxy_transition = False
+            radio_transition = False
+            for directory in (() if adopting_v1 or adopting_hosting else ('liquidsoap', 'icecast', 'nginx')):
                 for path in (release / 'deploy' / directory).rglob('*'):
                     if path.is_file():
                         old = current / path.relative_to(release)
                         if not old.is_file() or recovery.digest(old) != recovery.digest(path):
+                            if (radio_maintenance and str(path.relative_to(release)) == radio.TEMPLATE
+                                    and old.is_file() and revision == manifest['schema_head']):
+                                radio_transition = True
+                                continue
+                            if (str(path.relative_to(release)) in proxy_ipv6.TEMPLATES and old.is_file()
+                                    and proxy_ipv6.allowed_template_change(path.relative_to(release), old.read_text(), path.read_text())):
+                                proxy_transition = True
+                                continue
                             raise recovery.RecoveryError('Radio/proxy template changes require a separately tested maintenance procedure')
+            if radio_transition:
+                v1.check_runtime(current, release_environment(values, env_file))
+            proxy_changes = proxy_ipv6.plan() if proxy_transition else {}
             for override in Path('/etc/systemd/system').glob('freo*.service.d/*.conf'):
                 if any(line.startswith(('ExecStart=', 'ExecStartPre=', 'WorkingDirectory=', 'EnvironmentFile='))
                        for line in override.read_text().splitlines()):
@@ -304,6 +372,10 @@ def upgrade(artifact, signature, keyring, env_file, backup, passphrase, verifica
             recovery.run(['bash', str(release / 'scripts/install-python.sh'),
                           str(release), str(release / 'venv'), '--offline'], umask=0o022)
             sync_release(release)
+            # Keep verified administrative tooling available even if the first
+            # 0.3.2 adoption is interrupted before application activation.
+            if (release / 'freo_ops/admin.py').is_file():
+                recovery.run(['python3', str(release / 'scripts/install-hosting.py')])
             # Preserve the precise active unit list; stopped stations remain stopped.
             journal['active_units'] = active_units()
             journal['phase'] = 'stopping'
@@ -319,15 +391,26 @@ def upgrade(artifact, signature, keyring, env_file, backup, passphrase, verifica
                 recovery.run(['systemctl', 'stop', *journal['active_units']])
             if active_units():
                 raise recovery.RecoveryError('Freo units remain active; refusing backup/migration')
+            if radio_transition:
+                v1.check_runtime(current, release_environment(values, env_file))
             journal['phase'] = 'backup'
             atomic_json(journal_path, journal)
             recovery.create(values['DATABASE_URL'], roots, backup, passphrase, version=old_version,
                             media_root=values.get('FREO_MEDIA_ROOT') or '/var/lib/freo/media',
                             upload_root=values.get('FREO_UPLOAD_ROOT') or '/var/lib/freo/uploads')
             # Verification restores never point at the current DB and never drop a DB.
-            verified = recovery.restore(backup, passphrase, target_values['DATABASE_URL'], verification_directory)
+            verified = recovery.restore(backup, passphrase, target_values['DATABASE_URL'], verification_directory, create_database=verification_create_database)
             journal['verification_database'] = verified['database']
             journal['verification_directory'] = str(verification_directory)
+            if radio_transition:
+                radio_changes = radio.stage(release, release_environment(values, env_file))
+                journal['radio_maintenance_files'] = list(radio_changes)
+                atomic_json(journal_path, journal)
+            if adopting_v1 or adopting_hosting:
+                journal['phase'] = 'dependencies'
+                atomic_json(journal_path, journal)
+                binary = v1.prepare_icecast(release, state)
+                journal['icecast_binary'] = str(binary)
             journal['phase'] = 'migration'
             atomic_json(journal_path, journal)
             migrated = True  # A killed/nontransactional migration must never be mistaken for no mutation.
@@ -356,11 +439,14 @@ def upgrade(artifact, signature, keyring, env_file, backup, passphrase, verifica
                 with stable_env.open('rb') as stream:
                     os.fsync(stream.fileno())
                 sync_directory(stable_env.parent)
+            if adopting_v1:
+                v1.configure_environment(values, stable_env)
+                env = release_environment(values, stable_env)
             # Keep the original unit bodies in the private journal for recovery.
             for path in (release / 'deploy/systemd').glob('freo*'):
                 target = Path('/etc/systemd/system') / path.name
-                if target.is_file():
-                    journal['previous_units'][str(target)] = base64.b64encode(target.read_bytes()).decode('ascii')
+                journal['previous_units'][str(target)] = (base64.b64encode(target.read_bytes()).decode('ascii')
+                                                          if target.is_file() else None)
             journal['phase'] = 'activation'
             atomic_json(journal_path, journal)
             for filename in journal['previous_units']:
@@ -374,15 +460,39 @@ def upgrade(artifact, signature, keyring, env_file, backup, passphrase, verifica
                     os.fsync(stream.fileno())
                 os.replace(pending, target)
                 sync_directory(target.parent)
+            # Hosting entrypoint and standalone service guards follow the candidate.
+            hosting_installer = release / 'scripts/install-hosting.py'
+            if hosting_installer.exists():
+                recovery.run(['python3', str(hosting_installer)])
+            elif installed_hosting['hosted']:
+                raise recovery.RecoveryError('Hosted installations require a release with hosting enforcement')
+            if adopting_hosting:
+                v1.activate_icecast(binary, replacing=True)
+                v1.provision(release, values, env)
+                v1.verify_permanent_files(backup, passphrase, values)
+            if adopting_v1:
+                maintenance_guards(state)
+                v1.activate_icecast(binary)
+                microphone = v1.provision(release, values, env)
+                v1.verify_permanent_files(backup, passphrase, values)
+                recovery.run(['systemctl', 'enable', 'freo-production.service'])
+                journal['active_units'].append('freo-production.service')
+                if microphone and journal['previous_units'].get('/etc/systemd/system/freo-mic.service') is None:
+                    recovery.run(['systemctl', 'enable', 'freo-mic.service'])
+                    journal['active_units'].append('freo-mic.service')
+            proxy_ipv6.apply(proxy_changes)
+            journal['ipv6_proxy_files'] = [str(path) for path in proxy_changes]
+            radio.apply(radio_changes)
             switch_pointer(root, release)
             recovery.run(['systemctl', 'daemon-reload'])
             journal['phase'] = 'starting'
             atomic_json(journal_path, journal)
             set_maintenance(state, False)
-            if journal['active_units']:
-                recovery.run(['systemctl', 'start', *journal['active_units']])
             opener = build_opener(ProxyHandler({}))
             if 'freo.service' in journal['active_units']:
+                # Cold application imports must not compete with every worker
+                # and playout process before the unchanged readiness deadline.
+                recovery.run(['systemctl', 'start', 'freo.service'])
                 for attempt in range(30):
                     try:
                         with opener.open('http://127.0.0.1:8000/ready', timeout=2) as response:
@@ -393,11 +503,17 @@ def upgrade(artifact, signature, keyring, env_file, backup, passphrase, verifica
                     time.sleep(1)
                 else:
                     raise recovery.RecoveryError('New application did not become ready')
+            background = [unit for unit in journal['active_units'] if unit != 'freo.service']
+            if background:
+                recovery.run(['systemctl', 'start', *background])
             for unit in journal['active_units']:
                 # Timers and long-lived processes must return; one-shot services may finish.
                 if unit.endswith('.timer') or unit in ('freo.service', 'freo-automation.service', 'freo-ingest.service',
-                                                        'freo-stats.service', 'freo-central-api.service', 'freo-mic.service') or unit.startswith('freo-playout'):
-                    recovery.run(['systemctl', 'is-active', '--quiet', unit])
+                                                        'freo-stats.service', 'freo-central-api.service', 'freo-mic.service', 'freo-production.service') or unit.startswith('freo-playout'):
+                    try:
+                        recovery.run(['systemctl', 'is-active', '--quiet', unit])
+                    except recovery.RecoveryError as error:
+                        raise recovery.RecoveryError('Upgraded service is not active: ' + unit) from error
                 if unit.startswith('freo-playout@'):
                     slug = unit.removeprefix('freo-playout@').removesuffix('.service')
                     import re
@@ -409,6 +525,8 @@ def upgrade(artifact, signature, keyring, env_file, backup, passphrase, verifica
             return dict(status='complete', version=manifest['version'], backup=journal['backup'],
                         verification_database=verified['database'])
         except Exception as error:
+            from . import radio_maintenance as radio
+            radio.discard(radio_changes)
             journal['failure_phase'] = journal['phase']
             journal['failure_type'] = type(error).__name__
             diagnostics = getattr(error, 'private_diagnostics', None)
@@ -440,3 +558,10 @@ def upgrade(artifact, signature, keyring, env_file, backup, passphrase, verifica
             raise
     finally:
         lock.close()
+
+
+def upgrade(*args, **kwargs):
+    """Serialize every entrypoint with hosting and lifecycle administration."""
+    from .hosting import administrative_lock
+    with administrative_lock():
+        return _upgrade(*args, **kwargs)

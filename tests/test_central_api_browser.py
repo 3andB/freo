@@ -15,6 +15,8 @@ def test_installation_setup_and_station_location(booth):
     driver.find_element(By.CSS_SELECTOR, '.admin-nav a[href="/admin/installation"]').click()
     wait_text(driver, '.admin-content h1', 'Freo installation')
     wait_text(driver, '.admin-content', 'Freo automatically contacts api.freo.live')
+    WebDriverWait(driver, 10).until(lambda d: d.execute_script(
+        "return !document.documentElement.classList.contains('is-navigating')"))
     assert not driver.find_elements(By.NAME, 'manager_email')
     driver.find_element(By.NAME, 'activation_code').send_keys('FREO-7K4P-M9Q2')
     driver.find_element(By.CSS_SELECTOR, '.admin-content button[type=submit]').click()
@@ -31,7 +33,8 @@ def test_installation_setup_and_station_location(booth):
         field.send_keys(value)
     directory = driver.find_element(By.NAME, 'directory_opt_in')
     driver.execute_script('arguments[0].scrollIntoView({block:"center"})', directory)
-    directory.click()
+    assert directory.is_selected()
+    assert 'publishes your station name' in driver.find_element(By.CSS_SELECTOR, '.station-settings').text
     driver.find_element(By.CSS_SELECTOR, '#station-settings-form .settings-save-bar button').click()
     wait_text(driver, '#station-save-status', 'All changes saved')
     driver.refresh()
@@ -80,3 +83,25 @@ def test_version_statuses_release_link_and_first_release_in_browser(booth):
         for width in (390, 820, 1440):
             driver.set_window_size(width, 1000)
             assert driver.execute_script('return document.documentElement.scrollWidth <= innerWidth + 1')
+
+
+def test_directory_optout_is_explicit_and_survives_unrelated_save(booth):
+    app, driver, base, tmp = booth
+    driver.get(base + '/admin/stations/test-station/settings')
+    directory = driver.find_element(By.NAME, 'directory_opt_in')
+    assert directory.is_selected()
+    driver.execute_script('arguments[0].scrollIntoView({block:"center"})', directory)
+    directory.click()
+    driver.find_element(By.CSS_SELECTOR, '#station-settings-form .settings-save-bar button').click()
+    wait_text(driver, '#station-save-status', 'All changes saved')
+    driver.refresh()
+    assert not driver.find_element(By.NAME, 'directory_opt_in').is_selected()
+    name = driver.find_element(By.NAME, 'name')
+    name.clear()
+    name.send_keys('Updated station name')
+    driver.find_element(By.CSS_SELECTOR, '#station-settings-form .settings-save-bar button').click()
+    wait_text(driver, '#station-save-status', 'All changes saved')
+    with app.app_context():
+        station = db.session.get(Station, 1)
+        assert not station.directory_opt_in
+        assert station.directory_consent_source == 'explicit'

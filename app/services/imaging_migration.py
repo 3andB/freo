@@ -33,17 +33,20 @@ def inventory(station, storage=None):
     return dict(station=station.slug,assets=rows,references=references,groups=m.ImagingGroup.query.filter_by(station_id=station.id).count(),pending_jobs=m.MediaIngestJob.query.filter_by(station_id=station.id).filter(m.MediaIngestJob.kind.in_(('imaging','img_verify','img_enable')),m.MediaIngestJob.status.in_(('pending','processing'))).count())
 
 
-def convert(station, storage=None, mapping=None):
-    """Caller must stop playout/ingest for this station before applying."""
+def convert(station, storage=None, mapping=None, *, maintenance=False):
+    """Caller must stop playout/ingest; maintenance means all installation writers
+    are guarded/stopped by the verified-backup updater. Preserve desired state
+    and keep duplicate music separate in that mode.
+    """
     storage=storage or LocalMediaStorage();mapping=mapping or {}
     db.session.query(m.Station.id).filter_by(id=station.id).with_for_update().first()
     report=inventory(station,storage)
-    if station.desired_state!='stopped' or report['pending_jobs']:
+    if (not maintenance and station.desired_state!='stopped') or report['pending_jobs']:
         raise ValueError('Stop this station and finish pending Imaging jobs before conversion')
-    if m.SelectionDecision.query.filter_by(station_id=station.id).filter(m.SelectionDecision.status.in_(('queued','submitting'))).first():
+    if not maintenance and m.SelectionDecision.query.filter_by(station_id=station.id).filter(m.SelectionDecision.status.in_(('queued','submitting'))).first():
         raise ValueError('Clear or reconcile queued requests before conversion')
     for row in report['assets']:
-        if row['collision'] and str(row['id']) not in mapping:
+        if row['collision'] and not maintenance and str(row['id']) not in mapping:
             raise ValueError(f"Audio {row['id']} duplicates an existing track. Supply its UUID in the reviewed mapping file")
         if row['file_problem'] and row['enabled']:
             raise ValueError(f"Enabled audio {row['id']} has {row['file_problem']}; repair or disable it first")
@@ -72,7 +75,7 @@ def convert(station, storage=None, mapping=None):
                             owner = pwd.getpwnam('freo-ingest').pw_uid if os.geteuid() == 0 else -1
                             os.chown(name,owner,source.stat().st_gid);grant_playout_read(name);os.replace(name,target)
                         finally:Path(name).unlink(missing_ok=True)
-                track=m.Track(station_id=station.id,uuid=asset.uuid if not m.Track.query.filter_by(uuid=asset.uuid).first() else str(uuid.uuid4()),title=asset.name,artist=station.name,album='',original_filename=asset.original_filename,storage_key=key,media_type=asset.media_type,duration_ms=asset.duration_ms,bitrate_kbps=asset.bitrate_kbps,sample_rate_hz=asset.sample_rate_hz,channels=asset.channels,file_size_bytes=asset.file_size_bytes,checksum_sha256=asset.checksum_sha256,enabled=asset.enabled,ingest_status=asset.ingest_status,decommissioned_at=asset.decommissioned_at,notes=asset.description,analysis_status='pending')
+                track=m.Track(station_id=station.id,legacy_imaging_id=asset.id,uuid=asset.uuid if not m.Track.query.filter_by(uuid=asset.uuid).first() else str(uuid.uuid4()),title=asset.name,artist=station.name,album='',original_filename=asset.original_filename,storage_key=key,media_type=asset.media_type,duration_ms=asset.duration_ms,bitrate_kbps=asset.bitrate_kbps,sample_rate_hz=asset.sample_rate_hz,channels=asset.channels,file_size_bytes=asset.file_size_bytes,checksum_sha256=asset.checksum_sha256,enabled=asset.enabled,ingest_status=asset.ingest_status,decommissioned_at=asset.decommissioned_at,notes=asset.description,analysis_status='pending')
                 db.session.add(track);db.session.flush()
             # A reviewed duplicate must not make retired or disabled legacy audio playable.
             track.enabled = track.enabled and asset.enabled

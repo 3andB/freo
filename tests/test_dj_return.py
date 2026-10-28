@@ -195,3 +195,31 @@ def test_prepared_successor_survives_decoder_queue_movement(prepared, monkeypatc
     monkeypatch.setattr(worker, 'queued_order', lambda slug: observe('future'))
     monkeypatch.setattr(worker, 'request_decision_id', lambda slug, request: successor.id if request == 22 else None)
     assert worker.prepare_auto_successor(station, worker.EventReader(), snapshot.mixer, 'current') == successor.id
+
+@pytest.mark.parametrize('case',['accepted','already-existing','other-engine','other-station','manual','not-queued','missing-request','changed-programming','refresh-pending'])
+def test_accepted_successor_survives_gap_between_future_and_current(prepared,monkeypatch,case):
+    from app import automation_worker as worker
+    station,track,user,snapshot=prepared
+    successors=[]
+    def accepted():
+        row=SelectionDecision(station_id=2 if case=='other-station' else station.id,track_id=track.id,
+            status='selected' if case=='not-queued' else 'queued',
+            socket_identity='old-engine' if case=='other-engine' else 'engine',
+            liquidsoap_request_id=None if case=='missing-request' else 22,
+            programming_signature='old' if case=='changed-programming' else 'current',
+            admin_user_id=user.id if case=='manual' else None,
+            reason='programming_refresh_pending' if case=='refresh-pending' else '')
+        db.session.add(row);db.session.commit();successors.append(row.id)
+    if case=='already-existing':accepted()
+    def refill(*args):
+        if case!='already-existing':accepted()
+        return 1
+    monkeypatch.setattr('app.services.programming_refresh.refresh',lambda *args,**kwargs:None)
+    monkeypatch.setattr('app.services.playout_queue.mixer_state',lambda _:dict(mode='DJ_BOOTH',auto_id=snapshot.current_decision_id))
+    monkeypatch.setattr(worker,'queued_ids',lambda _:set())
+    monkeypatch.setattr(worker,'active_ids',lambda _:set())
+    monkeypatch.setattr(worker,'queued_order',lambda _:[])
+    monkeypatch.setattr(worker,'socket_identity',lambda _:'engine')
+    monkeypatch.setattr(worker,'refill_station',refill)
+    result=worker.prepare_auto_successor(station,worker.EventReader(),snapshot.mixer,'current')
+    assert result==(successors[0] if case=='accepted' else None)

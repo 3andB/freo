@@ -1,12 +1,13 @@
 """Failure injection for upgrade orchestration; no real services or live paths."""
 import json
+from contextlib import nullcontext
 from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 
 from freo_ops import upgrade as updater
-from freo_ops import recovery
+from freo_ops import recovery, hosting
 from freo_ops import __main__ as management
 
 
@@ -19,6 +20,8 @@ def host(tmp_path, monkeypatch):
     for path in (root / 'app', state, config, units, root / 'deploy/systemd'):
         path.mkdir(parents=True, exist_ok=True)
     state.chmod(0o700)
+    (root / 'migrations/versions').mkdir(parents=True)
+    (root / 'migrations/versions/source.py').write_text("revision = 'a71d25b609ef'\ndown_revision = None\n")
     (root / 'app/version.py').write_text("VERSION = '0.1.0'\n")
     environment = config / 'freo.env'
     environment.write_text('DATABASE_URL=postgresql://test@localhost/source\nSECRET_KEY=fixture\n')
@@ -32,6 +35,8 @@ def host(tmp_path, monkeypatch):
     monkeypatch.setattr(updater.os, 'geteuid', lambda: 0)
     # Host paths/ownership are simulated; these tests also run as an unprivileged CI user.
     monkeypatch.setattr(updater, 'require_root_directory', lambda *args, **kwargs: None)
+    # This fixture simulates root ownership; test_hosting covers real authority locks.
+    monkeypatch.setattr(hosting, 'administrative_lock', nullcontext)
     monkeypatch.setattr(updater.platform, 'freedesktop_os_release', lambda: {'ID': 'ubuntu', 'VERSION_ID': '24.04'})
     monkeypatch.setattr(updater.platform, 'machine', lambda: 'x86_64')
     active = ['freo.service', 'freo-automation.service']
@@ -67,7 +72,7 @@ def host(tmp_path, monkeypatch):
         if command[:2] == ['systemctl', 'start']:
             if info['failure'] == 'start':
                 raise recovery.RecoveryError('Injected service failure')
-            active[:] = command[2:]
+            active.extend(unit for unit in command[2:] if unit not in active)
         if command[-2:] == ['db', 'upgrade']:
             info['revision'] = 'd02f9a41c830'
             if info['failure'] == 'migration':
@@ -97,10 +102,10 @@ def host(tmp_path, monkeypatch):
         def __enter__(self): return self
         def __exit__(self, *args): pass
     monkeypatch.setattr(updater, 'build_opener', lambda *args: SimpleNamespace(open=lambda *a, **k: Ready()))
-    def execute(check=False):
+    def execute(check=False, **kwargs):
         return updater.upgrade('artifact', 'signature', 'trusted-keyring', environment,
                                tmp_path / 'backup.gpg', b'fixture-passphrase', environment,
-                               tmp_path / 'verification', check=check)
+                               tmp_path / 'verification', check=check, **kwargs)
     return SimpleNamespace(execute=execute, calls=calls, active=active, info=info,
                            root=root, units=units, state=state, template=template)
 
@@ -121,6 +126,83 @@ def test_upgrade_orders_backup_restore_migration_preservation_and_activation(hos
     journal = json.loads((host.state / 'journal.json').read_text())
     assert journal['phase'] == 'complete' and len(journal['previous_units']) == 2
     assert all('dropdb' not in str(call) and '--clean' not in str(call) for call in host.calls)
+
+
+def test_web_readiness_precedes_background_worker_start(host, monkeypatch):
+    class Ready:
+        status = 200
+        def __enter__(self): return self
+        def __exit__(self, *args): pass
+    def ready(*args, **kwargs):
+        assert host.active == ['freo.service'], 'Background startup must wait for the web application'
+        host.calls.append('web-ready')
+        return Ready()
+    monkeypatch.setattr(updater, 'build_opener', lambda *args: SimpleNamespace(open=ready))
+    assert host.execute()['status'] == 'complete'
+    background = next(i for i, call in enumerate(host.calls) if isinstance(call, list)
+                      and call[:2] == ['systemctl', 'start'] and 'freo-automation.service' in call[2:])
+    assert host.calls.index('web-ready') < background
+    assert host.active == ['freo.service', 'freo-automation.service']
+
+
+def test_failed_web_readiness_never_starts_background_workers(host, monkeypatch):
+    def unavailable(*args, **kwargs):
+        raise OSError('Web application is still initializing')
+    monkeypatch.setattr(updater, 'build_opener', lambda *args: SimpleNamespace(open=unavailable))
+    monkeypatch.setattr(updater.time, 'sleep', lambda seconds: None)
+    with pytest.raises(recovery.RecoveryError, match='New application did not become ready'):
+        host.execute()
+    assert not any(isinstance(call, list) and call[:2] == ['systemctl', 'start']
+                   and 'freo-automation.service' in call[2:] for call in host.calls)
+    assert not host.active and (host.state/'maintenance').exists()
+    assert json.loads((host.state/'journal.json').read_text())['phase'] == 'recovery_required'
+
+
+def test_background_only_baseline_does_not_start_web(host, monkeypatch):
+    host.active.remove('freo.service')
+    def unexpected(*args, **kwargs):
+        pytest.fail('An inactive web service must not be started or polled')
+    monkeypatch.setattr(updater, 'build_opener', lambda *args: SimpleNamespace(open=unexpected))
+    assert host.execute()['status'] == 'complete'
+    assert host.active == ['freo-automation.service']
+
+
+@pytest.mark.parametrize('unrelated_change', [False, True])
+def test_ipv6_proxy_transition_is_narrow_and_runs_after_verified_backup(host, monkeypatch, unrelated_change):
+    from freo_ops import proxy_ipv6
+    relative = Path('deploy/nginx/freo.conf.template')
+    old = 'server {\n    listen 80;\n    server_name radio.example;\n}\n'
+    (host.root/relative).parent.mkdir(parents=True)
+    (host.root/relative).write_text(old)
+    site = host.root/'site.conf';site.write_text(old)
+    changes = {site: (old, proxy_ipv6.with_ipv6(old))}
+    monkeypatch.setattr(proxy_ipv6, 'plan', lambda: changes)
+    extract = updater.releases.extract_verified
+    def candidate(artifact, directory, **kwargs):
+        manifest = extract(artifact, directory, **kwargs)
+        (directory/relative).parent.mkdir(parents=True)
+        body = proxy_ipv6.with_ipv6(old)
+        if unrelated_change:
+            body = body.replace('radio.example', 'other.example')
+        (directory/relative).write_text(body)
+        return manifest
+    monkeypatch.setattr(updater.releases, 'extract_verified', candidate)
+    def proxy_run(command):
+        assert 'restore-verified' in host.calls
+        assert 'preservation-verified' in host.calls
+        assert not host.active
+        host.calls.append(command)
+    monkeypatch.setattr(proxy_ipv6, 'run', proxy_run)
+    if unrelated_change:
+        with pytest.raises(recovery.RecoveryError, match='Radio/proxy template'):
+            host.execute()
+        assert 'backup' not in host.calls
+        assert site.read_text() == old
+    else:
+        assert host.execute()['status'] == 'complete'
+        assert site.read_text() == proxy_ipv6.with_ipv6(old)
+        assert ['nginx', '-t'] in host.calls
+        assert ['systemctl', 'reload', 'nginx'] in host.calls
 
 
 def test_bad_dependencies_never_stop_services_or_migrate(host):
@@ -161,8 +243,10 @@ def test_preflight_does_not_stop_services_or_migrate(host):
 
 def test_repeating_the_same_release_does_not_migrate_or_restart(host):
     host.execute()
+    first = json.loads((host.state / 'journal.json').read_text())
     host.calls.clear()
     assert host.execute()['status'] == 'already_installed'
+    assert json.loads((host.state / 'history' / (first['operation'] + '.json')).read_text()) == first
     assert host.calls == ['verify-release']
 
 
@@ -239,7 +323,7 @@ def test_upgrade_waits_for_station_audio_and_preserves_failure_recovery(host, mo
     else:
         with pytest.raises(recovery.RecoveryError, match='station.*audio'):
             host.execute()
-        assert 1 < len(attempts) <= 60 and elapsed[0] == 60
+        assert 1 < len(attempts) <= updater.STARTUP_TIMEOUT and elapsed[0] == updater.STARTUP_TIMEOUT
         journal = json.loads((host.state / 'journal.json').read_text())
         assert journal['phase'] == 'recovery_required' and journal['failure_phase'] == 'starting'
         assert host.active == [] and (host.state / 'maintenance').exists()
@@ -289,3 +373,109 @@ def test_upgrade_still_refuses_backup_when_a_guarded_unit_remains_active(host, m
     assert not any(isinstance(call, list) and call[-2:] == ['db', 'upgrade'] for call in host.calls)
     assert json.loads((host.state / 'journal.json').read_text())['phase'] == 'failed_before_migration'
     assert host.active == ['freo.service', 'freo-automation.service']
+
+
+def test_upgrade_installs_new_service_and_records_absence_for_recovery(host, monkeypatch):
+    original = updater.releases.extract_verified
+    def extract(*args, **kwargs):
+        result = original(*args, **kwargs)
+        (args[1] / 'deploy/systemd/freo-production.service').write_text(host.template)
+        return result
+    monkeypatch.setattr(updater.releases, 'extract_verified', extract)
+    assert host.execute()['status'] == 'complete'
+    assert '/opt/freo/current/' in (host.units / 'freo-production.service').read_text()
+    journal = json.loads((host.state / 'journal.json').read_text())
+    assert journal['previous_units'][str(host.units / 'freo-production.service')] is None
+
+
+def test_mismatched_source_schema_is_refused_before_backup(host):
+    (host.root / 'migrations/versions/source.py').write_text("revision = 'different'\ndown_revision = None\n")
+    with pytest.raises(recovery.RecoveryError, match='source and schema'):
+        host.execute()
+    assert 'backup' not in host.calls
+    assert host.active == ['freo.service', 'freo-automation.service']
+
+
+def test_recovery_bundle_captures_matched_source_without_candidate(host, monkeypatch):
+    original = recovery.create
+    captured = []
+    def create(url, roots, *args, **kwargs):
+        captured.extend(roots)
+        return original(url, roots, *args, **kwargs)
+    monkeypatch.setattr(recovery, 'create', create)
+    host.execute()
+    assert host.root / 'app' in captured
+    assert host.root / 'migrations' in captured
+    assert all(not path.is_relative_to(host.root / 'releases') for path in captured)
+
+
+def test_unprivileged_upgrade_environment_does_not_reopen_root_only_secrets(tmp_path,monkeypatch):
+    secret=tmp_path/'freo.env';secret.write_text('DATABASE_URL=fixture\n');secret.chmod(0o600)
+    monkeypatch.setenv('FREO_ENV_FILE','/unapproved/path')
+    monkeypatch.setenv('DATABASE_URL','unapproved')
+    env=updater.release_environment({'DATABASE_URL':'fixture','SECRET_KEY':'preserved'},secret)
+    assert env['FREO_ENV_FILE']=='/dev/null'
+    assert env['DATABASE_URL']=='fixture' and env['SECRET_KEY']=='preserved'
+    assert secret.stat().st_mode & 0o777 == 0o600
+
+
+@pytest.mark.parametrize('mode', ['default-refused', 'schema-refused', 'other-template-refused', 'compile-failed', 'success', 'activation-failed'])
+def test_explicit_radio_maintenance_is_validated_backed_up_and_fail_closed(host, monkeypatch, mode):
+    from freo_ops import radio_maintenance, v1
+    relative=Path(radio_maintenance.TEMPLATE)
+    (host.root/relative).parent.mkdir(parents=True)
+    (host.root/relative).write_text('old native template')
+    extract=updater.releases.extract_verified
+    def candidate(artifact,directory,**kwargs):
+        manifest=extract(artifact,directory,**kwargs)
+        if mode!='schema-refused':manifest['schema_head']=host.info['revision']
+        (directory/relative).parent.mkdir(parents=True)
+        (directory/relative).write_text('new native template')
+        if mode=='other-template-refused':
+            (directory/relative.parent/'bulletin.liq').write_text('unreviewed change')
+        return manifest
+    monkeypatch.setattr(updater.releases,'extract_verified',candidate)
+    monkeypatch.setattr(v1,'check_runtime',lambda *args:host.calls.append('matched-old-runtime'))
+    def stage(*args):
+        assert not host.active
+        assert 'restore-verified' in host.calls
+        assert not any(isinstance(c,list) and c[-2:]==['db','upgrade'] for c in host.calls)
+        host.calls.append('radio-compile')
+        if mode=='compile-failed':raise recovery.RecoveryError('Invalid native configuration')
+        return {'fixture':{'temporary':'fixture'}}
+    monkeypatch.setattr(radio_maintenance,'stage',stage)
+    monkeypatch.setattr(radio_maintenance,'discard',lambda changes:host.calls.append('discard-radio'))
+    def apply(changes):
+        if not changes:return
+        assert not host.active and 'preservation-verified' in host.calls
+        host.calls.append('radio-activate')
+        if mode=='activation-failed':raise recovery.RecoveryError('Native activation failed')
+    monkeypatch.setattr(radio_maintenance,'apply',apply)
+    run=recovery.run
+    def migrate(command,**kwargs):
+        result=run(command,**kwargs)
+        if command[-2:]==['db','upgrade'] and mode!='schema-refused':host.info['revision']='a71d25b609ef'
+        return result
+    monkeypatch.setattr(recovery,'run',migrate)
+    if mode.endswith('refused'):
+        with pytest.raises(recovery.RecoveryError,match='Radio/proxy template'):
+            host.execute(radio_maintenance=mode!='default-refused')
+        assert 'backup' not in host.calls and 'radio-compile' not in host.calls
+        assert host.active==['freo.service','freo-automation.service']
+    elif mode=='compile-failed':
+        with pytest.raises(recovery.RecoveryError,match='Invalid native'):
+            host.execute(radio_maintenance=True)
+        assert host.active==['freo.service','freo-automation.service']
+        assert not (host.state/'maintenance').exists()
+        assert 'radio-activate' not in host.calls
+    elif mode=='activation-failed':
+        with pytest.raises(recovery.RecoveryError,match='Native activation'):
+            host.execute(radio_maintenance=True)
+        assert not host.active and (host.state/'maintenance').exists()
+        assert json.loads((host.state/'journal.json').read_text())['phase']=='recovery_required'
+    else:
+        assert host.execute(radio_maintenance=True)['status']=='complete'
+        assert host.calls.count('matched-old-runtime')==2
+        assert host.calls.index('backup')<host.calls.index('restore-verified')<host.calls.index('radio-compile')
+        assert host.calls.index('radio-compile')<host.calls.index('preservation-verified')<host.calls.index('radio-activate')
+        assert json.loads((host.state/'journal.json').read_text())['radio_maintenance_files']==['fixture']

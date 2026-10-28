@@ -30,7 +30,7 @@ def song_data(song, plays=None, station=None, flags=None, ratings=None):
     station = station or song.station
     from app.services.player import vote_stats, EMPTY_STATS
     rating=(ratings if ratings is not None else vote_stats(station.id,[song.id])).get(song.id,EMPTY_STATS)
-    return dict(availability=availability_data(song), uuid=song.uuid,title=song.title,artist=song.artist,album=song.album,
+    return dict(availability=availability_data(song, station), uuid=song.uuid,title=song.title,artist=song.artist,album=song.album,
         votes=rating, feedback_url=url_for('player_experience.inbox',slug=station.slug,track=song.uuid),
         flag=flag_data(flags.get(song.id) if flags is not None else SongFlag.query.filter_by(station_id=station.id,track_id=song.id).first()),
         play_count=play_counts(station.id, 'track', [song.id]).get(song.id, 0) if plays is None else plays,
@@ -38,7 +38,7 @@ def song_data(song, plays=None, station=None, flags=None, ratings=None):
         analysis=song.analysis_status,requested=song.analysis_requested,error=song.analysis_error,
         bpm=song.bpm,lufs=song.loudness_lufs,peak=song.true_peak_db,gain=gain_for(song, station),
         playlists=[x.id for x in song.playlists if x.station_id == station.id and x.enabled],
-        categories=[x.id for x in song.categories],tags=[x.id for x in song.tags],
+        categories=[x.id for x in song.categories if x.station_id == station.id],tags=[x.id for x in song.tags if x.station_id == station.id],
         audition=url_for('admin_media.audition',slug=context_slug(song),track_uuid=song.uuid),
         detail=url_for('admin_media.track_detail',slug=context_slug(song),track_uuid=song.uuid),
         artwork=cover_url(song))
@@ -151,7 +151,17 @@ def mutate(slug,action):
             allocation_lock()
         db.session.query(Station.id).filter_by(id=station.id).with_for_update().first()
         undo=None
-        if action in ('create-playlist','edit-playlist','delete-playlist','playlist-source','playlist-remove','playlist-reorder'):
+        if action == 'separation':
+            if not can_manage_programming(current_admin(),station):abort(403)
+            from app.services.automation import state_for
+            state=state_for(station)
+            for key in ('track_seconds','artist_seconds'):
+                value=data.get(key)
+                if type(value) is not int or not 0 <= value <= 86400:
+                    raise ValueError('Separation must be between 0 and 86400 seconds')
+                setattr(state, key.replace('_seconds','_separation_seconds'), value)
+            message='Station separation saved'
+        elif action in ('create-playlist','edit-playlist','delete-playlist','playlist-source','playlist-remove','playlist-reorder'):
             if not can_manage_programming(current_admin(),station):abort(403)
             row=Playlist(station_id=station.id) if action=='create-playlist' else playlist_service.get_playlist(station.id,data.get('id'))
             if action in ('edit-playlist','playlist-reorder') and data.get('revision')!=row.revision:
@@ -162,12 +172,14 @@ def mutate(slug,action):
                 if not isinstance(description,str) or len(description)>500:raise ValueError('Description must be under 500 characters')
                 if mode not in ('STRAIGHT','RANDOM'):raise ValueError('Choose Straight or Random')
                 row.name=name.strip();row.description=description.strip();row.mode=mode
+                playlist_service.configure(row, data)
                 if action=='edit-playlist':row.revision+=1
                 db.session.add(row);db.session.flush();message='Playlist saved'
             elif action=='delete-playlist':
                 if data.get('confirm')!=row.id:raise ValueError('Confirm playlist deletion')
                 playlist_service.delete_playlist(row);message='Playlist deleted. Songs remain in Music.'
             elif action=='playlist-reorder':
+                if row.smart_enabled:raise ValueError('Smart playlist order follows its current matches')
                 ids=data.get('songs')
                 if not isinstance(ids,list) or any(not isinstance(x,str) for x in ids):raise ValueError('Supply the complete song order')
                 by_uuid={item.track.uuid:item.track_id for item in row.items}
@@ -186,6 +198,9 @@ def mutate(slug,action):
             if not can_manage_programming(current_admin(),station):abort(403)
             row=playlist_service.get_playlist(station.id,data.get('target'))
             songs=selected_songs(station,data)
+            if action in ('share-all', 'classify', 'delete', 'notes', 'process'):
+                from app.services.polish import require_owner
+                for song in songs: require_owner(song, station.id)
             # Preserve the order selected in Music.
             by_uuid={song.uuid:song for song in songs};songs=list(dict.fromkeys(by_uuid[x] for x in data['songs']))
             undo,count=playlist_service.membership(row,songs,data.get('operation'),current_admin().id)
@@ -193,6 +208,9 @@ def mutate(slug,action):
         elif action=='share-all':
             from app.services.availability import set_sharing
             songs=selected_songs(station,data)
+            if action in ('share-all', 'classify', 'delete', 'notes', 'process'):
+                from app.services.polish import require_owner
+                for song in songs: require_owner(song, station.id)
             if any(song.audio_kind != 'MUSIC' for song in songs):
                 raise ValueError('Select music songs to make available to all channels')
             for song in songs:
@@ -202,6 +220,9 @@ def mutate(slug,action):
         elif action=='classify':
             from app.services.audio_classification import classify
             songs=selected_songs(station,data)
+            if action in ('share-all', 'classify', 'delete', 'notes', 'process'):
+                from app.services.polish import require_owner
+                for song in songs: require_owner(song, station.id)
             for song in songs: classify(song,data.get('audio_kind'),data.get('audio_subtype',''),song.cart_code,station_id=station.id)
             message=f'{len(songs)} audio items classified'
         elif action=='assign':
@@ -263,12 +284,18 @@ def mutate(slug,action):
             category.name=name;category.description=description;category.enabled=data['enabled'];message='Category saved'
         elif action=='delete':
             songs=selected_songs(station,data)
+            if action in ('share-all', 'classify', 'delete', 'notes', 'process'):
+                from app.services.polish import require_owner
+                for song in songs: require_owner(song, station.id)
             if len(songs)!=1 or data.get('confirm')!=songs[0].uuid:raise ValueError('Confirm deletion of one song')
             from app.services.music_delete import queue_delete
             job=queue_delete(songs[0],current_admin(),station);db.session.commit()
             return jsonify(message='Song removed from Music. Finishing permanent deletion…',job_url=url_for('admin_media.job_status',slug=slug,job_id=job.id),status_url=url_for('admin_media.job_json',slug=slug,job_id=job.id))
         elif action=='notes':
             songs=selected_songs(station,data)
+            if action in ('share-all', 'classify', 'delete', 'notes', 'process'):
+                from app.services.polish import require_owner
+                for song in songs: require_owner(song, station.id)
             if len(songs)!=1:raise ValueError('Select one song to edit notes')
             notes=data.get('notes','')
             if not isinstance(notes,str) or len(notes)>4000:raise ValueError('Notes must be under 4,000 characters')
@@ -276,6 +303,9 @@ def mutate(slug,action):
             songs[0].notes=notes;message='Notes saved'
         elif action=='process':
             songs=selected_songs(station,data)
+            if action in ('share-all', 'classify', 'delete', 'notes', 'process'):
+                from app.services.polish import require_owner
+                for song in songs: require_owner(song, station.id)
             count=sum(request_analysis(song) for song in songs);message=f'{count} song(s) queued for priority processing'
         elif action=='loudness':
             target=float(data.get('target'))

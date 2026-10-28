@@ -92,3 +92,19 @@ def bootstrap_admin():
     from app.services.admin_setup import bootstrap
     created = bootstrap()
     click.echo('First-use admin ready; complete setup in the browser.' if created else 'Existing administrator setup retained.')
+
+
+@admin.command('account-role')
+@click.argument('email')
+@click.argument('role', type=click.Choice(['ADMIN', 'DJ']))
+def account_role(email, role):
+    """Explicit role conversion; DJs require assignments in /admin/djs."""
+    root_only()
+    user = AdminUser.query.filter_by(email=email.strip().lower()).first()
+    if user is None:
+        raise click.ClickException('Account not found')
+    if role == 'DJ' and user.installation_admin:
+        raise click.ClickException('Revoke installation administration before converting to DJ')
+    user.role = role
+    db.session.commit()
+    click.echo('Account role updated. Existing station assignments were retained.')

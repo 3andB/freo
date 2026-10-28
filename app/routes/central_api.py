@@ -187,6 +187,7 @@ def run(once):
     try:
         with reporter.store.lock():
             next_tick = 0
+            next_fast = 0
             while True:
                 started = time.monotonic()
                 poll_interval = 2
@@ -196,6 +197,9 @@ def run(once):
                         reporter.tick()
                     if checked or started >= next_tick:
                         next_tick = time.monotonic() + 60
+                    if time.monotonic() >= next_fast:
+                        reporter.fast_tick()
+                        next_fast = time.monotonic() + 5
                 except Exception as error:
                     db.session.rollback()
                     poll_interval = 60

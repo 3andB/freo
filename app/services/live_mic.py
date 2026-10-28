@@ -32,14 +32,40 @@ def gateway(slug, action, *, timeout=2, **data):
         raise ValueError('Microphone audio service is unavailable. Check the connection before going live.') from error
 
 
+def _pending():
+    from flask import current_app, has_app_context
+    return current_app.extensions.setdefault('pending_microphones', set()) if has_app_context() else set()
+
+
+def pending_microphones():
+    return bool(_pending())
+
+
+def sync_pending_microphones(states, *, exclude):
+    """Renew prepared sessions between stations, using the same worker authority."""
+    pending = _pending()
+    for state in states:
+        station = state.station
+        if station.id not in pending or station.id == exclude:
+            continue
+        if not station.enabled or station.desired_state != 'running':
+            pending.discard(station.id)
+            continue
+        sync_live_mic(station)
+
+
 def sync_live_mic(station):
     """Called only by the automation worker. Returns whether mic owns program."""
+    pending = _pending()
+    identifier = getattr(station, 'id', None)
     if not enabled():
+        pending.discard(identifier)
         return False
     from app.services.playout_queue import _command
     try:
         parts = _command(station.slug, 'freo_mic.state').split('|')
         if len(parts) != 3:
+            pending.discard(identifier)
             return False
         token, phase, ready = parts
         engine = dict(token=token, phase=phase, ready=ready == 'true')
@@ -48,14 +74,47 @@ def sync_live_mic(station):
         except ValueError:
             session = {}
         if phase == 'FAILED':
+            from hashlib import sha256
+            from app.extensions import db
+            from app.models import AuditEvent
+            from app.services.admin_media import audit
             from app.services.live_assist import return_to_schedule
-            if station.automation.operator_mode != 'AUTO':
-                return_to_schedule(station, reason='Microphone disconnected. Returning to Auto.')
+            # FAILED remains latched in the engine until a new mic session.
+            # Persist its acknowledgement with the fallback so a later DJ
+            # session survives repeated polls and automation worker restarts.
+            failure_id = sha256(token.encode()).hexdigest()
+            handled = AuditEvent.query.filter_by(station_id=station.id,
+                action='live_mic_failure_handled', target_id=failure_id).first()
+            if handled is None:
+                audit('live_mic_failure_handled', station_id=station.id,
+                      target_type='mic_session', target_id=failure_id,
+                      summary='Disconnected microphone session returned to Auto.')
+                if station.automation.operator_mode != 'AUTO':
+                    return_to_schedule(station, reason='Microphone disconnected. Returning to Auto.')
+                else:
+                    db.session.commit()
             if not session or session.get('token') == token:
+                pending.discard(identifier)
                 return False
         if not session:
+            pending.discard(identifier)
             return phase in ('FADING', 'LIVE', 'RETURNING')  # Engine lease expires independently.
+        pending.add(identifier)
         new_token = session['token']
+        from flask import has_app_context
+        if has_app_context() and session.get('owner') is not None:
+            from app.models import AdminUser
+            from app.extensions import db
+            from app.services.live_sessions import authorized_intent
+            if not authorized_intent(station, db.session.get(AdminUser, session['owner'])):
+                pending.discard(identifier)
+                try:
+                    gateway(station.slug, 'disconnect', owner=session['owner'], token=session['token'])
+                except ValueError:
+                    pass
+                if token == new_token and phase in ('LIVE', 'FADING'):
+                    _command(station.slug, f'freo_mic.end {token} 3.000')
+                return phase in ('FADING', 'LIVE', 'RETURNING')
         if token != new_token:
             if phase in ('FADING', 'LIVE', 'RETURNING'):
                 return True  # Wait for old engine lease before admitting replacement.
@@ -71,4 +130,5 @@ def sync_live_mic(station):
             return True
         return phase in ('FADING', 'LIVE', 'RETURNING')
     except (OSError, RuntimeError, ValueError):
+        pending.discard(identifier)
         return False

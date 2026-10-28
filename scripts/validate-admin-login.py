@@ -117,7 +117,10 @@ def validate():
     cookies = [cookie for cookie in jar if cookie.name == app.config['SESSION_COOKIE_NAME']]
     if len(cookies) != 1 or cookies[0].secure != (scheme == 'https'):
         raise ValidationError('Login cookie policy does not match the saved HTTP/HTTPS origin.')
-    if pending:
+    from freo_ops.admin import inhibited
+    # Suspended hosting intentionally blocks /admin/setup. Validate the sign-in
+    # page/cookie without treating that policy boundary as broken authentication.
+    if pending and not inhibited():
         token = re.search(r'name="csrf" value="([^"]+)"', body)
         if not token:
             raise ValidationError('Login form has no CSRF token.')

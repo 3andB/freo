@@ -1,4 +1,6 @@
 """Trusted station media ingestion and approved playlist generation."""
+from freo_ops.hosting_storage import write as hosting_write
+
 from app.services.availability import tracks_for
 import hashlib
 import os
@@ -80,6 +82,11 @@ def _prepare_dirs(storage, slug):
             os.chmod(path, mode)
         elif path.stat().st_uid != os.geteuid():
             raise PermissionError('Ingest directory is not owned by the ingest worker')
+    from freo_ops.hosting import read
+    if read()['hosted']:
+        import subprocess
+        for path in (station_dir, originals, imaging, staging, artwork, previews):
+            subprocess.run(['setfacl','-m','g:freo-storage:r-x,d:g:freo-storage:r-x','--',str(path)],check=True,capture_output=True)
     return originals, staging
 
 
@@ -109,11 +116,17 @@ def ingest(slug, source, title=None, artist=None, album=None, storage=None, *,
                 if total > MAX_MEDIA_FILE_BYTES:
                     raise MediaValidationError('File exceeds size limit')
                 checksum.update(chunk)
-                target.write(chunk)
+                hosting_write(target, chunk)
             target.flush()
             os.fsync(target.fileno())
         digest = checksum.hexdigest()
+        production = None
+        if (import_metadata or {}).get('production_id'):
+            from app.services.production_worker import ingest_draft
+            production = ingest_draft(import_metadata['production_id'], station.id)
         existing = Track.query.filter_by(station_id=station.id, checksum_sha256=digest).first()
+        if existing and production and production.track_id != existing.id:
+            raise MediaValidationError('This audio already belongs to another catalog asset')
         if existing:
             return existing, True
         details = probe(temp)
@@ -148,6 +161,8 @@ def ingest(slug, source, title=None, artist=None, album=None, storage=None, *,
         )
         db.session.add(track)
         db.session.flush()
+        if production:
+            production.track_id = track.id
         from app.services.music_catalog import organize_song
         organize_song(track, tags)
         if import_metadata is not None:

@@ -96,7 +96,8 @@ def test_show_console_simple_confirmation_and_events(booth):
     Select(driver.find_element(By.ID,'show-duration')).select_by_value('7200')
     handle=driver.find_element(By.CSS_SELECTOR,'.timeline-section .resize-grip.bottom')
     driver.execute_script("document.getElementById('timeline').style.scrollBehavior='auto';arguments[0].scrollIntoView({block:'center',behavior:'instant'})",handle)
-    ActionChains(driver).move_to_element(handle).click_and_hold().move_by_offset(0,84).pause(.1).release().perform()
+    hour_height = driver.execute_script("return document.querySelector('.time-column').getBoundingClientRect().height / 2")
+    ActionChains(driver).move_to_element(handle).click_and_hold().move_by_offset(0,hour_height).pause(.1).release().perform()
     # Timeline dragging scrolls the document beneath the fixed station toolbar.
     driver.execute_script("window.scrollTo({top:0,behavior:'instant'})")
     driver.find_element(By.ID,'save-schedule').click()

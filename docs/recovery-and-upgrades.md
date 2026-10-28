@@ -2,8 +2,9 @@
 
 The management tools are implemented and tested with disposable PostgreSQL
 databases, real encrypted bundles and signatures, plus simulated service failures.
-The full Ubuntu/systemd installation and upgrade still require the independent
-[VM acceptance test](clean-install-test.md) before public support or deployment.
+The 0.3.2 → V1 bridge has now exercised real Ubuntu/systemd installation,
+upgrade and recovery on the disposable VM; see the [verified procedure](../V1_UPGRADE_NOTES.md)
+and [test report](v1-upgrade-test-report-2026-10-08.md). Each stable release requires acceptance of its exact signed artifact; see the [1.0.0 release notes](release-1.0.0.md).
 This document describes the implemented commands, not the proposed interfaces in
 the original [design plan](upgrade-and-distribution-plan.md).
 
@@ -196,10 +197,12 @@ same verified release is a no-op. A different artifact cannot replace an
 already-installed version number. Frontend static URLs carry the release version
 to avoid combining cached assets from different releases.
 
-The updater supports the recorded 0.1.0, 0.2.0 and 0.3.0 candidate schemas. It
-refuses radio/proxy template changes, operating-system/platform changes and
-application downgrades. Radio engine and PostgreSQL major-version upgrades need
-separate tested procedures. Browser approval of root-prepared plans is described in [candidate installation](install-candidate.md).
+The updater supports the recorded legacy schemas, including the reviewed official
+0.3.2 → V1 transition. That bridge validates original generated templates, applies
+the pinned Icecast patch and converts legacy Imaging during guarded maintenance.
+Other radio/proxy template changes, operating-system/platform changes and
+application downgrades are refused. Other engine changes and PostgreSQL major
+upgrades need separate tested procedures. Browser approval of root-prepared plans is described in [candidate installation](install-candidate.md).
 There is no unattended upgrade, arbitrary web-triggered root shell, automatic
 data deletion or claim of uninterrupted broadcasting.
 
@@ -264,3 +267,72 @@ Browser-local drafts/layout preferences, a dedicated restricted migration
 database role, incremental backup and automatic retention are not implemented.
 Saved schedules, server-side import drafts, paid licenses, account permissions
 and database settings are included in the complete database backup.
+
+### Same-schema station-engine maintenance
+
+`upgrade --radio-maintenance` explicitly permits a signed change to
+`deploy/liquidsoap/station.liq.template` when the database schema is unchanged.
+Other radio template changes retain their normal refusal. This operation stops
+and restores the precise previously active service list, including station
+engines; arrange a broadcast maintenance window.
+
+Preflight compares existing station engines with the installed renderer and
+refuses operator modifications. After stopping writers, it checks again, creates
+the matched encrypted backup and verifies an isolated restore. Before migration,
+it renders every existing managed station engine into a temporary file beside
+its destination and runs Liquidsoap validation as `freo-playout`. It then installs
+the validated engine files during guarded activation. Station credentials,
+hosting policy, proxy configuration and stopped station states are preserved.
+Compiler failure restores the previous services. Failure after migration retains
+the maintenance marker and requires recovery with the matched backup; never
+rewind only the source or attempt a protected schema downgrade.
+
+An older updater will still refuse template changes. To perform this transition,
+first use that installation's `freo_ops.releases.extract_verified` and its
+independently trusted publisher keyring to extract the candidate into a new
+root-only bootstrap directory. Run the verified candidate's management CLI with
+the installed interpreter, setting `PYTHONPATH` and the working directory to the
+verified bootstrap source. Supply all normal upgrade backup, isolated restore,
+signature and keyring arguments, plus `--radio-maintenance`. The candidate
+remains subject to signature verification again inside the updater. Do not edit
+the installed release or disable its template guard to bootstrap this procedure.
+
+### Bounded web request concurrency
+
+Before accepting requests, the WSGI entry point configures ORM mappers and fills
+the existing process-local IANA validation and timezone-choice caches. This
+read-only work opens no database connection. It prevents concurrent first-use
+requests from repeating the filesystem scan or waiting for mapper setup during
+traffic. Timezone validation rules and cache contents are unchanged; a metadata
+read failure refuses worker startup. Restart services after updating tzdata, as
+required by the existing process-local caches.
+
+During upgrade activation, a previously active web service starts first and must
+pass the existing readiness check before background workers, playout processes
+and timers start. This avoids competing cold starts during application imports.
+The readiness attempts and timeouts are unchanged. A readiness failure keeps
+background services stopped and retains the maintenance guard and recovery
+journal. A previously inactive web service remains inactive.
+
+The managed web service runs two Gunicorn processes with sixteen threads each.
+Gunicorn selects its threaded worker for this setting. Waiting requests can
+share a worker while other requests proceed. The pool leaves room for health
+requests alongside thirteen waiting requests, even if they reach one worker.
+Thirteen requests were observed in flight during an installed stress-test
+readiness timeout with the earlier eight-slot pool. The
+broadcast slice keeps its existing CPU priority. This is bounded concurrency,
+not a reservation of CPU or a guarantee against an exhausted database or host.
+
+An upgrade installs the managed unit and restarts the previously active web
+service. Custom execution overrides still require adoption review. The real
+Gunicorn regression runs the production unit arguments with two and thirteen
+waiting requests and requires a separate health request to complete before
+those waits. This reproduces pool exhaustion without claiming it was the sole
+cause of the original installed timeout.
+
+Private RC15 qualification also covers slow browser initialization. Navigation
+keeps focus in an input when editing starts before destination scripts finish.
+The optional visualizer keeps an established tempo when delayed rendering misses
+a transient whose interval matches a whole number of beats. Audio ownership and
+playback remain with the native player; tempo and navigation tests retain their
+existing deadlines and tolerances.

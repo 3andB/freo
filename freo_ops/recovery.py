@@ -29,6 +29,7 @@ class RecoveryError(Exception):
 
 def run(args, **kwargs):
     """Do not surface database URLs, credentials or dump contents in errors."""
+    kwargs.setdefault('timeout', 3600)
     result = subprocess.run(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                             **kwargs)
     if result.returncode:
@@ -338,6 +339,7 @@ def create(url, roots, destination, passphrase, *, version, media_root=None, upl
             connection.commit()
             if tables != database_inventory(connection) or sequences != sequence_inventory(connection):
                 raise RecoveryError('Database changed during backup; stop all writers and retry')
+            manifest['uncompressed_bytes'] = sum(e['size'] for e in entries if e['kind']=='file') + (payload/'database.dump').stat().st_size
             (payload / 'manifest.json').write_text(json.dumps(manifest, sort_keys=True))
             archive_path = work / 'bundle.tar'
             with tarfile.open(archive_path, 'w') as archive:
@@ -358,7 +360,7 @@ def create(url, roots, destination, passphrase, *, version, media_root=None, upl
                     os.fsync(fd)
                 finally:
                     os.close(fd)
-            return {k: manifest[k] for k in ('backup_id', 'version', 'schema_revision')}
+            return {k: manifest[k] for k in ('backup_id', 'version', 'schema_revision', 'uncompressed_bytes')}
     finally:
         connection.close()
 
@@ -407,7 +409,7 @@ def restore_files(payload, manifest, target, preserve_ownership=False):
     return unresolved
 
 
-def restore(bundle, passphrase, target_url, directory, *, preserve_ownership=False):
+def restore(bundle, passphrase, target_url, directory, *, preserve_ownership=False, create_database=None):
     """Create a uniquely named DB; never drop, clean or overwrite any database."""
     directory = Path(directory).absolute()
     if directory.exists() or directory.is_symlink():
@@ -431,14 +433,17 @@ def restore(bundle, passphrase, target_url, directory, *, preserve_ownership=Fal
                       ownership_restored=preserve_ownership, database_encoding=encoding)
         report_path = directory / 'restore-report.json'
         report_path.write_text(json.dumps(report, indent=2))
-        connection = connect(target_url)
-        try:
-            connection.autocommit = True
-            with connection.cursor() as cursor:
-                cursor.execute(sql.SQL('CREATE DATABASE {} TEMPLATE template0 ENCODING {}').format(
-                    sql.Identifier(name), sql.Literal(encoding)))
-        finally:
-            connection.close()
+        if create_database is not None:
+            create_database(name, encoding)
+        else:
+            connection = connect(target_url)
+            try:
+                connection.autocommit = True
+                with connection.cursor() as cursor:
+                    cursor.execute(sql.SQL('CREATE DATABASE {} TEMPLATE template0 ENCODING {}').format(
+                        sql.Identifier(name), sql.Literal(encoding)))
+            finally:
+                connection.close()
         params = parse_dsn(target_url)
         params['dbname'] = name
         from psycopg2.extensions import make_dsn

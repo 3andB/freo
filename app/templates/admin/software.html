@@ -1,7 +1,8 @@
 {% extends 'admin/base.html' %}
-{% block title %}Software and license · Freo{% endblock %}
+{% block title %}{{ 'Software' if hosting_summary else 'Software and license' }} · Freo{% endblock %}
 {% block admin_content %}
-<section class="admin-card software-settings"><h1>Software and license</h1>
+<section class="admin-card software-settings"><h1>{{ 'Software' if hosting_summary else 'Software and license' }}</h1>
+{% if not hosting_summary %}
 <section class="software-section" aria-labelledby="software-license-title">
 <h2 id="software-license-title">{{ 'Unlimited' if license.edition == 'unlimited' else 'Community' }}</h2>
 {% if license.edition == 'unlimited' %}<p>Licensed to {{ license.owner }}. Unlimited stations across all installations you own. Includes all future updates and works offline.</p>
@@ -12,6 +13,7 @@
 <form method="post" action="{{ url_for('distribution.activate_license') }}" enctype="multipart/form-data">
 <input type="hidden" name="csrf" value="{{ csrf_token() }}"><label>License file<input type="file" name="license" accept="application/json,.json" required></label><button type="submit">Activate license</button></form>
 </section>
+{% endif %}
 <section class="software-section" aria-labelledby="software-upgrades-title">
 <h2 id="software-upgrades-title">Software upgrades</h2><p>Upgrades pause broadcasting while Freo backs up and verifies recovery, migrates saved data and restarts services. Keep a copy of your backup key in a safe place.</p>
 {% for upgrade in upgrades %}<article class="software-upgrade"><h3>Freo {{ upgrade.version }}</h3><p>Status: {{ upgrade.state }}. {{ upgrade.message }}</p>

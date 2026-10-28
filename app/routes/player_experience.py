@@ -11,7 +11,7 @@ from app.extensions import db
 from app.models import (Station, StationPlayerSettings, StationPlayerAsset, PublicScheduleRevision,
                         SelectionDecision, ListenerVote, ListenerFeedbackEvent)
 from app.routes.web import station_or_404, admin_stations
-from app.services.admin_auth import admin_required, require_csrf, current_admin
+from app.services.admin_auth import admin_required, require_csrf, current_admin, can_access_station
 from app.services.stations import public_station_for
 from app.services import player as service
 from app.services.admin_media import audit
@@ -91,10 +91,15 @@ def settings(slug):
             if action in ('save','preview','publish','preview-player'):
                 new_config=service.validate_config(request.form)
                 new_config['custom_entries']=config['custom_entries']
+                new_config.update({key: value for key, value in config.items() if key.startswith('ad_')})
                 config=new_config
+            elif action=='save-polish':
+                from app.services.polish import validate_config as validate_polish
+                polish_values = validate_polish(request.form)
+                for key in ('merch_url', 'visual_mode'): config[key] = polish_values[key]
             elif action=='add-entry':
                 if len(config['custom_entries'])>=200:raise ValueError('Use at most 200 custom listings')
-                config['custom_entries']=[*config['custom_entries'],service.custom_entry(request.form)]
+                config['custom_entries']=[*config['custom_entries'],service.custom_entry(request.form, station)]
             elif action=='unpublish':
                 config['schedule_enabled']=False
                 config['auto_publish']=False
@@ -113,15 +118,18 @@ def settings(slug):
                 preview=service.build_schedule(station,config)
             else:
                 from app.routes.station_settings import decode_logo
-                for kind in service.ASSETS:
+                for kind in ('cover',):
                     upload=request.files.get(kind)
                     remove=request.form.get('remove_'+kind)=='yes'
                     if upload and upload.filename and remove:raise ValueError('Choose upload or remove for each image')
                     asset=StationPlayerAsset.query.filter_by(station_id=station.id,kind=kind).first()
                     if upload and upload.filename:
-                        images=decode_logo(upload, output_limit=900 if kind.endswith('_mobile') else 2000)
+                        from app.services.polish import sizes, png_size
+                        accepted = sizes(kind.removesuffix('_mobile'), kind.endswith('_mobile')) if kind.startswith('ad_') else None
+                        images=decode_logo(upload, output_limit=None if accepted else 2000, accepted_sizes=accepted)
                         asset=asset or StationPlayerAsset(station_id=station.id,kind=kind)
                         asset.image=images[0];asset.version=hashlib.sha256(images[0]).hexdigest()
+                        asset.width, asset.height = png_size(images[0])
                         db.session.add(asset)
                     elif remove and asset:db.session.delete(asset)
                 if not row:
@@ -135,7 +143,7 @@ def settings(slug):
                 audit('player_settings_'+action,user_id=current_admin().id,station_id=station.id,target_type='station',target_id=station.id,summary='Player settings revision '+str(row.revision))
                 db.session.commit()
                 flash('Schedule published.' if action=='publish' else 'Player settings saved.','success')
-                return redirect(url_for('.settings',slug=station.slug))
+                return redirect(url_for('station_settings.page',slug=station.slug) if action=='save-polish' else url_for('.settings',slug=station.slug))
         except (ValueError,TypeError,IntegrityError) as exc:
             db.session.rollback()
             error=str(exc) if not isinstance(exc,IntegrityError) else 'Settings changed. Reload and try again.'
@@ -148,9 +156,11 @@ def settings(slug):
                 config['schedule_views']=request.form.getlist('schedule_views')
                 config['socials']=[dict(platform=platform,url=request.form.get('social_'+platform,''),visible=request.form.get('visible_'+platform)=='yes') for platform in service.PLATFORMS]
 
+    from app.models import AdminUser, DJStationAssignment
+    assigned_djs = AdminUser.query.join(DJStationAssignment, DJStationAssignment.admin_user_id == AdminUser.id).filter(DJStationAssignment.station_id == station.id, AdminUser.active.is_(True)).all()
     publication=PublicScheduleRevision.query.filter_by(station_id=station.id).order_by(PublicScheduleRevision.id.desc()).first()
     return render_template('admin/player_settings.html',selected=station,stations=admin_stations(),page='player-settings',
-        config=config,revision=request.form.get('revision','0') if error else (station.player_settings.revision if station.player_settings else 0),
+        assigned_djs=assigned_djs,config=config,revision=request.form.get('revision','0') if error else (station.player_settings.revision if station.player_settings else 0),
         platforms=service.PLATFORMS,asset_kinds=service.ASSETS,error=error,preview=preview,publication=publication,
         **service.public_context(station)),400 if error else 200
 
@@ -160,7 +170,7 @@ def asset(slug,kind):
     if kind not in service.ASSETS:abort(404)
     try:station=public_station_for(slug)
     except ValueError:station=None
-    if not station or (not station.enabled and not current_admin()):abort(404)
+    if not station or (not station.enabled and not can_access_station(current_admin(), station)):abort(404)
     row=StationPlayerAsset.query.filter_by(station_id=station.id,kind=kind).first_or_404()
     response=Response(row.image,mimetype='image/png')
     response.set_etag(row.version)
@@ -195,6 +205,8 @@ def public_schedule(slug):
     begin=_wall_to_utc(datetime.combine(start,time()),zone)
     finish=_wall_to_utc(datetime.combine(start+timedelta(days=days),time()),zone)
     entries=[entry for entry in row.entries if service.timestamp(entry['start'])<finish and service.timestamp(entry['end'])>begin] if row else []
+    from app.services.polish import dj_profile
+    entries = [dict({k:v for k,v in entry.items() if k != 'dj_id'}, dj_profile=dj_profile(station, entry.get('dj_id'))) for entry in entries]
     response=jsonify(entries=entries,timezone=station.timezone,revision=row.id if row else None,
                      published_until=row.end_date.isoformat() if row else None)
     response.headers['Cache-Control']='public, max-age=30'

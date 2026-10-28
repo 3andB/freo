@@ -4,7 +4,33 @@ On 2026-09-17 this Ubuntu 24.04 installation was upgraded from Icecast `2.4.4-4b
 
 ## Packages and configuration
 
-The package source is the [official Xiph repository linked by Icecast](https://icecast.org/download/), specifically `https://download.opensuse.org/repositories/multimedia:/xiph/xUbuntu_24.04/`. `scripts/configure-icecast-repository.sh` configures its dedicated key and preferences on supported Ubuntu 24.04 amd64/arm64 machines. The expected signing fingerprint is `0E313DB7936B4E76E720065B77EC2301F23C6AA3`; APT verifies repository signatures and package hashes. Preferences select Icecast `2.5.*` and `libigloo0`, rejecting other packages from this repository. No other existing system package was upgraded.
+The package source is the [official Xiph repository linked by Icecast](https://icecast.org/download/), specifically `https://download.opensuse.org/repositories/multimedia:/xiph/xUbuntu_24.04/`. `scripts/configure-icecast-repository.sh` configures its dedicated key and preferences on supported Ubuntu 24.04 amd64/arm64 machines. The expected signing fingerprint is `0E313DB7936B4E76E720065B77EC2301F23C6AA3`; APT verifies repository signatures and package hashes. Preferences select Icecast `2.5.*`, `libigloo0`, and `libigloo-dev`, rejecting other packages from this repository. The historical September upgrade did not upgrade other existing system packages.
+
+## Hosted build dependencies
+
+Icecast 2.5.0's build requires the `igloo` pkg-config module at version **0.9.4 or newer**. A working packaged runtime does not prove compatible headers are installed. Ubuntu 24.04 provides `libigloo-dev 0.9.2-1.1build1`, depending on `libigloo0t64` at exactly that version. Xiph provides `libigloo-dev 0.9.5-1`, depending on `libigloo0` at exactly `0.9.5-1`. The former pin allowed only `libigloo0`; its catch-all rejection excluded Xiph's development package and APT selected Ubuntu's older headers.
+
+The corrected rule gives only `libigloo0 libigloo-dev` the existing Xiph priority of 700. The repository-wide priority stays -1. Shared hosted-enable/upgrade preparation refreshes the signed repository, checks both APT candidates against minimum 0.9.4 and requires a matching pair. It simulates the build-dependency transaction with `--no-remove` before installing the resolved pair, then verifies both the pkg-config module and the loaded shared library. It does not run a distribution upgrade, force held packages, request automatic needrestart service restarts, or publish hosted policy on dependency/build failure.
+
+Ubuntu's `libigloo0t64` declares `Replaces: libigloo0`: an earlier bad installation can leave 0.9.2 shared-library files even when dpkg reports Xiph's runtime package installed and pkg-config reports newer headers. `scripts/check-igloo.py` calls the actual shared library's version API and rejects that mismatch before a build. Do not force file overwrites or remove packages automatically; reconcile such an existing installation separately, or use a fresh disposable installation for acceptance.
+
+The minimum is a build requirement; `0.9.5-1` is not permanently hard-coded. Only the versions resolved for this transaction are exact-pinned, allowing future compatible package revisions. Customized pins or holds that prevent a compatible pair produce an actionable failure. Repository/network/install errors also fail closed; a failed APT installation may have installed some build dependencies but does not activate Icecast or hosting.
+
+Inspect a failed setup with:
+
+```sh
+apt-cache policy libigloo-dev libigloo0
+apt-mark showhold
+cat /etc/apt/preferences.d/freo-icecast
+pkg-config --modversion igloo
+dpkg-query -S '*/libigloo.so.0*'
+# From the verified source/runtime directory:
+python3 scripts/check-igloo.py
+```
+
+Resolve the reported repository, pin, hold, or dependency conflict and rerun `freo-admin hosting configure` with the approved plan. Dependency preparation is repeatable: an already compatible pair remains installed. The fresh installer still refuses existing Freo installations; use the upgrade path for populated hosts.
+
+This source fix requires a **new version** of the application archive and installation kit, rebuilt and signed with updated manifests/checksums and acceptance evidence. Update Studio's approved inventory to the new immutable files. Never edit or overwrite signed RC artifacts.
 
 The refreshed repository key has the same fingerprint as Icecast's independently hosted key, with its expiry extended to 2028. The copy at `icecast.org/multimedia-obs.key` was expired during this upgrade, so use the fingerprint-checked repository key.
 
@@ -32,4 +58,4 @@ For a rollback, schedule a stream interruption, suppress package-triggered resta
 
 Disable the managed Xiph source/preferences when staying on the old version, otherwise a later APT upgrade can select 2.5 again. Revert the corresponding repository templates before provisioning an old engine. Extra `libigloo0`/`librhash0` libraries can remain installed during rollback; avoid unrelated autoremove operations.
 
-The full installer has not been validated on a new VM; this record covers the existing installation upgrade.
+This historical record covers the existing installation upgrade. The libigloo correction and shared cold-start readiness budget passed a new private-candidate installation on a clean Ubuntu 24.04 filesystem, including two real Liquidsoap streams, hosting limits, suspension, maintenance, both reactivations and guest cold boot. The source repository retains the dated validation reports and evidence references. Acceptance of the new publisher-signed kit on the release VM remains required before publication.

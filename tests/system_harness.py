@@ -94,6 +94,10 @@ class SystemStack:
         monkeypatch.setattr(broadcast_status, '_sources', None)
         with self.app.app_context():
             db.create_all()
+            # Cold worker processes use production configuration and therefore
+            # require the same adopted installation settings as an installed VM.
+            from app.services.installation_settings import import_environment
+            import_environment()
             db.session.execute(db.text('PRAGMA journal_mode=WAL'))
             db.session.commit()
             self.seed()

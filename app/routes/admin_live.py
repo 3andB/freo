@@ -42,7 +42,9 @@ def page(slug):
         tracks = tracks.filter(or_(Track.title.ilike(pattern, escape='\\'), Track.artist.ilike(pattern, escape='\\'), Track.album.ilike(pattern, escape='\\')))
     slots=LiveCartSlot.query.filter_by(station_id=station.id).all()
     from app.services.live_mic import enabled as mic_enabled
-    return render_template('admin/live.html', stations=admin_stations(), selected=station,
+    from app.models import ListenerRequest
+    pending_requests = ListenerRequest.query.filter_by(station_id=station.id).filter(ListenerRequest.status.in_(('pending','eligible','queued'))).order_by(ListenerRequest.created_at).limit(5).all()
+    return render_template('admin/live.html', pending_requests=pending_requests, stations=admin_stations(), selected=station,
         page='live', mic_enabled=mic_enabled(), live=status(station), tracks=tracks.order_by(Track.title).limit(30).all(),
         blocks=EventBlock.query.filter_by(station_id=station.id,enabled=True).order_by(EventBlock.name).all(),
         categories=MediaCategory.query.filter_by(station_id=station.id,enabled=True).order_by(MediaCategory.name).all(),
@@ -70,7 +72,7 @@ def song_search(slug):
         query=query.filter(or_(Track.title.ilike(pattern,escape='\\'),Track.artist.ilike(pattern,escape='\\'),Track.album.ilike(pattern,escape='\\')))
     offset = max(0, min(request.args.get('offset', 0, type=int), 100000))
     tracks=query.order_by(Track.artist,Track.title,Track.id).offset(offset).limit(51).all()
-    songs = [{'uuid':x.uuid,'title':x.title,'artist':x.artist,'album':x.album,'bpm':x.bpm,'duration_ms':x.duration_ms,
+    songs = [{'uuid':x.uuid,'title':x.title,'artist':x.artist,'album':x.album,'bpm':x.bpm,'duration_ms':x.playback_duration_ms,
               'artwork': url_for('admin_media.album_artwork', slug=station.slug, album_id=x.catalog_album.id) if x.catalog_album and x.catalog_album.artwork_key else None} for x in tracks[:50]]
     return jsonify(dict(songs=songs, has_more=len(tracks)>50)) if request.args.get('paged') == '1' else jsonify(songs)
 
@@ -83,6 +85,8 @@ def action(slug, action):
     if action not in ('cue-list','deck','mixer','fire-cart','play-b','hold', 'resume','mode','takeover','fade','cue','clear-cue','start-cue','repeat','assign-cart','queue-track', 'queue-block', 'abort-block', 'skip'):
         abort(404)
     try:
+        from app.services.live_sessions import require_owner
+        require_owner(station, current_admin())
         if action in ('mixer','play-b','takeover','fade','cue','clear-cue','start-cue','repeat','skip') and station.automation and station.automation.operator_mode == 'DJ_BOOTH':
             raise ValueError('The deck controls have changed. Refresh the page to use the deck buttons.')
         if action in ('deck','mode','mixer','play-b','takeover','fade','skip','start-cue'):
@@ -92,9 +96,14 @@ def action(slug, action):
                 if mic.get('leaving') or (mic.get('desired') == 'LIVE' and mic.get('phase') != 'FAILED') or mic.get('phase') in ('FADING','LIVE','RETURNING'):
                     raise ValueError('End the live microphone broadcast before changing the program source.')
         if action=='cue-list':
+            if request.form.get('operation') == 'auto' and request.form.get('enabled') == 'true':
+                from app.services.live_sessions import claim
+                claim(station, current_admin(), request.form.get('record_show') == 'yes')
             from app.services.booth_cue import mutate
             message = mutate(station, current_admin(), request.form.to_dict())
         elif action=='deck':
+            from app.services.live_sessions import claim
+            claim(station, current_admin(), request.form.get('record_show') == 'yes')
             request_deck(station,current_admin(),request.form.get('deck'),request.form.get('operation'),request.form.get('identifier'),request.form.get('expected_decision_id',''),request.form.get('nonce'),fade_seconds=request.form.get('fade_seconds',3),play_on_load=request.form.get('play_on_load','false')=='true',cue_entry_id=request.form.get('cue_entry_id') or None)
             message='Deck command requested. The deck display updates when the station applies it.'
         elif action=='mixer':
@@ -103,7 +112,7 @@ def action(slug, action):
             fire_cart(station,current_admin(),request.form.get('role'),int(request.form.get('position','0')),request.form.get('nonce'));message='Cart queued. All carts are locked until playback finishes.'
         elif action=='play-b':
             play_cue_on_b(station,current_admin(),request.form.get('nonce'));message='Deck B start requested. Move the fader toward B to bring it on air.'
-        elif action=='mode':set_mode(station,current_admin(),request.form.get('mode'));message='DJ booth mode changed.'
+        elif action=='mode':set_mode(station,current_admin(),request.form.get('mode'),record=request.form.get('record_show') == 'yes');message='DJ booth mode changed.'
         elif action=='takeover':
             expected=request.form.get('expected_decision_id','')
             if expected and not expected.isdecimal():raise ValueError('Invalid current selection')

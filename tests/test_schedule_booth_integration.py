@@ -234,7 +234,7 @@ def test_operator_interrupt_does_not_complete_single_event(app, monkeypatch, act
             selection_method='timed_event')
         occurrence.selection_decision = decision
         occurrence.state = 'STARTED'
-        command = m.LiveControlCommand(station_id=station.id, action=action,
+        command = m.LiveControlCommand(station_id=station.id, admin_user_id=m.AdminUser.query.first().id, action=action,
             expected_decision=decision, status='pending', idempotency_key=str(uuid.uuid4()))
         db.session.add_all([decision, command])
         db.session.commit()

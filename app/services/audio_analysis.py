@@ -20,8 +20,8 @@ def analyze_song(song, storage=None, timeout=120):
         song.loudness_lufs, song.true_peak_db = loudness, peak
         starts=[float(x) for x in re.findall(r'silence_end: ([0-9.]+)',result.stderr)]
         ends=[float(x) for x in re.findall(r'silence_start: ([0-9.]+)',result.stderr)]
-        if song.cue_in_ms is None: song.cue_in_ms=round(starts[0]*1000) if starts and starts[0]<10 else 0
-        if song.cue_out_ms is None: song.cue_out_ms=round(ends[-1]*1000) if ends and ends[-1]>song.duration_ms/1000-10 else song.duration_ms
+        if not song.audio_edit_enabled and song.cue_in_ms is None: song.cue_in_ms=round(starts[0]*1000) if starts and starts[0]<10 else 0
+        if not song.audio_edit_enabled and song.cue_out_ms is None: song.cue_out_ms=round(ends[-1]*1000) if ends and ends[-1]>song.duration_ms/1000-10 else song.duration_ms
         try: song.bpm = _estimate_bpm(path,min(timeout,60))
         except (OSError,subprocess.SubprocessError,ValueError): pass
         try: song.waveform = waveform(path, song.duration_ms, timeout)
@@ -55,7 +55,8 @@ def _estimate_bpm(path,timeout):
 def extract_artwork(song, storage=None, timeout=30):
     storage=storage or LocalMediaStorage();source=storage.regular_file(song.station.slug,song.storage_key);key=uuid.uuid4().hex+'.jpg';target=storage.artwork_path(song.station.slug,key)
     try:
-        subprocess.run(['/usr/bin/ffmpeg','-nostdin','-hide_banner','-loglevel','error','-i',str(source),'-map','0:v:0','-frames:v','1','-vf','scale=800:800:force_original_aspect_ratio=decrease',str(target)],timeout=timeout,check=True)
+        from freo_ops.hosting_storage import run_media
+        run_media(['/usr/bin/ffmpeg','-nostdin','-hide_banner','-loglevel','error','-i',str(source),'-map','0:v:0','-frames:v','1','-vf','scale=800:800:force_original_aspect_ratio=decrease',str(target)],max_output_bytes=2*1024*1024,timeout=timeout,check=True)
         target.chmod(0o640);song.artwork_key=key
         if song.catalog_album and not song.catalog_album.artwork_key: song.catalog_album.artwork_key=key
     except (OSError,subprocess.SubprocessError): target.unlink(missing_ok=True)
@@ -70,8 +71,9 @@ def waveform(path, duration_ms, timeout=120):
     with tempfile.TemporaryDirectory(prefix='freo-waveform-') as directory:
         output = Path(directory) / 'levels.txt'
         filters = f'aresample=8000,asetnsamples=n={frame}:p=0,astats=metadata=1:reset=1,ametadata=mode=print:key=lavfi.astats.Overall.RMS_level:file={output}'
-        subprocess.run(['ffmpeg','-nostdin','-v','error','-threads','1','-i',str(path),'-vn','-af',filters,
-                        '-f','null','-'],capture_output=True,timeout=timeout,check=True)
+        from freo_ops.hosting_storage import run_media
+        run_media(['ffmpeg','-nostdin','-v','error','-threads','1','-i',str(path),'-vn','-af',filters,
+                        '-f','null','-'],max_output_bytes=1024*1024,capture_output=True,timeout=timeout,check=True)
         levels = re.findall(r'lavfi.astats.Overall.RMS_level=([^\s]+)', output.read_text())
         values = [10 ** (float(level)/20) if math.isfinite(float(level)) else 0 for level in levels[:601]]
         maximum = max(values, default=0) or 1

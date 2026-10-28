@@ -22,6 +22,83 @@ The six tabs cover audience, geography, confirmed music/artist plays, current li
 
 Retention: raw audience samples 14 days, minute buckets 90 days, hourly audience/geographic buckets five years, monthly/lifetime totals and geographic reach indefinitely. Expired presence rows are removed after one day. Storage snapshots last five years. Existing Central reporting retention and outbound payloads are unchanged.
 
+## V1 Phase 4: devices and observed listening sessions
+
+Phase 4 extends the same collector and dashboard. The Overview and Audience tabs
+show observed session starts, completed sessions, average completed duration,
+active connections and interrupted observations. Audience also shows duration and
+session-start trends, duration bands, and the shares of completed sessions lasting
+at least 1, 5, 15, 30 and 60 minutes. These percentages describe duration retention,
+not returning people. The existing audience, geography and resource metrics retain
+their definitions. Changing the map to player-page visitors does not change these
+stream-only session metrics.
+
+Devices are desktop, mobile, tablet and other/unknown. Browser/player families
+are inferred conservatively from the user agent Icecast already returns. A player
+such as VLC does not establish its device class. Missing, unrecognized and bot
+agents remain unknown; desktop-mode mobile browsers can be misclassified. Only
+fixed category names are retained, never raw user agents or addresses. There is no
+new cookie, fingerprint, external lookup or connection to a tracking platform.
+
+A session begins at its first collector observation. Duration is the sum of
+intervals between observations of that connection, up to 45 seconds apart; it is
+a sampled lower-bound estimate. A successful client list confirming absence ends
+the session at its last observation. Gaps longer than 45 seconds, source/server
+resets and abandoned station observations interrupt it. A brief failed list does
+not prove departure; a later sighting within 45 seconds can continue the session.
+Interrupted and ongoing sessions are excluded from completed averages, duration
+bands and retention denominators. A single sighting can complete with zero
+observed seconds. Connections entirely between polls can be missed. No unique
+person, exact connection duration or per-song completion is inferred.
+
+Session/device history begins with the Phase 4 collector, with no backfill from
+geographic session-hour totals. Existing connections begin a new measurement at
+that point. The dashboard and CSV expose this start, hourly resolution, effective
+boundaries and separate client-list coverage. Session reporting expands the
+selected period to overlapping UTC hours (the current hour ends at now), without
+fractionally allocating session counts. Starts and historical device shares use
+the first-observed hour; completed counts and their full observed duration use
+the last-observed hour. Consequently starts and completions are different cohorts.
+Rolling or non-whole-hour timezone windows and their previous-period comparisons
+can share an edge hour. Timeline groups remain bounded to approximately 180 points.
+
+Client-list coverage counts intervals bounded by two valid lists, no more than
+45 seconds apart. Across stations it uses station-seconds, including unobserved
+stations, and stops expecting observations after station archival. Empty known
+intervals have zero starts; unavailable intervals have gaps. Current device counts
+are unavailable if a required station has no fresh valid list. Archived stations
+have no current count. Previous averages/counts are summarized only when both
+periods have at least 80% client-list coverage; chart gaps are preserved.
+
+Migration `f406a1b2c3d4`, following `f316a1b2c3d4`, adds nullable temporary
+`stats_presence.listening` state and `stats_session_buckets` with anonymous hourly
+totals. Presence still expires after one day; the new aggregates last five years.
+The existing collector owns cleanup and commits checkpoints and rollups together.
+Browser/player categories are not combined with geographic location in the new
+aggregates. CSV gains labeled session summaries, categories, distributions,
+duration retention and trends; no individual connection records are exposed.
+
+Analytics remains administrator-only under the existing role policy, with DJs
+denied. Station responses and CSV are scoped to their station, including embedded
+channel metrics. There are no additional services, dependencies, configuration
+keys or filesystem permissions. Apply the migration before starting updated web
+and statistics workers. These changes have not been deployed to production.
+
+The Phase 4 reporting review also distinguishes unmeasured transfer intervals from
+known zero transfer. JSON keeps the original numeric `bytes` field and adds
+nullable `transfer_bytes` and `transfer_observed`; charts show gaps and CSV leaves
+unmeasured transfer cells blank. Reliability summaries count all matching incidents,
+while the table and export include the latest 100 and state that limit. CSV now
+includes audience, transfer, storage, music, feedback and reliability summaries,
+alongside the existing rows and the new session/device sections.
+
+Dashboard refreshes preserve table sorting and keyboard focus on column headings.
+Filter edits take effect when Apply is pressed; automatic refreshes and exports
+continue using the applied period. Responsive chart labels, duration share bars,
+compact mobile tables and the map's day/night palette make the same metrics
+readable across screen sizes. Location totals include all retained locations; the
+display/export location list is limited to the top 2,000 and announces truncation.
+
 Fresh provisioning applies migration `b185c9a027d6`, installs the pinned Python dependency, and calls `scripts/install-statistics.sh` after migrations. For an existing installation, the update order is dependencies → database backup → `flask db upgrade` → statistics installer → restart the web service. No playout restart is needed. `FREO_GEOIP_DATABASE` and `FREO_STATS_STATE_DIR` have defaults under `/var/lib/freo`; customized paths also require matching service filesystem permissions.
 
 Useful maintenance commands, from `/opt/freo`:

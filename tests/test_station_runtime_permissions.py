@@ -49,6 +49,10 @@ def test_render_permissions_under_provisioner_umask(station_app, tmp_path, monke
     assert stat.S_IMODE((snippets / '1.conf').stat().st_mode) == 0o644
     assert stat.S_IMODE(secrets.stat().st_mode) == 0o700
     assert stat.S_IMODE((secrets / '1.json').stat().st_mode) == 0o600
-    validation = runtime.run_checked.call_args_list[0].args[0]
+    commands = [call.args[0] for call in runtime.run_checked.call_args_list]
+    storage = next(command for command in commands if any('recording-storage.py' in arg for arg in command))
+    validation = next(command for command in commands if '/usr/bin/liquidsoap' in command)
+    assert commands.index(storage) < commands.index(validation)
+    assert '--apply-services' in storage
     assert validation[:6] == ['/usr/sbin/runuser', '-u', 'freo-playout', '--',
                               '/usr/bin/liquidsoap', '--check']

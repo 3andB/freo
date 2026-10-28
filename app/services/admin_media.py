@@ -1,4 +1,6 @@
 """Station-scoped browser media operations; filesystem writes stay in the ingest worker."""
+from freo_ops.hosting_storage import write as hosting_write
+
 from app.services.installation_settings import get_setting
 from app.services.availability import tracks_for
 import os
@@ -39,7 +41,7 @@ def audit(action, *, user_id=None, station_id=None, target_type='track', target_
     return event
 
 
-def stage_upload(station, user, file, *, kind='ingest', imaging_type=None, imaging_name=None, cart_code=None, import_metadata=None):
+def stage_upload(station, user, file, *, kind='ingest', imaging_type=None, imaging_name=None, cart_code=None, import_metadata=None, commit=True):
     if kind not in ('ingest', 'imaging'):
         raise MediaValidationError('Unsupported upload kind')
     if kind == 'imaging':
@@ -63,7 +65,7 @@ def stage_upload(station, user, file, *, kind='ingest', imaging_type=None, imagi
                 total += len(chunk)
                 if total > get_setting('MAX_MEDIA_UPLOAD_BYTES'):
                     raise MediaValidationError('File exceeds the web upload size limit')
-                output.write(chunk)
+                hosting_write(output, chunk)
             output.flush()
             os.fsync(output.fileno())
         if total == 0:
@@ -74,7 +76,10 @@ def stage_upload(station, user, file, *, kind='ingest', imaging_type=None, imagi
         db.session.add(job)
         audit('imaging_upload_started' if kind == 'imaging' else 'media_upload_started', user_id=user.id, station_id=station.id,
               target_type='ingest_job', target_id=job_id, summary='Upload staged for validation')
-        db.session.commit()
+        if commit:
+            db.session.commit()
+        else:
+            db.session.flush()
         return job
     except Exception:
         db.session.rollback()

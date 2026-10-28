@@ -30,11 +30,20 @@ def set_hold(station, user, held):
           summary='Automation refill held' if held else 'Automation refill resumed')
     db.session.commit()
 
-def set_mode(station,user,mode):
+def set_mode(station,user,mode,record=False):
     mode=(mode or '').upper()
     if mode not in ('AUTO','DJ_BOOTH'):raise ValueError('Invalid booth mode')
     state=db.session.get(AutomationState,station.id)
     if state is None or not station.enabled or station.desired_state!='running':raise ValueError('Station playout is unavailable')
+    from app.services.live_sessions import claim, require_owner
+    require_owner(station, user)
+    if mode == 'DJ_BOOTH':
+        claim(station, user, record)
+    elif mode == 'AUTO':
+        from app.services.live_sessions import active_session
+        show = active_session(station)
+        if show:
+            show.end_requested = True
     changed = state.operator_mode != mode
     if state.operator_mode != mode and mode == 'AUTO':
         return return_to_schedule(station,user=user)
@@ -356,13 +365,14 @@ def request_abort_block(station, user, execution_id):
 
 
 def safe_item(row):
+    from app.services.track_audio import decision_duration_ms
     source = 'CART' if row.playback_bus == 'CART' else 'BLOCK' if row.selection_method == 'event_block' else 'EVENT' if row.selection_method == 'timed_event' else 'CUE' if row.selection_method == 'cue_auto' else 'MANUAL' if row.admin_user_id else 'AUTO'
     started_at = row.started_at.replace(tzinfo=row.started_at.tzinfo or timezone.utc).isoformat() if row.started_at else None
     if row.track:
         return dict(decision_id=row.id, kind='track', title=row.track.title,
                     artist=row.track.artist,album=row.track.album,category=row.category.name if row.category else None,source=source,
                     started_at=started_at,
-                    duration_ms=row.track.duration_ms, uuid=row.track.uuid,
+                    duration_ms=decision_duration_ms(row), uuid=row.track.uuid,
                     bpm=row.track.bpm, genre=row.track.genre,
                     year=row.track.release_year, loudness_lufs=row.track.loudness_lufs,
                     album_id=row.track.album_id, bitrate_kbps=row.track.bitrate_kbps,
@@ -374,6 +384,10 @@ def safe_item(row):
                     source=source,
                     started_at=started_at,
                     duration_ms=asset.duration_ms, uuid=asset.uuid)
+    if row.selection_method == 'bulletin' and row.performance_snapshot:
+        return dict(decision_id=row.id, kind='bulletin', title=row.performance_snapshot['title'],
+                    artist='', source='EVENT', started_at=started_at,
+                    duration_ms=row.performance_snapshot.get('duration_ms'), uuid=None)
     return dict(decision_id=row.id, kind='unavailable', title='Unavailable item', artist='', source='UNKNOWN')
 
 
@@ -436,7 +450,12 @@ def status(station):
     broadcast_fresh=bool(snapshot and snapshot.broadcast_observed_at and (datetime.now(timezone.utc)-snapshot.broadcast_observed_at.replace(tzinfo=snapshot.broadcast_observed_at.tzinfo or timezone.utc)).total_seconds()<15)
     mode_notice=AuditEvent.query.filter_by(station_id=station.id,action='live_auto_return').order_by(AuditEvent.id.desc()).first()
     from app.services.booth_cue import describe
-    return dict(cue_list=describe(station, snapshot_mixer), mode_notice=dict(id=mode_notice.id,message=mode_notice.summary) if mode_notice else None,station=station.slug, automation='HELD' if state and state.hold and not (snapshot_mixer or {}).get('auto_standby') else 'RUNNING' if state and state.enabled else 'DISABLED',mode=state.operator_mode if state else 'AUTO',cue=cue,
+    from app.services.live_sessions import describe as describe_show
+    from app.services.relay import describe as relay_status
+    relay = relay_status(station)
+    if relay['source'] == 'relay':
+        current = dict(kind='relay', title=relay['title'] or 'Upstream relay', artist=relay['artist'], decision_id=None)
+    return dict(relay=relay, show=describe_show(station), cue_list=describe(station, snapshot_mixer), mode_notice=dict(id=mode_notice.id,message=mode_notice.summary) if mode_notice else None,station=station.slug, automation='HELD' if state and state.hold and not (snapshot_mixer or {}).get('auto_standby') else 'RUNNING' if state and state.enabled else 'DISABLED',mode=state.operator_mode if state else 'AUTO',cue=cue,
         current=current, mixer=snapshot_mixer, deck_command=(dict(id=deck_command.id,status=deck_command.status,deck=deck_command.deck,operation=deck_command.action.removeprefix('DECK_'),error=deck_command.error_code) if deck_command else None), last_known_current=last_known, observation_fresh=reliable, observed_at=snapshot.observed_at.isoformat() if snapshot else None, queue=queue, unknown_queue_items=unknown,
         skip_command=dict(id=skip_command.id,status=skip_command.status,expected_decision_id=skip_command.expected_decision_id,error=skip_command.error_code) if skip_command else None,
         cart=dict(locked=not reliable or bool(cart_id or cart_pending),decision_id=cart_row.id if cart_row else None,role=cart_row.cart_role if cart_row else None,position=cart_row.cart_position if cart_row else None,state=('playing' if cart_id and cart_row and cart_row.started_at else 'queued') if cart_row else 'idle'),
@@ -471,7 +490,7 @@ def deck_item(station, mixer, deck):
     return row if row and row.station_id == station.id else None
 
 
-def request_deck(station, user, deck, action, identifier, expected, nonce, fade_seconds=3, play_on_load=False, cue_entry_id=None):
+def request_deck(station, user, deck, action, identifier, expected, nonce, fade_seconds=3, play_on_load=False, cue_entry_id=None, listener_request=None):
     if deck not in ('A','B') or action not in ('LOAD','PLAY','PAUSE','CLEAR','FADE','REPEAT'):
         raise ValueError('Choose a valid deck button')
     try:
@@ -512,6 +531,12 @@ def request_deck(station, user, deck, action, identifier, expected, nonce, fade_
             raise ValueError('The song audio is unavailable') from error
         target=SelectionDecision(station_id=station.id,track=track,playback_bus=deck,selection_method='manual_track',admin_user_id=user.id,idempotency_key=str(uuid.uuid4()),status='selected',reason='deck_'+action.lower())
         db.session.add(target);db.session.flush()
+        if listener_request is not None:
+            from app.services.listener_requests import bind as bind_request, validate_decision
+            if action != 'LOAD' or play_on_load or mixer.get(deck.lower()+'_playing'):
+                raise ValueError('Load a listener request on a stopped deck first')
+            bind_request(listener_request, target, datetime.now(timezone.utc))
+            validate_decision(target)
         from app.services.booth_cue import bind
         bind(station, target, cue_entry_id if action == 'LOAD' else None, current if action == 'REPEAT' else None)
     from app.services.booth_cue import disarm

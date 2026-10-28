@@ -8,6 +8,7 @@ TimeoutStartSec=600
 User=root
 WorkingDirectory=/opt/freo
 EnvironmentFile=/opt/freo/.env
+ExecCondition=/opt/freo/venv/bin/python -m freo_ops.provision_pending
 ExecStart=/opt/freo/venv/bin/flask --app wsgi:app station process-pending
 UMask=0077
 PrivateTmp=true

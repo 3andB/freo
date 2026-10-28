@@ -6,7 +6,7 @@ import stat
 from sqlalchemy import func, text
 from flask import current_app
 from app.extensions import db
-from app.models import Station, Track, ImagingAsset, MusicArtwork, StationLogo, StationPlayerAsset, StorageSnapshot
+from app.models import Station, Track, ImagingAsset, MusicArtwork, StationLogo, StationPlayerAsset, StorageSnapshot, ShowRecording
 from app.services.admin_media import upload_root
 
 
@@ -39,18 +39,18 @@ def scan(directory, referenced=None):
 def inventory(now):
     root = Path(current_app.config['FREO_MEDIA_ROOT'] or '/var/lib/freo/media')
     at = now // 3600 * 3600
-    totals = dict(music=0, imaging=0, artwork=0, logos=0, player_images=0, staging=0,
+    totals = dict(recordings=0, music=0, imaging=0, artwork=0, logos=0, player_images=0, staging=0,
                   retained=0, missing=0, errors=0, files=0, audio_duration=0, library_count=0)
     for station in Station.query.order_by(Station.id):
         data = {key: 0 for key in totals}
         tracks = Track.query.filter_by(station_id=station.id, deleted_at=None).all()
         assets = ImagingAsset.query.filter_by(station_id=station.id).all()
-        refs = dict(originals={t.storage_key for t in tracks}, imaging={a.storage_key for a in assets}, previews={t.preview_key for t in tracks if t.preview_key}, artwork=None, staging=None)
+        refs = dict(recordings={r.storage_key for r in ShowRecording.query.filter_by(station_id=station.id, deleted_at=None).filter(ShowRecording.status.in_(('complete','partial','recording','finalizing')))}, originals={t.storage_key for t in tracks}, imaging={a.storage_key for a in assets}, previews={t.preview_key for t in tracks if t.preview_key}, artwork=None, staging=None)
         base = root / station.slug
         if root.is_symlink() or base.is_symlink():
             data['errors'] += 1
         else:
-            for directory, category in [('originals', 'music'), ('previews', 'music'), ('imaging', 'imaging'), ('artwork', 'artwork'), ('staging', 'staging')]:
+            for directory, category in [('recordings', 'recordings'), ('originals', 'music'), ('previews', 'music'), ('imaging', 'imaging'), ('artwork', 'artwork'), ('staging', 'staging')]:
                 size, count, retained, errors, found = scan(base / directory, refs[directory])
                 data[category] += size
                 data['files'] += count
@@ -67,7 +67,7 @@ def inventory(now):
                     data['retained'] += int(size)
         data['audio_duration'] = sum(t.duration_ms for t in tracks)
         data['library_count'] = len(tracks)
-        data['total'] = sum(data[k] for k in ('music', 'imaging', 'artwork', 'logos', 'player_images'))
+        data['total'] = sum(data[k] for k in ('music', 'imaging', 'artwork', 'logos', 'player_images', 'recordings'))
         data['archived'] = bool(station.deleted_at)
         for key in totals:
             totals[key] += data[key]
@@ -76,7 +76,7 @@ def inventory(now):
             row = StorageSnapshot(scope=station.id, at=at)
             db.session.add(row)
         row.data = data
-    totals['total'] = sum(totals[k] for k in ('music', 'imaging', 'artwork', 'logos', 'player_images'))
+    totals['total'] = sum(totals[k] for k in ('music', 'imaging', 'artwork', 'logos', 'player_images', 'recordings'))
     uploads = scan(upload_root())
     totals['staging'] += uploads[0]
     totals['errors'] += uploads[3]

@@ -43,3 +43,22 @@ def isolate_postgres(request, monkeypatch):
         with disposable_database() as url:
             monkeypatch.setenv('FREO_TEST_POSTGRES_URL', url)
             yield
+
+
+@pytest.fixture(autouse=True)
+def isolated_hosting_policy(tmp_path, monkeypatch):
+    """Unit/regression suites never inherit the test host's real commercial policy."""
+    from freo_ops import hosting
+    monkeypatch.setattr(hosting, 'CONFIG', tmp_path / 'absent-hosting.json')
+    monkeypatch.setattr(hosting, 'STATE', tmp_path / 'absent-hosting-authority')
+
+
+@pytest.fixture(autouse=True)
+def isolated_media_storage(tmp_path, monkeypatch):
+    """Ordinary fixtures cannot create files in the installed media inventory."""
+    from app.config import BaseConfig
+    for key, name in (('FREO_MEDIA_ROOT', 'media'), ('FREO_UPLOAD_ROOT', 'uploads'),
+                      ('FREO_PRODUCTION_ROOT', 'production'), ('FREO_BULLETIN_ROOT', 'bulletins')):
+        value = str(tmp_path / name)
+        monkeypatch.setenv(key, value)
+        monkeypatch.setattr(BaseConfig, key, value, raising=False)

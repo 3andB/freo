@@ -22,7 +22,8 @@ def test_import_and_edit_catalog(booth, request):
     import tempfile,shutil
     browser_tmp=Path('/tmp/snap-private-tmp/snap.chromium/tmp')
     browser_binary = Path(os.environ.get('FREO_TEST_CHROME', '/usr/bin/chromium-browser'))
-    snap_browser = browser_tmp.exists() and (str(browser_binary).startswith('/snap/') or browser_binary == Path('/usr/bin/chromium-browser'))
+    # Launching the native binary under /snap/ does not enter Snap's namespace.
+    snap_browser = browser_tmp.exists() and browser_binary in (Path('/snap/bin/chromium'), Path('/usr/bin/chromium-browser'))
     share=Path(tempfile.mkdtemp(prefix='freo-catalog-',dir=browser_tmp if snap_browser else tmp_path))
     request.addfinalizer(lambda:shutil.rmtree(share))
     shutil.copy(audio,share/audio.name);shutil.copy(image,share/image.name)

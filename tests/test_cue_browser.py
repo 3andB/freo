@@ -67,8 +67,23 @@ def test_cue_auto_toggle_search_and_keyboard_reorder(booth):
         wait.until(lambda d: len(rows()) == count)
         wait_text(driver, '#cue-save-state', 'Saved')
     old_first = rows()[0].get_attribute('data-cue-entry')
+    # A poll can show the new order before the edit request has returned.
+    # Hold that response so the next control cannot race a pending save.
+    driver.execute_script('''
+      const original = window.fetch;
+      window.fetch = async (...args) => {
+        const response = await original(...args);
+        if (String(args[0]).endsWith('/cue-list') && args[1]?.body?.get('operation') === 'move')
+          await new Promise(resolve => {window.releaseCueMove = resolve;});
+        return response;
+      };
+    ''')
     rows()[1].find_element(By.CSS_SELECTOR, '.cue-handle').send_keys(Keys.ALT, Keys.ARROW_UP, Keys.NULL)
     wait.until(lambda d: rows()[0].get_attribute('data-cue-entry') != old_first)
+    assert not driver.find_element(By.ID, 'cue-auto').is_enabled()
+    driver.execute_script('window.releaseCueMove()')
+    wait_text(driver, '#cue-save-state', 'Saved')
+    wait.until(lambda d: d.find_element(By.ID, 'cue-auto').is_enabled())
     driver.find_element(By.ID, 'cue-auto').click()
     wait.until(lambda d: d.find_element(By.ID, 'cue-auto').get_attribute('aria-pressed') == 'true')
     driver.refresh()

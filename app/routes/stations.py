@@ -26,7 +26,7 @@ def observed_status(station):
         if any(item.get('listenurl', '').endswith('/' + slug) for item in sources):
             mount = 'online'
             with _OPENER.open('http://127.0.0.1:8001/' + slug, timeout=3) as response:
-                if response.status == 200 and response.headers.get_content_type() == 'audio/mpeg' and response.read(512):
+                if response.status == 200 and response.headers.get_content_type() in ('audio/mpeg','audio/aac','audio/aacp') and response.read(512):
                     stream = 'online'
     except (OSError, ValueError, KeyError):
         pass

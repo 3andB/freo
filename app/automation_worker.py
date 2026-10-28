@@ -1,4 +1,6 @@
 """Non-root, single-process refiller with per-station error isolation."""
+from app.services.track_audio import decision_duration_ms, prepare_snapshot
+
 import logging
 import os
 from pathlib import Path
@@ -11,7 +13,7 @@ from flask import current_app
 from app import create_app
 from app.extensions import db
 from app.models import AuditEvent, AutomationHeartbeat, AutomationState, EventBlockExecution, EventBlockItemExecution, LiveControlCommand, LiveQueueSnapshot, SelectionDecision, Station, TimedEventOccurrence
-from app.services.automation import playback_started, select_next
+from app.services.automation import ensure_station_states, playback_started, select_next
 from app.services.playout_queue import push_decision, queue_depth, queued_ids, queued_order, active_ids, socket_identity, request_decision_id, skip_current, interrupt_for_event
 from app.services.schedule import resolve, usable_clock
 
@@ -129,10 +131,15 @@ def refill_station(slug, reader, target_depth=2):
         if decision is None:
             block = EventBlockExecution.query.join(EventBlockExecution.station).filter(
                 Station.slug == slug, EventBlockExecution.state.in_(('PENDING','QUEUED','STARTED'))).first()
-            if block is None:
+            pending_leader = SelectionDecision.query.join(SelectionDecision.station).filter(
+                Station.slug == slug, SelectionDecision.selection_method == 'playlist_leader',
+                SelectionDecision.status.in_(('selected','submitting','queued'))).first()
+            if block is None and pending_leader is None:
                 reader.starved_until[slug] = time.monotonic() + 30
             break
         try:
+            prepare_snapshot(decision)
+            db.session.commit()
             request_id = push_decision(decision)
             decision.status = 'queued'
             decision.liquidsoap_request_id = request_id
@@ -144,13 +151,60 @@ def refill_station(slug, reader, target_depth=2):
                         slug, decision.rotation_id, decision.slot_id, decision.category_id,
                         decision.track_id, decision.imaging_asset_id, decision.selection_method,
                         decision.relaxation, decision.candidate_count)
-        except Exception:
+        except Exception as error:
+            from app.services.listener_requests import RequestIneligible
             decision.status = 'failed'
-            decision.reason = 'queue_failed'
+            decision.reason = 'listener_request_cancelled' if isinstance(error, RequestIneligible) else 'queue_failed'
             db.session.commit()
+            if isinstance(error, RequestIneligible):
+                continue
             logger.exception('Queue request failed for station=%s decision=%s', slug, decision.id)
             break
     return added
+
+
+def _reconcile_untracked_leaders(slug, identity, live, complete_inventory):
+    """Recover the select/push/commit crash window under the existing worker lease."""
+    rows = SelectionDecision.query.join(SelectionDecision.station).filter(
+        Station.slug == slug, SelectionDecision.selection_method == 'playlist_leader',
+        SelectionDecision.liquidsoap_request_id.is_(None),
+        db.or_(SelectionDecision.status.in_(('selected', 'submitting')),
+               db.and_(SelectionDecision.status == 'failed', SelectionDecision.reason == 'queue_failed'))).all()
+    missing_by_station = current_app.extensions.setdefault('playout_untracked_leaders', {})
+    previous = missing_by_station.get(slug, {})
+    missing = {}
+    changed = 0
+    if rows:
+        # Socket errors must propagate: an incomplete annotation lookup cannot
+        # prove that a push failed. Never fabricate a confirmed start here.
+        requests = {request_decision_id(slug, rid): rid for rid in live}
+        observed = time.monotonic()
+        for row in rows:
+            if row.id in requests:
+                row.liquidsoap_request_id = requests[row.id]
+                row.socket_identity = identity
+                row.status, row.reason = 'queued', ''
+                changed += 1
+            else:
+                # Hold uncertain queue failures too, allowing a short request's
+                # delayed START callback to arrive before retrying its leader.
+                if row.status == 'failed':
+                    row.status, row.reason = 'selected', 'leader_submission_uncertain'
+                    changed += 1
+                if complete_inventory:
+                    since = previous.get(row.id, observed)
+                    if observed - since >= 10:
+                        row.status, row.reason = 'failed', 'leader_request_not_submitted'
+                        changed += 1
+                    else:
+                        missing[row.id] = since
+    if missing:
+        missing_by_station[slug] = missing
+    else:
+        missing_by_station.pop(slug, None)
+    if changed:
+        db.session.commit()
+    return changed
 
 
 def reconcile_requests(slug):
@@ -168,6 +222,7 @@ def reconcile_requests(slug):
         live |= set(channel_queue(slug, 'A')) | set(channel_queue(slug, 'B')) | set(channel_queue(slug, 'CART'))
     except (OSError, RuntimeError, ValueError):
         complete_inventory = False
+    recovered_leaders = _reconcile_untracked_leaders(slug, identity, live, complete_inventory)
     # A confirmed start remains airplay history, but an engine restart cannot
     # leave its occurrence or sequence permanently marked Playing.
     interrupted = SelectionDecision.query.join(SelectionDecision.station).outerjoin(
@@ -186,7 +241,7 @@ def reconcile_requests(slug):
         # absence from an incomplete socket inventory.
         if not reason and complete_inventory and audio and decision.started_at and decision.liquidsoap_request_id not in live:
             began = decision.started_at.replace(tzinfo=decision.started_at.tzinfo or timezone.utc)
-            if now >= began + timedelta(milliseconds=audio.duration_ms,seconds=120):
+            if now >= began + timedelta(milliseconds=decision_duration_ms(decision),seconds=120):
                 reason = 'missing_end_confirmation'
         if not reason: continue
         item = decision.block_item_execution
@@ -239,7 +294,9 @@ def reconcile_requests(slug):
                 if occurrence and occurrence.state == 'QUEUED':
                     occurrence.state, occurrence.failure_reason = 'FAILED', row.reason
         db.session.commit()
-    return changed
+    from app.services.listener_requests import reconcile_engine
+    reconcile_engine(station, identity, live, complete_inventory)
+    return changed + recovered_leaders
 
 
 def process_block(station, reader, now=None):
@@ -293,7 +350,7 @@ def process_block(station, reader, now=None):
     if pending and not queued:
         item = prepare_next(execution, now)
         if item:
-            decision = item.selection_decision; decision.status = 'submitting'; db.session.commit()
+            decision = item.selection_decision; prepare_snapshot(decision); decision.status = 'submitting'; db.session.commit()
             try:
                 request_id = push_decision(decision)
                 decision.status = 'queued'; decision.liquidsoap_request_id = request_id; decision.socket_identity = socket_identity(station.slug)
@@ -311,7 +368,7 @@ def process_block(station, reader, now=None):
     # Timed executions require END evidence. A missing END eventually fails
     # visibly; elapsed duration alone cannot prove a paused song completed.
     if started and not pending and not queued and all(i.state in ('COMPLETED','SKIPPED','FAILED') or i is started for i in execution.items):
-        duration_ms = (started.track or started.imaging_asset).duration_ms
+        duration_ms = decision_duration_ms(started.selection_decision)
         began = started.started_at.replace(tzinfo=started.started_at.tzinfo or timezone.utc)
         active = active_ids(station.slug)
         if now >= began + timedelta(milliseconds=max(0, duration_ms-500),seconds=120 if execution.timed_event_occurrence else 0) and started.selection_decision.liquidsoap_request_id not in active:
@@ -352,6 +409,9 @@ def process_manual(station, reader):
     pending = SelectionDecision.query.filter_by(station_id=station.id, status='selected').filter(
         SelectionDecision.admin_user_id.isnot(None),~SelectionDecision.id.in_(takeover_targets)).order_by(SelectionDecision.id).all()
     for row in pending:
+        from app.services.live_sessions import authorized_intent
+        if not authorized_intent(station, row.operator):
+            row.status='failed'; row.reason='permission_revoked'; db.session.commit(); continue
         if station.automation.operator_mode == 'DJ_BOOTH' and row.playback_bus != 'CART':
             row.status='failed';row.reason='dj_decks_only';db.session.commit();continue
         if row.playback_bus in ('B','CART'):
@@ -367,6 +427,7 @@ def process_manual(station, reader):
                 continue
         if queue_depth(slug) >= 20:
             break
+        prepare_snapshot(row)
         row.status = 'submitting'
         db.session.commit()
         try:
@@ -383,6 +444,9 @@ def process_manual(station, reader):
             logger.exception('Manual queue failed station=%s decision=%s', slug, row.id)
     commands = LiveControlCommand.query.filter_by(station_id=station.id, status='pending').order_by(LiveControlCommand.id).all()
     for command in commands:
+        from app.services.live_sessions import authorized_command
+        if not authorized_command(station, command):
+            command.status='failed'; command.error_code='permission_revoked'; db.session.commit(); continue
         current = command.expected_decision
         try:
             if command.action.startswith('DECK_'):
@@ -411,6 +475,7 @@ def process_manual(station, reader):
                 else:
                     # Persist the in-flight target before the destructive skip.
                     # A failed submit is terminal so a retry cannot skip a second item.
+                    prepare_snapshot(target)
                     target.status='submitting'
                     db.session.commit()
                     if not idle_start:
@@ -487,6 +552,11 @@ def process_deck_command(station, command, identity, reader=None):
             not (cue and cue.auto_enabled) and not mixer.get('cart_id') and not mixer.get('auto_standby')):
         # Selection and decoding happen while the outgoing song still plays.
         stop_target = prepare_auto_successor(station, reader, mixer)
+    if operation in ('LOAD', 'REPEAT', 'PLAY'):
+        from app.services.listener_requests import validate_decision
+        request_target = command.target_decision if operation != 'PLAY' else db.session.get(SelectionDecision, current)
+        if request_target and request_target.listener_request_id:
+            validate_decision(request_target)
     if operation in ('LOAD', 'CLEAR', 'FADE'):
         interrupt(station, current)
     if operation == 'PLAY' or (operation == 'LOAD' and command.play_on_load):
@@ -499,6 +569,7 @@ def process_deck_command(station, command, identity, reader=None):
             raise ValueError('Prepared song is no longer available')
         # Persist intent before submitting. An uncertain socket result is terminal;
         # a browser retry cannot apply the same destructive operation twice.
+        prepare_snapshot(target)
         target.status='submitting';db.session.commit()
         # Hold the same lock as Cue edits through the socket operation. A New,
         # Load, removal or disable committed before this point cancels the take.
@@ -564,9 +635,15 @@ def observe_queue(station, error_code=None):
             candidates = [row for row in rows if row.liquidsoap_request_id in active]
             current = max(candidates, key=lambda row: (row.status == 'started', row.id), default=None)
             snapshot.current_decision_id = current.id if current else None
+        from app.services.bulletins import current_body
+        bulletin_active, bulletin_decision = current_body(station, identity)
+        if bulletin_active:
+            snapshot.current_decision_id = bulletin_decision
         snapshot.queued_decision_ids = [by_request[rid] for rid in ordered if rid in by_request]
         snapshot.unknown_count = len([rid for rid in set(ordered) | active if rid not in by_request])
     db.session.commit()
+    from app.services.live_sessions import sync as sync_show
+    sync_show(station)
 
 
 def _queue_event(occurrence, slug, now):
@@ -576,6 +653,7 @@ def _queue_event(occurrence, slug, now):
         occurrence.queued_at = occurrence.queued_at or now
         db.session.commit()
         return
+    prepare_snapshot(decision)
     decision.status = 'submitting'
     db.session.commit()
     request_id = push_decision(decision)
@@ -658,6 +736,7 @@ def process_dj_events(station, reader, now=None, allow_new=True):
         if aware(occurrence.scheduled_for_utc) > now: break
         if now > aware(occurrence.deadline_at_utc) and not occurrence.boundary_reserved:
             occurrence.state='MISSED';occurrence.failure_reason='dj_control';continue
+        if occurrence.event.content_type == 'BULLETIN': continue
         if not occurrence.event.interrupt_dj:
             occurrence.failure_reason='waiting_for_dj';continue
         if occurrence.event.recurrence_type != 'ONE_TIME' and occurrence.event.missed_policy == 'SKIP' and not occurrence.boundary_reserved and TimedEventOccurrence.query.filter_by(timed_event_id=occurrence.timed_event_id).filter(TimedEventOccurrence.scheduled_for_utc > occurrence.scheduled_for_utc,TimedEventOccurrence.scheduled_for_utc <= now,TimedEventOccurrence.state.in_(('PENDING','READY','QUEUED','STARTED','COMPLETED'))).first():
@@ -709,8 +788,22 @@ def process_timed_events(station, reader, now=None):
     if active_execution(station.id) or active_event:
         future=[row for row in rows if row.state in ('PENDING','READY')]
         return min(((row.scheduled_for_utc.replace(tzinfo=row.scheduled_for_utc.tzinfo or timezone.utc)-now).total_seconds() for row in future),default=None)
+    future_station_locked = False
     for candidate in rows:
-        occurrence = TimedEventOccurrence.query.filter_by(id=candidate.id).with_for_update().first()
+        # Unprepared future occurrences cannot play or expire on this tick.
+        # Retain the station-before-occurrence lock order for concurrent editors,
+        # without locking/reloading the entire generated recurrence horizon.
+        candidate_at = candidate.scheduled_for_utc.replace(
+            tzinfo=candidate.scheduled_for_utc.tzinfo or timezone.utc)
+        if candidate.state == 'PENDING' and candidate_at > now + timedelta(seconds=60) and not candidate.boundary_reserved:
+            if not future_station_locked:
+                db.session.query(Station.id).filter_by(id=station.id).with_for_update().first()
+                future_station_locked = True
+            continue
+        # Event edits lock the station before its occurrences. Keep that order
+        # through the scan and the selector that follows, including future rows.
+        db.session.query(Station.id).filter_by(id=station.id).with_for_update().first()
+        occurrence = TimedEventOccurrence.query.filter_by(id=candidate.id).with_for_update().populate_existing().first()
         if occurrence is None or occurrence.state not in ('PENDING','READY','QUEUED'):
             continue
         if occurrence.block_execution and occurrence.block_execution.state in ('PENDING','QUEUED','STARTED','COMPLETED'):
@@ -720,6 +813,7 @@ def process_timed_events(station, reader, now=None):
             occurrence.queued_at = occurrence.queued_at or now
             db.session.commit()
         event = occurrence.event
+        if event.content_type == 'BULLETIN': continue
         if event.recurrence_type != 'ONE_TIME' and event.missed_policy == 'SKIP' and not occurrence.boundary_reserved and any(other.timed_event_id == event.id and other.scheduled_for_utc > occurrence.scheduled_for_utc and other.scheduled_for_utc.replace(tzinfo=other.scheduled_for_utc.tzinfo or timezone.utc) <= now for other in rows):
             occurrence.state='MISSED';occurrence.failure_reason='superseded_repeat';db.session.commit();continue
         deadline = occurrence.deadline_at_utc.replace(tzinfo=occurrence.deadline_at_utc.tzinfo or timezone.utc)
@@ -774,7 +868,7 @@ def process_timed_events(station, reader, now=None):
         elif queue_depth(station.slug) == 0 or (event.timing_mode == 'SOFT' and automatic_future_only(station)):
             # SOFT and NON_INTERRUPTING never cut current content. SOFT may use
             # its early window; NON_INTERRUPTING waits until target time.
-            duration_ms = current.track.duration_ms if current and current.track else current.imaging_asset.duration_ms if current and current.imaging_asset else 0
+            duration_ms = decision_duration_ms(current) if current and (current.track or current.imaging_asset) else 0
             started = current.started_at.replace(tzinfo=current.started_at.tzinfo or timezone.utc) if current and current.started_at else now
             expected_end = started + timedelta(milliseconds=duration_ms)
             # Reserve the next boundary even for songs longer than the late allowance.
@@ -823,7 +917,7 @@ def prepare_dj_return(station, reader, mixer, cue_active=False):
     if eligible and channel_queue(slug, decks[0].upper()):
         eligible = False  # REPEAT already owns this deck's next boundary.
         row = None
-    remaining = (row.track.duration_ms/1000-mixer.get(decks[0]+'_elapsed',0)) if row and row.track else None
+    remaining = (decision_duration_ms(row)/1000-mixer.get(decks[0]+'_elapsed',0)) if row and row.track else None
     now = datetime.now(timezone.utc)
     # Duration metadata can end a few frames before the rendered EOF. Keep
     # renewing while this same deck is audible; only the engine owns its end.
@@ -834,7 +928,12 @@ def prepare_dj_return(station, reader, mixer, cue_active=False):
         eligible = eligible and not TimedEventOccurrence.query.filter(
             TimedEventOccurrence.station_id==station.id,
             TimedEventOccurrence.state.in_(('PENDING','READY','QUEUED','STARTED')),
-            TimedEventOccurrence.scheduled_for_utc <= now+timedelta(seconds=max(0,remaining)+1)).first()
+            TimedEventOccurrence.scheduled_for_utc <= now+timedelta(seconds=max(0,remaining)+1),
+            # A normal station ID waits for AUTO; it does not own the DJ bus.
+            # Cancelling continuity for that waiting event leaves nothing
+            # prepared at EOF. Its normal AUTO policy still runs after return.
+            db.or_(TimedEventOccurrence.event.has(interrupt_dj=True),
+                   TimedEventOccurrence.state.in_(('QUEUED','STARTED')))).first()
     else:
         eligible = False
     if not eligible:
@@ -883,6 +982,8 @@ def prepare_auto_successor(station, reader, mixer, current_signature=None):
         if SelectionDecision.query.filter_by(station_id=station.id,reason='programming_refresh_pending',status='queued').first():
             _command(slug, 'freo_mixer.return_cancel')
             return
+        queued_before = {value for (value,) in db.session.query(SelectionDecision.id).filter_by(
+            station_id=station.id, status='queued')}
         refill_station(slug, reader, 1)
         # Observe the queue before current: the decoder can move the replacement
         # between these reads, and either observation must retain its identity.
@@ -893,6 +994,20 @@ def prepare_auto_successor(station, reader, mixer, current_signature=None):
             target = None
         if target is None:
             target = request_decision_id(slug, future[0]) if future else None
+        if target is None:
+            # A decoder can remove its accepted request from the future queue
+            # before exposing it as current. Retain the exact push acknowledged
+            # by this refill; the engine still proves readiness before handoff.
+            accepted = SelectionDecision.query.filter(
+                SelectionDecision.station_id==station.id, SelectionDecision.status=='queued',
+                SelectionDecision.id.notin_(queued_before),
+                SelectionDecision.admin_user_id.is_(None),
+                SelectionDecision.programming_signature==current_signature,
+                SelectionDecision.socket_identity==socket_identity(slug),
+                SelectionDecision.liquidsoap_request_id.isnot(None),
+                db.or_(SelectionDecision.reason.is_(None),
+                       SelectionDecision.reason!='programming_refresh_pending')).order_by(SelectionDecision.id).first()
+            target = accepted.id if accepted else None
     return target
 
 
@@ -953,20 +1068,45 @@ def continuity_depth(station, now=None):
     if asset is None:
         return 0
     now = now or datetime.now(timezone.utc)
-    end = row.started_at.replace(tzinfo=row.started_at.tzinfo or timezone.utc)+timedelta(milliseconds=asset.duration_ms)
+    end = row.started_at.replace(tzinfo=row.started_at.tzinfo or timezone.utc)+timedelta(milliseconds=decision_duration_ms(row))
     return int(end <= now+timedelta(seconds=5))
 
 
 def tick(reader, target_depth=2):
     heartbeat()
+    from app.services.bulletins import housekeeping as bulletin_housekeeping
+    try:
+        bulletin_housekeeping(reader)
+    except OSError:
+        logger.warning('Bulletin staging cleanup unavailable')
+    from app.services.recording_manager import process_deletions
+    process_deletions()
+    from app.services.listener_requests import housekeeping
+    housekeeping()
+    ensure_station_states()
     states = AutomationState.query.all()
     for state in states:
+        from app.services.live_mic import sync_pending_microphones
+        sync_pending_microphones(states, exclude=state.station_id)
         slug = state.station.slug
+        from app.services.live_sessions import sync as sync_show
+        try:
+            sync_show(state.station)
+        except (OSError, RuntimeError, ValueError):
+            db.session.rollback()
+            logger.exception('Show observation failed station=%s', slug)
         if not state.station.enabled or state.station.desired_state != 'running':
+            from app.services.relay import suspend as suspend_relay
+            suspend_relay(state.station_id, reader)
             continue
         if time.monotonic() < reader.unavailable_until.get(slug, 0):
             continue
         try:
+            from app.services.relay import reconcile as reconcile_relay, defer_events, reserve_events
+            relay = reconcile_relay(state.station, reader)
+            relay_selected = bool(relay and relay['selected'])
+            if relay is not None and not relay_selected and not reserve_events(state.station):
+                relay_selected = True
             from app.services.schedule_switch import process_transition
             if process_transition(state.station, reader):
                 observe_queue(state.station)
@@ -992,7 +1132,13 @@ def tick(reader, target_depth=2):
                 db.session.commit()
             process_manual(state.station, reader)
             process_event_cancellations(state.station)
-            if not mic_active and state.operator_mode == 'AUTO' and process_dj_events(state.station,reader,allow_new=False):
+            from app.services.bulletins import reconcile as reconcile_bulletins
+            try:
+                reconcile_bulletins(state.station,reader,allow_new=not relay_selected and not mic_active and state.operator_mode=='AUTO')
+            except (OSError,RuntimeError,ValueError):
+                db.session.rollback()
+                logger.warning('Bulletin engine unavailable station=%s',slug)
+            if not relay_selected and not mic_active and state.operator_mode == 'AUTO' and process_dj_events(state.station,reader,allow_new=False):
                 state.worker_heartbeat_at=datetime.now(timezone.utc);db.session.commit();observe_queue(state.station);continue
             if mic_active:
                 state.worker_heartbeat_at = datetime.now(timezone.utc)
@@ -1005,7 +1151,7 @@ def tick(reader, target_depth=2):
                 from app.services.booth_cue import advance
                 observed_mixer = mixer_state(slug)
                 standby=observed_mixer.get('auto_standby',False)
-                if process_dj_events(state.station,reader):
+                if not relay_selected and process_dj_events(state.station,reader):
                     state.worker_heartbeat_at=datetime.now(timezone.utc);db.session.commit();observe_queue(state.station);continue
                 cue_active = advance(state.station, observed_mixer, reader)
                 if not cue_active and return_to_auto_if_stopped(state.station,reader,mixer_state(slug)):
@@ -1033,12 +1179,28 @@ def tick(reader, target_depth=2):
             current_signature=signature(state.station)
             if reader.programming_signatures.get(slug)!=current_signature:
                 reader.starved_until.pop(slug,None)
-            refresh(state.station,reader,current_signature)
+            prepared_relay_id = None
+            if relay_selected:
+                from app.services.playout_queue import mixer_state
+                prepared_relay_id = mixer_state(slug).get('auto_id')
+                prepared_row = db.session.get(SelectionDecision, prepared_relay_id) if prepared_relay_id else None
+                if prepared_row and prepared_row.status == 'started':
+                    if prepared_row.programming_signature and prepared_row.programming_signature != current_signature:
+                        from app.services.playout_queue import _command
+                        _command(slug, f'freo_relay.discard {prepared_row.id}')
+                    prepared_relay_id = None
+            refresh(state.station,reader,current_signature, prepared_auto_id=prepared_relay_id,
+                prefill=state.enabled and not state.hold and state.operator_mode == 'AUTO' and not relay_selected)
             reader.programming_signatures[slug]=current_signature
             # Hard timed events must not skip the outgoing DJ source mid-fade.
             returning=time.monotonic()<reader.auto_return_until.get(slug,0)
-            event_seconds = None if returning else process_timed_events(state.station, reader)
-            block_active = False if returning else process_block(state.station, reader)
+            if relay_selected:
+                defer_events(state.station)
+            event_seconds = None if returning or relay_selected else process_timed_events(state.station, reader)
+            relay_timed_block = relay_selected and EventBlockExecution.query.filter_by(station_id=state.station_id).filter(
+                EventBlockExecution.state.in_(('PENDING','QUEUED','STARTED')),
+                EventBlockExecution.timed_event_occurrence_id.isnot(None)).first() is not None
+            block_active = False if returning or relay_timed_block else process_block(state.station, reader)
             if block_active:
                 state.worker_heartbeat_at = datetime.now(timezone.utc)
                 state.observed_queue_depth = queue_depth(slug)
@@ -1087,7 +1249,14 @@ def tick(reader, target_depth=2):
 
 def worker_delay(reader):
     """Use the same bounded boundary cadence in production and system tests."""
-    if time.monotonic() < reader.calendar_poll_until:
+    from app.services.live_mic import pending_microphones
+    if pending_microphones() or time.monotonic() < reader.calendar_poll_until:
+        return .25
+    pending_leader = db.session.query(SelectionDecision.id).join(Station).filter(
+        SelectionDecision.selection_method == 'playlist_leader',
+        SelectionDecision.status.in_(('selected', 'submitting', 'queued')),
+        Station.enabled.is_(True), Station.desired_state == 'running').first()
+    if pending_leader:
         return .25
     due = TimedEventOccurrence.query.filter(TimedEventOccurrence.state.in_(('PENDING','READY'))).order_by(TimedEventOccurrence.scheduled_for_utc).first()
     nearest = ((due.scheduled_for_utc.replace(tzinfo=due.scheduled_for_utc.tzinfo or timezone.utc)-datetime.now(timezone.utc)).total_seconds() if due else None)

@@ -7,7 +7,16 @@
   <div class="playlist-layout">
     <aside class="studio-panel playlist-sidebar"><header><h2>Your playlists</h2><button type="button" id="playlist-new">+ New</button></header><div id="playlist-list"></div><a href="{{ url_for('admin_media.library',slug=selected.slug) }}">Browse Music →</a></aside>
     <section class="studio-panel playlist-editor" id="playlist-editor" hidden>
-      <form id="playlist-form"><div class="playlist-fields"><label>Name<input name="name" required maxlength="120"></label><label>Playback<select name="mode"><option value="STRAIGHT">Straight — in order</option><option value="RANDOM">Random — shuffle songs</option></select></label></div><label>Description<textarea name="description" maxlength="500" rows="2" placeholder="What makes this playlist special?"></textarea></label><div class="inline-actions"><button type="submit" class="ui-primary">Save playlist</button><span id="playlist-save-state">Saved</span><button type="button" id="playlist-discard" hidden>Discard edits</button></div></form>
+      <form id="playlist-form"><div class="playlist-fields"><label>Name<input name="name" required maxlength="120"></label><label>Playback<select name="mode"><option value="STRAIGHT">Straight — in order</option><option value="RANDOM">Random — shuffle songs</option></select></label></div><label>Description<textarea name="description" maxlength="500" rows="2" placeholder="What makes this playlist special?"></textarea></label><label>Playlist leader<select name="leader_track_id"><option value="">None</option></select></label><p>Plays once at the start of each scheduled occurrence, before the playlist songs.</p>
+      <details><summary>Smart selection</summary>
+        <label><input type="checkbox" name="smart_enabled"> Choose songs dynamically from the library</label>
+        <p>All filters must match. Text filters match part of the metadata; selected tags or categories match any selection. Blank filters include all music.</p>
+        <div class="playlist-fields">
+        {% for field in ['artist','title','album','genre'] %}<label>{{ field|title }} contains<input name="rule_{{ field }}" maxlength="200"></label>{% endfor %}
+        {% for field, label in [('bpm','BPM'),('release_year','Year'),('duration_ms','Duration in milliseconds')] %}<label>{{ label }} minimum<input type="number" name="rule_{{ field }}_min" min="{{ 0 if field == 'bpm' else 1 }}" step="{{ 'any' if field == 'bpm' else 1 }}"></label><label>{{ label }} maximum<input type="number" name="rule_{{ field }}_max" min="{{ 0 if field == 'bpm' else 1 }}" step="{{ 'any' if field == 'bpm' else 1 }}"></label>{% endfor %}
+        <label>Tags<select name="rule_tags" multiple></select></label><label>Categories<select name="rule_categories" multiple></select></label></div>
+        <h3>Category and tag weights</h3><p>Weights affect Random playback within each cycle. Unweighted songs have weight 1; matching weights add together. Every eligible song still plays once per cycle.</p><div id="playlist-weights"></div>
+      </details><div class="inline-actions"><button type="submit" class="ui-primary">Save playlist</button><span id="playlist-save-state">Saved</span><button type="button" id="playlist-discard" hidden>Discard edits</button></div></form>
       <div class="playlist-tracks">
       <header class="playlist-toolbar"><div><h2 id="playlist-count"></h2><p id="playlist-mode-hint"></p></div><button type="button" id="playlist-add">+ Add music</button></header>
       <div class="playlist-toolbar"><label>Find a song<input type="search" id="playlist-search" placeholder="Search this playlist"></label><button type="button" id="playlist-remove" disabled class="ui-danger">Remove selected</button></div>
@@ -17,10 +26,11 @@
     </section>
     <p id="playlist-empty" class="room-empty">Loading playlists…</p>
   </div>
+  <section class="studio-panel"><h2>Station music separation</h2><form id="playlist-separation"><label>Minimum artist separation, seconds<input type="number" name="artist_seconds" min="0" max="86400" required></label><label>Minimum track separation, seconds<input type="number" name="track_seconds" min="0" max="86400" required></label><p>Applies to automated music selection. A small library relaxes artist separation first, then track separation to keep playing. Zero disables a window.</p><button type="submit">Save separation</button></form></section>
   <dialog id="playlist-add-dialog" class="studio-dialog"><form method="dialog"><button class="dialog-close" aria-label="Close">×</button></form><h2>Add music</h2><p>Add current songs. Future library changes won’t add songs automatically.</p>
     <form id="playlist-source-form"><label>Add from<select name="kind"><option value="category">Category</option><option value="artist">Artist</option><option value="album">Album</option></select></label><label>Choose a collection<select name="source"></select></label><button type="submit" class="ui-primary">Add songs from collection</button></form>
     <hr><form id="playlist-song-search"><label>Or find individual songs<input type="search" name="q" placeholder="Song, artist, or album"></label><button>Search</button></form><div id="playlist-results"></div><div class="playlist-toolbar"><button type="button" id="playlist-results-prev">Previous</button><span id="playlist-results-page"></span><button type="button" id="playlist-results-next">Next</button></div><p id="playlist-add-status" role="status"></p>
   </dialog>
 </section>
 {% endblock %}
-{% block scripts %}{{ super() }}<script defer src="{{ url_for('static',filename='playlists.js',v='20260919-events-completion') }}"></script>{% endblock %}
+{% block scripts %}{{ super() }}<script defer src="{{ url_for('static',filename='playlists.js',v='20261004-smart-playlists') }}"></script>{% endblock %}

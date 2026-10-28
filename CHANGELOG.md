@@ -1,5 +1,78 @@
 # Changelog
 
+## 1.0.0 — 28 October 2026
+
+- Promote human-accepted RC17 to stable with unchanged application behavior, schema and dependencies.
+- Include V1 station operations, scheduling, DJ/live microphone workflows, public players, hosted lifecycle controls, signed upgrades and recovery.
+- Include optional Freo Live consent and confirmed now-playing reporting, with Retry-After handling.
+- Preserve installation identity, media, accounts, saved settings and licensing through supported upgrades.
+- See [release notes](docs/release-1.0.0.md) for validation scope and installation instructions.
+
+# 1.0.0-rc.17
+
+- Measure optional reporting and directory-sync Retry-After deadlines from response receipt, including slow responses.
+- Round HTTP-date retry deadlines up so requests never resume before the advertised time.
+
+# 1.0.0-rc.16
+
+- Default station listing and current-song sharing on, preserving legacy opt-out evidence and explicit choices.
+- Sync consent promptly and share confirmed current playback through the optional Freo Live API, with independent retries and no audio-path networking.
+
+
+## 1.0.0-rc.15 — private candidate; acceptance pending
+
+- Expose an explicit retry when the persistent monitor reaches a clean stream EOF.
+- Keep a prepared return to automation when a station-ID event is waiting for DJ control to end; retain the event's existing Auto scheduling policy.
+- Preserve passwords in disposable PostgreSQL test URLs and seed historical schemas for forward migration checks. Retain provenance downgrade refusal and matched-backup recovery coverage.
+- Read streaming WAV regression recordings in bounded chunks and include the corrected transport and schema-head fixtures.
+- Keep AUTO_CUE disabled while a Cue edit is saving, including when a newer poll renders before the edit response finishes.
+- Return a controlled storage-unavailable response when hosted quota accounting cannot read customer media. Keep ordinary tests in temporary media roots.
+
+## 1.0.0-rc.11 — private candidate; acceptance pending
+
+- Provision recording directories, ACLs and station write access when rendering new stations. Apply the existing per-directory worker write exception when it is first added, without restarting station engines; skip redundant worker refreshes and retain original-media protection.
+
+- Initialize new stations for worker discovery and live control without legacy rotation activation; repair missing state on older ready stations without enabling playback or resetting existing controls.
+
+- Keep public-player live status clear of station identity on narrow screens and long station descriptions; let the header grow with its content.
+- Refresh the stylesheet URL so existing listeners receive the layout repair. Add real-browser overlap and clipping coverage at phone and desktop widths.
+
+## 1.0.0-rc.10 — private candidate; acceptance pending
+
+- Protect playout, microphone and automation clocks with a higher-priority CPU slice under contention.
+- Validate installed CPU-controller priority and service membership.
+- Retain RC9 libigloo, managed-validator and cold-start readiness repairs.
+
+## 1.0.0-rc.9 — private candidate; acceptance pending
+
+- Allow the shared cold-start budget when verifying administrative service restarts and recovery.
+- Retain RC8 dependency ownership, managed-validator and upgrade deadline repairs.
+
+## 1.0.0-rc.8 — private candidate; acceptance pending
+
+- Reject conflicting libigloo runtime ownership before dependency installation.
+- Use the shared cold-start budget during upgrades.
+- Validate managed installations using their canonical configuration file.
+
+## 1.0.0-rc.7 — prepared candidate; exact-kit VM acceptance pending
+
+- Retain RC6's bounded future-event scan, canonical timezone cache, retired
+  control-page response handling and earlier microphone/Studio/installer fixes.
+- Require matching libigloo development/runtime candidates >= 0.9.4, simulate
+  the required native build transaction without removals, and check the loaded
+  library before building or activating hosted Icecast.
+- Return actionable dependency failures without publishing hosted policy or
+  stopping healthy services. Keep repository priorities scoped to the required
+  packages and permit future compatible package revisions.
+- Share bounded 120-second cold-source readiness and diagnostic validation,
+  preserve maintenance/inhibition on failed hosted activation, and give the
+  installer acceptance supervisor time for validation followed by startup.
+- Include the runtime probe, readiness module and RC7 installation guide in
+  the customer archive. Schema and the 42 dependency wheels are unchanged.
+- Build new publisher-signed application and installation-kit files; retain
+  existing signed candidates. Publication and deployment require acceptance.
+
+
 ## 0.3.2 — released 30 September 2026
 
 - Publish the exact signed stable kit after fresh Ubuntu 24.04 x86_64 acceptance;

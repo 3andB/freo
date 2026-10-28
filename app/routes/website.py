@@ -100,7 +100,7 @@ def preview():
 @website.get('/website-assets/<identifier>.png')
 def asset(identifier):
     preview = request.args.get('preview') == '1'
-    if preview and not current_admin():
+    if preview and (not current_admin() or current_admin().role != 'ADMIN'):
         abort(404)
     if identifier not in service.asset_ids(service.config(preview)):
         abort(404)
@@ -118,7 +118,7 @@ def asset(identifier):
 @website.get('/website-theme.css')
 def theme():
     preview = request.args.get('preview') == '1'
-    if preview and not current_admin():
+    if preview and (not current_admin() or current_admin().role != 'ADMIN'):
         abort(404)
     values = service.config(preview)
     # Values are validated at publication; fixed keys and hex colors cannot inject CSS.

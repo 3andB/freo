@@ -46,7 +46,10 @@ def create_app(config_name=None):
             values.setdefault('v', VERSION)
 
     app.config.from_object(configs[name])
-    for key in ("SECRET_KEY", "PUBLIC_BASE_URL", "FREO_DOMAIN", "FREO_INSTALLATION_HOSTS", "FREO_DOMAIN_TARGET_HOST", "FREO_DOMAIN_TARGET_IPS", "FREO_MEDIA_ROOT", "LOG_LEVEL", "FREO_API_URL", "FREO_API_STATE_DIR", "FREO_INSTALL_TYPE", "FREO_GEOIP_DATABASE", "FREO_STATS_STATE_DIR"):
+    for key in ('FREO_DEPLOYMENT_LABEL', 'FREO_INSTALLATION_LIFECYCLE'):
+        if key in os.environ:
+            app.config[key] = os.environ[key]
+    for key in ("FREO_PROVIDER_ENCRYPTION_KEY", "FREO_PRODUCTION_ROOT", "FREO_RELAY_PRIVATE_NETWORKS", "FREO_RELAY_TRANSPORT_PORT", "SECRET_KEY", "PUBLIC_BASE_URL", "FREO_DOMAIN", "FREO_INSTALLATION_HOSTS", "FREO_DOMAIN_TARGET_HOST", "FREO_DOMAIN_TARGET_IPS", "FREO_MEDIA_ROOT", "LOG_LEVEL", "FREO_API_URL", "FREO_API_STATE_DIR", "FREO_INSTALL_TYPE", "FREO_GEOIP_DATABASE", "FREO_STATS_STATE_DIR"):
         if key in os.environ:
             app.config[key] = os.environ[key]
     try:
@@ -61,8 +64,16 @@ def create_app(config_name=None):
         configs[name].init_app(app)
     app.logger.setLevel(getattr(logging, app.config["LOG_LEVEL"].upper(), logging.INFO))
     db.init_app(app)
+    from .services.hosting_web import install as install_hosting
+    install_hosting(app)
     from . import models  # noqa: F401 - register migration metadata
     migrate.init_app(app, db)
+    from .routes.public_api import init_api
+    init_api(app)
+    from .routes.studio_releases import init_studio_api
+    init_studio_api(app)
+    from .routes.api_credentials import api_credentials
+    app.register_blueprint(api_credentials)
     from .services.admin_setup import renew_login_session
     app.before_request(renew_login_session)
     app.register_blueprint(health_blueprint)
@@ -84,6 +95,12 @@ def create_app(config_name=None):
     app.register_blueprint(dmca)
     from .routes.central_api import central_api
     app.register_blueprint(central_api, cli_group=None)
+    from .routes.bulletins import bulletins
+    app.register_blueprint(bulletins)
+    from .routes.broadcast_reports import broadcast_reports
+    app.register_blueprint(broadcast_reports)
+    from .routes.studio_pwa import studio_pwa
+    app.register_blueprint(studio_pwa)
     from .routes.statistics import statistics
     app.register_blueprint(statistics, cli_group=None)
     app.register_blueprint(admin_cli, cli_group=None)
@@ -104,6 +121,8 @@ def create_app(config_name=None):
     from .routes.station_settings import station_settings
     from .routes.song_flags import song_flags
     app.register_blueprint(station_settings)
+    from .routes.listener_requests import listener_requests
+    app.register_blueprint(listener_requests)
     from .routes.player_experience import player_experience
     app.register_blueprint(player_experience, cli_group=None)
     from .routes.station_domains import station_domains
@@ -118,6 +137,14 @@ def create_app(config_name=None):
     app.register_blueprint(admin_programming_blueprint)
     app.register_blueprint(admin_imaging_blueprint)
     app.register_blueprint(admin_live_blueprint)
+    from .routes.production import production
+    app.register_blueprint(production)
+    from .routes.dj import dj
+    app.register_blueprint(dj)
+    from .routes.platform_polish import platform_polish
+    app.register_blueprint(platform_polish)
+    from .routes.advertising import advertising
+    app.register_blueprint(advertising)
     from .routes.live_mic import live_mic
     app.register_blueprint(live_mic)
     from .routes.schedule_studio import schedule_studio
@@ -164,6 +191,9 @@ def create_app(config_name=None):
         # Finalizing a session must not query the unavailable settings again.
         # Retain a known cookie policy, otherwise use the host's secure default.
         g.freo_cookie_secure = getattr(g, 'freo_cookie_secure', app.config['SESSION_COOKIE_SECURE'])
+        from .routes.public_api import is_api_request, error_response
+        if is_api_request():
+            return error_response(503)
         return {'status': 'unavailable'}, 503
 
     from .services.loudness import gain_for

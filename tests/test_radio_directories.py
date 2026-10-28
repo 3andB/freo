@@ -45,6 +45,9 @@ def test_submission_metadata_success_and_no_resubmit(public_app, monkeypatch):
     with public_app.app_context():
         row = station()
         row.country, row.genre, row.directory_categories = 'AU', 'Jazz', ['Jazz', 'Soul']
+        # A third-party directory submission must preserve an explicit Freo opt-out.
+        row.directory_opt_in = False
+        row.directory_consent_source = 'explicit'
         row.logo = StationLogo(image=b'png', thumbnail=b'png', version='v1')
         db.session.commit()
     client = admin_client(public_app)

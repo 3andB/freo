@@ -4,16 +4,17 @@ import json
 import random
 import secrets
 import time
+from datetime import datetime, timezone
 from flask import current_app
 from sqlalchemy.exc import IntegrityError
 from app.extensions import db
 from app.version import VERSION
 from app.models import CentralInstallation, CentralConnectionCheck, Station, CentralHourlyMetric
 from app.services.station_domains import preferred_url
-from .client import APIError, Client, MAX_BYTES, identity_response, license_response, timestamp, uuid_string
+from .client import APIError, Client, MAX_BYTES, CONTRACT_REVISION, identity_response, license_response, timestamp, uuid_string
 from .identity import IdentityStore
 from .licensing import checkpoint
-from .metrics import machine_snapshot, sample, station_state, wire_metric, observe_station
+from .metrics import machine_snapshot, sample, station_state, wire_metric, observe_station, channel_lifecycle
 from .releases import heartbeat_release, check_version
 
 
@@ -32,15 +33,26 @@ def installation():
     return row
 
 
-def metadata(station):
+def metadata(station, extended=False):
     with current_app.test_request_context():
         url = preferred_url(station)
-    removed = bool(station.deleted_at or station.lifecycle_state in ('pending_delete', 'delete_failed'))
-    return dict(station_id=station.freo_station_id, name=station.name, description=station.description,
+    lifecycle = channel_lifecycle(station)
+    result = dict(station_id=station.freo_station_id, name=station.name, description=station.description,
                 genre=station.genre or None, categories=station.directory_categories,
                 city=station.city or None, region=station.region or None, country=station.country or None,
                 latitude=station.latitude, longitude=station.longitude, public_url=url if url.startswith(('https://', 'http://')) else None,
-                directory_opt_in=bool(station.directory_opt_in and not removed))
+                directory_opt_in=bool(station.directory_opt_in and lifecycle not in ('deleted', 'retired')))
+    if extended and lifecycle:
+        deleted_at = None
+        if lifecycle == 'deleted' and station.deleted_at:
+            value = station.deleted_at
+            # PostgreSQL UTC timestamps become naive only in the SQLite test backend.
+            value = value.replace(tzinfo=value.tzinfo or timezone.utc).astimezone(timezone.utc)
+            if value <= datetime.now(timezone.utc):
+                deleted_at = value.isoformat().replace('+00:00', 'Z')
+        result.update(lifecycle_state=lifecycle, enabled=bool(station.enabled and lifecycle == 'active'),
+                      deleted_at=deleted_at)
+    return result
 
 
 def digest(payload):
@@ -80,6 +92,48 @@ class Reporter:
         self.client_factory = client_factory
         self.store = IdentityStore(current_app.config['FREO_API_STATE_DIR'])
         self.startup = True
+        self.contract_checked = False
+        self.extended = False
+        self.now_playing_supported = False
+        self.now_playing_startup = True
+
+    def detect_contract(self, row, now):
+        if self.contract_checked and not self.due(row, 'contract_probe', now):
+            return True
+        # A restart invalidates in-memory support, but not persisted failure backoff.
+        probe = row.state.get('contract_probe', {})
+        if (probe.get('failures') and not self.due(row, 'contract_probe', now)) or now < row.state.get('retry_after', 0):
+            return False
+        if not self.reserve_calls(row, now, 1):
+            return False
+        connection = self.client_factory(current_app.config['FREO_API_URL'])
+        now_playing_revision = None
+        try:
+            response = connection.request('GET', '/health')
+            if response.get('status') != 'ok':
+                raise APIError('invalid_health_response')
+        except APIError as error:
+            self.contract_checked, self.extended = False, False
+            # Absence of this public endpoint is a supported legacy-server case.
+            if error.status in (404, 405):
+                revision = None
+            else:
+                self.failure(row, 'contract_probe', now, error)
+                return False
+        else:
+            revision = getattr(connection, 'contract_revision', None)
+            now_playing_revision = getattr(connection, 'now_playing_revision', None)
+        self.now_playing_supported = now_playing_revision == '2026-10-v1'
+        self.save_state(row, now_playing_capability=dict(supported=self.now_playing_supported,
+                        revision=now_playing_revision, checked_at=now))
+        previous = row.state.get('contract', {}).get('revision')
+        self.contract_checked, self.extended = True, revision == CONTRACT_REVISION
+        self.save_state(row, contract={'revision': revision, 'supported': self.extended, 'checked_at': now})
+        self.success(row, 'contract_probe', now)
+        if (previous == CONTRACT_REVISION) != self.extended:
+            # The wire representation changed; retry with the newly negotiated shape.
+            self.save_state(row, report={'due': 0}, enrollment={'due': 0}, claim={'due': 0})
+        return True
 
     def save_state(self, row, **values):
         row.state = dict(row.state, **values)
@@ -98,11 +152,14 @@ class Reporter:
     def failure(self, row, name, now, error):
         count = min(row.state.get(name, {}).get('failures', 0) + 1, 7)
         delay = max(error.retry_after, min(3600, 60 * 2 ** (count - 1))) + random.uniform(0, 30)
-        blocked = error.status in (400, 401, 404, 405, 409, 413, 415)
+        blocked = name != 'contract_probe' and error.status in (400, 401, 404, 405, 409, 413, 415)
         self.save_state(row, **{name: {'due': now + delay, 'failures': count, 'blocked': blocked}},
                         retry_after=now + error.retry_after if error.retry_after else row.state.get('retry_after', 0))
+        if name != 'contract_probe' and error.status in (400, 404, 405, 413, 415):
+            self.contract_checked, self.extended = False, False
+            self.save_state(row, contract_probe={'due': now + delay, 'failures': 1})
         row.last_error = name + ':' + error.code
-        if error.status == 401:
+        if error.status == 401 and name != 'contract_probe':
             row.registration_state = 'credentials_rejected'
         db.session.commit()
         current_app.logger.warning('Central API %s failed (%s); broadcasts unaffected', name, error.code)
@@ -119,6 +176,8 @@ class Reporter:
             return saved
         if row.installation_id:
             raise APIError('credentials_missing_recovery_required')
+        if row.registration_state == 'credentials_rejected':
+            raise APIError('credentials_rejected')
         if (saved and 'enrollment_token' in saved) or row.registration_state in ('unconfigured', 'activation_queued', 'enrolling'):
             return self.enroll(row, saved)
         if row.registration_state not in ('pending', 'retry_registration'):
@@ -133,7 +192,7 @@ class Reporter:
         row.registration_state = 'registration_uncertain'
         db.session.commit()
         response = self.client_factory(current_app.config['FREO_API_URL']).request('POST', '/v1/register',
-                    {'manager_email': row.manager_email, 'installation': machine_snapshot()})
+                    {'manager_email': row.manager_email, 'installation': machine_snapshot(self.extended)})
         saved = identity_response(response)
         self.store.write(saved)  # Credential is durable before any other API request.
         row.installation_id = saved['installation_id']
@@ -158,7 +217,9 @@ class Reporter:
         token = saved['enrollment_token']
         try:
             response = self.client_factory(current_app.config['FREO_API_URL'], token).request(
-                'POST', '/v1/enroll', {'installation': machine_snapshot()})
+                'POST', '/v1/enroll', {'installation': machine_snapshot(self.extended)})
+            if 'access_token' in response:
+                raise APIError('invalid_enrollment_response')
             credentials = identity_response(dict(response, access_token=token))
         except APIError as error:
             self.failure(row, 'enrollment', now, error)
@@ -179,7 +240,7 @@ class Reporter:
                 raise APIError('activation_code_expired', status=400)
             connection = self.client_factory(current_app.config['FREO_API_URL'], credentials['access_token'])
             response = connection.request('POST', '/v1/activate',
-                {'activation_code': pending['code'], 'installation': machine_snapshot()})
+                {'activation_code': pending['code'], 'installation': machine_snapshot(self.extended)})
             try:
                 profile_id = uuid_string(response['station_profile_id'])
                 timestamp(response['server_time'])
@@ -214,28 +275,40 @@ class Reporter:
         self.success(row, 'license', now, entitlement['refresh_after_seconds'])
 
     def heartbeat(self, row, client, entries):
-        snapshot = machine_snapshot()
+        snapshot = machine_snapshot(self.extended)
         response = client.request('POST', '/v1/heartbeat', {'installation': snapshot, 'stations': entries})
         validate_heartbeat(response, len(entries), sum(len(entry.get('metrics', [])) for entry in entries))
         # Retain only validated, nonsecret acknowledgement fields for operators.
         receipt = {key: response[key] for key in ('server_time', 'next_heartbeat_seconds',
                                                   'stations_accepted', 'metrics_accepted')}
         receipt['freo_version'] = snapshot['freo_version']
+        receipt['contract_revision'] = row.state.get('contract', {}).get('revision')
+        receipt['received_at'] = datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z')
+        receipt['installation_id'] = row.installation_id
         receipt.update(heartbeat_release(response))
         self.save_state(row, last_heartbeat=receipt)
         current_app.logger.info('Central API heartbeat accepted installation=%s server_time=%s stations=%s metrics=%s',
                                 row.installation_id, receipt['server_time'],
                                 receipt['stations_accepted'], receipt['metrics_accepted'])
 
-    def report(self, row, client, now, on_air):
+    def sync_metadata(self, row, client, now, reserve=False):
         stations = Station.query.order_by(Station.id).all()
         calls = 0
-        dirty = [(station, metadata(station)) for station in stations]
+        if self.extended and now >= row.state.get('reconcile_due', 0):
+            # Station rows are durable tombstones, retained independently of metrics.
+            for station in stations:
+                station_state(station).synced_digest = None
+            self.save_state(row, reconcile_due=now + 86400)
+        dirty = [(station, metadata(station, self.extended)) for station in stations
+                 if self.extended or channel_lifecycle(station) not in ('deleted', 'retired')]
         dirty = [(station, payload) for station, payload in dirty
                  if station_state(station).synced_digest != digest(payload)]
+        dirty.sort(key=lambda item: item[1]['directory_opt_in'])
         for batch in sync_batches(dirty):
             if calls >= 6:
                 break
+            if reserve and not self.reserve_calls(row, now, 1):
+                raise APIError('metadata_rate_limited')
             db.session.commit()
             response = client.request('POST', '/v1/stations/sync', {'stations': [payload for _, payload in batch]})
             calls += 1
@@ -253,10 +326,19 @@ class Reporter:
                 raise APIError('invalid_sync_response') from None
             for station, payload in batch:
                 station_state(station).synced_digest = digest(payload)
-            db.session.commit()
+            self.save_state(row, last_sync={'server_time': response['server_time'],
+                'received_at': datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z'),
+                'installation_id': row.installation_id, 'freo_version': VERSION,
+                'contract_revision': row.state.get('contract', {}).get('revision'),
+                'stations_accepted': len(batch), 'station_ids': sorted(returned)})
+        return calls
+
+    def report(self, row, client, now, on_air):
+        calls = self.sync_metadata(row, client, now)
+        stations = Station.query.order_by(Station.id).all()
         # Rotate batches fairly across installations larger than one request.
         cursor = row.state.get('station_cursor', 0)
-        eligible = [station for station in stations if station.id in on_air and station_state(station).synced_digest]
+        eligible = [station for station in stations if station_state(station).synced_digest]
         eligible = [s for s in eligible if s.id > cursor] + [s for s in eligible if s.id <= cursor]
         heartbeat_sent = False
         for offset in range(0, len(eligible), 20):
@@ -265,15 +347,23 @@ class Reporter:
             batch, entries, sent = eligible[offset:offset + 20], [], []
             for station in batch:
                 online, _ = observe_station(station)
-                if online is None:
+                if online is None and not self.extended:
                     continue
                 metrics = CentralHourlyMetric.query.filter_by(station_id=station.id, sent=False).filter(
                     CentralHourlyMetric.period_start < int(now // 3600) * 3600,
-                    CentralHourlyMetric.period_start >= max(now, time.time()) - 7 * 86400 + 60,
-                    CentralHourlyMetric.observed_seconds > 0).order_by(CentralHourlyMetric.period_start).limit(5).all()
-                entries.append(dict(station_id=station.freo_station_id, on_air=bool(online),
-                                    metrics=[wire_metric(metric) for metric in metrics]))
-                sent.extend(metrics)
+                    CentralHourlyMetric.period_start >= max(now, time.time()) - 7 * 86400 + 60
+                ).order_by(CentralHourlyMetric.period_start).all()
+                selected = []
+                for metric in metrics:
+                    wire = wire_metric(metric, self.extended)
+                    if not self.extended and any(value is None for value in wire.values()):
+                        continue
+                    selected.append((metric, wire))
+                    if len(selected) == 5:
+                        break
+                entries.append(dict(station_id=station.freo_station_id, on_air=online,
+                                    metrics=[wire for _, wire in selected]))
+                sent.extend(metric for metric, _ in selected)
             if not entries:
                 continue
             db.session.commit()
@@ -393,6 +483,9 @@ class Reporter:
         row = installation()
         checkpoint(row, now)
         db.session.commit()
+        on_air = sample(now)
+        if not self.detect_contract(row, now):
+            return dict(outcome, error='retry_pending')
         try:
             credentials = self.register(row)
         except APIError as error:
@@ -407,7 +500,6 @@ class Reporter:
         self.activate(row, credentials)
         if row.registration_state == 'credentials_rejected':
             return dict(outcome, error='credentials_rejected')
-        on_air = sample(now)
         client = self.client_factory(current_app.config['FREO_API_URL'], credentials['access_token'])
         # Refresh startup snapshots through this worker, preserving durable retry guards.
         if self.startup:
@@ -449,3 +541,8 @@ class Reporter:
                 if error.status == 401 or error.retry_after:
                     break
         return outcome
+
+    def fast_tick(self, now=None):
+        # Same installation process lock as telemetry; never called by playout.
+        from .now_playing import fast_tick
+        return fast_tick(self, time.time() if now is None else now)

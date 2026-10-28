@@ -3,7 +3,7 @@ name: Clean Python installation
 on:
   pull_request:
   push:
-    branches: ['main', 'feature/**', 'fix/**']
+    branches: ['main', 'develop/v1', 'feature/**', 'fix/**']
   workflow_dispatch:
   workflow_call:
 

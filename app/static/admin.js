@@ -42,6 +42,8 @@
   async function refreshNow() {
     try {
       const payload = await get(`${base}/live-status`);
+      const show=payload.show;
+      set('admin-show',show?.fresh?`Program: ${show.source}${show.dj?' · '+show.dj:''}${show.started_at?' · Started '+new Date(show.started_at).toLocaleString():show.ended_at?' · Returned to automation '+new Date(show.ended_at).toLocaleString():''}`:'Program status unavailable');
       payload.now_playing = payload.current || (payload.playout_error ? payload.last_known_current : null);
       if (!payload.now_playing) {
         set('admin-track', 'No confirmed start');
@@ -51,6 +53,7 @@
         set('admin-artist', payload.now_playing.artist || 'Unknown artist');
       }
     } catch {
+      set('admin-show','Program status unavailable');
       // Keep the last label during a connection delay; it is not a transport action.
     }
   }

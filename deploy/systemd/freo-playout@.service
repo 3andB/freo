@@ -4,6 +4,8 @@ After=network.target icecast2.service
 Requires=icecast2.service
 
 [Service]
+Slice=freo.slice
+ExecCondition=/usr/bin/python3 /usr/local/lib/freo-hosting/guard.py
 Type=simple
 User=freo-playout
 Group=freo-playout

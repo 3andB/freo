@@ -21,9 +21,11 @@ window.FreoCue = {
     async function edit(operation, data = {}) {
       if (!cue || saving) return false;
       saving = true; $('cue-save-state').textContent = 'Saving…';
+      $('cue-auto').disabled = true;
       const ok = await post('cue-list', {operation, revision: cue.revision, nonce: FreoUUID(), ...data});
       if (scope.signal.aborted) return false;
       saving = false; $('cue-save-state').textContent = ok ? 'Saved' : 'Not saved · retry';
+      render(latest);
       return ok;
     }
     function render(state) {
@@ -37,7 +39,7 @@ window.FreoCue = {
       $('cue-duration').textContent = time(cue.entries.reduce((sum, song) => sum + (song.duration_ms || 0), 0));
       $('cue-auto').setAttribute('aria-pressed', String(cue.auto_enabled));
       $('cue-auto').querySelector('b').textContent = cue.auto_enabled ? 'ON' : 'OFF';
-      $('cue-auto').disabled = !!state.playout_error || state.mode !== 'DJ_BOOTH' || (!cue.entries.length && !cue.auto_enabled);
+      $('cue-auto').disabled = saving || !!state.playout_error || state.mode !== 'DJ_BOOTH' || (!cue.entries.length && !cue.auto_enabled);
       panel.classList.toggle('auto-cue-on', cue.auto_enabled);
       const next = cue.entries.find(song => song.available && !song.decks.some(deck => deck.playing)) || cue.entries.find(song => song.available);
       $('cue-next').textContent = next ? `NEXT · ${next.title}` : 'Add songs below to build your set';

@@ -42,11 +42,20 @@ class FakeAPI:
         self.token = TOKEN
         self.heartbeat_fields = {}
         self.release = {'latest_version': '0.1.0'}
+        self.revision = None
+        self.health_calls = []
 
     def factory(self, url, token=None):
         outer = self
         class Connection:
+            contract_revision = outer.revision
             def request(self, method, path, payload=None):
+                if path == '/health':
+                    outer.health_calls.append((method, path, payload, token))
+                    if path in outer.fail:
+                        raise outer.fail[path]
+                    assert token is None and method == 'GET' and payload is None
+                    return {'status': 'ok'}
                 outer.calls.append((method, path, payload, token))
                 if path in outer.fail:
                     raise outer.fail[path]
@@ -184,6 +193,7 @@ def test_station_uuid_unique_immutable_and_rename_sync(central):
 
 def test_weighted_hours_gaps_and_privacy(central, monkeypatch):
     reporter, api = central
+    api.revision = '2026-10-v1.1'
     installation().registration_state = 'unconfigured'
     db.session.commit()
     now = int(time.time() // 3600) * 3600
@@ -192,7 +202,7 @@ def test_weighted_hours_gaps_and_privacy(central, monkeypatch):
     sample(now - 60)
     sample(now)
     metric = db.session.get(CentralHourlyMetric, (1, now - 3600))
-    wire = wire_metric(metric)
+    wire = wire_metric(metric, extended=True)
     assert wire['average_listeners'] == 7
     assert wire['peak_listeners'] == 10
     assert wire['listener_hours'] == pytest.approx(14 / 60)
@@ -203,17 +213,21 @@ def test_weighted_hours_gaps_and_privacy(central, monkeypatch):
     sample(now + 600)  # Restart/outage gaps are not attributed listeners.
     assert metric.observed_seconds == 120
     monkeypatch.setattr('app.services.central_api.metrics.observation', lambda slug: (None, None))
-    assert sample(now + 660) == {}
+    assert sample(now + 660) == {1: None, 2: None}
     assert db.session.get(CentralStationState, 1).last_sample['listeners'] is None
     reporter.tick()
-    # Resume known observations and deliver the completed UTC hour.
+    # Revision v1.1 delivers history even while current on_air is unknown.
+    accepted = [payload for _, path, payload, _ in api.calls if path == '/v1/heartbeat'][-1]
+    assert accepted['stations'][0]['on_air'] is None
+    assert accepted['stations'][0]['metrics'][0] == wire
+    # A later known observation refreshes current status without replaying history.
     monkeypatch.setattr('app.services.central_api.metrics.observation', lambda slug: (False, 0))
     installation().state = {}
     db.session.commit()
     reporter.tick()
     heartbeat = [payload for _, path, payload, _ in api.calls if path == '/v1/heartbeat'][-1]
     assert heartbeat['stations'][0]['on_air'] is False
-    assert heartbeat['stations'][0]['metrics'][0] == wire
+    assert heartbeat['stations'][0]['metrics'] == []
     raw = json.dumps(heartbeat)
     for forbidden in ('manager_email', 'Verified Test Track', 'Test Artist', 'Test Album', 'internal.mp3', 'checksum', 'claimant', 'listeners_ip'):
         assert forbidden not in raw
@@ -222,6 +236,7 @@ def test_weighted_hours_gaps_and_privacy(central, monkeypatch):
 
 def test_outage_retains_backlog_and_cached_license(central):
     reporter, api = central
+    api.revision = '2026-10-v1.1'
     reporter.tick()
     cache = installation().license_cache
     installation().state = {}
@@ -256,7 +271,9 @@ def test_unknown_metrics_are_omitted_and_backlog_is_bounded(central, monkeypatch
     db.session.commit()
     monkeypatch.setattr('app.services.central_api.metrics.observation', lambda slug: (None, None))
     reporter.tick()
-    assert CentralHourlyMetric.query.count() == 0
+    # Expired history remains local, but cannot enter the seven-day catch-up.
+    assert CentralHourlyMetric.query.count() == 3
+    assert db.session.get(CentralHourlyMetric, (1, now - 8 * 86400)) is not None
     heartbeat = [payload for _, path, payload, _ in api.calls if path == '/v1/heartbeat'][-1]
     assert heartbeat['stations'] == []
 
@@ -425,6 +442,7 @@ def test_retry_after_and_invalid_payload_do_not_spin(central):
 
 def test_unknown_station_resyncs_and_deleted_station_opts_out(central):
     reporter, api = central
+    api.revision = '2026-10-v1.1'
     reporter.tick()
     installation().state = {}
     db.session.commit()

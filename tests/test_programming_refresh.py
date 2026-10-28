@@ -1,5 +1,6 @@
 """Refresh queue intent and selection cursors without touching active audio."""
 from datetime import datetime,timezone
+import pytest
 from app.extensions import db
 from app import models as m
 from app.services.programming_refresh import signature,refresh,checkpoint
@@ -74,6 +75,46 @@ def test_refresh_resumes_after_worker_dies_following_engine_removal(app,monkeypa
         assert refresh(s,EventReader(),signature(s))
         assert row.reason=='programming_changed'
         assert not refresh(s,EventReader(),signature(s))
+
+
+@pytest.mark.parametrize('interruption', [None, 'before_remove', 'accepted_push', 'unsubmitted'])
+def test_refresh_prepares_audio_before_removal_and_recovers_once(app,monkeypatch,interruption):
+    queued={11,12};fake_engine(monkeypatch,queued)
+    with app.app_context():
+        s=station();clock=m.Clock.query.first();category=m.Track.query.first().categories[0]
+        for position in (2,3):clock.slots.append(m.ClockSlot(position=position,slot_type='CATEGORY',category=category))
+        db.session.commit()
+        dangling=select_next(s.slug) if interruption=='unsubmitted' else None
+        first=queue_row(s,11);second=queue_row(s,12)
+        m.Track.query.first().title='Changed programming metadata';db.session.commit()
+        current=signature(s);prepared=[]
+        monkeypatch.setattr('app.services.playout_queue.queue_depth',lambda slug:len(queued))
+        def refill(slug,reader,depth):
+            assert queued=={11,12} and depth==3
+            assert m.ClockState.query.first().next_slot_index==0
+            row=queue_row(s,13);prepared.append(row.id);queued.add(13)
+            if interruption=='accepted_push':
+                row.status='selected';row.socket_identity=None;row.liquidsoap_request_id=None
+                db.session.commit()
+            return 1
+        def remove(slug,ids):
+            assert 13 in queued, 'A decoded successor must precede invalidation'
+            if interruption and len(removals)==0:
+                removals.append(True)
+                raise OSError('Worker/socket interruption before obsolete removal')
+            queued.difference_update(ids)
+        removals=[]
+        monkeypatch.setattr('app.automation_worker.refill_station',refill)
+        monkeypatch.setattr('app.services.playout_queue.remove_future',remove)
+        monkeypatch.setattr('app.services.playout_queue.request_decision_id',lambda slug,rid:prepared[0] if rid==13 else None)
+        if interruption:
+            with pytest.raises(OSError):refresh(s,EventReader(),current,prefill=True)
+        assert refresh(s,EventReader(),current,prefill=True)
+        assert queued=={13} and len(prepared)==1
+        assert first.reason==second.reason=='programming_changed'
+        assert db.session.get(m.SelectionDecision,prepared[0]).status=='queued'
+        assert m.ClockState.query.first().next_slot_index==1
+        if dangling:assert dangling.reason=='programming_changed'
 
 
 def test_signature_tracks_cli_bulk_edits_inheritance_and_station_isolation(app):

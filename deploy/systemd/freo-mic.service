@@ -4,6 +4,8 @@ After=network-online.target
 Wants=network-online.target
 
 [Service]
+Slice=freo.slice
+ExecCondition=/usr/bin/python3 /usr/local/lib/freo-hosting/guard.py
 Type=simple
 User=freo
 Group=freo

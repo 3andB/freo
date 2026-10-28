@@ -77,7 +77,13 @@
   }
   const rowsSignature=()=>JSON.stringify([data.songs,data.tags,data.categories,data.playlists,data.page,data.total,editingCategory]);
   function rows(){
-    const list=$('room-songs'),signature=rowsSignature();if(list.dataset.render===signature){selection();window.FreoPreview?.sync();return;}list.dataset.render=signature;list.replaceChildren();
+    const list=$('room-songs'),signature=rowsSignature();if(list.dataset.render===signature){selection();window.FreoPreview?.sync();return;}
+    // Processing completion can redraw a row while its menu is being used.
+    const openMenus=new Map([...list.querySelectorAll('.song-menu[open]')].map(menu=>[
+      menu.closest('.room-song').dataset.song,
+      [...menu.querySelectorAll('summary,a,button')].indexOf(document.activeElement)
+    ]));
+    list.dataset.render=signature;list.replaceChildren();
     if(!data.songs.length)list.append(el('p','No songs match. Try another filter or import some music.','room-empty'));
     data.songs.forEach(song=>{
       const row=el('article',undefined,'room-song');row.dataset.song=song.uuid;row.tabIndex=0;row.classList.toggle('inspecting',active===song.uuid);
@@ -91,9 +97,12 @@
       const menu=el('details',undefined,'song-menu'),summary=el('summary','⋯');summary.setAttribute('aria-label',`Song menu: ${song.title}`);menu.append(summary);
       const link=el('a','Edit song');link.href=song.detail;const processButton=button(processing.has(song.uuid)?'Queuing…':song.requested?'Queued…':song.analysis==='processing'?'Processing…':song.analysis==='failed'?'Retry processing':'Process song',()=>process([song.uuid]));processButton.disabled=processing.has(song.uuid)||song.requested||song.analysis==='processing';menu.append(link,processButton,button('Permanently delete',()=>deleteSong(song),'delete-song'));
       menu.addEventListener('click',event=>{if(event.target.closest('a,button'))menu.open=false;});menu.addEventListener('toggle',()=>{if(menu.open)root.querySelectorAll('.song-menu[open]').forEach(other=>{if(other!==menu)other.open=false;});});
+      if(openMenus.has(song.uuid))menu.open=true;
       row.append(check,handle,preview(song),copy,status,menu);
       row.addEventListener('click',event=>{if(!event.target.closest('button,input,a,summary,details'))inspect(song.uuid);});
       row.addEventListener('keydown',event=>{if(event.target===row&&event.key==='Enter')inspect(song.uuid);});list.append(row);
+      const focusIndex=openMenus.get(song.uuid);
+      if(focusIndex>=0)menu.querySelectorAll('summary,a,button')[focusIndex]?.focus({preventScroll:true});
     });
     $('room-total').textContent=`${data.total} songs`;$('room-page').textContent=`${data.page} / ${data.pages}`;$('room-prev').disabled=data.page<=1;$('room-next').disabled=data.page>=data.pages;
     selection();window.FreoPreview?.sync();

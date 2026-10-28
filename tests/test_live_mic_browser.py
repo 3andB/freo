@@ -48,7 +48,7 @@ def test_denied_microphone_permission_never_enables_go_live(booth, monkeypatch):
         assert LiveControlCommand.query.count() == 0
 
 
-def connected_mic(booth, monkeypatch, *, go=True):
+def connected_mic(booth, monkeypatch, *, go=True, return_delay=.5):
     app, driver, base, tmp_path = booth
     state={'phase':'OFF AIR'}
     calls=[]
@@ -60,7 +60,7 @@ def connected_mic(booth, monkeypatch, *, go=True):
             return {'token':'a'*32,'sdp':'fixture','type':'answer'}
         if action=='go':state.update(phase='LIVE', desired='LIVE')
         if action=='disconnect':
-            state.update(phase='RETURNING', desired='END', leaving=True, until=time.monotonic()+.5)
+            state.update(phase='RETURNING', desired='END', leaving=True, until=time.monotonic()+return_delay)
         if action in ('status','heartbeat') and state.get('until',float('inf'))<time.monotonic():
             state.clear();state.update(phase='OFF AIR')
         return copy.deepcopy(state)
@@ -81,11 +81,17 @@ def connected_mic(booth, monkeypatch, *, go=True):
         async setLocalDescription(value){this.localDescription=value;}
         async setRemoteDescription(){} close(){}
       };
+      RTCPeerConnection.fixture = true;
     """)
     driver.find_element(By.ID,'mic-tab').click()
     driver.find_element(By.ID,'mic-connect').click()
-    wait=WebDriverWait(driver,10)
-    wait.until(lambda d:d.find_element(By.ID,'mic-go').is_enabled())
+    # Signaling has a 22-second application deadline; observe its result first.
+    wait=WebDriverWait(driver,30)
+    try:
+        wait.until(lambda d:d.find_element(By.ID,'mic-go').is_enabled())
+    except Exception:
+        print('Microphone setup evidence:',driver.execute_script('return {state:document.getElementById("mic-state").textContent,message:document.getElementById("mic-message").textContent,fixture:!!RTCPeerConnection.fixture,aborted:FreoPage.signal.aborted,board:document.getElementById("dj-booth").dataset.board}'),'gateway calls:',calls)
+        raise
     if go:
         driver.find_element(By.ID,'mic-go').click()
         wait.until(lambda d:d.find_element(By.ID,'mic-state').text=='ON AIR')
@@ -128,17 +134,36 @@ def test_leave_warning_cancel_then_resume_previous_feed(booth, monkeypatch):
 
 
 def test_signout_waits_for_mic_return(booth, monkeypatch):
-    _,driver,base,_=booth
-    state,calls=connected_mic(booth,monkeypatch)
+    _,driver,base,tmp_path=booth
+    # The application allows 16 seconds to confirm return. Exercise a valid
+    # slow return instead of requiring completion within a shorter CI deadline.
+    state,calls=connected_mic(booth,monkeypatch,return_delay=12)
+    began=time.monotonic()
     driver.find_element(By.CSS_SELECTOR,'form[action="/admin/logout"] button').click()
     wait=WebDriverWait(driver,10)
     wait.until(lambda d:d.find_elements(By.CSS_SELECTOR,'.freo-dialog[open]'))
     driver.find_element(By.CSS_SELECTOR,'.freo-dialog .admin-primary').click()
-    wait.until(lambda d:d.current_url==base+'/')
+    try:
+        WebDriverWait(driver,30).until(lambda d:d.current_url==base+'/')
+    except Exception as error:
+        import json
+        diagnostic=driver.execute_script('''return {path:location.pathname,
+          micState:document.getElementById('mic-state')?.textContent,
+          message:document.getElementById('mic-message')?.textContent,
+          capture:window.micFixtureTrack?.readyState,ready:document.readyState};''')
+        diagnostic.update(gateway_state=state,gateway_calls=calls)
+        (tmp_path/'mic-signout-error.json').write_text(json.dumps(diagnostic,indent=2))
+        driver.save_screenshot(str(tmp_path/'mic-signout-error.png'))
+        error.add_note('Microphone sign-out: '+json.dumps(diagnostic))
+        raise
+    returned_after=time.monotonic()-began
+    assert returned_after>=12
     assert calls.count('disconnect')==1 and state['phase']=='OFF AIR'
     driver.get(base+'/admin/software')
     wait.until(lambda d:d.current_url.endswith('/admin/login') and d.find_elements(By.CSS_SELECTOR,'.login-card'))
     assert driver.current_url.endswith('/admin/login')
+    import json
+    (tmp_path/'mic-signout-proof.json').write_text(json.dumps(dict(return_delay=12,returned_after=returned_after,disconnects=calls.count('disconnect'),phase=state['phase'],logged_out=True)))
 
 
 def test_back_cancel_restores_url_and_keeps_microphone_live(booth, monkeypatch):
@@ -164,9 +189,24 @@ def native_prompts():
     return True
 
 
-def test_refresh_warning_and_pagehide_release(booth, monkeypatch, native_prompts):
+def test_refresh_warning_and_pagehide_release(booth, monkeypatch, native_prompts, request):
     _,driver,_,_=booth
     _,calls=connected_mic(booth,monkeypatch)
+    driver.execute_script('''
+      sessionStorage.removeItem('micDepartureBeacon');
+      const send = navigator.sendBeacon.bind(navigator);
+      navigator.sendBeacon = (url, data) => {
+        const accepted = send(url, data);
+        if (new URL(url, location.href).pathname.endsWith('/live-mic/disconnect')) {
+          const body = new URLSearchParams(data);
+          sessionStorage.setItem('micDepartureBeacon', JSON.stringify({
+            accepted, tokenMatches:body.get('token') === 'a'.repeat(32),
+            csrfMatches:body.get('csrf') === document.getElementById('dj-booth').dataset.csrf
+          }));
+        }
+        return accepted;
+      };
+    ''')
     assert driver.execute_script("return !dispatchEvent(new Event('beforeunload',{cancelable:true}))")
     assert driver.execute_script('return navigator.userActivation.hasBeenActive')
     driver.execute_script('setTimeout(()=>location.reload(),100)')
@@ -174,10 +214,39 @@ def test_refresh_warning_and_pagehide_release(booth, monkeypatch, native_prompts
     alert.dismiss()
     assert 'disconnect' not in calls
     assert driver.execute_script('return micFixtureTrack.readyState')=='live'
+    old_document=driver.find_element(By.TAG_NAME,'html')
     driver.execute_script('setTimeout(()=>location.reload(),100)')
     WebDriverWait(driver,5).until(EC.alert_is_present()).accept()
-    WebDriverWait(driver,10).until(lambda d:'disconnect' in calls and d.execute_script('return typeof micFixtureTrack')=='undefined')
+    try:
+        # Observe the native reload before asserting its pagehide side effect.
+        # Always query the browser; a missing beacon must not short-circuit all
+        # document observations while the accepted dialog is completing.
+        WebDriverWait(driver,30).until(EC.staleness_of(old_document))
+        WebDriverWait(driver,10).until(lambda d:d.execute_script('return typeof micFixtureTrack')=='undefined')
+        # Beacon reports queue acceptance, not server delivery during destruction.
+        # https://www.w3.org/TR/beacon/#return-value
+        # Check the actual authenticated departure payload here; the companion
+        # pagehide test checks HTTP delivery without destroying its sender.
+        import json
+        departure=json.loads(driver.execute_script('return sessionStorage.getItem("micDepartureBeacon")') or 'null')
+        request.node.user_properties.extend([
+            ('departure_beacon',json.dumps(departure,sort_keys=True)),
+            ('departure_received_during_reload',str('disconnect' in calls)),
+        ])
+        assert departure == dict(accepted=True,tokenMatches=True,csrfMatches=True)
+    except Exception:
+        print('Microphone refresh evidence:', driver.execute_script('return {path:location.pathname,track:typeof micFixtureTrack,ready:document.readyState,beacon:sessionStorage.getItem("micDepartureBeacon")}'), 'gateway calls:', calls)
+        print('Browser console:', getattr(driver,'get_log',lambda kind:driver.execute('getLog',{'type':kind})['value'])('browser'))
+        raise
     assert not driver.find_element(By.ID,'mic-go').is_enabled()
+
+
+def test_pagehide_departure_reaches_gateway_and_stops_capture(booth, monkeypatch):
+    _,driver,_,_=booth
+    _,calls=connected_mic(booth,monkeypatch)
+    driver.execute_script('dispatchEvent(new PageTransitionEvent("pagehide"))')
+    WebDriverWait(driver,15).until(lambda d:'disconnect' in calls)
+    assert driver.execute_script('return micFixtureTrack.readyState')=='ended'
 
 
 def test_failed_return_keeps_mic_view_and_blocks_mode_change(booth, monkeypatch):
@@ -266,3 +335,62 @@ def test_live_mic_logout_with_delayed_response_in_another_tab(booth, monkeypatch
     finally:
         release.set()
         app.after_request_funcs[None].remove(hold_response)
+
+
+def lose_mic_response(driver,action):
+    driver.execute_script('''
+      const fetch=window.fetch;
+      window.micLostReply={disconnectSeen:false,count:0};
+      window.fetch=async function(input,options){
+        const path=new URL(input instanceof Request?input.url:input,location.href).pathname;
+        const wasDisconnect=path.endsWith('/live-mic/disconnect');
+        if(wasDisconnect)micLostReply.disconnectSeen=true;
+        const eligible=micLostReply.disconnectSeen;
+        const drop=eligible&&((path.endsWith('/live-mic/'+window.micLostAction)&&micLostReply.count===0)||
+          (window.micLostAction==='all-status'&&path.endsWith('/live-mic/status')));
+        const response=await fetch.call(this,input,options);
+        if(drop){
+          micLostReply.count++;
+          if(window.micLostAction==='all-status')await new Promise(resolve=>setTimeout(resolve,4000));
+          throw new DOMException('signal timed out','TimeoutError');
+        }
+        return response;
+      };
+      window.micLostAction=arguments[0];
+    ''',action)
+
+
+@pytest.mark.parametrize('lost_action',['disconnect','status'])
+def test_navigation_reconciles_lost_mic_response_without_repeating_disconnect(booth,monkeypatch,lost_action):
+    _,driver,base,tmp_path=booth
+    state,calls=connected_mic(booth,monkeypatch)
+    lose_mic_response(driver,lost_action)
+    driver.execute_script('FreoWorkspace.navigate(arguments[0])',base+'/admin/stations/test-station/media')
+    wait=WebDriverWait(driver,30)
+    wait.until(lambda d:d.find_elements(By.CSS_SELECTOR,'.freo-dialog[open]'))
+    driver.find_element(By.CSS_SELECTOR,'.freo-dialog .admin-primary').click()
+    try:
+        wait.until(lambda d:d.current_url.endswith('/media'))
+    except Exception as error:
+        import json
+        diagnostic=driver.execute_script('return {path:location.pathname,message:document.getElementById("mic-message")?.textContent,capture:micFixtureTrack.readyState,lost:micLostReply}')
+        diagnostic.update(gateway_state=state,gateway_calls=calls)
+        (tmp_path/'mic-network-before.json').write_text(json.dumps(diagnostic,indent=2))
+        error.add_note(json.dumps(diagnostic));raise
+    assert driver.execute_script('return micLostReply.count')==1
+    assert driver.execute_script('return micFixtureTrack.readyState')=='ended'
+    assert calls.count('disconnect')==1 and state['phase']=='OFF AIR'
+
+
+def test_unconfirmed_mic_return_keeps_navigation_blocked(booth,monkeypatch):
+    _,driver,base,_=booth
+    _,calls=connected_mic(booth,monkeypatch)
+    lose_mic_response(driver,'all-status')
+    driver.execute_script('FreoWorkspace.navigate(arguments[0])',base+'/admin/stations/test-station/media')
+    wait=WebDriverWait(driver,30)
+    wait.until(lambda d:d.find_elements(By.CSS_SELECTOR,'.freo-dialog[open]'))
+    driver.find_element(By.CSS_SELECTOR,'.freo-dialog .admin-primary').click()
+    wait.until(lambda d:'not confirmed' in d.find_element(By.ID,'mic-message').text)
+    assert driver.current_url==base+'/admin/stations/test-station/live'
+    assert driver.execute_script('return micFixtureTrack.readyState')=='ended'
+    assert calls.count('disconnect')==1

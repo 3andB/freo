@@ -4,12 +4,7 @@ Freo has a production installation with real users. Use Python 3.12, create a lo
 
 ## Stable and next-version development
 
-`main` is the stable production line. Create production fixes on `fix/*` branches
-from main, merge reviewed and validated fixes into main, and port applicable
-fixes to `develop/v1` separately. Major updates, architecture changes, and
-reseller/multi-customer functionality belong on `develop/v1` or feature branches
-based on it, with pull requests targeting `develop/v1`. Do not merge that
-development line into main while the stable-line policy is active.
+`main` is the stable V1 release line following promotion of the accepted RC17 source. Create fixes on `fix/*` branches from main and validate before merging. Future major development uses a separate development branch. The October 2026 0.3.2 freeze is a historical recovery baseline; its tags and artifacts remain immutable.
 
 Use a separate development checkout and isolated configuration, database,
 storage, and service ports. Never run development or tests against production

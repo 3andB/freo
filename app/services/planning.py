@@ -6,7 +6,7 @@ import uuid
 from app.extensions import db
 from app.models import AutomationState, Clock, ClockSlot, MediaCategory, Rotation, Station
 from app.services.schedule import resolve, usable_clock, utc_instant
-from app.services.timed_events import projected_occurrences
+from app.services.timed_events import projected_occurrences, estimated_duration
 
 
 def coverage(station, start, end):
@@ -76,8 +76,7 @@ def preview_days(station, first, days):
                 warnings.append(f'{row.event.name}: an earlier event may delay this start.')
                 if busy_until > target + timedelta(seconds=row.event.late_tolerance_seconds):
                     warnings.append(f'{row.event.name}: preceding events may exceed its late allowance.')
-            duration = (row.event.track or row.event.imaging_asset or row.event.event_block or row.event.playlist)
-            seconds = duration.duration_ms / 1000 if duration else 0
+            seconds = estimated_duration(row.event)
             busy_until = max(target, busy_until or target) + timedelta(seconds=seconds)
         output.append(dict(date=day, coverage=intervals, events=daily, warnings=list(dict.fromkeys(warnings))))
     return output
