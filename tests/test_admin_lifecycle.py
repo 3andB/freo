@@ -197,6 +197,9 @@ def test_direct_installation_restores_to_canonical_deployment(state,monkeypatch)
     monkeypatch.setattr(b,'Path',lambda value:mapped.get(str(value),original(value)))
     b.adopt_restored_release(dict(source='/opt/freo',env_file='/opt/freo/.env'),release)
     assert (etc/'freo.env').read_text()=='DATABASE_URL=private-fixture'
+    import grp
+    info = (etc/'freo.env').stat()
+    assert (info.st_uid, info.st_gid, info.st_mode & 0o777) == (0, grp.getgrnam('freo').gr_gid, 0o640)
     assert 'WorkingDirectory=/opt/freo/current' in unit.read_text()
     assert 'EnvironmentFile=/etc/freo/freo.env' in unit.read_text()
     assert 'ExecStart=/opt/freo/current/venv/bin/gunicorn' in unit.read_text()
