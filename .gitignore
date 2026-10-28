@@ -40,3 +40,6 @@ radio-runtime/
 # Runtime directories created by the signed production updater.
 /current
 /releases/
+
+# Release manifests are generated for signed artifacts, not source checkouts.
+/release.json
