@@ -13,6 +13,8 @@ artifact hashes; a signed package alone is not recovery acceptance.
   nesting the recovered destination into itself. Recovery now derives entry
   points from verified restore input, relocates only interpreter paths, and
   atomically replaces scripts while retaining their modes and arguments.
+  Nearby systemd unit adoption also uses atomic replacement so an interruption
+  cannot leave a truncated launcher configuration.
 * Direct-install adoption wrote canonical secrets as 0600, contradicting the
   installed validator's 0640 contract. Adoption now establishes root:freo 0640
   for new, existing and already-canonical environment files without changing

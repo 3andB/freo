@@ -355,7 +355,7 @@ def adopt_restored_release(metadata,release):
     environment=Path(metadata['env_file'])
     recovered_env=release/environment.relative_to(metadata['source']) if environment.is_relative_to(metadata['source']) else environment
     destination=Path('/etc/freo/freo.env')
-    from .recovery_layout import canonical_environment
+    from .recovery_layout import canonical_environment, atomic_file
     canonical_environment(recovered_env, destination)
     if metadata['source'] != '/opt/freo': return
     for target in Path('/etc/systemd/system').glob('freo*.service'):
@@ -363,7 +363,7 @@ def adopt_restored_release(metadata,release):
         body=target.read_text()
         rewritten=rewrite_unit(body)
         if body!=rewritten:
-            target.write_text(rewritten);target.chmod(0o644)
+            atomic_file(target, rewritten.encode(), 0o644)
     sync_directory(destination.parent)
 
 
