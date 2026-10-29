@@ -114,8 +114,9 @@ def atomic(path, value, mode=0o644):
     fd, name = tempfile.mkstemp(prefix='.' + path.name, dir=path.parent)
     try:
         os.fchmod(fd, mode)
-        with os.fdopen(fd, 'w') as output:
-            json.dump(value, output, sort_keys=True); output.write('\n')
+        with os.fdopen(fd, 'wb') as output:
+            data = value if isinstance(value, bytes) else (json.dumps(value, sort_keys=True) + '\n').encode()
+            output.write(data)
             output.flush(); os.fsync(output.fileno())
         os.replace(name, path)
         fd = os.open(path.parent, os.O_RDONLY | os.O_DIRECTORY)

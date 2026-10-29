@@ -57,9 +57,13 @@ def install_service_guards():
     for unit in ('icecast2.service','freo-playout.service','freo-playout@.service','freo-mic.service','freo.service'):
         directory=Path('/etc/systemd/system')/(unit+'.d');directory.mkdir(parents=True,exist_ok=True)
         suffix=' --web' if unit=='freo.service' else ''
-        from .recovery_layout import atomic_file, sync_directory
-        atomic_file(directory/'hosting-authority.conf', ('[Service]\nExecCondition=/usr/bin/python3 /usr/local/lib/freo-hosting/guard.py'+suffix+'\n').encode(), 0o644)
-        sync_directory(directory.parent)
+        path=directory/'hosting-authority.conf'
+        if path.is_symlink() or (path.exists() and not path.is_file()):
+            raise h.HostingError('invalid_configuration','Unsafe hosting service guard destination.')
+        h.atomic(path, ('[Service]\nExecCondition=/usr/bin/python3 /usr/local/lib/freo-hosting/guard.py'+suffix+'\n').encode())
+        fd=os.open(directory.parent,os.O_RDONLY|os.O_DIRECTORY)
+        try:os.fsync(fd)
+        finally:os.close(fd)
 
 
 def protect_request_spooling():
@@ -68,7 +72,6 @@ def protect_request_spooling():
     body='proxy_request_buffering off;\nproxy_http_version 1.1;\n'
     if path.is_symlink() or (path.exists() and path.read_text()!=body):
         raise h.HostingError('invalid_configuration','Unmanaged hosting proxy configuration requires review.')
-    from .recovery_layout import atomic_file
-    atomic_file(path, body.encode(), 0o644)
+    h.atomic(path, body.encode())
     subprocess.run(['nginx','-t'],check=True,capture_output=True)
     subprocess.run(['systemctl','reload','nginx'],check=True,capture_output=True)

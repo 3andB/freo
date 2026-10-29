@@ -186,3 +186,25 @@ def test_customer_entry_attachment_persists_both_rename_parents(tmp_path,monkeyp
     layout.attach_verified_copy(source,parent/'.staged-env',destination/'freo.env')
     assert synced[-2:]==[destination,parent]
     assert (destination/'freo.env').read_bytes()==b'opaque secret\n'
+
+
+def test_hosting_guard_installation_uses_only_standard_library(tmp_path):
+    # Fresh provisioning invokes system Python before app dependencies exist.
+    # -I -S excludes user paths and all site packages, including psycopg2.
+    import sys
+    root=Path(__file__).resolve().parents[1]
+    script='''
+import sys
+from pathlib import Path
+sys.path.insert(0,sys.argv[1])
+from freo_ops import hosting_recovery as authority
+root=Path(sys.argv[2]);root.mkdir()
+authority.Path=lambda value:root if value=='/etc/systemd/system' else Path(value)
+authority.install_service_guards()
+files=list(root.glob('*.service.d/hosting-authority.conf'))
+assert len(files)==5
+for p in files:
+ assert p.read_text().startswith('[Service]\\nExecCondition=/usr/bin/python3 ')
+ assert p.stat().st_mode & 0o777 == 0o644
+'''
+    subprocess.run([sys.executable,'-I','-S','-c',script,str(root),str(tmp_path/'units')],check=True,capture_output=True,text=True)
