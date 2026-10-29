@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.0.2-rc.2 — recovery durability candidate
+
+Persist verified staging trees and attachment directories before checkpointing.
+Atomically restore symlinks and managed hosting guard/proxy files. A real unclean
+reset reproduced an empty proxy file and fail-closed resume on RC1; that failed
+operation is retained and requires a clean new acceptance run. Includes RC1's
+healthy-muted-microphone fix. Schema and dependency locks remain unchanged.
+
 ## 1.0.2-rc.1 — healthy muted microphone correction
 
 - Keep healthy muted live input silent instead of enabling the station carrier.

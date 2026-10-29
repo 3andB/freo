@@ -106,3 +106,83 @@ def test_environment_symlink_rejected(tmp_path):
     destination = tmp_path/'freo.env'; destination.symlink_to(source)
     with pytest.raises(HostingError): layout.canonical_environment(source,destination)
     assert source.read_bytes() == b'secret'
+
+
+@pytest.mark.parametrize('kind', ['file', 'tree'])
+def test_verified_attachment_is_durable_before_visibility(tmp_path, monkeypatch, kind):
+    import stat
+    source = tmp_path/'verified'
+    if kind == 'tree':
+        source.mkdir(); (source/'nested').mkdir(); payload = source/'nested/secret.env'
+        external = tmp_path/'external'; external.write_bytes(b'leave unchanged')
+        (source/'outside').symlink_to(external)
+    else: payload = source
+    payload.write_bytes(b'SECRET=exact\x00bytes\n'); payload.chmod(0o600)
+    staged, target = tmp_path/'staged', tmp_path/'attached'
+    original_fsync, original_rename = layout.os.fsync, layout.os.rename
+    synced = set(); renamed = []
+    def fsync(fd):
+        info = os.fstat(fd)
+        if stat.S_ISREG(info.st_mode): synced.add(os.readlink('/proc/self/fd/'+str(fd)))
+        return original_fsync(fd)
+    def rename(old, new):
+        expected = staged/'nested/secret.env' if kind == 'tree' else staged
+        assert str(expected) in synced, 'Attachment became visible before its contents were durable'
+        if kind == 'tree': assert str(external) not in synced
+        renamed.append((old,new)); return original_rename(old,new)
+    monkeypatch.setattr(layout.os,'fsync',fsync);monkeypatch.setattr(layout.os,'rename',rename)
+    layout.attach_verified_copy(source, staged, target)
+    result = target/'nested/secret.env' if kind == 'tree' else target
+    assert result.read_bytes() == payload.read_bytes() and result.stat().st_mode & 0o777 == 0o600
+    assert len(renamed)==1 and not staged.exists()
+    if kind == 'tree': assert external.read_bytes()==b'leave unchanged' and (target/'outside').is_symlink()
+
+
+def test_attachment_sync_failure_leaves_target_absent_and_resume_recopies(tmp_path,monkeypatch):
+    source=tmp_path/'verified';source.mkdir();(source/'config').write_bytes(b'complete managed proxy\n')
+    staged,target=tmp_path/'staged',tmp_path/'target';real=layout.os.fsync
+    monkeypatch.setattr(layout.os,'fsync',lambda fd:(_ for _ in ()).throw(OSError('injected storage failure')))
+    with pytest.raises(OSError):layout.attach_verified_copy(source,staged,target)
+    assert not target.exists()
+    (staged/'config').write_bytes(b'torn')
+    monkeypatch.setattr(layout.os,'fsync',real);layout.attach_verified_copy(source,staged,target)
+    assert (target/'config').read_bytes()==b'complete managed proxy\n'
+
+
+def test_atomic_symlink_interruption_retains_previous_target(tmp_path,monkeypatch):
+    destination=tmp_path/'current';destination.symlink_to('old')
+    original=layout.os.replace
+    def fail(*args):raise OSError('injected before replacement')
+    monkeypatch.setattr(layout.os,'replace',fail)
+    with pytest.raises(OSError):layout.atomic_symlink(destination,'new')
+    assert os.readlink(destination)=='old'
+    monkeypatch.setattr(layout.os,'replace',original);layout.atomic_symlink(destination,'new');layout.atomic_symlink(destination,'new')
+    assert os.readlink(destination)=='new'
+    assert not list(tmp_path.glob('.freo-link-*'))
+
+
+def test_hosting_proxy_atomic_interruption_keeps_managed_contents(tmp_path,monkeypatch):
+    from freo_ops import hosting_recovery as authority
+    target=tmp_path/'managed.conf';expected=b'proxy_request_buffering off;\nproxy_http_version 1.1;\n';target.write_bytes(expected)
+    monkeypatch.setattr(authority,'Path',lambda name:target)
+    monkeypatch.setattr(authority.subprocess,'run',lambda *args,**kwargs:None)
+    original=layout.os.replace
+    monkeypatch.setattr(layout.os,'replace',lambda *args:(_ for _ in ()).throw(OSError('before atomic replacement')))
+    with pytest.raises(OSError):authority.protect_request_spooling()
+    assert target.read_bytes()==expected
+    monkeypatch.setattr(layout.os,'replace',original);authority.protect_request_spooling()
+    assert target.read_bytes()==expected and target.stat().st_mode & 0o777==0o644
+    target.write_bytes(b'operator customization')
+    with pytest.raises(HostingError):authority.protect_request_spooling()
+    assert target.read_bytes()==b'operator customization'
+
+
+def test_customer_entry_attachment_persists_both_rename_parents(tmp_path,monkeypatch):
+    parent=tmp_path/'etc';destination=parent/'freo';destination.mkdir(parents=True)
+    source=tmp_path/'verified';source.write_bytes(b'opaque secret\n');source.chmod(0o640)
+    synced=[];real=layout.sync_directory
+    def record(path):synced.append(Path(path));return real(path)
+    monkeypatch.setattr(layout,'sync_directory',record)
+    layout.attach_verified_copy(source,parent/'.staged-env',destination/'freo.env')
+    assert synced[-2:]==[destination,parent]
+    assert (destination/'freo.env').read_bytes()==b'opaque secret\n'

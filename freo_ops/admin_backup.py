@@ -392,11 +392,8 @@ def restore_customer_configuration(operation, source, destination):
         if operation['configuration_had_target'] and not retained.exists() and not retained.is_symlink():
             os.rename(target,retained)
         if not target.exists() and not target.is_symlink():
-            if staged.exists() or staged.is_symlink():
-                if staged.is_dir() and not staged.is_symlink():shutil.rmtree(staged)
-                else:staged.unlink()
-            a.run(['cp','-a','--',str(source/name),str(staged)],timeout=3600)
-            os.rename(staged,target)
+            from .recovery_layout import attach_verified_copy
+            attach_verified_copy(source/name, staged, target)
         from .upgrade import sync_directory
         sync_directory(destination);sync_directory(destination.parent)
         done.append(name)
@@ -471,11 +468,8 @@ def restore_live(operation, *, reconcile=False):
             if operation['had_target'] and not retained.exists() and not retained.is_symlink():
                 os.rename(target,retained)
             if not target.exists() and not target.is_symlink():
-                if staged.exists() or staged.is_symlink():
-                    if staged.is_dir() and not staged.is_symlink():shutil.rmtree(staged)
-                    else:staged.unlink()
-                a.run(['cp','-a','--',str(Path(operation['restore_directory'])/f'root-{index}'),str(staged)],timeout=3600)
-                os.rename(staged,target)
+                from .recovery_layout import attach_verified_copy
+                attach_verified_copy(Path(operation['restore_directory'])/f'root-{index}', staged, target)
             completed.append(index)
             a.checkpoint(operation,attached=completed)
         # Restore symlinks to their original approved targets, mapping executable paths.
@@ -488,7 +482,8 @@ def restore_live(operation, *, reconcile=False):
                 target=(release/original.relative_to(metadata['source']) if original.is_relative_to(metadata['source']) else original)/entry['path']
                 link=entry['target']
                 if Path(link).is_absolute() and Path(link).is_relative_to(metadata['source']):link=str(release/Path(link).relative_to(metadata['source']))
-                target.unlink(missing_ok=True);target.symlink_to(link)
+                from .recovery_layout import atomic_symlink
+                atomic_symlink(target, link)
         # Derive launchers from verified input, never from a previous attempt.
         verified_bin = restored_path(restored, Path(operation['restore_directory']),
                                      Path(metadata['source'])/'venv/bin')
