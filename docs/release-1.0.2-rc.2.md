@@ -29,3 +29,16 @@ The exact signed artifact must pass fresh and managed recovery, actual unclean
 resets, resumption, reboot, data/permissions and decoded audio validation before
 this candidate is published. Native phone/Safari, physical microphone/USB removal
 and actual host-power removal require unavailable hardware and remain untested.
+
+
+For an installation already affected by the earlier torn-copy failure, retain the
+maintenance/suspension guard and preserve the entire failed filesystem, database,
+recovery journal and verified encrypted backup. Do not delete an empty proxy
+file, normalize launchers, clear guards or edit attachment checkpoints to make
+resume appear successful. Validate the matched backup in isolation with trusted
+fixed tools and review a full recovery attachment with the operator; old completed
+copy checkpoints cannot prove that all copied contents survived a power cut.
+The new candidate prevents this fault in newly executed attachments; it does not
+silently trust or rewrite arbitrary corrupted managed configuration from an older
+operation. The failed test baseline is archived before a separate fresh-install
+acceptance run, not repaired and reported as passing.
