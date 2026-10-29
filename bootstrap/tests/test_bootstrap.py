@@ -23,7 +23,7 @@ def release(version="0.3.0", **kwargs):
     package = "freo-v" + version + ".tar.gz"
     value = dict(tag_name="v" + version, draft=False, prerelease=False,
                  published_at="2026-09-24T19:58:14Z", assets=[])
-    for name in (package, package + ".asc", "publisher.gpg", "PUBLISHER-FINGERPRINT.txt", "SHA256SUMS"):
+    for name in (package, package + ".asc", "publisher.gpg", "SHA256SUMS"):
         value["assets"].append(dict(name=name, state="uploaded", size=10,
                                    browser_download_url="https://github.com/3andB/freo/releases/download/v" + version + "/" + name))
     value.update(kwargs)
@@ -175,7 +175,7 @@ class Inputs(Base):
         args = self.b.options(["--domain", "radio.example.com"])
         with contextlib.redirect_stdout(output), patch.object(self.b.socket, "gethostname", return_value="TEST-SERVER"):
             self.b.screen(args, "0.3.0", "8.8.8.8")
-        for text in ("TEST-SERVER", "8.8.8.8", "http://radio.example.com", "Ubuntu 24.04", "x86_64 / amd64", "Bootstrap: 0.1.0", "Installing Freo: 0.3.0"):
+        for text in ("TEST-SERVER", "8.8.8.8", "http://radio.example.com", "Ubuntu 24.04", "x86_64 / amd64", "Bootstrap: 0.1.1", "Installing Freo: 0.3.0"):
             self.assertIn(text, output.getvalue())
 
 
@@ -331,11 +331,10 @@ class Crypto(Base):
     def sign(self, name):
         subprocess.run(["gpg", "--homedir", str(self.home), "--batch", "--yes", "--armor", "--detach-sign", str(self.work / name)], check=True, capture_output=True)
         (self.work / "publisher.gpg").write_bytes(subprocess.check_output(["gpg", "--homedir", str(self.home), "--export", self.fingerprint]))
-        (self.work / "PUBLISHER-FINGERPRINT.txt").write_text(self.fingerprint + "\n")
         self.sums(name)
 
     def sums(self, name):
-        (self.work / "SHA256SUMS").write_text("".join(self.b.sha256(self.work / item) + "  " + item + "\n" for item in (name, name + ".asc", "publisher.gpg", "PUBLISHER-FINGERPRINT.txt")))
+        (self.work / "SHA256SUMS").write_text("".join(self.b.sha256(self.work / item) + "  " + item + "\n" for item in (name, name + ".asc", "publisher.gpg")))
 
     def verify(self, name):
         with patch.object(self.b, "FINGERPRINT", self.fingerprint):
@@ -348,6 +347,22 @@ class Crypto(Base):
         self.assertEqual((source / "scripts").stat().st_mode & 0o777, 0o755)
         self.assertEqual(source.parent.stat().st_mode & 0o777, 0o700)
         self.assertEqual(source.name, "verified-release")
+
+    def test_current_release_contract_without_fingerprint_text(self):
+        name = self.payload()
+        self.assertFalse((self.work / "PUBLISHER-FINGERPRINT.txt").exists())
+        source, _ = self.verify(name)
+        self.assertTrue((source / "scripts/install.sh").is_file())
+
+    def test_missing_required_checksum_rejected(self):
+        name = self.payload()
+        for missing in (name, name + ".asc", "publisher.gpg"):
+            self.sums(name)
+            sums = self.work / "SHA256SUMS"
+            sums.write_text("\n".join(line for line in sums.read_text().splitlines()
+                                       if not line.endswith("  " + missing)) + "\n")
+            with self.subTest(missing=missing), self.assertRaises(self.b.Stop):
+                self.b.checksums(self.work, name)
 
     def test_bad_sha_prevents_signature_and_execution(self):
         name = self.payload()

@@ -1,0 +1,32 @@
+{
+  "checked_at": "2026-10-29T17:29:12.617666+00:00",
+  "bootstrap_version": "0.1.1",
+  "bootstrap_sha256": "3659175af043e84b848ced59f1a3e0d81261e63ae6316d9c3631426b3bf801c5",
+  "latest_stable": "1.0.2",
+  "tested_version": "1.0.2",
+  "source_commit": "de61741bddd8658bc2162b30e42c77c2736c5779",
+  "publisher_fingerprint": "B835B40E7E1A5838390256751AB72B63BEB716C3",
+  "package_sha256": "eabc4194ef903f8554d1fa73a756d3c946c688ff526bb4734de1bcc1e2c2557a",
+  "signature": "PASS",
+  "signed_manifest_files": 614,
+  "safe_extraction": "PASS",
+  "installer_executed": false,
+  "acceptance_hash_match": true,
+  "downloaded_assets": {
+    "freo-v1.0.2.tar.gz": "eabc4194ef903f8554d1fa73a756d3c946c688ff526bb4734de1bcc1e2c2557a",
+    "freo-v1.0.2.tar.gz.asc": "b23b16d0bdd8e99aaa23b59a9c611de6f981276219cedaedb2e473b6558a94b5",
+    "publisher.gpg": "4b2f3da55ec471fbec0357813e51b9fac7ee4af55a8ecc347c31f230c70d1d1c",
+    "SHA256SUMS": "738b24d4e925257e81e49caddab926f3e57c6852810ef6f540be96ad92fb4e3f"
+  },
+  "automated_tests": {
+    "command": "python3 -I -m unittest discover -s bootstrap/tests -v",
+    "passed": 57,
+    "failed": 0,
+    "skipped": 0
+  },
+  "bash_syntax": "PASS",
+  "isolated_https_delivery": "PASS",
+  "application_package_modified": false,
+  "fresh_vm_acceptance": "NOT_REPEATED",
+  "public_installer_activation": "PENDING_SEPARATE_HOST_DEPLOYMENT"
+}
