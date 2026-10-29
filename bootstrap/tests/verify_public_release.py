@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Read-only public network integration: download/verify, NEVER install Freo.
 
-The known 0.3.0 identity is acceptance evidence here, not bootstrap runtime policy.
+The known 1.0.2 identity is acceptance evidence here, not bootstrap runtime policy.
 Run with an unused --output directory. No Flask/application imports.
 """
 import argparse
@@ -19,14 +19,14 @@ args.output.mkdir(mode=0o700, parents=False, exist_ok=False)
 b = load()
 with patch.object(b, "install", side_effect=AssertionError("Integration MUST NOT execute an installer")) as installer:
     latest = b.discover(args.output)
-    release = b.discover(args.output, "0.3.0")
+    release = b.discover(args.output, "1.0.2")
     version, package = b.download_assets(release, args.output)
     source, manifest = b.verify(args.output, package, version)
-    expected = "f171ebac1492b6a952787f15515884f3356576bce884640357f83f3bfc292584"
+    expected = "eabc4194ef903f8554d1fa73a756d3c946c688ff526bb4734de1bcc1e2c2557a"
     if b.sha256(args.output / package) != expected:
-        raise SystemExit("STOP: 0.3.0 does not match its approved acceptance hash")
-    if manifest["commit"] != "4ff69067e3a3f1b4a488b7ea8f8598ac25a27bda":
-        raise SystemExit("STOP: 0.3.0 source identity mismatch")
+        raise SystemExit("STOP: 1.0.2 does not match its approved acceptance hash")
+    if manifest["commit"] != "de61741bddd8658bc2162b30e42c77c2736c5779":
+        raise SystemExit("STOP: 1.0.2 source identity mismatch")
     installer.assert_not_called()
     receipt = dict(checked_at=datetime.datetime.now(datetime.timezone.utc).isoformat(),
                    bootstrap_version=b.BOOTSTRAP_VERSION, bootstrap_sha256=b.sha256(SCRIPT),
