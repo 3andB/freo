@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
     inputs:
       candidate:
-        description: Build a private candidate from develop/v1 (no tag or release index)
+        description: Build a private candidate from a release branch (no tag or release index)
         type: boolean
         default: true
 
@@ -38,9 +38,9 @@ jobs:
         run: |
           mkdir -p "$RUNNER_TEMP/freo-release"
           if [[ "${{ github.event_name }}" == workflow_dispatch && "${{ inputs.candidate }}" == true ]]; then
-            [[ "$GITHUB_REF" == refs/heads/develop/v1 ]] || { echo 'Candidates require develop/v1'; exit 1; }
+            [[ "$GITHUB_REF" == refs/heads/develop/v1 || "$GITHUB_REF" == refs/heads/release/1.0.1 ]] || { echo 'Candidates require an approved release branch'; exit 1; }
             version=$(venv/bin/python -c 'from app.version import VERSION; print(VERSION)')
-            [[ "$version" =~ ^1\.0\.0-rc\.[0-9]+$ ]] || exit 1
+            [[ "$version" =~ ^1\.0\.[0-9]+-rc\.[0-9]+$ ]] || exit 1
             artifact="freo-v${version}.tar.gz"
             venv/bin/python scripts/build-release.py --candidate --output "$RUNNER_TEMP/freo-release/$artifact"
             echo 'FREO_PRIVATE_CANDIDATE=1' >> "$GITHUB_ENV"
@@ -82,8 +82,7 @@ jobs:
             freo_version="${FREO_ARTIFACT#freo-v}"
             freo_version="${freo_version%.tar.gz}"
             freo_kit="freo-v${freo_version}-install-kit.tar"
-            freo_doc="v1-${freo_version#1.0.0-}-installation.md"
-            freo_doc="${freo_doc/rc./rc}"
+            freo_doc="candidate-installation.md"
             cp "$GITHUB_WORKSPACE/docs/$freo_doc" INSTALL.md
             cp "$GITHUB_WORKSPACE/docs/$freo_doc" "$freo_doc"
             tar -cf "$freo_kit" "$FREO_ARTIFACT" "${FREO_ARTIFACT}.asc" publisher.gpg SHA256SUMS INSTALL.md

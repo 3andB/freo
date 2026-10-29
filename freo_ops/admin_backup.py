@@ -351,20 +351,19 @@ def administrative_authority(operation):
 
 def adopt_restored_release(metadata,release):
     """Use Phase A's canonical deployment paths for a restored direct installation."""
-    if metadata['source']!='/opt/freo':return
     from .upgrade import rewrite_unit,sync_directory
     environment=Path(metadata['env_file'])
-    recovered_env=release/environment.relative_to('/opt/freo') if environment.is_relative_to('/opt/freo') else environment
+    recovered_env=release/environment.relative_to(metadata['source']) if environment.is_relative_to(metadata['source']) else environment
     destination=Path('/etc/freo/freo.env')
-    if recovered_env!=destination:
-        shutil.copy2(recovered_env,destination)
-        destination.chmod(0o600)
+    from .recovery_layout import canonical_environment, atomic_file
+    canonical_environment(recovered_env, destination)
+    if metadata['source'] != '/opt/freo': return
     for target in Path('/etc/systemd/system').glob('freo*.service'):
         if not target.is_file() or target.is_symlink():continue
         body=target.read_text()
         rewritten=rewrite_unit(body)
         if body!=rewritten:
-            target.write_text(rewritten);target.chmod(0o644)
+            atomic_file(target, rewritten.encode(), 0o644)
     sync_directory(destination.parent)
 
 
@@ -432,8 +431,9 @@ def restore_live(operation, *, reconcile=False):
     if restored['roots']!=metadata['roots']:
         raise h.HostingError('backup_integrity_failed','Restored inventory differs from approved inventory.')
     release=Path('/opt/freo/releases')/('recovered-'+operation['operation_id'])
-    release.mkdir(parents=True,exist_ok=True)
-    release.chmod(0o755)
+    from .recovery_layout import managed_directory, relocate_launchers
+    managed_directory(release.parent)
+    managed_directory(release)
     with administrative_authority(operation), preserve_authority():
         a.checkpoint(operation,authority_saved=True,phase='attaching')
         retain_newer_units(operation,restored)
@@ -489,13 +489,10 @@ def restore_live(operation, *, reconcile=False):
                 link=entry['target']
                 if Path(link).is_absolute() and Path(link).is_relative_to(metadata['source']):link=str(release/Path(link).relative_to(metadata['source']))
                 target.unlink(missing_ok=True);target.symlink_to(link)
-        # venv console scripts contain an absolute Python shebang.
-        for path in (release/'venv/bin').iterdir():
-            if path.is_file() and not path.is_symlink():
-                with path.open('rb') as stream: prefix=stream.read(2)
-                if prefix==b'#!':
-                    data=path.read_bytes().replace(str(metadata['source']).encode(),str(release).encode())
-                    path.write_bytes(data)
+        # Derive launchers from verified input, never from a previous attempt.
+        verified_bin = restored_path(restored, Path(operation['restore_directory']),
+                                     Path(metadata['source'])/'venv/bin')
+        relocate_launchers(verified_bin, release/'venv/bin', metadata['source'], release)
         url,dbname,role=local_database()
         preserved='freo_preserved_'+operation['operation_id']
         names=set(pg('SELECT datname FROM pg_database;').splitlines())

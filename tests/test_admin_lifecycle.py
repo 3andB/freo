@@ -197,6 +197,9 @@ def test_direct_installation_restores_to_canonical_deployment(state,monkeypatch)
     monkeypatch.setattr(b,'Path',lambda value:mapped.get(str(value),original(value)))
     b.adopt_restored_release(dict(source='/opt/freo',env_file='/opt/freo/.env'),release)
     assert (etc/'freo.env').read_text()=='DATABASE_URL=private-fixture'
+    import grp
+    info = (etc/'freo.env').stat()
+    assert (info.st_uid, info.st_gid, info.st_mode & 0o777) == (0, grp.getgrnam('freo').gr_gid, 0o640)
     assert 'WorkingDirectory=/opt/freo/current' in unit.read_text()
     assert 'EnvironmentFile=/etc/freo/freo.env' in unit.read_text()
     assert 'ExecStart=/opt/freo/current/venv/bin/gunicorn' in unit.read_text()
@@ -410,3 +413,31 @@ def test_operational_health_allows_shared_cold_start_and_stays_bounded(monkeypat
     else:
         assert a.verified_health()['health']=='healthy'
         assert elapsed[0] == ready_at
+
+
+def test_unit_adoption_survives_interrupted_replacement(state,monkeypatch):
+    from freo_ops import recovery_layout as layout
+    etc=state/'etc';etc.mkdir()
+    units=state/'systemd';units.mkdir()
+    release=state/'release';release.mkdir()
+    (release/'.env').write_bytes(b'SECRET_KEY=unchanged\n')
+    unit=units/'freo.service'
+    original_body='[Service]\nWorkingDirectory=/opt/freo\nEnvironmentFile=/opt/freo/.env\nExecStart=/opt/freo/venv/bin/gunicorn wsgi:app\n'
+    unit.write_text(original_body)
+    original=Path
+    mapped={'/etc/freo/freo.env':etc/'freo.env','/etc/systemd/system':units}
+    monkeypatch.setattr(b,'Path',lambda value:mapped.get(str(value),original(value)))
+    replace=layout.os.replace
+    class Interrupted(BaseException):pass
+    def interrupt(source,target):
+        if target==unit:raise Interrupted()
+        return replace(source,target)
+    monkeypatch.setattr(layout.os,'replace',interrupt)
+    with pytest.raises(Interrupted):b.adopt_restored_release(dict(source='/opt/freo',env_file='/opt/freo/.env'),release)
+    assert unit.read_text()==original_body
+    monkeypatch.setattr(layout.os,'replace',replace)
+    b.adopt_restored_release(dict(source='/opt/freo',env_file='/opt/freo/.env'),release)
+    expected=unit.read_bytes()
+    b.adopt_restored_release(dict(source='/opt/freo',env_file='/opt/freo/.env'),release)
+    assert unit.read_bytes()==expected
+    assert b'/opt/freo/current/venv/bin/gunicorn' in expected
