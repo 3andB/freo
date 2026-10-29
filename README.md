@@ -1,13 +1,21 @@
 # Freo
 
-**Published stable: Freo 1.0.1** — radio automation and station management for Ubuntu 24.04 x86_64.
+**Published stable: Freo 1.0.2** — radio automation and station management for Ubuntu 24.04 x86_64.
 
-[Install Freo](docs/stable-installation.md) · [Signed installation kit](https://github.com/3andB/freo/releases/download/v1.0.1/freo-v1.0.1-install-kit.tar) · [Release notes](docs/release-1.0.1.md)
+[Download ZIP](https://github.com/3andB/freo/releases/download/v1.0.2/freo-v1.0.2-download.zip) · [Install or upgrade](docs/stable-1.0.2-installation.md) · [Release notes](docs/release-1.0.2.md) · [Signed installation kit](https://github.com/3andB/freo/releases/download/v1.0.2/freo-v1.0.2-install-kit.tar)
 
-The signed 1.0.1 recovery patch passed fresh and managed interrupted recovery, suspended recovery, signed upgrades and full reboot acceptance. See the [release notes and exact-artifact evidence](docs/release-1.0.1.md).
-
-Extended testing found a healthy-muted-microphone carrier defect and an unclean-recovery durability defect in that stable code. The corrected **1.0.2-rc.3 test candidate** passed fresh/managed/suspended recovery, three actual unclean guest resets and resumption, reboots, generated-media preservation, and deployed microphone/player checks. Physical phone/Safari, USB microphone and physical host-power checks remain outstanding. [Candidate scope and exact hashes](docs/release-1.0.2-rc.3.md) · [Download corrected test ZIP](https://github.com/3andB/freo/releases/download/v1.0.2-rc.3/freo-v1.0.2-rc.3-download.zip) · [Unchanged stable ZIP with known issues disclosed](https://github.com/3andB/freo/releases/download/v1.0.1/freo-v1.0.1-download.zip). GitHub signing is configured; both ZIPs passed anonymous signature/hash verification as Freo's service user on World and the disposable VM.
-
+1.0.2 includes the recovery permissions, idempotent launcher relocation, durable
+restore/resume and healthy-muted-microphone corrections. The accepted RC3 passed
+fresh/managed/suspended recovery, actual unclean guest resets and resumption,
+reboots, generated-media preservation, deployed microphone/player checks, and a
+populated 1.0.1 maintenance upgrade. The owner confirms microphone and physical
+iPhone/Android acceptance. The exact stable package separately passed signed
+upgrade, verified encrypted backup/isolated restore, preservation, decoded
+direct/HTTPS audio and full reboot checks. [Signed stable acceptance](https://github.com/3andB/freo/releases/download/v1.0.2/ACCEPTANCE-1.0.2.json)
+records exact hashes, provenance and remaining scope limits. Application changes
+from tested RC3 are limited to the version value. Existing 1.0.1 installations
+require the explicit radio-maintenance procedure; never reinstall over existing
+state. Historical tags, ZIPs and signed reports retain their original bytes.
 
 [Recovery and upgrades](docs/recovery-and-upgrades.md): existing installations
 use the signed updater with a verified backup/recovery point. The fresh installer
