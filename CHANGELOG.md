@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.1 — stable source preparation
+
+- Promote the accepted 1.0.1-rc.1 recovery fixes without changing recovery behavior or schema fe28c3d4e5f6.
+- Preserve safe root-controlled release-directory traversal, repeatable launcher relocation, atomic unit adoption, and root:freo 0640 canonical configuration.
+- Record candidate upgrade/recovery acceptance separately from the final stable artifact gate; see [1.0.1 release notes](docs/release-1.0.1.md).
+
 ## 1.0.1-rc.1 — recovery candidate
 
 - Fix restrictive-umask release parent creation, repeated launcher relocation on resume, and canonical environment ownership/mode.

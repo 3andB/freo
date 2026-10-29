@@ -1,8 +1,10 @@
 # Freo
 
-**Freo 1.0.0** — radio automation and station management for Ubuntu 24.04 x86_64.
+**Published stable: Freo 1.0.0** — radio automation and station management for Ubuntu 24.04 x86_64.
 
 [Install Freo](docs/stable-installation.md) · [Signed installation kit](https://github.com/3andB/freo/releases/download/v1.0.0/freo-v1.0.0-install-kit.tar) · [Release notes](docs/release-1.0.0.md)
+
+The recovery patch source is prepared as **1.0.1**; see its [release notes and final artifact gate](docs/release-1.0.1.md). The published stable download above remains v1.0.0 until the exact signed 1.0.1 kit passes acceptance and is published.
 
 [Recovery and upgrades](docs/recovery-and-upgrades.md): existing installations
 use the signed updater with a verified backup/recovery point. The fresh installer

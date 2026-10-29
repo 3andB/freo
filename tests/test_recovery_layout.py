@@ -88,14 +88,17 @@ def test_interruption_resumes_without_checkpoint(tmp_path, monkeypatch, point):
 @pytest.mark.parametrize('existing', [False,True])
 @pytest.mark.parametrize('same', [False,True])
 def test_canonical_environment_preserves_secrets(tmp_path, existing, same):
-    source = tmp_path/'restored.env'; source.write_bytes(b'SECRET_KEY="opaque $value"\n# keep bytes\n');source.chmod(0o600)
+    expected = b'SECRET_KEY="opaque $value"\n# keep bytes\n'
+    source = tmp_path/'restored.env'; source.write_bytes(expected);source.chmod(0o600)
     destination = source if same else tmp_path/'freo.env'
     if existing and not same: destination.write_bytes(b'old');destination.chmod(0o600)
     layout.canonical_environment(source,destination)
-    assert destination.read_bytes() == source.read_bytes()
+    assert destination.read_bytes() == expected
+    assert source.read_bytes() == expected
     info = destination.stat()
     assert (info.st_uid,info.st_gid,info.st_mode & 0o777) == (0,grp.getgrnam('freo').gr_gid,0o640)
     layout.canonical_environment(destination,destination)
+    assert destination.read_bytes() == expected
 
 
 def test_environment_symlink_rejected(tmp_path):

@@ -15,7 +15,7 @@ SCRIPTS = {
 }
 OPERATOR_DOCS = {
     'stable-installation.md', 'release-1.0.0.md',
-    'candidate-installation.md', 'release-1.0.1-rc.1.md',
+    'candidate-installation.md', 'release-1.0.1-rc.1.md', 'release-1.0.1.md',
     'v1-rc7-installation.md',
     'v1-rc8-installation.md',
     'v1-rc9-installation.md',
