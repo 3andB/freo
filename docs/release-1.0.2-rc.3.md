@@ -94,3 +94,18 @@ the full earlier human six-stream matrix, final stable-to-RC3 maintenance upgrad
 and Studio/World approval for this new version remain outside this qualification.
 The corrected release remains a prerelease; latest stable stays 1.0.1 with its new
 issues disclosed. All prior signed tags and published artifact bytes remain intact.
+
+
+## Additional owner-reported fresh-VPS acceptance
+
+The owner reports a successful RC test on a genuinely new Ubuntu VPS:
+installation, first direct-layout restore, controlled interruption/resumption and
+reboot completed without manual repairs. State, generated data, permissions and
+four decoded streams passed. This adds reported clean-OS coverage to the earlier
+retained-OS acceptance above.
+
+Provenance: owner report. Exact tested artifact digest, operation IDs, interruption
+method and raw logs were not supplied with this update. Those details remain
+pending for independent artifact binding. The published kit, ZIP, signatures and
+original signed reports retain their existing bytes. Remaining physical-device,
+physical-power and stable-to-RC upgrade qualifications remain as documented above.
