@@ -100,8 +100,34 @@ or interrupted by these tests. Public downloads and the approved World manifest
 are verified separately. Existing installations use the signed updater; never run
 the fresh installer over existing customer state.
 
-GitHub source/dependency/build/package-startup jobs passed; its remote signing step
-remains unconfigured. Local signing used the established publisher and independent
-signature verification. No private signing material was uploaded to GitHub.
-Power loss during writes and the earlier full human mobile/microphone/six-stream
-matrix remain untested on these stable bytes.
+At original publication these exact stable bytes were signed locally while remote
+signing was unconfigured. The encrypted GitHub release environment is now configured;
+the complete stable tag workflow passed on rerun and its signature was independently
+verified. The original stable artifact bytes were not replaced by the CI rebuild.
+The original human mobile/microphone/six-stream matrix was not repeated in full.
+Subsequent extended testing and newly discovered defects are recorded below.
+
+
+## Extended acceptance and corrected test candidate
+
+Extended tests confirmed a healthy-muted-live-microphone carrier defect in stable
+1.0.1. A real unclean guest reset during RC1 recovery also exposed copied-root
+durability in four recovery modules byte-identical to stable 1.0.1. Resume failed
+closed on an empty managed Nginx policy. These findings are separate from the
+originally passing fresh-install/broadcast, SIGKILL recovery and reboot tests.
+
+The corrected [1.0.2-rc.3 candidate](release-1.0.2-rc.3.md) completed the documented
+fresh direct, managed/suspended restore, actual unclean guest reset/resume and
+reboot gates without manual application repair or journal edits. It remains a
+prerelease: physical phones/Safari, USB microphone and physical host-power removal
+are unavailable. Its final stable-to-candidate maintenance upgrade was not repeated;
+existing installations need an explicitly reviewed radio-maintenance procedure.
+
+[Stable ZIP](https://github.com/3andB/freo/releases/download/v1.0.1/freo-v1.0.1-download.zip)
+contains the unchanged original kit and source with the new issues disclosed.
+[Corrected candidate ZIP](https://github.com/3andB/freo/releases/download/v1.0.2-rc.3/freo-v1.0.2-rc.3-download.zip)
+contains the exact tested kit, corresponding source/tests and signed scoped evidence.
+[Extended signed acceptance](https://github.com/3andB/freo/releases/download/v1.0.2-rc.3/EXTENDED-ACCEPTANCE.md)
+and [anonymous service-user download verification](https://github.com/3andB/freo/releases/download/v1.0.2-rc.3/PUBLIC-DOWNLOAD-VERIFICATION.json)
+record exact hashes, real operation IDs, actual decoded audio and remaining limits.
+Original tags, kits, signatures/checksums and signed reports remain immutable.

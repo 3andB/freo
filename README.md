@@ -6,6 +6,9 @@
 
 The signed 1.0.1 recovery patch passed fresh and managed interrupted recovery, suspended recovery, signed upgrades and full reboot acceptance. See the [release notes and exact-artifact evidence](docs/release-1.0.1.md).
 
+Extended testing found a healthy-muted-microphone carrier defect and an unclean-recovery durability defect in that stable code. The corrected **1.0.2-rc.3 test candidate** passed fresh/managed/suspended recovery, three actual unclean guest resets and resumption, reboots, generated-media preservation, and deployed microphone/player checks. Physical phone/Safari, USB microphone and physical host-power checks remain outstanding. [Candidate scope and exact hashes](docs/release-1.0.2-rc.3.md) · [Download corrected test ZIP](https://github.com/3andB/freo/releases/download/v1.0.2-rc.3/freo-v1.0.2-rc.3-download.zip) · [Unchanged stable ZIP with known issues disclosed](https://github.com/3andB/freo/releases/download/v1.0.1/freo-v1.0.1-download.zip). GitHub signing is configured; both ZIPs passed anonymous signature/hash verification as Freo's service user on World and the disposable VM.
+
+
 [Recovery and upgrades](docs/recovery-and-upgrades.md): existing installations
 use the signed updater with a verified backup/recovery point. The fresh installer
 refuses existing installations.

@@ -51,3 +51,46 @@ can be checkpointed. The Icecast maintenance guard is written atomically. RC2's
 final artifact passed fresh installation and 17 engine cases, then was superseded
 at durability review before power qualification; no failed power test is claimed
 for that source. All earlier tags and builds remain retained.
+
+
+## Published test candidate acceptance
+
+The exact [signed prerelease](https://github.com/3andB/freo/releases/tag/v1.0.2-rc.3)
+is published for its documented disposable-VM testing scope. Source:
+`aa5e4a46b58444ee2edc5ca6916060a0d4e42b84`.
+Package SHA-256: `8bb26be0246130a86e54031aeca700f4b8ad9bdfb77b53a6bb4804f1985d7aa4`.
+Kit SHA-256: `f472789dd9b1ef1433e9a40f0550aae03db2d97ce60c42bd1dfb3895336a75d1`.
+[Download ZIP](https://github.com/3andB/freo/releases/download/v1.0.2-rc.3/freo-v1.0.2-rc.3-download.zip)
+SHA-256: `665a119733ce0f4fd4dd665ee868f2588393407833709dd46fc83b6f3d0bed01`.
+
+The exact source passed 154 root recovery/hosting/lifecycle/upgrade cases, 17 real
+Liquidsoap/WebRTC microphone/engine cases and the complete branch/tag release
+workflows including independently verified signing. CI XML records 618 passes and
+10 optional skips; PostgreSQL and actual packaged startup gates passed too.
+These counts are separate overlapping suites and are not summed.
+
+The separate application-fresh Ubuntu 24.04 VM retained OS/packages/accounts and
+TLS identity. Normal setup replaced the bootstrap credential and created actual
+generated media, an assigned DJ, persistent Simple programming, hosted policy and
+one deliberately stopped station. Deployed HTTPS browser microphone/gain/mute/
+return/permission/client-loss and six Chromium player profiles passed with actual
+decoded sample/spectral checks. Under umask 0077, encrypted backup and isolated
+restore passed. Three actual SysRq-b unclean guest resets preserved the same real
+incomplete operation, held broadcasts inhibited and retained all 5,068 verified
+input files exactly. Ordinary CLI recover completed without operator repairs.
+Managed and suspended live restores, attempted root service starts while suspended,
+suspended and active full reboots, account/media/programming/policy retention,
+whole environment bytes/root:freo 0640, executable launchers and non-silent direct/
+HTTPS decoded audio passed. Current restore journals reached completion truthfully.
+
+[Signed extended acceptance](https://github.com/3andB/freo/releases/download/v1.0.2-rc.3/EXTENDED-ACCEPTANCE.md)
+and [machine-readable evidence](https://github.com/3andB/freo/releases/download/v1.0.2-rc.3/EXTENDED-ACCEPTANCE.json)
+retain earlier failed attempts and exact scoped results. [Both ZIPs downloaded
+anonymously and verified as Freo's Unix user on World and the disposable VM](https://github.com/3andB/freo/releases/download/v1.0.2-rc.3/PUBLIC-DOWNLOAD-VERIFICATION.json).
+World production runtime and OVH endurance were not interrupted.
+
+Physical phones/Safari, USB microphone input/removal, physical host-power removal,
+the full earlier human six-stream matrix, final stable-to-RC3 maintenance upgrade
+and Studio/World approval for this new version remain outside this qualification.
+The corrected release remains a prerelease; latest stable stays 1.0.1 with its new
+issues disclosed. All prior signed tags and published artifact bytes remain intact.
