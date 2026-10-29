@@ -742,10 +742,14 @@ program = blank.detect(max_blank=3.0, min_noise=0.1, threshold=-55.0, start_blan
   on_noise={tone_active := false}, {tone_active := true}, radio)
 # Always consume the program so paused/empty sources can recover while tone is
 # audible. Making the already-safe mixer unavailable would stall its clock.
-backup = amplify({if tone_active() then 1.0 else 0.0 end}, tone)
+# A healthy on-air microphone may intentionally be quiet or muted. Keep
+# loss-of-input/lease fallback intact: the microphone guard marks failures and
+# restores AUTO independently of this final-program silence detector.
+def backup_needed() = tone_active() and not (mic_active() and mic_ready() and time() <= mic_lease()) end
+backup = amplify({if backup_needed() then 1.0 else 0.0 end}, tone)
 radio = add(normalize=false, [program, backup])
 radio = source.on_frame(radio, complete_stopped_return)
-def broadcasting_tone() = tone_active() end
+def broadcasting_tone() = backup_needed() end
 radio = limit(attack=1.0, release=100.0, threshold=-1.5, ratio=100.0, gain=0.0, radio)
 def current_auto()
   r = queue.current()

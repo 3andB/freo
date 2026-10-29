@@ -37,15 +37,22 @@ jobs:
       - name: Build complete release with hashed wheels
         run: |
           mkdir -p "$RUNNER_TEMP/freo-release"
+          version=$(venv/bin/python -c 'from app.version import VERSION; print(VERSION)')
+          candidate=false
           if [[ "${{ github.event_name }}" == workflow_dispatch && "${{ inputs.candidate }}" == true ]]; then
-            [[ "$GITHUB_REF" == refs/heads/develop/v1 || "$GITHUB_REF" == refs/heads/release/1.0.1 ]] || { echo 'Candidates require an approved release branch'; exit 1; }
-            version=$(venv/bin/python -c 'from app.version import VERSION; print(VERSION)')
+            [[ "$GITHUB_REF" == refs/heads/develop/v1 || "$GITHUB_REF" == refs/heads/release/1.0.1 || "$GITHUB_REF" == refs/heads/release/1.0.2 ]] || { echo 'Candidates require an approved release branch'; exit 1; }
+            candidate=true
+          elif [[ "$GITHUB_REF" =~ ^refs/tags/v[0-9]+\.[0-9]+\.[0-9]+-rc\.[0-9]+$ ]]; then
+            [[ "$GITHUB_REF_NAME" == "v$version" ]] || exit 1
+            candidate=true
+          fi
+          if [[ "$candidate" == true ]]; then
             [[ "$version" =~ ^1\.0\.[0-9]+-rc\.[0-9]+$ ]] || exit 1
             artifact="freo-v${version}.tar.gz"
             venv/bin/python scripts/build-release.py --candidate --output "$RUNNER_TEMP/freo-release/$artifact"
             echo 'FREO_PRIVATE_CANDIDATE=1' >> "$GITHUB_ENV"
           else
-            [[ "$GITHUB_REF" == refs/tags/v* ]] || { echo 'Release builds require a version tag'; exit 1; }
+            [[ "$GITHUB_REF" =~ ^refs/tags/v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo 'Stable builds require a stable version tag'; exit 1; }
             artifact="freo-${GITHUB_REF_NAME}.tar.gz"
             venv/bin/python scripts/build-release.py --output "$RUNNER_TEMP/freo-release/$artifact"
           fi

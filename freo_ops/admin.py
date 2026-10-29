@@ -40,10 +40,13 @@ def run(args, *, timeout=90, **kwargs):
 
 
 def private_directory(path):
-    from .upgrade import require_root_directory
+    from .upgrade import require_root_directory, sync_directory
     path.mkdir(mode=0o700, parents=True, exist_ok=True)
     for parent in (path, *path.parents):
         require_root_directory(parent, private=parent == path)
+    # New nested journal/catalog directories must survive with their checkpoints.
+    for parent in (path, *path.parents):
+        sync_directory(parent)
     return path
 
 

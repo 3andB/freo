@@ -1,5 +1,27 @@
 # Changelog
 
+## 1.0.2-rc.3 — verified restore-input durability
+
+Persist immutable verified restore input and private journal/catalog directories
+before their checkpoints; persist maintenance/inhibit removal before completion.
+Includes the microphone and staged-copy durability corrections from earlier test
+candidates. Earlier signed candidates remain retained and are not overwritten.
+
+## 1.0.2-rc.2 — recovery durability candidate
+
+Persist verified staging trees and attachment directories before checkpointing.
+Atomically restore symlinks and managed hosting guard/proxy files. A real unclean
+reset reproduced an empty proxy file and fail-closed resume on RC1; that failed
+operation is retained and requires a clean new acceptance run. Includes RC1's
+healthy-muted-microphone fix. Schema and dependency locks remain unchanged.
+
+## 1.0.2-rc.1 — healthy muted microphone correction
+
+- Keep healthy muted live input silent instead of enabling the station carrier.
+- Preserve input-loss/lease-expiry fallback and accurate audible carrier state.
+- Add full-program silent-RTP regression; retain schema fe28c3d4e5f6 and 1.0.1 recovery fixes.
+- See [candidate scope and test notes](docs/release-1.0.2-rc.1.md).
+
 ## 1.0.1 — published recovery patch
 
 - Promote the accepted 1.0.1-rc.1 recovery fixes without changing recovery behavior or schema fe28c3d4e5f6.

@@ -203,3 +203,40 @@ def test_candidate_dependency_permissions_survive_restrictive_build_umask(source
             assert archive.getmember(name).mode==0o644
         assert archive.getmember('scripts/install-python.sh').mode==0o755
     assert all(row['mode'] in (0o644,0o755) for row in manifest['files'].values())
+
+
+@pytest.mark.parametrize('event,ref,version,requested,allowed,candidate', [
+    ('push', 'refs/tags/v1.0.1', '1.0.1', False, True, False),
+    ('push', 'refs/tags/v1.0.2-rc.1', '1.0.2-rc.1', False, True, True),
+    ('workflow_dispatch', 'refs/heads/release/1.0.2', '1.0.2-rc.1', True, True, True),
+    ('workflow_dispatch', 'refs/heads/release/1.0.1', '1.0.1-rc.1', True, True, True),
+    ('workflow_dispatch', 'refs/heads/develop/v1', '1.0.2-rc.1', True, True, True),
+    ('workflow_dispatch', 'refs/heads/feature/unapproved', '1.0.2-rc.1', True, False, False),
+    ('push', 'refs/tags/v1.0.2-rc.1', '1.0.3-rc.1', False, False, False),
+    ('push', 'refs/tags/v1.0.2-beta.1', '1.0.2-beta.1', False, False, False),
+    ('workflow_dispatch', 'refs/heads/main', '1.0.1', False, False, False),
+])
+def test_release_workflow_preserves_candidate_approval(tmp_path, event, ref, version, requested, allowed, candidate):
+    # Execute the actual workflow shell. Only the costly package builder is
+    # stubbed, so an RC tag losing --candidate is a real gate regression.
+    import textwrap
+    import os
+    import subprocess
+    workflow = (Path(__file__).resolve().parents[1]/'.github/workflows/release.yml').read_text()
+    block = workflow.split('      - name: Build complete release with hashed wheels\n', 1)[1]
+    block = block.split('      - name: Test the actual archive offline before signing\n', 1)[0]
+    script = textwrap.dedent(block.split('run: |\n', 1)[1])
+    script = script.replace('${{ github.event_name }}', event).replace('${{ inputs.candidate }}', str(requested).lower())
+    executable = tmp_path/'venv/bin/python'; executable.parent.mkdir(parents=True)
+    executable.write_text('#!/bin/sh\ncase "$*" in\n  *"from app.version"*) printf "%s\\n" "$TEST_RELEASE_VERSION" ;;\n  *"scripts/build-release.py"*) printf "%s\\n" "$*" > "$TEST_BUILD_CALL" ;;\n  *) exit 1 ;;\nesac\n')
+    executable.chmod(0o755)
+    log = tmp_path/'builder-call'; environment = tmp_path/'github-env'
+    result = subprocess.run(['bash','-e','-c',script], cwd=tmp_path, capture_output=True, text=True,
+        env=dict(os.environ, RUNNER_TEMP=str(tmp_path), GITHUB_REF=ref, GITHUB_REF_NAME=ref.rsplit('/',1)[-1],
+                 GITHUB_ENV=str(environment), TEST_RELEASE_VERSION=version, TEST_BUILD_CALL=str(log)))
+    assert (result.returncode == 0) is allowed, result.stderr
+    if allowed:
+        assert ('--candidate' in log.read_text()) is candidate
+        assert ('FREO_PRIVATE_CANDIDATE=1' in environment.read_text()) is candidate
+    else:
+        assert not log.exists()

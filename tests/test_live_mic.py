@@ -76,15 +76,17 @@ def test_gateway_web_rtc_ownership_and_engine_readiness():
     asyncio.run(gateway_roundtrip())
 
 
-async def gateway_roundtrip(engine_dir=None, station=None, graceful=False, feed_mode='DJ_BOOTH'):
+async def gateway_roundtrip(engine_dir=None, station=None, graceful=False, feed_mode='DJ_BOOTH', quiet=False):
     from aiohttp.test_utils import TestServer, TestClient
     from aiortc import RTCPeerConnection, RTCConfiguration, RTCSessionDescription, AudioStreamTrack
     from app.mic_gateway import create_gateway
 
+    input_muted = False
+
     class ToneTrack(AudioStreamTrack):
         async def recv(self):
             frame = await super().recv()
-            samples = array('h', [int(6000 * math.sin(2*math.pi*880*(frame.pts+i)/frame.sample_rate)) for i in range(frame.samples)])
+            samples = array('h', [0 if input_muted else int(6000 * math.sin(2*math.pi*880*(frame.pts+i)/frame.sample_rate)) for i in range(frame.samples)])
             frame.planes[0].update(samples.tobytes())
             return frame
 
@@ -138,6 +140,7 @@ async def gateway_roundtrip(engine_dir=None, station=None, graceful=False, feed_
         source = source.replace('http://127.0.0.1:8091/', str(client.make_url('/')))
         source = 'settings.init.allow_root := true\n' + source[:source.index('output.icecast(')]
         source += 'server.register(namespace="freo_test", "elapsed", fun (_) -> string.float(queue.elapsed()))\n'
+        source += 'server.register(namespace="freo_test", "tone", fun (_) -> string(broadcasting_tone()))\n'
         source += f'output.file(%wav, "{engine_dir}/output.wav", radio)\n'
         config = engine_dir/'engine.liq'; config.write_text(source)
         with (engine_dir/'engine.log').open('w') as log:
@@ -231,6 +234,24 @@ async def gateway_roundtrip(engine_dir=None, station=None, graceful=False, feed_
         await wait_voice(lambda level: level > .11)
         await asyncio.sleep(.5)
         baseline = voice_level()
+        if quiet:
+            input_muted = True
+            # Outlast the complete-program blank detector while continuing real
+            # silent RTP, authenticated heartbeats and the engine lease.
+            until = time.monotonic() + 6
+            while time.monotonic() < until:
+                fields = await observed()
+                assert fields[1] == 'LIVE' and fields[2] == 'true'
+                state = await (await post('heartbeat', owner=1, token=token)).json()
+                assert state['healthy'], 'Silent RTP must remain a healthy input'
+                await asyncio.sleep(.1)
+            raw = (engine_dir/'output.wav').read_bytes()
+            samples = array('h'); samples.frombytes(raw[-35280:])
+            rms = math.sqrt(sum((v/32768)**2 for v in samples) / len(samples))
+            assert rms < .008, f'Healthy muted mic emitted program audio: RMS {rms}'
+            assert await command('freo_test.tone') == 'false'
+            input_muted = False
+            await wait_voice(lambda level: level > .11)
         paused_at = await position()
         # Existing OVER and TAKEOVER carts must apply to microphone audio.
         cart_path = engine_dir/'cart.wav'
@@ -325,6 +346,16 @@ def test_real_microphone_fade_return_and_disconnect(app, tmp_path, monkeypatch):
     with app.app_context():
         station=Station.query.filter_by(slug='test-station').one()
         asyncio.run(gateway_roundtrip(tmp_path, station))
+
+
+@pytest.mark.skipif(os.environ.get('FREO_ENGINE_TEST') != '1', reason='Explicit isolated Liquidsoap/WebRTC integration')
+def test_healthy_muted_microphone_does_not_broadcast_safety_tone(app, tmp_path, monkeypatch):
+    pytest.importorskip('aiortc')
+    from app.models import Station
+    monkeypatch.setenv('FREO_LIVE_MIC', '1')
+    with app.app_context():
+        station = Station.query.filter_by(slug='test-station').one()
+        asyncio.run(gateway_roundtrip(tmp_path, station, quiet=True))
 
 
 @pytest.mark.skipif(os.environ.get('FREO_ENGINE_TEST') != '1', reason='Explicit isolated Liquidsoap/WebRTC integration')

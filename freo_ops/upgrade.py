@@ -138,6 +138,7 @@ def set_maintenance(state, enabled):
         atomic_json(marker, {'maintenance': True})
     else:
         marker.unlink(missing_ok=True)
+        sync_directory(state)
 
 
 def verify_preservation(source_url, restored_url):

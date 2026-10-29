@@ -78,7 +78,8 @@ def freeze(operation):
     body='[Unit]\nConditionPathExists=!/var/lib/freo-updates/maintenance\n'
     if guard.exists() and (guard.is_symlink() or guard.read_text()!=body):
         raise h.HostingError('invalid_configuration','Unmanaged Icecast maintenance guard requires review.')
-    guard.write_text(body);guard.chmod(0o644)
+    from .recovery_layout import atomic_file
+    atomic_file(guard, body.encode(), 0o644)
     a.run(['systemctl','daemon-reload'])
     set_maintenance(a.UPDATES,True)
     if h.read()['hosted']: h.atomic(h.STATE/'inhibit',True)
@@ -98,6 +99,8 @@ def thaw(operation, *, reconcile=False):
     restricted=policy.get('hosted') and (policy['status'] in ('suspended','maintenance') or operation.get('was_inhibited'))
     if policy.get('hosted') and not restricted:
         (h.STATE/'inhibit').unlink(missing_ok=True)
+        from .upgrade import sync_directory
+        sync_directory(h.STATE)
     set_maintenance(a.UPDATES,False)
     selected=[]
     for unit in operation.get('active_units',[]):
@@ -392,11 +395,8 @@ def restore_customer_configuration(operation, source, destination):
         if operation['configuration_had_target'] and not retained.exists() and not retained.is_symlink():
             os.rename(target,retained)
         if not target.exists() and not target.is_symlink():
-            if staged.exists() or staged.is_symlink():
-                if staged.is_dir() and not staged.is_symlink():shutil.rmtree(staged)
-                else:staged.unlink()
-            a.run(['cp','-a','--',str(source/name),str(staged)],timeout=3600)
-            os.rename(staged,target)
+            from .recovery_layout import attach_verified_copy
+            attach_verified_copy(source/name, staged, target)
         from .upgrade import sync_directory
         sync_directory(destination);sync_directory(destination.parent)
         done.append(name)
@@ -418,6 +418,9 @@ def restore_live(operation, *, reconcile=False):
             validate_restored_code(metadata,restored,directory)
             validate_backup_database(metadata,restored,directory)
             validate_restored_capacity(restored)
+            # Resume reads these verified bytes again; they must outlive a reset.
+            from .recovery_layout import sync_tree
+            sync_tree(directory)
         except Exception:
             a.checkpoint(operation,phase='failed_before_changes')
             raise
@@ -471,11 +474,8 @@ def restore_live(operation, *, reconcile=False):
             if operation['had_target'] and not retained.exists() and not retained.is_symlink():
                 os.rename(target,retained)
             if not target.exists() and not target.is_symlink():
-                if staged.exists() or staged.is_symlink():
-                    if staged.is_dir() and not staged.is_symlink():shutil.rmtree(staged)
-                    else:staged.unlink()
-                a.run(['cp','-a','--',str(Path(operation['restore_directory'])/f'root-{index}'),str(staged)],timeout=3600)
-                os.rename(staged,target)
+                from .recovery_layout import attach_verified_copy
+                attach_verified_copy(Path(operation['restore_directory'])/f'root-{index}', staged, target)
             completed.append(index)
             a.checkpoint(operation,attached=completed)
         # Restore symlinks to their original approved targets, mapping executable paths.
@@ -488,7 +488,8 @@ def restore_live(operation, *, reconcile=False):
                 target=(release/original.relative_to(metadata['source']) if original.is_relative_to(metadata['source']) else original)/entry['path']
                 link=entry['target']
                 if Path(link).is_absolute() and Path(link).is_relative_to(metadata['source']):link=str(release/Path(link).relative_to(metadata['source']))
-                target.unlink(missing_ok=True);target.symlink_to(link)
+                from .recovery_layout import atomic_symlink
+                atomic_symlink(target, link)
         # Derive launchers from verified input, never from a previous attempt.
         verified_bin = restored_path(restored, Path(operation['restore_directory']),
                                      Path(metadata['source'])/'venv/bin')

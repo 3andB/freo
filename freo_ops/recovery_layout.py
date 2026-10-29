@@ -101,3 +101,56 @@ def canonical_environment(source, destination):
         if stat.S_ISLNK(info.st_mode) or info.st_uid != 0 or info.st_mode & 0o022:
             raise HostingError('invalid_configuration', 'Unsafe configuration directory.')
     atomic_file(destination, source.read_bytes(), 0o640, group=grp.getgrnam('freo').gr_gid)
+
+
+def sync_tree(path):
+    """Persist copied contents and directory entries before recording attachment."""
+    path = Path(path)
+    entries = [path, *path.rglob('*')] if path.is_dir() and not path.is_symlink() else [path]
+    directories = []
+    for entry in entries:
+        info = entry.lstat()
+        if stat.S_ISLNK(info.st_mode):
+            continue
+        if stat.S_ISDIR(info.st_mode):
+            directories.append(entry)
+        elif stat.S_ISREG(info.st_mode):
+            fd = os.open(entry, os.O_RDONLY | os.O_NOFOLLOW)
+            try: os.fsync(fd)
+            finally: os.close(fd)
+        else:
+            raise HostingError('invalid_configuration', 'Unsupported recovery file type.')
+    for directory in reversed(directories):
+        sync_directory(directory)
+    sync_directory(path.parent)
+
+
+def attach_verified_copy(source, staged, target):
+    """A checkpoint may trust target only after its verified copy is durable."""
+    import shutil
+    from . import recovery
+    source, staged, target = map(Path, (source, staged, target))
+    if staged.parent.stat().st_dev != target.parent.stat().st_dev or target.exists() or target.is_symlink():
+        raise HostingError('invalid_configuration', 'Unsafe recovery attachment destination.')
+    if staged.exists() or staged.is_symlink():
+        if staged.is_dir() and not staged.is_symlink(): shutil.rmtree(staged)
+        else: staged.unlink()
+    recovery.run(['cp', '-a', '--', str(source), str(staged)])
+    sync_tree(staged)
+    os.rename(staged, target)
+    sync_directory(target.parent)
+    if staged.parent != target.parent:
+        sync_directory(staged.parent)
+
+
+def atomic_symlink(destination, value):
+    """Keep an existing link until its complete replacement can be committed."""
+    import uuid
+    destination = Path(destination)
+    temporary = destination.parent / ('.freo-link-' + uuid.uuid4().hex)
+    try:
+        temporary.symlink_to(value)
+        os.replace(temporary, destination)
+        sync_directory(destination.parent)
+    finally:
+        temporary.unlink(missing_ok=True)
