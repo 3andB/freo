@@ -120,8 +120,15 @@ The corrected [1.0.2-rc.3 candidate](release-1.0.2-rc.3.md) completed the docume
 fresh direct, managed/suspended restore, actual unclean guest reset/resume and
 reboot gates without manual application repair or journal edits. It remains a
 prerelease: physical phones/Safari, USB microphone and physical host-power removal
-are unavailable. Its final stable-to-candidate maintenance upgrade was not repeated;
-existing installations need an explicitly reviewed radio-maintenance procedure.
+are unavailable. A populated 1.0.1-to-RC3 upgrade subsequently passed using the
+unmodified installed updater's explicit radio-maintenance procedure, matched
+encrypted backup and isolated restore. Data, hosting policy, exact environment
+bytes, permissions, decoded audio, deployed browser microphone and a full reboot
+passed without manual application repairs or journal edits. See the
+[signed upgrade acceptance](https://github.com/3andB/freo/releases/download/v1.0.2-rc.3/STABLE-UPGRADE-ACCEPTANCE.md).
+The ordinary administrative updater still intentionally refuses the station
+template change; use the explicitly reviewed maintenance procedure. Other source
+versions and interruption of the upgrade transaction remain unqualified.
 
 [Stable ZIP](https://github.com/3andB/freo/releases/download/v1.0.1/freo-v1.0.1-download.zip)
 contains the unchanged original kit and source with the new issues disclosed.

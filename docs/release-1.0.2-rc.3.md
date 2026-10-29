@@ -90,8 +90,10 @@ anonymously and verified as Freo's Unix user on World and the disposable VM](htt
 World production runtime and OVH endurance were not interrupted.
 
 Physical phones/Safari, USB microphone input/removal, physical host-power removal,
-the full earlier human six-stream matrix, final stable-to-RC3 maintenance upgrade
-and Studio/World approval for this new version remain outside this qualification.
+the full earlier human six-stream matrix and Studio/World approval for this new
+version remain outside this qualification. The normal populated 1.0.1-to-RC3
+maintenance upgrade subsequently passed as recorded below; interruption of the
+upgrade transaction and other source versions remain unqualified.
 The corrected release remains a prerelease; latest stable stays 1.0.1 with its new
 issues disclosed. All prior signed tags and published artifact bytes remain intact.
 
@@ -107,5 +109,43 @@ retained-OS acceptance above.
 Provenance: owner report. Exact tested artifact digest, operation IDs, interruption
 method and raw logs were not supplied with this update. Those details remain
 pending for independent artifact binding. The published kit, ZIP, signatures and
-original signed reports retain their existing bytes. Remaining physical-device,
-physical-power and stable-to-RC upgrade qualifications remain as documented above.
+original signed reports retain their existing bytes. Remaining physical-device
+and physical-power qualifications remain as documented above.
+
+## Populated stable-to-RC3 upgrade acceptance
+
+The existing disposable Ubuntu 24.04 x86_64 VM completed a populated
+**1.0.1 → 1.0.2-rc.3** upgrade using the unmodified installed updater's explicit
+`--radio-maintenance --allow-candidate` procedure under umask 0077. The default
+path correctly refused the template change. The maintenance path verified the
+publisher signature, made a matched encrypted backup, restored it in isolation,
+compiled both station configurations and completed actual upgrade operation
+`36bd395f9c454b8eb1be35a95a4e9316` without manual application repairs or phase edits.
+
+The baseline source was `5481ce775d9c0669cc785660f3865448053278da`; the exact
+candidate source/package hashes above are unchanged. Baseline preparation copied
+a preserved matched stable application/configuration/database snapshot after
+retaining the VM's previous RC3 state and verified off-server encrypted fixture
+backup. Missing derived hosting storage was reconciled using the unmodified
+stable maintenance command before baseline validation. This adds upgrade coverage
+on retained OS/packages/accounts/TLS, rather than additional fresh-OS coverage.
+
+Installation identity, administrator/DJ accounts and assignments, both actual
+media hashes, playlist entries, persistent Simple programming, running/stopped
+station states, hosting authority/limits and whole environment bytes were
+retained. Installed validation, service-user launchers, releases traversal and
+root:freo 0640 configuration passed. Direct and certificate-verified HTTPS audio,
+deployed browser microphone/gain/mute/return/denial/client-loss, actual carrier
+spectral checks and a full VM reboot passed. After reboot, data, audio,
+administrator/DJ login, bootstrap revocation and the completed upgrade journal
+passed again. The application database role stayed unprivileged; the temporary
+verification role's login and CREATEDB privileges were revoked afterward.
+
+[Signed supplemental acceptance](https://github.com/3andB/freo/releases/download/v1.0.2-rc.3/STABLE-UPGRADE-ACCEPTANCE.md)
+and [machine-readable receipts](https://github.com/3andB/freo/releases/download/v1.0.2-rc.3/STABLE-UPGRADE-ACCEPTANCE.json)
+record exact tested hashes, operation IDs and scope. This test exercised normal
+active-hosted upgrade; interrupted upgrade transactions, other source versions,
+cross-schema upgrades and suspended upgrades remain outside it. Earlier RC3
+evidence separately covers interrupted recovery/resumption and suspended restore.
+Existing ZIPs, signed tags, assets and earlier reports retain their bytes; the
+release remains a prerelease. World runtime and OVH endurance were untouched.
