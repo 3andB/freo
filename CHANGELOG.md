@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.0.1 — stable source preparation
+## 1.0.1 — published recovery patch
 
 - Promote the accepted 1.0.1-rc.1 recovery fixes without changing recovery behavior or schema fe28c3d4e5f6.
 - Preserve safe root-controlled release-directory traversal, repeatable launcher relocation, atomic unit adoption, and root:freo 0640 canonical configuration.

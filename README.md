@@ -1,10 +1,10 @@
 # Freo
 
-**Published stable: Freo 1.0.0** — radio automation and station management for Ubuntu 24.04 x86_64.
+**Published stable: Freo 1.0.1** — radio automation and station management for Ubuntu 24.04 x86_64.
 
-[Install Freo](docs/stable-installation.md) · [Signed installation kit](https://github.com/3andB/freo/releases/download/v1.0.0/freo-v1.0.0-install-kit.tar) · [Release notes](docs/release-1.0.0.md)
+[Install Freo](docs/stable-installation.md) · [Signed installation kit](https://github.com/3andB/freo/releases/download/v1.0.1/freo-v1.0.1-install-kit.tar) · [Release notes](docs/release-1.0.1.md)
 
-The recovery patch source is prepared as **1.0.1**; see its [release notes and final artifact gate](docs/release-1.0.1.md). The published stable download above remains v1.0.0 until the exact signed 1.0.1 kit passes acceptance and is published.
+The signed 1.0.1 recovery patch passed fresh and managed interrupted recovery, suspended recovery, signed upgrades and full reboot acceptance. See the [release notes and exact-artifact evidence](docs/release-1.0.1.md).
 
 [Recovery and upgrades](docs/recovery-and-upgrades.md): existing installations
 use the signed updater with a verified backup/recovery point. The fresh installer
@@ -43,7 +43,7 @@ Freo is source-available under the [Freo Source-Available License](LICENSE). Up 
 
 Created by Lee Eyerman. Copyright © 2026 3andB.
 
-[Installation](docs/stable-installation.md) · [Release acceptance](docs/release-1.0.0.md) · [freo.live team handoff](docs/freo-live-distribution-handoff.md)
+[Installation](docs/stable-installation.md) · [Release acceptance](docs/release-1.0.1.md) · [freo.live team handoff](docs/freo-live-distribution-handoff.md)
 
 [Station Control and DJ Booth system tests](docs/station-system-testing.md) provide accelerated scheduling simulations, connected browser/worker/audio checks, and unattended endurance runs with isolated streams and retained evidence.
 
