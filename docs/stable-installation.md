@@ -1,4 +1,4 @@
-# Freo 1.0.0 installation
+# Freo 1.0.1 installation
 
 Ubuntu 24.04 x86_64, Python 3.12. Existing installations must use the signed upgrade workflow with a current verified encrypted backup; never run the fresh installer over existing state.
 
@@ -6,9 +6,9 @@ Ubuntu 24.04 x86_64, Python 3.12. Existing installations must use the signed upg
 
 Obtain these named files through the trusted release handoff:
 
-- `freo-v1.0.0-install-kit.tar`
-- `freo-v1.0.0-install-kit.tar.asc`
-- `freo-v1.0.0-install-kit.sha256` and its `.asc` signature
+- `freo-v1.0.1-install-kit.tar`
+- `freo-v1.0.1-install-kit.tar.asc`
+- `freo-v1.0.1-install-kit.sha256` and its `.asc` signature
 - `publisher.gpg`
 
 Confirm this publisher fingerprint through an independently trusted channel:
@@ -19,16 +19,16 @@ From an empty, root-owned staging directory, verify before extraction:
 
 ```sh
 gpg --show-keys --with-fingerprint publisher.gpg
-gpgv --keyring "$PWD/publisher.gpg" freo-v1.0.0-install-kit.tar.asc freo-v1.0.0-install-kit.tar
-gpgv --keyring "$PWD/publisher.gpg" freo-v1.0.0-install-kit.sha256.asc freo-v1.0.0-install-kit.sha256
-sha256sum --check freo-v1.0.0-install-kit.sha256
+gpgv --keyring "$PWD/publisher.gpg" freo-v1.0.1-install-kit.tar.asc freo-v1.0.1-install-kit.tar
+gpgv --keyring "$PWD/publisher.gpg" freo-v1.0.1-install-kit.sha256.asc freo-v1.0.1-install-kit.sha256
+sha256sum --check freo-v1.0.1-install-kit.sha256
 mkdir freo-kit
-tar -xf freo-v1.0.0-install-kit.tar -C freo-kit
+tar -xf freo-v1.0.1-install-kit.tar -C freo-kit
 cd freo-kit
 sha256sum --check SHA256SUMS
-gpgv --keyring "$PWD/publisher.gpg" freo-v1.0.0.tar.gz.asc freo-v1.0.0.tar.gz
+gpgv --keyring "$PWD/publisher.gpg" freo-v1.0.1.tar.gz.asc freo-v1.0.1.tar.gz
 mkdir source
-tar -xzf freo-v1.0.0.tar.gz -C source
+tar -xzf freo-v1.0.1.tar.gz -C source
 ```
 
 Stop on any verification failure. Never execute an archive's own scripts to
