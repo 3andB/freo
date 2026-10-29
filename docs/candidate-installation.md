@@ -1,4 +1,4 @@
-# Freo 1.0.2-rc.2 microphone correction candidate
+# Freo 1.0.2-rc.3 microphone correction candidate
 
 This is a signed test candidate, not the stable release. Use disposable Ubuntu
 24.04 x86_64 only. Verify the installation kit and enclosed package signatures
@@ -25,4 +25,4 @@ This candidate also includes the published 1.0.1 recovery corrections and staged
 a healthy live microphone quiet when muted, while retaining input-loss and
 lease-expiry fallback. Existing installations require the explicit radio-maintenance updater, which
 validates and renders existing managed stations with the corrected template. See
-[1.0.2 candidate notes](release-1.0.2-rc.2.md) for scope and test status.
+[1.0.2 candidate notes](release-1.0.2-rc.3.md) for scope and test status.

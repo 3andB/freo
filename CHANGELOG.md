@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.0.2-rc.3 — verified restore-input durability
+
+Persist immutable verified restore input and private journal/catalog directories
+before their checkpoints; persist maintenance/inhibit removal before completion.
+Includes the microphone and staged-copy durability corrections from earlier test
+candidates. Earlier signed candidates remain retained and are not overwritten.
+
 ## 1.0.2-rc.2 — recovery durability candidate
 
 Persist verified staging trees and attachment directories before checkpointing.

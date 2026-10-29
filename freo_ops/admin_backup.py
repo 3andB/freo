@@ -78,7 +78,8 @@ def freeze(operation):
     body='[Unit]\nConditionPathExists=!/var/lib/freo-updates/maintenance\n'
     if guard.exists() and (guard.is_symlink() or guard.read_text()!=body):
         raise h.HostingError('invalid_configuration','Unmanaged Icecast maintenance guard requires review.')
-    guard.write_text(body);guard.chmod(0o644)
+    from .recovery_layout import atomic_file
+    atomic_file(guard, body.encode(), 0o644)
     a.run(['systemctl','daemon-reload'])
     set_maintenance(a.UPDATES,True)
     if h.read()['hosted']: h.atomic(h.STATE/'inhibit',True)
@@ -98,6 +99,8 @@ def thaw(operation, *, reconcile=False):
     restricted=policy.get('hosted') and (policy['status'] in ('suspended','maintenance') or operation.get('was_inhibited'))
     if policy.get('hosted') and not restricted:
         (h.STATE/'inhibit').unlink(missing_ok=True)
+        from .upgrade import sync_directory
+        sync_directory(h.STATE)
     set_maintenance(a.UPDATES,False)
     selected=[]
     for unit in operation.get('active_units',[]):
@@ -415,6 +418,9 @@ def restore_live(operation, *, reconcile=False):
             validate_restored_code(metadata,restored,directory)
             validate_backup_database(metadata,restored,directory)
             validate_restored_capacity(restored)
+            # Resume reads these verified bytes again; they must outlive a reset.
+            from .recovery_layout import sync_tree
+            sync_tree(directory)
         except Exception:
             a.checkpoint(operation,phase='failed_before_changes')
             raise

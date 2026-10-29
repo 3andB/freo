@@ -208,3 +208,24 @@ for p in files:
  assert p.stat().st_mode & 0o777 == 0o644
 '''
     subprocess.run([sys.executable,'-I','-S','-c',script,str(root),str(tmp_path/'units')],check=True,capture_output=True,text=True)
+
+
+def test_private_operation_directory_persists_new_ancestors(tmp_path,monkeypatch):
+    from freo_ops import admin,upgrade
+    target=tmp_path/'restores/operation'
+    seen=[];real=upgrade.sync_directory
+    def sync(path):seen.append(Path(path));return real(path)
+    monkeypatch.setattr(upgrade,'sync_directory',sync)
+    assert admin.private_directory(target)==target
+    assert seen==[target,*target.parents]
+    assert target.stat().st_mode & 0o777==0o700
+
+
+def test_maintenance_removal_persisted_before_return(tmp_path,monkeypatch):
+    from freo_ops import upgrade
+    (tmp_path/'maintenance').write_text('guard')
+    seen=[];real=upgrade.sync_directory
+    def sync(path):assert not (tmp_path/'maintenance').exists();seen.append(path);return real(path)
+    monkeypatch.setattr(upgrade,'sync_directory',sync)
+    upgrade.set_maintenance(tmp_path,False)
+    assert seen==[tmp_path]
