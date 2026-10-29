@@ -1,4 +1,4 @@
-# Freo 1.0.1-rc.1 recovery candidate
+# Freo 1.0.2-rc.1 microphone correction candidate
 
 This is a signed test candidate, not the stable release. Use disposable Ubuntu
 24.04 x86_64 only. Verify the installation kit and enclosed package signatures
@@ -20,3 +20,9 @@ own offline-installed venv. Invoke its management entry point explicitly:
 Use the returned IDs and destination installation confirmation. The restored
 application may be v1.0.0; continue using the verified candidate tools throughout
 resumption. Never copy individual source files over the installed release.
+
+This candidate also includes the published 1.0.1 recovery corrections. It keeps
+a healthy live microphone quiet when muted, while retaining input-loss and
+lease-expiry fallback. Existing installations require the normal signed updater,
+which renders the enabled stations with the corrected template. See
+[1.0.2 candidate notes](release-1.0.2-rc.1.md) for scope and test status.

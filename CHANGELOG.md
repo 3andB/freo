@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.0.2-rc.1 — healthy muted microphone correction
+
+- Keep healthy muted live input silent instead of enabling the station carrier.
+- Preserve input-loss/lease-expiry fallback and accurate audible carrier state.
+- Add full-program silent-RTP regression; retain schema fe28c3d4e5f6 and 1.0.1 recovery fixes.
+- See [candidate scope and test notes](docs/release-1.0.2-rc.1.md).
+
 ## 1.0.1 — published recovery patch
 
 - Promote the accepted 1.0.1-rc.1 recovery fixes without changing recovery behavior or schema fe28c3d4e5f6.

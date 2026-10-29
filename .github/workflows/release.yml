@@ -38,7 +38,7 @@ jobs:
         run: |
           mkdir -p "$RUNNER_TEMP/freo-release"
           if [[ "${{ github.event_name }}" == workflow_dispatch && "${{ inputs.candidate }}" == true ]]; then
-            [[ "$GITHUB_REF" == refs/heads/develop/v1 || "$GITHUB_REF" == refs/heads/release/1.0.1 ]] || { echo 'Candidates require an approved release branch'; exit 1; }
+            [[ "$GITHUB_REF" == refs/heads/develop/v1 || "$GITHUB_REF" == refs/heads/release/1.0.1 || "$GITHUB_REF" == refs/heads/release/1.0.2 ]] || { echo 'Candidates require an approved release branch'; exit 1; }
             version=$(venv/bin/python -c 'from app.version import VERSION; print(VERSION)')
             [[ "$version" =~ ^1\.0\.[0-9]+-rc\.[0-9]+$ ]] || exit 1
             artifact="freo-v${version}.tar.gz"
