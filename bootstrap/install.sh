@@ -1,5 +1,5 @@
 #!/bin/bash
-# Freo Bootstrap Installer 0.1.0. Delivery only; never builds or upgrades Freo.
+# Freo Bootstrap Installer 0.1.1. Delivery only; never builds or upgrades Freo.
 # Keep execution inside main: an interrupted curl must not execute a partial body.
 freo_bootstrap_main() {
     set -euo pipefail
@@ -7,9 +7,9 @@ freo_bootstrap_main() {
     unset CDPATH ENV BASH_ENV
     umask 077
     case "${1:-}" in
-        --bootstrap-version) printf '%s\n' 'Freo Bootstrap Installer 0.1.0'; return ;;
+        --bootstrap-version) printf '%s\n' 'Freo Bootstrap Installer 0.1.1'; return ;;
         --help|-h)
-            printf '%s\n' 'Freo Bootstrap Installer 0.1.0' \
+            printf '%s\n' 'Freo Bootstrap Installer 0.1.1' \
                 'Usage: bash install.sh [--domain HOST] [--https --email ADDRESS]' \
                 '                       [--version VERSION] [--yes]' \
                 'Fresh Ubuntu 24.04 x86_64 only. --yes requires --domain.' \
@@ -74,7 +74,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-BOOTSTRAP_VERSION = "0.1.0"
+BOOTSTRAP_VERSION = "0.1.1"
 FINGERPRINT = "B835B40E7E1A5838390256751AB72B63BEB716C3"
 API = "https://api.github.com/repos/3andB/freo"
 DOWNLOAD = "https://github.com/3andB/freo/releases/download"
@@ -263,7 +263,7 @@ def discover(work, version=None):
 def assets(release):
     version = release_version(release)
     package = "freo-v" + version + ".tar.gz"
-    required = (package, package + ".asc", "publisher.gpg", "PUBLISHER-FINGERPRINT.txt", "SHA256SUMS")
+    required = (package, package + ".asc", "publisher.gpg", "SHA256SUMS")
     rows = release.get("assets")
     if not isinstance(rows, list):
         raise Stop("Missing release assets")
@@ -311,7 +311,7 @@ def checksums(work, package):
         if not match or match[2] in entries:
             raise Stop("Malformed or duplicate checksum entry")
         entries[match[2]] = match[1]
-    for name in (package, package + ".asc", "publisher.gpg", "PUBLISHER-FINGERPRINT.txt"):
+    for name in (package, package + ".asc", "publisher.gpg"):
         if entries.get(name) != sha256(work / name):
             raise Stop("SHA-256 verification failed for " + name)
 
@@ -328,8 +328,8 @@ def signature(work, package):
     home = work / "gnupg"
     home.mkdir(mode=0o700)
     key = work / "publisher.gpg"
-    if (work / "PUBLISHER-FINGERPRINT.txt").read_text().strip() != FINGERPRINT:
-        raise Stop("Published fingerprint differs from pinned publisher")
+    # Trust the pinned primary identity derived from the key itself. A separate
+    # fingerprint text asset is not part of the signed-release contract.
     listing = command(["/usr/bin/gpg", "--no-options", "--homedir", str(home), "--batch",
                        "--with-colons", "--import-options", "show-only", "--import", str(key)])
     primary = []

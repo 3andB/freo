@@ -1,4 +1,14 @@
-# Freo Bootstrap Installer 0.1.0
+> Bootstrap 0.1.1 fixes compatibility with the unchanged signed Freo 1.0.2
+> release. The publisher identity is checked directly against the pinned primary
+> fingerprint in the downloaded key and package signature. No separate
+> PUBLISHER-FINGERPRINT.txt asset or checksum entry is required. Package,
+> signature and publisher-key checksum entries remain mandatory. Existing
+> release archives, checksums and signatures must not be rewritten.
+>
+> The public integration test now downloads and verifies exact stable 1.0.2,
+> including its signed file inventory, without invoking the installer.
+
+# Freo Bootstrap Installer 0.1.1
 
 **Implementation candidate. Disposable fresh-VM acceptance is still required.**
 Neither `https://freo.world/install` nor `/install.sh` has been deployed by this
@@ -7,7 +17,7 @@ the actual approved test delivery host. Do not run them on an existing server.
 
 The bootstrap delivers an existing signed stable GitHub Release from
 `3andB/freo`. It does not build Freo, upgrade an installation, change licensing,
-or announce a release. Its independent version is 0.1.0. The application version
+or announce a release. Its independent version is 0.1.1. The application version
 is selected at runtime and checked against signed package metadata.
 
 ## Requirements
@@ -58,7 +68,7 @@ Public IP: 203.0.113.10
 Installation address: http://203.0.113.10
 OS: Ubuntu 24.04
 Architecture: x86_64 / amd64
-Bootstrap: 0.1.0
+Bootstrap: 0.1.1
 Installing Freo: 0.3.0
 
 This will install Freo and configure services on this server.
@@ -146,13 +156,13 @@ skip-verification options. `--yes` never bypasses preflight or verification.
    checks. A bare Git tag is insufficient. Missing assets on the selected release
    stop installation; the bootstrap never silently falls back to an older release.
 3. Download only `freo-vVERSION.tar.gz`, its `.asc`, `publisher.gpg`,
-   `PUBLISHER-FINGERPRINT.txt`, and `SHA256SUMS`. Construct and check exact GitHub
+   and `SHA256SUMS`. Construct and check exact GitHub
    release download URLs. Follow HTTPS redirects only to `github.com` or
    `release-assets.githubusercontent.com`; API redirects stay on `api.github.com`.
    Use OS TLS verification, no proxy/credential inheritance, bounded size/time,
    bounded retries, and exclusive `.part` files renamed only after completion.
 4. Check API asset sizes/digests when present, then strict SHA-256 entries for
-   every downloaded package/signature/key/fingerprint file. Checksum data is
+   every downloaded package/signature/key file. Checksum data is
    consistency evidence, not the publisher trust anchor.
 5. Pin primary publisher fingerprint
    `B835B40E7E1A5838390256751AB72B63BEB716C3`. Reject unexpected/additional primary
